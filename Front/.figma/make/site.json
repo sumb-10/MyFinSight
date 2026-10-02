@@ -1,0 +1,11 @@
+{
+  "title": "MyFinSight",
+  "description": "개인 투자 아이디어를 투자조건 확인, 과거 성과와 위험 분석, 모의투자로 연결하는 데스크톱 투자전략 서비스입니다.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
