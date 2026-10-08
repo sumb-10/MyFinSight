@@ -1,0 +1,19 @@
+# systemd 서비스: 인스턴스가 켜지면 데이터 API 를 띄우고, 죽으면 다시 띄움
+# sudo cp deploy/myfinsight-api.service /etc/systemd/system/
+# sudo systemctl enable --now myfinsight-api
+[Unit]
+Description=MyFinSight data API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/role-a-server
+ExecStart=/home/ubuntu/role-a-server/venv/bin/uvicorn myfinsight.api:app --host 127.0.0.1 --port 8000 --workers 2
+Environment=DB_POOL_SIZE=3
+Environment=DB_MAX_OVERFLOW=2
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

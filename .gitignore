@@ -1,0 +1,39 @@
+# 팀 저장소 맨 위 .gitignore (하위 폴더 어디에 있어도 적용됨)
+
+# 비밀값: DB 주소·API 키
+.env
+.env.*
+!.env.example
+*credentials*.json
+
+# 로컬 DB·캐시. 역할 A 의 data/ 는 그 폴더 안 .gitignore 가 뺌
+# (여기 data/ 를 쓰면 src/myfinsight/data 코드까지 빠져서 안 씀)
+*.db
+*.sqlite3
+.cache/
+
+# 파이썬
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# 노드 (프론트)
+node_modules/
+dist/
+build/
+.next/
+
+# 에디터·OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 수집은 개인 저장소 Actions 가 함. 맨 위에 collect.yml 이 들어와도 팀 저장소에서는 안 돌게 뺌
+/.github/workflows/collect.yml

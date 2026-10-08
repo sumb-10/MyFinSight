@@ -1,0 +1,6 @@
+# Caddy: HTTPS 주소로 받아 API(127.0.0.1:8000)로 넘김. 인증서는 Caddy 가 자동으로 받음
+# 아래 주소를 바꿔서 sudo cp deploy/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
+# 도메인이 없으면 고정 IP 를 대시로 이은 sslip.io 주소를 씀 (예: 3.35.12.34 → 3-35-12-34.sslip.io)
+3-35-12-34.sslip.io {
+	reverse_proxy 127.0.0.1:8000
+}

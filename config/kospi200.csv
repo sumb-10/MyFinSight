@@ -1,0 +1,203 @@
+# KRX 지수구성종목 코스피 200, 기준일 미기재, 원본 kospi200_krx.csv, 만든 날 2026-10-06
+ticker,name,sector,industry
+000080.KS,하이트진로,Consumer Staples,Beverages - Wineries & Distilleries
+000100.KS,유한양행,Health Care,Drug Manufacturers - Specialty & Generic
+000120.KS,CJ대한통운,Industrials,Integrated Freight & Logistics
+000150.KS,두산,Industrials,Conglomerates
+000210.KS,DL,Materials,Specialty Chemicals
+000240.KS,한국앤컴퍼니,Consumer Discretionary,Auto Parts
+000270.KS,기아,Consumer Discretionary,Auto Manufacturers
+000660.KS,SK하이닉스,Information Technology,Semiconductors
+000670.KS,영풍,Information Technology,Electronic Components
+000720.KS,현대건설,Industrials,Engineering & Construction
+000810.KS,삼성화재,Financials,Insurance - Property & Casualty
+000880.KS,한화,Industrials,Conglomerates
+000990.KS,DB하이텍,Information Technology,Semiconductors
+001040.KS,CJ,Industrials,Conglomerates
+001430.KS,세아베스틸지주,Materials,Steel
+001440.KS,대한전선,Industrials,Electrical Equipment & Parts
+001450.KS,현대해상,Financials,Insurance - Property & Casualty
+001680.KS,대상,Consumer Staples,Packaged Foods
+001800.KS,오리온홀딩스,Consumer Staples,Confectioners
+002030.KS,아세아,Materials,Building Materials
+002380.KS,KCC,Materials,Chemicals
+002790.KS,아모레퍼시픽홀딩스,Consumer Staples,Household & Personal Products
+002840.KS,미원상사,Materials,Chemicals
+003030.KS,세아제강지주,Materials,Steel
+003090.KS,대웅,Health Care,Drug Manufacturers - Specialty & Generic
+003230.KS,삼양식품,Consumer Staples,Packaged Foods
+003240.KS,태광산업,Materials,Chemicals
+003490.KS,대한항공,Industrials,Airlines
+003550.KS,LG,Information Technology,Consumer Electronics
+003670.KS,포스코퓨처엠,Industrials,Electrical Equipment & Parts
+004000.KS,롯데정밀화학,Materials,Chemicals
+004020.KS,현대제철,Materials,Steel
+004170.KS,신세계,Consumer Discretionary,Department Stores
+004370.KS,농심,Consumer Staples,Packaged Foods
+004990.KS,롯데지주,Consumer Staples,Confectioners
+005300.KS,롯데칠성,Consumer Staples,Beverages - Non-Alcoholic
+005380.KS,현대차,Consumer Discretionary,Auto Manufacturers
+005420.KS,코스모화학,Materials,Specialty Chemicals
+005490.KS,POSCO홀딩스,Materials,Steel
+005830.KS,DB손해보험,Financials,Insurance - Property & Casualty
+005850.KS,에스엘,Consumer Discretionary,Auto Parts
+005930.KS,삼성전자,Information Technology,Consumer Electronics
+005940.KS,NH투자증권,Financials,Capital Markets
+006040.KS,동원산업,Consumer Staples,Packaged Foods
+006260.KS,LS,Industrials,Electrical Equipment & Parts
+006280.KS,녹십자,Health Care,Drug Manufacturers - Specialty & Generic
+006400.KS,삼성SDI,Industrials,Electrical Equipment & Parts
+006650.KS,대한유화,Materials,Chemicals
+006800.KS,미래에셋증권,Financials,Capital Markets
+007070.KS,GS리테일,Consumer Discretionary,Department Stores
+007310.KS,오뚜기,Consumer Staples,Packaged Foods
+007340.KS,DN오토모티브,Consumer Discretionary,Auto Parts
+007660.KS,이수페타시스,Information Technology,Electronic Components
+008730.KS,율촌화학,Consumer Discretionary,Packaging & Containers
+008770.KS,호텔신라,Consumer Discretionary,Specialty Retail
+008930.KS,한미사이언스,Health Care,Medical Distribution
+009150.KS,삼성전기,Information Technology,Electronic Components
+009240.KS,한샘,Consumer Discretionary,"Furnishings, Fixtures & Appliances"
+009420.KS,한올바이오파마,Health Care,Drug Manufacturers - Specialty & Generic
+009540.KS,HD한국조선해양,Industrials,Aerospace & Defense
+009830.KS,한화솔루션,Information Technology,Solar
+009970.KS,영원무역홀딩스,Consumer Discretionary,Apparel Manufacturing
+010060.KS,OCI홀딩스,Financials,Asset Management
+010120.KS,LS ELECTRIC,Industrials,Electrical Equipment & Parts
+010130.KS,고려아연,Materials,Other Industrial Metals & Mining
+010140.KS,삼성중공업,Industrials,Aerospace & Defense
+010950.KS,S-Oil,Energy,Oil & Gas Refining & Marketing
+011070.KS,LG이노텍,Information Technology,Electronic Components
+011170.KS,롯데케미칼,Materials,Chemicals
+011200.KS,HMM,Industrials,Marine Shipping
+011210.KS,현대위아,Consumer Discretionary,Auto Parts
+011780.KS,금호석유화학,Materials,Specialty Chemicals
+011790.KS,SKC,Materials,Specialty Chemicals
+012330.KS,현대모비스,Consumer Discretionary,Auto Parts
+012450.KS,한화에어로스페이스,Industrials,Aerospace & Defense
+0126Z0.KS,삼성에피스홀딩스,Health Care,Biotechnology
+012750.KS,에스원,Industrials,Security & Protection Services
+014680.KS,한솔케미칼,Materials,Chemicals
+014820.KS,동원시스템즈,Consumer Discretionary,Packaging & Containers
+015760.KS,한국전력,Utilities,Utilities - Regulated Electric
+016360.KS,삼성증권,Financials,Capital Markets
+017670.KS,SK텔레콤,Communication Services,Telecom Services
+017800.KS,현대엘리베이터,Industrials,Specialty Industrial Machinery
+017960.KS,한국카본,Materials,Chemicals
+018260.KS,삼성에스디에스,Information Technology,Information Technology Services
+018880.KS,한온시스템,Consumer Discretionary,Auto Parts
+021240.KS,코웨이,Consumer Discretionary,"Furnishings, Fixtures & Appliances"
+0220W0.KS,한화머시너리앤서비스홀딩스,Industrials,Conglomerates
+022100.KS,포스코DX,Information Technology,Information Technology Services
+023530.KS,롯데쇼핑,Consumer Discretionary,Department Stores
+024110.KS,기업은행,Financials,Banks - Regional
+026960.KS,동서,Consumer Staples,Food Distribution
+028050.KS,삼성E&A,Industrials,Engineering & Construction
+028260.KS,삼성물산,Industrials,Engineering & Construction
+028670.KS,팬오션,Industrials,Marine Shipping
+029780.KS,삼성카드,Financials,Credit Services
+030000.KS,제일기획,Communication Services,Advertising Agencies
+030200.KS,KT,Communication Services,Telecom Services
+032640.KS,LG유플러스,Communication Services,Telecom Services
+032830.KS,삼성생명,Financials,Insurance - Life
+033780.KS,KT&G,Consumer Staples,Tobacco
+034020.KS,두산에너빌리티,Industrials,Specialty Industrial Machinery
+034220.KS,LG디스플레이,Information Technology,Consumer Electronics
+034230.KS,파라다이스,Consumer Discretionary,Resorts & Casinos
+034730.KS,SK,Industrials,Conglomerates
+035250.KS,강원랜드,Consumer Discretionary,Resorts & Casinos
+035420.KS,NAVER,Communication Services,Internet Content & Information
+035720.KS,카카오,Communication Services,Internet Content & Information
+036460.KS,한국가스공사,Utilities,Utilities - Regulated Gas
+036570.KS,NC,Communication Services,Electronic Gaming & Multimedia
+039490.KS,키움증권,Financials,Capital Markets
+042660.KS,한화오션,Industrials,Aerospace & Defense
+042700.KS,한미반도체,Information Technology,Semiconductor Equipment & Materials
+047040.KS,대우건설,Industrials,Engineering & Construction
+047050.KS,포스코인터내셔널,Industrials,Conglomerates
+047810.KS,한국항공우주,Industrials,Aerospace & Defense
+051600.KS,한전KPS,Industrials,Engineering & Construction
+051900.KS,LG생활건강,Consumer Staples,Household & Personal Products
+051910.KS,LG화학,Materials,Chemicals
+052690.KS,한전기술,Industrials,Engineering & Construction
+055550.KS,신한지주,Financials,Banks - Regional
+062040.KS,산일전기,Industrials,Electrical Equipment & Parts
+064350.KS,현대로템,Industrials,Railroads
+064400.KS,LG씨엔에스,Information Technology,Information Technology Services
+066570.KS,LG전자,Information Technology,Consumer Electronics
+066970.KS,엘앤에프,Industrials,Electrical Equipment & Parts
+068270.KS,셀트리온,Health Care,Biotechnology
+069260.KS,TKG휴켐스,Materials,Chemicals
+069620.KS,대웅제약,Health Care,Drug Manufacturers - Specialty & Generic
+069960.KS,현대백화점,Consumer Discretionary,Department Stores
+071050.KS,한국금융지주,Financials,Capital Markets
+071320.KS,지역난방공사,Utilities,Utilities - Renewable
+071970.KS,HD현대마린엔진,Industrials,Specialty Industrial Machinery
+073240.KS,금호타이어,Consumer Discretionary,Auto Parts
+078930.KS,GS,Industrials,Conglomerates
+079550.KS,LIG디펜스앤에어로스페이스,Industrials,Aerospace & Defense
+081660.KS,미스토홀딩스,Consumer Discretionary,Leisure
+082740.KS,한화엔진,Industrials,Specialty Industrial Machinery
+086280.KS,현대글로비스,Industrials,Integrated Freight & Logistics
+086790.KS,하나금융지주,Financials,Banks - Regional
+088350.KS,한화생명,Financials,Insurance - Life
+090430.KS,아모레퍼시픽,Consumer Staples,Household & Personal Products
+093370.KS,후성,Materials,Specialty Chemicals
+096770.KS,SK이노베이션,Energy,Oil & Gas Refining & Marketing
+097950.KS,CJ제일제당,Consumer Staples,Packaged Foods
+103140.KS,풍산,Industrials,Metal Fabrication
+105560.KS,KB금융,Financials,Banks - Regional
+111770.KS,영원무역,Consumer Discretionary,Apparel Manufacturing
+112610.KS,씨에스윈드,Industrials,Specialty Industrial Machinery
+120110.KS,코오롱인더,Materials,Chemicals
+128940.KS,한미약품,Health Care,Drug Manufacturers - Specialty & Generic
+137310.KS,에스디바이오센서,Health Care,Medical Devices
+138040.KS,메리츠금융지주,Financials,Capital Markets
+138930.KS,BNK금융지주,Financials,Banks - Regional
+139130.KS,iM금융지주,Financials,Banks - Regional
+139480.KS,이마트,Consumer Staples,Discount Stores
+161390.KS,한국타이어앤테크놀로지,Consumer Discretionary,Auto Parts
+161890.KS,한국콜마,Consumer Staples,Household & Personal Products
+175330.KS,JB금융지주,Financials,Banks - Regional
+180640.KS,한진칼,Real Estate,Real Estate Services
+185750.KS,종근당,Health Care,Drug Manufacturers - Specialty & Generic
+192080.KS,더블유게임즈,Communication Services,Electronic Gaming & Multimedia
+192820.KS,코스맥스,Consumer Staples,Household & Personal Products
+204320.KS,HL만도,Consumer Discretionary,Auto Parts
+207940.KS,삼성바이오로직스,Health Care,Biotechnology
+241560.KS,두산밥캣,Industrials,Farm & Heavy Construction Machinery
+251270.KS,넷마블,Communication Services,Electronic Gaming & Multimedia
+259960.KS,크래프톤,Communication Services,Electronic Gaming & Multimedia
+267250.KS,HD현대,Energy,Oil & Gas Refining & Marketing
+267260.KS,HD현대일렉트릭,Industrials,Electrical Equipment & Parts
+267270.KS,HD건설기계,Industrials,Farm & Heavy Construction Machinery
+268280.KS,미원에스씨,Materials,Chemicals
+271560.KS,오리온,Consumer Staples,Confectioners
+272210.KS,한화시스템,Industrials,Aerospace & Defense
+278470.KS,에이피알,Consumer Staples,Household & Personal Products
+280360.KS,롯데웰푸드,Consumer Staples,Confectioners
+282330.KS,BGF리테일,Consumer Staples,Grocery Stores
+285130.KS,SK케미칼,Materials,Specialty Chemicals
+298020.KS,효성티앤씨,Consumer Discretionary,Textile Manufacturing
+298040.KS,효성중공업,Industrials,Electrical Equipment & Parts
+298050.KS,HS효성첨단소재,Consumer Discretionary,Textile Manufacturing
+300720.KS,한일시멘트,Materials,Building Materials
+302440.KS,SK바이오사이언스,Health Care,Biotechnology
+307950.KS,현대오토에버,Information Technology,Information Technology Services
+316140.KS,우리금융지주,Financials,Banks - Regional
+323410.KS,카카오뱅크,Financials,Banks - Regional
+326030.KS,SK바이오팜,Health Care,Biotechnology
+329180.KS,HD현대중공업,Industrials,Aerospace & Defense
+352820.KS,하이브,Communication Services,Entertainment
+361610.KS,SK아이이테크놀로지,Information Technology,Electronic Components
+373220.KS,LG에너지솔루션,Industrials,Electrical Equipment & Parts
+375500.KS,DL이앤씨,Industrials,Engineering & Construction
+377300.KS,카카오페이,Information Technology,Software - Infrastructure
+383220.KS,F&F,Consumer Discretionary,Apparel Manufacturing
+402340.KS,SK스퀘어,Information Technology,Semiconductors
+443060.KS,HD현대마린솔루션,Industrials,Aerospace & Defense
+450080.KS,에코프로머티,Industrials,Electrical Equipment & Parts
+454910.KS,두산로보틱스,Industrials,Specialty Industrial Machinery
+456040.KS,OCI,Materials,Specialty Chemicals
+457190.KS,이수스페셜티케미컬,Materials,Specialty Chemicals
+483650.KS,달바글로벌,Consumer Staples,Household & Personal Products
