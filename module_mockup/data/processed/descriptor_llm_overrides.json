@@ -1,0 +1,543 @@
+{
+  "results": [
+    {
+      "ticker": "A",
+      "company_summary_ko": "생명과학·진단·화학 연구기관에 크로마토그래피와 분석 장비, 실험실 서비스를 제공하는 기업",
+      "keywords": [
+        "chromatography",
+        "mass spectrometry",
+        "lab equipment",
+        "life sciences",
+        "diagnostics",
+        "chemical analysis",
+        "lab services"
+      ]
+    },
+    {
+      "ticker": "AAPL",
+      "company_summary_ko": "아이폰·맥·아이패드와 웨어러블 기기, 앱스토어 등 서비스를 전 세계 소비자와 기업에 판매하는 기업",
+      "keywords": [
+        "iphone",
+        "mac",
+        "ipad",
+        "smartphone",
+        "wearables",
+        "airpods",
+        "app store",
+        "consumer electronics"
+      ]
+    },
+    {
+      "ticker": "ABBV",
+      "company_summary_ko": "자가면역질환·암·신경계 질환 환자를 위한 전문의약품을 개발하고 판매하는 바이오제약 기업",
+      "keywords": [
+        "skyrizi",
+        "rinvoq",
+        "imbruvica",
+        "cancer drugs",
+        "autoimmune disease",
+        "immunology",
+        "oncology",
+        "prescription drugs"
+      ]
+    },
+    {
+      "ticker": "ABNB",
+      "company_summary_ko": "여행객이 숙소와 체험, 관련 서비스를 예약하도록 호스트와 연결하는 온라인 플랫폼 기업",
+      "keywords": [
+        "vacation rentals",
+        "short term rentals",
+        "accommodation",
+        "travel booking",
+        "hosts",
+        "guest experiences",
+        "online marketplace"
+      ]
+    },
+    {
+      "ticker": "ABT",
+      "company_summary_ko": "환자와 의료기관에 진단검사 장비, 의료기기, 영양제품과 전문의약품을 제공하는 헬스케어 기업",
+      "keywords": [
+        "diagnostic tests",
+        "blood glucose monitor",
+        "medical devices",
+        "nutrition products",
+        "generic drugs",
+        "pacemakers",
+        "continuous glucose monitoring"
+      ]
+    },
+    {
+      "ticker": "ACGL",
+      "company_summary_ko": "기업과 개인, 금융기관에 재산·책임보험과 재보험 및 모기지보험을 제공하는 보험회사",
+      "keywords": [
+        "commercial insurance",
+        "reinsurance",
+        "mortgage insurance",
+        "property insurance",
+        "casualty insurance",
+        "professional liability",
+        "risk coverage"
+      ]
+    },
+    {
+      "ticker": "ACN",
+      "company_summary_ko": "기업과 공공기관에 전략·IT 컨설팅, 시스템 통합, 클라우드와 보안 서비스를 제공하는 기업",
+      "keywords": [
+        "it consulting",
+        "systems integration",
+        "cloud services",
+        "cybersecurity",
+        "data analytics",
+        "artificial intelligence",
+        "business process outsourcing",
+        "software engineering"
+      ]
+    },
+    {
+      "ticker": "ADBE",
+      "company_summary_ko": "개인과 기업에 디자인·영상 제작, PDF 문서와 디지털 마케팅용 소프트웨어를 제공하는 기업",
+      "keywords": [
+        "creative software",
+        "photoshop",
+        "illustrator",
+        "premiere pro",
+        "pdf",
+        "acrobat",
+        "digital marketing",
+        "content creation"
+      ]
+    },
+    {
+      "ticker": "ADI",
+      "company_summary_ko": "산업·통신·자동차·전자기기 제조사에 신호변환 및 전력관리용 아날로그 반도체를 공급하는 기업",
+      "keywords": [
+        "analog chips",
+        "data converters",
+        "power management",
+        "signal processing",
+        "sensors",
+        "industrial electronics",
+        "semiconductor"
+      ]
+    },
+    {
+      "ticker": "ADM",
+      "company_summary_ko": "식품·사료·산업 고객에게 농산물 원료와 식품·동물영양 성분을 공급하는 농산물 가공기업",
+      "keywords": [
+        "grain processing",
+        "oilseeds",
+        "soybean meal",
+        "animal feed",
+        "food ingredients",
+        "plant protein",
+        "corn sweeteners",
+        "crop trading"
+      ]
+    },
+    {
+      "ticker": "ADP",
+      "company_summary_ko": "기업과 고용주에게 급여 처리, 인사관리 소프트웨어와 인력 아웃소싱 서비스를 제공하는 기업",
+      "keywords": [
+        "payroll",
+        "human resources",
+        "hcm software",
+        "employee benefits",
+        "workforce management",
+        "tax filing",
+        "peo services"
+      ]
+    },
+    {
+      "ticker": "ADSK",
+      "company_summary_ko": "건축·건설·제조·미디어 기업에 설계와 엔지니어링, 3D 제작 소프트웨어를 제공하는 기업",
+      "keywords": [
+        "autocad",
+        "revit",
+        "3d design",
+        "building information modeling",
+        "construction software",
+        "engineering software",
+        "civil engineering",
+        "3d animation"
+      ]
+    },
+    {
+      "ticker": "AEE",
+      "company_summary_ko": "미주리·일리노이 지역의 가정과 기업에 전력과 천연가스를 공급하고 송배전망을 운영하는 기업",
+      "keywords": [
+        "electricity",
+        "natural gas",
+        "power generation",
+        "electric transmission",
+        "electric distribution",
+        "gas utility",
+        "power grid"
+      ]
+    },
+    {
+      "ticker": "AEP",
+      "company_summary_ko": "미국의 가정과 기업, 전력회사에 전기를 생산·송전·배전하는 전력 유틸리티 기업",
+      "keywords": [
+        "electricity",
+        "power generation",
+        "electric transmission",
+        "electric distribution",
+        "power grid",
+        "utility customers",
+        "wholesale power"
+      ]
+    },
+    {
+      "ticker": "AES",
+      "company_summary_ko": "전력회사와 산업 고객에 발전 전력을 공급하고 재생에너지 설비와 전력 유틸리티를 운영하는 기업",
+      "keywords": [
+        "renewable energy",
+        "solar power",
+        "wind power",
+        "battery storage",
+        "power generation",
+        "electric utilities",
+        "energy infrastructure"
+      ]
+    },
+    {
+      "ticker": "AFL",
+      "company_summary_ko": "일본과 미국의 개인·고용주에게 암·상해·장애 및 생명보험 등 보충보험을 판매하는 기업",
+      "keywords": [
+        "supplemental insurance",
+        "cancer insurance",
+        "accident insurance",
+        "disability insurance",
+        "life insurance",
+        "medical insurance",
+        "employee benefits"
+      ]
+    },
+    {
+      "ticker": "AIG",
+      "company_summary_ko": "기업·기관·개인 고객에게 재산·책임보험과 개인보험 등 다양한 보험 상품을 제공하는 기업",
+      "keywords": [
+        "commercial insurance",
+        "property insurance",
+        "casualty insurance",
+        "business interruption",
+        "liability insurance",
+        "personal insurance",
+        "industrial insurance"
+      ]
+    },
+    {
+      "ticker": "AIZ",
+      "company_summary_ko": "통신사·유통사와 금융기관, 소비자에게 기기·주택·자동차 보호 상품과 보험 서비스를 제공하는 기업",
+      "keywords": [
+        "mobile device protection",
+        "extended warranty",
+        "home insurance",
+        "auto insurance",
+        "appliance protection",
+        "device repair",
+        "credit insurance"
+      ]
+    },
+    {
+      "ticker": "AJG",
+      "company_summary_ko": "기업과 개인에게 보험·재보험 중개, 위험관리 컨설팅과 보험금 청구 관리 서비스를 제공하는 기업",
+      "keywords": [
+        "insurance brokerage",
+        "reinsurance brokerage",
+        "risk management",
+        "claims management",
+        "employee benefits",
+        "commercial insurance",
+        "insurance consulting"
+      ]
+    },
+    {
+      "ticker": "AKAM",
+      "company_summary_ko": "웹사이트와 애플리케이션 운영 기업에 콘텐츠 전송, 클라우드 컴퓨팅과 사이버보안 서비스를 제공하는 기업",
+      "keywords": [
+        "content delivery network",
+        "cdn",
+        "web security",
+        "api security",
+        "cloud computing",
+        "ddos protection",
+        "bot protection",
+        "application security"
+      ]
+    },
+    {
+      "ticker": "ALAB",
+      "company_summary_ko": "클라우드·AI 데이터센터 업체에 고속 데이터 전송을 위한 반도체 연결 솔루션과 소프트웨어를 공급하는 기업",
+      "keywords": [
+        "data center",
+        "ai infrastructure",
+        "pcie retimer",
+        "cxl",
+        "high speed connectivity",
+        "semiconductor",
+        "cloud computing",
+        "cosmos software"
+      ]
+    },
+    {
+      "ticker": "ALB",
+      "company_summary_ko": "배터리·전자·화학 산업 고객에게 리튬 화합물과 브롬, 촉매 등 특수 화학제품을 공급하는 기업",
+      "keywords": [
+        "lithium",
+        "lithium carbonate",
+        "lithium hydroxide",
+        "ev batteries",
+        "bromine",
+        "catalysts",
+        "energy storage",
+        "specialty chemicals"
+      ]
+    },
+    {
+      "ticker": "ALGN",
+      "company_summary_ko": "치과와 교정 환자에게 투명 교정장치와 유지장치, 구강 스캐너를 제공하는 의료기기 기업",
+      "keywords": [
+        "invisalign",
+        "clear aligners",
+        "orthodontics",
+        "dental scanners",
+        "itero",
+        "teeth straightening",
+        "dental technology"
+      ]
+    },
+    {
+      "ticker": "ALL",
+      "company_summary_ko": "미국과 캐나다의 개인과 기업에 자동차·주택·상업용 재산 및 책임보험을 제공하는 기업",
+      "keywords": [
+        "auto insurance",
+        "homeowners insurance",
+        "property insurance",
+        "casualty insurance",
+        "commercial insurance",
+        "roadside assistance",
+        "insurance claims"
+      ]
+    },
+    {
+      "ticker": "ALLE",
+      "company_summary_ko": "건물 소유주와 기업에 도어록·출입통제·도어 하드웨어 등 보안 제품과 시스템을 제공하는 기업",
+      "keywords": [
+        "door locks",
+        "electronic locks",
+        "access control",
+        "exit devices",
+        "door closers",
+        "security systems",
+        "building security"
+      ]
+    },
+    {
+      "ticker": "ALNY",
+      "company_summary_ko": "유전성·희귀질환과 심혈관 질환 환자를 위한 RNA 간섭 기반 치료제를 개발하고 판매하는 기업",
+      "keywords": [
+        "rna interference",
+        "sirna",
+        "gene silencing",
+        "rare diseases",
+        "amyloidosis",
+        "hemophilia",
+        "cholesterol treatment",
+        "genetic medicine"
+      ]
+    },
+    {
+      "ticker": "AMAT",
+      "company_summary_ko": "반도체 제조사에 웨이퍼 공정 장비와 공정 제어·유지보수 서비스를 공급하는 기업",
+      "keywords": [
+        "wafer fabrication",
+        "semiconductor equipment",
+        "chip manufacturing",
+        "deposition",
+        "etching",
+        "materials engineering",
+        "process control",
+        "fab services"
+      ]
+    },
+    {
+      "ticker": "AMCR",
+      "company_summary_ko": "식품·건강·미용 제품 제조사에 병·용기·필름 등 포장재와 포장 솔루션을 공급하는 기업",
+      "keywords": [
+        "plastic packaging",
+        "flexible packaging",
+        "bottles",
+        "food packaging",
+        "pharmaceutical packaging",
+        "films",
+        "containers",
+        "packaging materials"
+      ]
+    },
+    {
+      "ticker": "AMD",
+      "company_summary_ko": "컴퓨터·게임·데이터센터 업체에 CPU와 GPU, AI 가속기 및 임베디드 반도체를 공급하는 기업",
+      "keywords": [
+        "cpu",
+        "gpu",
+        "ai accelerators",
+        "ryzen",
+        "epyc",
+        "radeon",
+        "data center chips",
+        "gaming processors"
+      ]
+    },
+    {
+      "ticker": "AME",
+      "company_summary_ko": "항공·에너지·제약·산업 고객에게 정밀 계측기기와 전자·전기기계 제품을 공급하는 기업",
+      "keywords": [
+        "electronic instruments",
+        "process instruments",
+        "analytical instruments",
+        "aerospace instruments",
+        "industrial automation",
+        "motors",
+        "pumps",
+        "electromechanical devices"
+      ]
+    },
+    {
+      "ticker": "AMGN",
+      "company_summary_ko": "암·염증·골질환 등 환자를 위한 바이오의약품과 전문 치료제를 개발하고 판매하는 기업",
+      "keywords": [
+        "biologics",
+        "cancer drugs",
+        "immunology",
+        "rheumatoid arthritis",
+        "bone disease",
+        "prolia",
+        "enbrel",
+        "prescription medicines"
+      ]
+    },
+    {
+      "ticker": "AMP",
+      "company_summary_ko": "개인과 기관 고객에게 재무설계·자산관리와 투자운용, 은퇴·보험 상품을 제공하는 금융회사",
+      "keywords": [
+        "financial planning",
+        "wealth management",
+        "investment management",
+        "retirement planning",
+        "annuities",
+        "life insurance",
+        "financial advice"
+      ]
+    },
+    {
+      "ticker": "AMT",
+      "company_summary_ko": "통신사업자와 데이터센터 고객에 무선통신 타워와 통신 부동산을 임대·운영하는 기업",
+      "keywords": [
+        "cell towers",
+        "wireless towers",
+        "telecommunications infrastructure",
+        "5g",
+        "antenna sites",
+        "data centers",
+        "tower leasing"
+      ]
+    },
+    {
+      "ticker": "AMZN",
+      "company_summary_ko": "소비자에게 온라인 상품과 구독·광고 서비스를 판매하고 기업에 클라우드 컴퓨팅을 제공하는 기업",
+      "keywords": [
+        "online shopping",
+        "ecommerce",
+        "aws",
+        "cloud computing",
+        "digital advertising",
+        "prime video",
+        "kindle",
+        "smart speakers"
+      ]
+    },
+    {
+      "ticker": "ANET",
+      "company_summary_ko": "클라우드·AI 데이터센터와 기업 네트워크 운영자에게 스위치와 네트워킹 소프트웨어를 공급하는 기업",
+      "keywords": [
+        "network switches",
+        "data center networking",
+        "ai networking",
+        "ethernet",
+        "cloud networking",
+        "routing",
+        "network operating system",
+        "eos"
+      ]
+    },
+    {
+      "ticker": "AON",
+      "company_summary_ko": "기업과 개인에게 보험 중개·위험관리와 연금·인적자원 컨설팅 서비스를 제공하는 기업",
+      "keywords": [
+        "insurance brokerage",
+        "risk consulting",
+        "employee benefits",
+        "human capital",
+        "retirement consulting",
+        "reinsurance",
+        "commercial risk"
+      ]
+    },
+    {
+      "ticker": "AOS",
+      "company_summary_ko": "가정·건물과 산업 고객에게 온수기·보일러·히트펌프와 수처리 제품을 제조해 판매하는 기업",
+      "keywords": [
+        "water heaters",
+        "boilers",
+        "heat pumps",
+        "water treatment",
+        "commercial water heaters",
+        "residential plumbing",
+        "storage tanks"
+      ]
+    },
+    {
+      "ticker": "APA",
+      "company_summary_ko": "미국·이집트·북해 등에서 천연가스와 원유, 천연가스액을 탐사·개발·생산하는 에너지 기업",
+      "keywords": [
+        "crude oil",
+        "natural gas",
+        "oil exploration",
+        "oil production",
+        "natural gas liquids",
+        "offshore drilling",
+        "suriname"
+      ]
+    },
+    {
+      "ticker": "APD",
+      "company_summary_ko": "제조·의료·에너지 고객에게 산소·질소·수소 등 산업용 가스와 관련 장비를 공급하는 기업",
+      "keywords": [
+        "industrial gases",
+        "oxygen",
+        "nitrogen",
+        "hydrogen",
+        "helium",
+        "carbon dioxide",
+        "gas equipment",
+        "syngas"
+      ]
+    },
+    {
+      "ticker": "APH",
+      "company_summary_ko": "통신·산업·자동차·항공우주 제조사에 전기·전자·광섬유 커넥터와 센서를 공급하는 기업",
+      "keywords": [
+        "electrical connectors",
+        "fiber optic connectors",
+        "high speed connectors",
+        "radio frequency connectors",
+        "sensors",
+        "interconnect systems",
+        "cable assemblies",
+        "automotive electronics"
+      ]
+    }
+  ]
+}
