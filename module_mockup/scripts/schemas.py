@@ -286,6 +286,7 @@ class Candidate(BaseModel):
     adv_usd: Optional[float] = None
     matched_by: list[str]
     matched_themes: list[str]
+    matched_keywords: list[str] = []
     forced: bool = False
 
 
@@ -350,6 +351,7 @@ class Selection(BaseModel):
     selected: list[Selected]
     rejected: list[Rejected] = []
     summary: dict
+    infeasibility: Optional[dict] = None     # set when sector cap x target holdings cannot be met by the passed tickers
     warnings: list[str] = []
 
 
@@ -398,6 +400,12 @@ class CapitalSpec(BaseModel):
     monthly_contribution_usd: float
     contribution_day: int
     include_contributions: bool
+    currency: Optional[str] = None
+    initial_amount_krw: Optional[float] = None
+    monthly_contribution_krw: Optional[float] = None
+    fx_rate: Optional[float] = None          # KRW per USD used for THIS backtest (at the window start)
+    fx_date: Optional[date] = None
+    fx_source: Optional[str] = None
 
 
 class SelectionRow(BaseModel):
@@ -414,6 +422,8 @@ class SelectionSpec(BaseModel):
     tickers: list[str] = Field(min_length=1)
     table: list[SelectionRow]
     diff_vs_original: dict[str, list[str]]
+    infeasibility: Optional[dict] = None
+    sector_overflow: Optional[dict] = None
 
 
 class BacktestSpec(BaseModel):
@@ -439,6 +449,10 @@ class MarketModel(BaseModel):
     cov: list[list[float]]
     cap_weights: dict[str, float]
     delta: float
+    delta_source: str = "fixed"
+    delta_market: Optional[float] = None
+    delta_multiplier: Optional[float] = None
+    delta_window: Optional[dict] = None
     tau: float
     baseline_id: str
     implied_returns: dict[str, float]
@@ -570,7 +584,7 @@ class Checkpoint(BaseModel):
 
 class PortfolioResult(BaseModel):
     id: str
-    kind: Literal["black_litterman", "template", "benchmark"]
+    kind: Literal["black_litterman", "template", "benchmark", "alternative"]
     name_ko: str
     title_ko: Optional[str] = None
     portfolio_view: Optional[str] = None
@@ -603,7 +617,8 @@ class BacktestResults(BaseModel):
     period: dict
     engine: dict
     series_dates: list[str]
-    benchmark: PortfolioResult
+    benchmark: PortfolioResult                      # the user's benchmark (used for relative metrics / R3)
+    benchmarks: list[PortfolioResult] = []          # all reference indices run under the same contributions (incl. the primary)
     portfolios: list[PortfolioResult]
     ranking: list[dict]
     reproducibility: dict
@@ -612,7 +627,7 @@ class BacktestResults(BaseModel):
     @model_validator(mode="after")
     def _aligned(self):
         n = len(self.series_dates)
-        for p in [self.benchmark, *self.portfolios]:
+        for p in [self.benchmark, *self.benchmarks, *self.portfolios]:
             for k, v in p.series.items():
                 if len(v) != n:
                     raise ValueError(f"{p.id}.series.{k} length {len(v)} != {n}")
@@ -646,6 +661,7 @@ class Validation(BaseModel):
     results: list[ValidationResult]
     comparison_table: list[dict]
     recommended: Optional[dict] = None
+    alternatives: list[dict] = []            # e.g. cash-blended variant that meets the drawdown tolerance
     summary: dict
     warnings: list[str] = []
 
@@ -678,8 +694,9 @@ class ResultsBundle(BaseModel):
         ids = {p["id"] for p in self.backtest["portfolios"]}
         if ids != {t["id"] for t in self.portfolio["targets"]["portfolios"] + self.portfolio["targets"]["templates"]}:
             raise ValueError("backtest portfolios != target portfolios")
-        if set(self.money_krw["by_portfolio"]) != ids | {self.backtest["benchmark"]["id"]}:
-            raise ValueError("money_krw.by_portfolio must cover every portfolio and the benchmark")
+        need = ids | {self.backtest["benchmark"]["id"]} | {b["id"] for b in self.backtest.get("benchmarks", [])} | {a["id"] for a in self.validation.get("alternatives", [])}
+        if set(self.money_krw["by_portfolio"]) != need:
+            raise ValueError(f"money_krw.by_portfolio must cover {sorted(need)}")
         return self
 
 

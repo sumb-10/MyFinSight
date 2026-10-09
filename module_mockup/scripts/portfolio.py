@@ -67,31 +67,42 @@ def implied_returns(cov, w, delta):
     return delta * cov @ w
 
 
+def market_implied_delta(as_of, lookback_days=PC.LOOKBACK_DAYS, rf=0.04, bench="SPY"):
+    """delta = E[r_m - rf] / Var(r_m) on daily data of the benchmark over the estimation window (before as_of)."""
+    t = pq.read_table(RAW / "benchmarks.parquet", columns=["date", "ticker", "adj_close"],
+                      filters=[("ticker", "==", bench), ("date", "<", pd.Timestamp(as_of))]).to_pandas().sort_values("date")
+    px = t.set_index("date")["adj_close"].tail(lookback_days + 1)
+    r = np.log(px).diff().dropna()
+    return float((r.mean() - rf / 252) / r.var(ddof=1)), {"start": str(r.index.min().date()), "end": str(r.index.max().date()), "days": int(len(r))}
+
+
 # ───────────────────────── constraints ─────────────────────────
-def apply_constraints(w, max_stock, max_sector, sectors, total=1.0, max_iter=PC.MAX_ITER):
-    """Scale w to `total`, then iteratively cap per-stock and per-sector weights, redistributing the
-    excess to uncapped names in proportion to their weight. Returns (w, applied_constraint_labels)."""
+def apply_constraints(w, max_stock, max_sector, sectors, total=1.0, max_iter=PC.MAX_ITER, min_weight=PC.MIN_WEIGHT):
+    """Scale w to `total`, then iteratively enforce min_weight <= w_i <= max_stock and per-sector <= max_sector,
+    moving the surplus/deficit to names that are free to move. Returns (w, applied_constraint_labels)."""
     w = np.asarray(w, float).copy()
     w = w / w.sum() * total
     sectors = np.asarray(sectors)
     applied = set()
     for _ in range(max_iter):
+        low = w < min_weight - 1e-12
+        if low.any():
+            applied.update(f"min_weight:{i}" for i in np.where(low)[0]); w[low] = min_weight
         over = w > max_stock + 1e-12
         if over.any():
-            applied.update(f"stock_cap:{i}" for i in np.where(over)[0])
-            w[over] = max_stock
+            applied.update(f"stock_cap:{i}" for i in np.where(over)[0]); w[over] = max_stock
         for s in np.unique(sectors):
             m = sectors == s
-            if w[m].sum() > max_sector * total / 1.0 + 1e-12:
+            if w[m].sum() > max_sector * total + 1e-12:
                 applied.add(f"sector_cap:{s}")
-                w[m] *= (max_sector * total) / w[m].sum()
+                w[m] = np.maximum(w[m] * (max_sector * total) / w[m].sum(), min_weight)
         deficit = total - w.sum()
         if abs(deficit) < 1e-10:
             break
-        free = (w < max_stock - 1e-12)
+        free = (w < max_stock - 1e-12) & (w > min_weight + 1e-12) if deficit < 0 else (w < max_stock - 1e-12)
         for s in np.unique(sectors):
             m = sectors == s
-            if w[m].sum() >= max_sector * total - 1e-12:
+            if deficit > 0 and w[m].sum() >= max_sector * total - 1e-12:
                 free &= ~m
         if not free.any() or w[free].sum() <= 0:
             break
@@ -107,14 +118,14 @@ def _sector_constraints(sectors, max_sector, total):
     return cons
 
 
-def min_variance(cov, max_stock, max_sector, sectors, total=1.0):
+def min_variance(cov, max_stock, max_sector, sectors, total=1.0, min_weight=PC.MIN_WEIGHT):
     n = cov.shape[0]
     cons = [{"type": "eq", "fun": lambda w: w.sum() - total}] + _sector_constraints(sectors, max_sector, total)
     res = minimize(lambda w: w @ cov @ w, np.full(n, total / n), method="SLSQP",
-                   bounds=[(0, max_stock)] * n, constraints=cons, options={"maxiter": 500, "ftol": 1e-12})
+                   bounds=[(min_weight, max_stock)] * n, constraints=cons, options={"maxiter": 500, "ftol": 1e-12})
     if not res.success:
         raise RuntimeError(f"min_variance failed: {res.message}")
-    return np.clip(res.x, 0, None)
+    return np.clip(res.x, min_weight, None)
 
 
 def template_weights(template, cov, ann_vol, capw, max_stock, max_sector, sectors, total=1.0):
@@ -159,10 +170,10 @@ def black_litterman(cov, pi, P, Q, conf, tau=PC.TAU):
     return mu, cov + M
 
 
-def optimize_utility(mu, cov, delta, w_base, max_stock, max_sector, sectors, max_tilt, total=1.0):
-    """max w'mu - delta/2 w'Σw  s.t. sum=total, 0<=w<=max_stock, |w-w_base|<=max_tilt, sector caps."""
+def optimize_utility(mu, cov, delta, w_base, max_stock, max_sector, sectors, max_tilt, total=1.0, min_weight=PC.MIN_WEIGHT):
+    """max w'mu - delta/2 w'Σw  s.t. sum=total, min_weight<=w<=max_stock, |w-w_base|<=max_tilt, sector caps."""
     n = len(mu)
-    lo = np.maximum(0, w_base - max_tilt); hi = np.minimum(max_stock, w_base + max_tilt)
+    lo = np.maximum(min_weight, w_base - max_tilt); hi = np.maximum(lo + 1e-9, np.minimum(max_stock, w_base + max_tilt))
     cons = [{"type": "eq", "fun": lambda w: w.sum() - total}] + _sector_constraints(sectors, max_sector, total)
     res = minimize(lambda w: -(w @ mu - delta / 2 * w @ cov @ w), w_base, method="SLSQP",
                    bounds=list(zip(lo, hi)), constraints=cons, options={"maxiter": 500, "ftol": 1e-12})
@@ -226,7 +237,7 @@ def _selftest():
     assert np.sqrt(wmv @ cov @ wmv) <= np.sqrt(wb @ cov @ wb) + 1e-9
     # cap-and-redistribute respects caps
     wc, applied = apply_constraints(np.array([0.5, 0.3] + [0.2 / (n - 2)] * (n - 2)), 0.15, 0.4, sectors)
-    assert wc.max() <= 0.15 + 1e-9 and abs(wc.sum() - 1) < 1e-9, "caps violated"
+    assert wc.max() <= 0.15 + 1e-9 and abs(wc.sum() - 1) < 1e-9 and wc.min() >= 0.01 - 1e-9, "caps/floor violated"
     print("implied returns (equal-weight prior, delta=2.5):", {t: round(float(x), 3) for t, x in zip(tk, pi)})
     print(f"selftest OK  (window {mm['window']}, shrink alpha={mm['shrinkage']['alpha']:.3f}, MU Δ={w1[i]-wb[i]:+.4f}, "
           f"minvar vol={np.sqrt(wmv@cov@wmv):.3f} vs eq {np.sqrt(wb@cov@wb):.3f}, caps applied={applied})")

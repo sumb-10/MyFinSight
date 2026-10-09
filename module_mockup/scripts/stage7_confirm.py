@@ -15,6 +15,7 @@ import pyarrow.parquet as pq
 from common import INPUT, OUTPUT, RAW, load_jsonc, load_json, dump_json
 from descriptor import load_descriptor
 from portfolio import trading_days
+from stage1_normalize import fx_rate_on
 from schemas import BacktestRequest, BacktestSpec
 import portfolio_config as PC
 
@@ -37,6 +38,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--backtest-request", default=str(INPUT / "02_backtest_request.jsonc"))
     ap.add_argument("--out", default=str(OUTPUT / "07_backtest_spec.json"))
+    ap.add_argument("--fx-rate-bt", type=float, default=None, help="manual KRW per USD at the backtest start (fallback)")
     a = ap.parse_args()
 
     bt_req = BacktestRequest.model_validate(load_jsonc(a.backtest_request))
@@ -100,20 +102,33 @@ def main():
 
     tickers = [r["ticker"] for r in rows]
     orig = [r["ticker"] for r in sel["selected"]]
-    cap = req["derived"]
+    # ── capital converted at the BACKTEST start date (not the request's start_date) ──
+    c = req["capital"]
+    if c["currency"] == "USD":
+        rate, fx_date, fx_src = 1.0, as_of, "none"
+    else:
+        rate, fx_date, fx_src = fx_rate_on(f"{c['currency']}=X", as_of, a.fx_rate_bt)
+    init_usd, monthly_usd = round(c["initial_amount"] / rate, 2), round(c["monthly_contribution"] / rate, 2)
+    if abs(init_usd - req["derived"]["initial_amount_usd"]) / init_usd > 0.02:
+        warnings.append(f"capital re-converted at {fx_date} FX {rate:.2f}: {init_usd:,.0f} USD vs request-date {req['derived']['initial_amount_usd']:,.0f} USD")
     spec = BacktestSpec(
         request_id=req["request_id"],
         period={"start": bw.start_date, "end": bw.end_date, "as_of": as_of, "trading_days": int(len(cal))},
-        capital={"initial_amount_usd": cap["initial_amount_usd"],
-                 "monthly_contribution_usd": cap["monthly_contribution_usd"] if bw.include_contributions else 0.0,
-                 "contribution_day": req["capital"]["contribution_day"], "include_contributions": bw.include_contributions},
-        rebalance_rule=cap["rebalance_rule"], benchmark=bench,
+        capital={"initial_amount_usd": init_usd, "monthly_contribution_usd": monthly_usd if bw.include_contributions else 0.0,
+                 "contribution_day": c["contribution_day"], "include_contributions": bw.include_contributions,
+                 "currency": c["currency"], "initial_amount_krw": c["initial_amount"] if c["currency"] == "KRW" else None,
+                 "monthly_contribution_krw": c["monthly_contribution"] if c["currency"] == "KRW" else None,
+                 "fx_rate": rate, "fx_date": fx_date, "fx_source": fx_src},
+        rebalance_rule=req["derived"]["rebalance_rule"], benchmark=bench,
         selection={"source": source, "metric": sel["summary"]["metric"], "tickers": tickers,
                    "table": [{"ticker": r["ticker"], "name": r["name"], "sector": r["sector"], "rank": r["rank"], "metric_value": r["metric_value"]} for r in rows],
-                   "diff_vs_original": {"added": sorted(set(tickers) - set(orig)), "removed": sorted(set(orig) - set(tickers))}},
+                   "diff_vs_original": {"added": sorted(set(tickers) - set(orig)), "removed": sorted(set(orig) - set(tickers))},
+                   "infeasibility": (sel_bt.get("infeasibility") if bw.reselect_at_start else sel.get("infeasibility")),
+                   "sector_overflow": (sel_bt["summary"].get("sector_overflow") if bw.reselect_at_start else sel["summary"].get("sector_overflow"))},
         warnings=warnings)
     dump_json(spec.model_dump(mode="json"), a.out)
-    print(f"[stage7] ok -> {a.out}\n         window {bw.start_date}..{bw.end_date} as_of={as_of} trading_days={len(cal)} benchmark={bench}")
+    print(f"[stage7] ok -> {a.out}\n         window {bw.start_date}..{bw.end_date} as_of={as_of} trading_days={len(cal)} benchmark={bench} "
+          f"capital={init_usd:,.0f} USD @ FX {rate:.2f} ({fx_src}, {fx_date})")
     print(f"         selection({source}) n={len(tickers)}: {tickers}")
     print(f"         diff vs original: +{spec.selection.diff_vs_original['added']} -{spec.selection.diff_vs_original['removed']}")
     for w in warnings: print("         !", w)

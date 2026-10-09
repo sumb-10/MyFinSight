@@ -9,7 +9,7 @@ In api mode it also writes output/llm_raw/<stage>[_b<batch>].json (raw answer, r
 and appends one JSON line to output/llm_usage.jsonl.
 """
 import datetime as dt
-import json, os, re, time
+import hashlib, json, os, re, time
 from pathlib import Path
 import llm_config as C
 from common import OUTPUT, STUBS, PROMPTS, load_json, render_template
@@ -68,11 +68,23 @@ def _cost_usd(model, prompt, cached, completion, cache_write=0):
                   + cache_write * p.get("cache_write", 0) + completion * p["output"]) / 1e6, 6)
 
 
-def _call_openai(stage, system, user, batch):
+def _cache_key(stage, system, user):
+    h = hashlib.sha256(); h.update(C.MODEL.encode()); h.update(stage.encode()); h.update(system.encode()); h.update(user.encode())
+    return h.hexdigest()[:24]
+
+
+def _call_openai(stage, system, user, batch, feedback=None):
     import openai
+    cache_dir = C.RAW_DIR.parent / "llm_cache"
+    key = _cache_key(stage, system, user + (feedback or ""))
+    if os.environ.get("MYFINSIGHT_LLM_CACHE", "1") == "1" and (cache_dir / f"{key}.json").exists():
+        print(f"  [llm] {stage}{'' if batch is None else f' b{batch}'}: cache hit ({key})", flush=True)
+        return load_json(cache_dir / f"{key}.json")
     client = _client_openai()
-    kw = {"model": C.MODEL, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-          "max_completion_tokens": _setting(stage, "MAX_OUTPUT_TOKENS")}
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    if feedback:
+        messages.append({"role": "user", "content": feedback})
+    kw = {"model": C.MODEL, "messages": messages, "max_completion_tokens": _setting(stage, "MAX_OUTPUT_TOKENS")}
     if _setting(stage, "TEMPERATURE") is not None: kw["temperature"] = _setting(stage, "TEMPERATURE")
     if _setting(stage, "REASONING_EFFORT") is not None: kw["reasoning_effort"] = _setting(stage, "REASONING_EFFORT")
     if _setting(stage, "RESPONSE_FORMAT_JSON"): kw["response_format"] = {"type": "json_object"}
@@ -107,22 +119,44 @@ def _call_openai(stage, system, user, batch):
     if rec["finish_reason"] == "length":
         raise RuntimeError(f"[llm] {stage}: answer truncated (max_completion_tokens too small)")
     try:
-        return _parse_json(text)
+        ans = _parse_json(text)
     except json.JSONDecodeError as e:
         raise RuntimeError(f"[llm] {stage}: answer is not valid JSON ({e}); raw saved at {raw}")
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / f"{key}.json").write_text(json.dumps(ans, ensure_ascii=False), encoding="utf-8")
+    return ans
 
 
-def call_llm(stage: str, system: str, user: str, *, batch=None, stub_file=None) -> dict:
-    """Return the LLM's JSON answer for `stage` (stub or real, per MYFINSIGHT_LLM / llm_config)."""
+def call_llm(stage: str, system: str, user: str, *, batch=None, stub_file=None, validator=None) -> dict:
+    """Return the LLM's JSON answer for `stage` (stub or real, per MYFINSIGHT_LLM / llm_config).
+
+    validator: optional callable(answer) that raises on schema problems. In api mode a failure triggers ONE retry
+    with the error text fed back to the model; in stub mode the validator just runs (no retry).
+    """
     prompt_path = _save_prompt(stage, system, user, batch)
     mode = os.environ.get("MYFINSIGHT_LLM", C.DEFAULT_MODE)
     if mode == "stub":
         stub = Path(stub_file) if stub_file else STUBS / f"{stage}.example.json"
         if not stub.exists():
             raise FileNotFoundError(f"[llm:stub] no stub for stage '{stage}': {stub}  (prompt saved to {prompt_path})")
-        return load_json(stub)
+        ans = load_json(stub)
+        if validator: validator(ans)
+        return ans
     if mode == "api":
         if C.PROVIDER != "openai":
             raise NotImplementedError(f"provider {C.PROVIDER}")
-        return _call_openai(stage, system, user, batch)
+        try:
+            ans = _call_openai(stage, system, user, batch)
+            if validator: validator(ans)
+            return ans
+        except RuntimeError as e:
+            if "not valid JSON" not in str(e): raise
+            err = str(e)
+        except Exception as e:
+            err = f"{type(e).__name__}: {e}"
+        print(f"  [llm] {stage}: answer rejected ({err[:160]}) -> retrying once with feedback", flush=True)
+        fb = f"직전 응답에 문제가 있었습니다: {err[:1500]}\n스키마를 지키는 JSON 객체 하나만 다시 출력하세요."
+        ans = _call_openai(stage, system, user, batch, feedback=fb)
+        if validator: validator(ans)
+        return ans
     raise ValueError(f"MYFINSIGHT_LLM={mode!r} (expected 'stub' or 'api')")

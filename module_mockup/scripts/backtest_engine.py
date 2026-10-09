@@ -16,10 +16,12 @@ import backtest_config as BC
 
 # ───────────────────────── data ─────────────────────────
 def load_price_panel(tickers, bench, start, end) -> pd.DataFrame:
+    """adj_close panel of the tickers plus one or more benchmark tickers (aligned on the first benchmark's trading days)."""
+    benches = [bench] if isinstance(bench, str) else list(bench)
     px = load_adj_close(tickers, start, end)
-    b = pq.read_table(RAW / "benchmarks.parquet", columns=["date", "ticker", "adj_close"],
-                      filters=[("ticker", "==", bench), ("date", ">=", pd.Timestamp(start)), ("date", "<=", pd.Timestamp(end))]
-                      ).to_pandas().set_index("date")["adj_close"].rename(bench).sort_index()
+    t = pq.read_table(RAW / "benchmarks.parquet", columns=["date", "ticker", "adj_close"],
+                      filters=[("ticker", "in", benches), ("date", ">=", pd.Timestamp(start)), ("date", "<=", pd.Timestamp(end))]).to_pandas()
+    b = t.pivot(index="date", columns="ticker", values="adj_close").sort_index()[benches]
     panel = px.join(b, how="inner").sort_index()
     if panel.iloc[0].isna().any():
         raise ValueError(f"missing prices on first day for {list(panel.columns[panel.iloc[0].isna()])}")
@@ -37,13 +39,17 @@ def rebalance_dates(rule: dict, calendar: pd.DatetimeIndex, as_of) -> list:
     if not rule.get("enabled", True) or rule["count"] == 0:
         return [cal[0]]
     if rule["unit"] == "2w":
-        return list(cal[::BC.REBALANCE_TRADING_DAYS["2w"] * rule["count"]])
-    firsts, seen = [], set()
-    for ts in cal:
-        k = _period_key(ts, rule["unit"])
-        if k not in seen:
-            seen.add(k); firsts.append(ts)
-    return firsts[::rule["count"]]
+        out = list(cal[::BC.REBALANCE_TRADING_DAYS["2w"] * rule["count"]])
+    else:
+        firsts, seen = [], set()
+        for ts in cal:
+            k = _period_key(ts, rule["unit"])
+            if k not in seen:
+                seen.add(k); firsts.append(ts)
+        out = firsts[::rule["count"]]
+    if len(out) > 1 and out[-1] == cal[-1]:
+        out = out[:-1]            # never rebalance on the last day of the window (closing checkpoint only)
+    return out
 
 
 def contribution_dates(calendar: pd.DatetimeIndex, as_of, end, day: int) -> list:
@@ -121,7 +127,7 @@ def _selftest():
     data = load_price_panel(tk, "SPY", as_of, end)
     rb = rebalance_dates({"count": 1, "unit": "1q", "enabled": True}, cal, as_of)
     cd = contribution_dates(cal, as_of, end, 25)
-    assert len(rb) == 5 and rb[0] == cal[0], rb
+    assert len(rb) == 4 and rb[0] == cal[0] and rb[-1] != cal[-1], rb   # Apr/Jul/Oct 2023, Jan 2024 (2024-04-01 = last day, excluded)
     assert len(cd) == 11, len(cd)   # May 2023 .. Mar 2024
     # (1) single asset: contributions invested immediately -> TWR index equals the no-contribution index (commission-level tolerance)
     s1, r1 = run_static_portfolio("spy_c", {"SPY": 1.0}, data, 10000, rb, cd, 300.0)

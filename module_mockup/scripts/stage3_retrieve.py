@@ -23,6 +23,7 @@ from descriptor import load_descriptor, filter_by_gics, search_keywords, sector_
 from schemas import Candidates
 
 MAX_CANDIDATES = 120
+MIN_KEYWORD_HITS = 2        # a candidate found ONLY by keywords needs at least this many distinct keyword hits
 MIN_HISTORY_DAYS = 400      # calendar days of prices required before as_of (covers 12m metrics)
 ADV_WINDOW = 60             # trading days
 
@@ -46,8 +47,9 @@ def collect(desc, themes):
     for th in themes:
         for t in filter_by_gics(desc, th["gics_codes"]):
             hits[t]["matched_by"].add("gics_match"); hits[t]["matched_themes"].add(th["id"])
-        for t in search_keywords(desc, th["keywords"]):
+        for t, words in search_keywords(desc, th["keywords"]).items():
             hits[t]["matched_by"].add("keyword_match"); hits[t]["matched_themes"].add(th["id"])
+            hits[t].setdefault("matched_keywords", set()).update(words)
         for t in th["example_tickers"]:
             if t in desc["companies"]:
                 hits[t]["matched_by"].add("example_match"); hits[t]["matched_themes"].add(th["id"])
@@ -107,6 +109,8 @@ def main():
         forced = "must_include" in h["matched_by"]
         if forced:
             kept[t] = h; continue
+        if h["matched_by"] == {"keyword_match"} and len(h.get("matched_keywords", ())) < MIN_KEYWORD_HITS:
+            drop(t, f"keyword_weak({','.join(sorted(h.get('matched_keywords', ())))})"); continue
         if t in set(cons["exclude_tickers"]): drop(t, "exclude_tickers"); continue
         if c["gics"]["sector"]["code"] in excl_sectors: drop(t, "exclude_sectors"); continue
         if t in excl_by_rule: drop(t, excl_by_rule[t]); continue
@@ -142,7 +146,7 @@ def main():
         cands.append({"ticker": t, "name": c["name"], "gics": c["gics"], "company_summary": c["company_summary"],
                       "market_cap_usd": mcap, "adv_usd": None if pd.isna(a) else round(a, 0),
                       "matched_by": sorted(h["matched_by"]), "matched_themes": sorted(h["matched_themes"]),
-                      "forced": forced})
+                      "matched_keywords": sorted(h.get("matched_keywords", ())), "forced": forced})
 
     if len(cands) > MAX_CANDIDATES:
         cands.sort(key=lambda x: (x["forced"], len(x["matched_by"]), x["adv_usd"] or 0), reverse=True)

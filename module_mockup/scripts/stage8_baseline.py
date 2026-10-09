@@ -32,7 +32,14 @@ def main():
     shares = {r["ticker"]: r.get("sharesOutstanding") for r in load_json(RAW / "info_snapshot.json")}
     capw = P.cap_weights(tk, as_of, shares)
     notes.append("cap_weights use CURRENT sharesOutstanding x close(as_of): approximation for past dates")
-    delta = PC.RISK_AVERSION[req["risk"]["risk_tolerance"]]
+    tol = req["risk"]["risk_tolerance"]
+    if PC.RISK_AVERSION_MODE == "market_implied":
+        d_mkt, d_win = P.market_implied_delta(as_of, PC.LOOKBACK_DAYS, rf=0.04)
+        mult = PC.RISK_AVERSION_MULT[tol]; delta = round(max(0.5, min(d_mkt * mult, 8.0)), 4)
+        delta_meta = {"delta_source": "market_implied", "delta_market": round(d_mkt, 4), "delta_multiplier": mult, "delta_window": d_win}
+        notes.append(f"delta = market-implied {d_mkt:.2f} (SPY, {d_win['start']}~{d_win['end']}) x {mult} ({tol}) = {delta} (clipped to [0.5, 8])")
+    else:
+        delta = PC.RISK_AVERSION[tol]; delta_meta = {"delta_source": "fixed"}
     total = 1.0 - cons["min_cash_ratio"]
     max_stock, max_sector = cons["max_weight_per_stock"], cons["max_weight_per_sector"]
     baseline_id = req["strategy_preference"]["baseline_weighting"]
@@ -63,7 +70,7 @@ def main():
     model = MarketModel(request_id=req["request_id"], as_of=as_of, lookback={**mm["window"], "requested_days": PC.LOOKBACK_DAYS},
                         tickers=tk, ann_vol={t: round(float(v), 6) for t, v in zip(tk, mm["ann_vol"])},
                         corr=np.round(mm["corr"], 6).tolist(), cov=np.round(mm["cov"], 8).tolist(),
-                        cap_weights={t: round(float(x), 6) for t, x in zip(tk, capw)}, delta=delta, tau=PC.TAU,
+                        cap_weights={t: round(float(x), 6) for t, x in zip(tk, capw)}, delta=delta, tau=PC.TAU, **delta_meta,
                         baseline_id=baseline_id, implied_returns={t: round(float(x), 6) for t, x in zip(tk, pi)},
                         shrinkage=mm["shrinkage"], notes=notes + warnings)
     dump_json(model.model_dump(mode="json"), OUTPUT / "08_market_model.json")

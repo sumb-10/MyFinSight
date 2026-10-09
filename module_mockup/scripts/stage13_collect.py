@@ -82,9 +82,11 @@ def main():
     selection = {"funnel": funnel, "metric": sel["summary"]["metric"], "direction": sel["summary"]["direction"],
                  "candidates_summary": cand["stats"], "tagging_summary": {"n_tagged": len(tag["tagged"]), "n_passed": len(tag["passed_tickers"]),
                  "n_excluded_by_theme": len(tag["excluded_by_theme"]), "min_confidence": tag["min_confidence"]},
-                 "as_of_2026": {"as_of": sel["summary"]["as_of"], "selected": sel["selected"], "rejected_examples": excluded, "summary": sel["summary"], "warnings": sel["warnings"]},
+                 "as_of_2026": {"as_of": sel["summary"]["as_of"], "selected": sel["selected"], "rejected_examples": excluded, "summary": sel["summary"], "warnings": sel["warnings"],
+                                "infeasibility": sel.get("infeasibility"), "sector_overflow": sel["summary"].get("sector_overflow")},
                  "explained": expl, "backtest_as_of": {"as_of": spec["period"]["as_of"], "source": spec["selection"]["source"], "table": spec["selection"]["table"],
-                 "diff_vs_original": spec["selection"]["diff_vs_original"]}, "table": table}
+                 "diff_vs_original": spec["selection"]["diff_vs_original"], "infeasibility": spec["selection"].get("infeasibility"),
+                 "sector_overflow": spec["selection"].get("sector_overflow")}, "table": table}
 
     # ── portfolio block (market model without the full covariance) ──
     mm_small = {k: mm[k] for k in ["as_of", "lookback", "tickers", "ann_vol", "cap_weights", "delta", "tau", "baseline_id", "implied_returns", "shrinkage", "notes"]}
@@ -92,13 +94,17 @@ def main():
                  "baselines": base, "views": views, "targets": targets}
 
     # ── KRW conversion ──
-    fx = req["derived"]["fx_rate"]
+    fx = req["derived"]["fx_rate"]                       # request-date FX (what the user saw when asking)
+    fx_bt = spec["capital"].get("fx_rate") or fx          # backtest-start FX (what the backtest capital used)
     by_pf = {}
-    for p in [bt["benchmark"], *bt["portfolios"]]:
+    for p in [*bt.get("benchmarks", [bt["benchmark"]]), *bt["portfolios"], *val.get("alternatives", [])]:
         m = p["money"]
         by_pf[p["id"]] = {"final_value_krw": round(m["final_value_usd"] * fx), "net_invested_krw": round(m["net_invested_usd"] * fx),
-                          "profit_krw": round(m["profit_usd"] * fx), "contributions_krw": round(m["contributions_usd"] * fx)}
+                          "profit_krw": round(m["profit_usd"] * fx), "contributions_krw": round(m["contributions_usd"] * fx),
+                          "final_value_krw_at_backtest_fx": round(m["final_value_usd"] * fx_bt)}
     money_krw = {"fx_rate": fx, "fx_date": req["derived"]["fx_date"], "fx_source": req["derived"].get("fx_source"), "direction": f"1 USD = {fx:,.2f} KRW",
+                 "backtest_fx": {"fx_rate": fx_bt, "fx_date": spec["capital"].get("fx_date"), "fx_source": spec["capital"].get("fx_source"), "direction": f"1 USD = {fx_bt:,.2f} KRW",
+                                 "note": "백테스트 초기자본·적립은 구성일 환율로 환산; 평가금액 원화 표시는 요청 시점 환율 기준(괄호: 구성일 환율 기준)"},
                  "initial_amount_krw": req["capital"]["initial_amount"], "monthly_contribution_krw": req["capital"]["monthly_contribution"], "by_portfolio": by_pf}
 
     parameters = {"portfolio": {k: getattr(PC, k) for k in ["LOOKBACK_DAYS", "SHRINKAGE", "TAU", "RISK_AVERSION", "OMEGA_METHOD", "CONFIDENCE_FLOOR", "ABS_RETURN_RANGE", "REL_RETURN_RANGE", "TEMPLATES"]},

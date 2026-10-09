@@ -27,6 +27,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--request", default=str(INPUT / "01_user_request.example.jsonc"))
     ap.add_argument("--stop-at", type=int, default=5, help="last stage to run (1-15)")
+    ap.add_argument("--from", dest="from_stage", type=int, default=1, help="first stage to run (reuse earlier outputs)")
     ap.add_argument("--backtest-request", default=str(INPUT / "02_backtest_request.jsonc"))
     ap.add_argument("--fx-rate", type=float, default=None)
     ap.add_argument("--explain", action="store_true", help="also run stage 6 (LLM #3)")
@@ -57,7 +58,7 @@ def main():
         ("stage15_publish.py", []),
     ]
     for i, step in enumerate(steps, 1):
-        if step is None or i > a.stop_at:
+        if step is None or i > a.stop_at or i < a.from_stage:
             continue
         run(step[0], *step[1])
     print(f"\n[pipeline] done. outputs in {OUTPUT}")

@@ -6,7 +6,7 @@ Stage 14: build the render-ready report document from 13_results.json.
   LLM#5b: narrative generator (prompts/14b_narrate)    -> overview / interpretation / selection / construction / assumptions / glossary
 out: output/14_report.json ; in api mode the raw answers are also saved as stubs/14a_*.example.json, 14b_*.example.json
 """
-import argparse, datetime as dt, json, os, re, shutil
+import argparse, datetime as dt, json, os, re, shutil, sys
 from common import OUTPUT, STUBS, load_json, dump_json
 from llm import load_prompts, call_llm
 import report_blocks as B
@@ -34,6 +34,10 @@ def facts_for_interpret(R, chosen):
                        "trading": p["metrics"]["trading"], "money": {**p["money"], **R["money_krw"]["by_portfolio"][chosen]}, "yearly_returns": p["yearly_returns"],
                        "quarters": quarters, "ticker_contribution_top": contrib[:3], "ticker_contribution_bottom": contrib[-3:], "view_diagnostics": p["view_diagnostics"]},
             "benchmark": {"label": b["name_ko"], "headline": b["headline"], "yearly_returns": b["yearly_returns"], "money": b["money"]},
+            "other_benchmarks": [{"label": x["name_ko"], "headline": x["headline"]} for x in bt.get("benchmarks", []) if x["id"] != b["id"]],
+            "alternatives": [{"id": x["id"], "label": x["name_ko"], "cash_ratio": x["cash_ratio"], "headline": x["headline"], "status": x["status"], "reason_ko": x["reason_ko"]} for x in val.get("alternatives", [])],
+            "selection_infeasibility": R["selection"]["backtest_as_of"].get("infeasibility"),
+            "sector_overflow": R["selection"]["backtest_as_of"].get("sector_overflow"),
             "baseline_equal_weight": {"headline": base["headline"], "money": base["money"]},
             "comparison": comp,
             "validation": {"criteria": val["criteria"], "chosen_checks": next(r for r in val["results"] if r["id"] == chosen)["checks"],
@@ -70,17 +74,24 @@ def known_numbers(obj, acc):
         return
     elif isinstance(obj, (int, float)):
         v = abs(float(obj))
-        if v <= 20: acc.add(round(v * 100, 1)); acc.add(round(v * 100))
-        acc.add(round(v, 1)); acc.add(round(v))
+        if v <= 20: acc.add(round(v * 100, 1)); acc.add(round(v * 100)); acc.add(round(v * 100, 2))
+        acc.add(round(v, 2)); acc.add(round(v, 1)); acc.add(round(v))
+
+
+NUM_RE = re.compile(r"(?:\$\s?)?(-?[\d,]+(?:\.\d+)?)\s*(%p|%|USD|원|달러|일|개|회|종목|배)?")
 
 
 def audit(paragraphs, known, label):
     warns = []
     for para in paragraphs:
-        for m in re.finditer(r"(-?\d+(?:\.\d+)?)\s*%", para):
-            v = abs(float(m.group(1)))
-            if round(v, 1) not in known and round(v) not in known:
-                warns.append(f"{label}: number {m.group(0)} not found in facts")
+        for m in NUM_RE.finditer(para):
+            raw, unit = m.group(1), m.group(2)
+            if not unit and not m.group(0).lstrip().startswith("$"): continue
+            try: v = abs(float(raw.replace(",", "")))
+            except ValueError: continue
+            if v < 2 and unit in ("일", "개", "회", "종목", "배"): continue
+            if round(v, 2) not in known and round(v, 1) not in known and round(v) not in known:
+                warns.append(f"{label}: number {m.group(0).strip()} not found in facts")
         for w in BANNED:
             if w in para: warns.append(f"{label}: banned word '{w}'")
     return warns
@@ -97,6 +108,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--results", default=str(OUTPUT / "13_results.json"))
     ap.add_argument("--out", default=str(OUTPUT / "14_report.json"))
+    ap.add_argument("--update-stubs", action="store_true", help="api mode: overwrite stubs/14a,14b with this run's answers")
     a = ap.parse_args()
     R = load_json(a.results)
     chosen, is_rec = B.chosen_portfolio_id(R)
@@ -114,7 +126,8 @@ def main():
     system, user = load_prompts("14b_narrate", facts_json=json.dumps(f2, ensure_ascii=False, indent=1), interpretation_json=json.dumps(interp, ensure_ascii=False, indent=1))
     narr = call_llm("14b_narrate", system, user)
     for k, n in [("overview_ko", 2), ("request_interpretation_ko", 1), ("selection_ko", 1), ("construction_ko", 1), ("assumptions_ko", 1), ("reconsideration_ko", 1), ("glossary", 5)]: need(narr, k, n)
-    if os.environ.get("MYFINSIGHT_LLM") == "api":
+    ap_flag = "--update-stubs" in sys.argv or os.environ.get("MYFINSIGHT_UPDATE_STUBS") == "1"
+    if os.environ.get("MYFINSIGHT_LLM") == "api" and ap_flag:
         for stage in ["14a_interpret", "14b_narrate"]:
             src = OUTPUT / "llm_raw" / f"{stage}.json"
             if src.exists(): shutil.copy(src, STUBS / f"{stage}.example.json")
@@ -126,14 +139,15 @@ def main():
     # ── datasets ──
     bt = R["backtest"]; dates = bt["series_dates"]
     series = {}
-    for x in [*bt["portfolios"], bt["benchmark"]]:
-        series[x["id"]] = {"label_ko": B.pf_label(x) if x["kind"] != "benchmark" else x["name_ko"], "kind": x["kind"], **x["series"]}
+    for x in B.all_blocks(R):
+        series[x["id"]] = {"label_ko": B.pf_label(x) if x["kind"] not in ("benchmark", "alternative") else x["name_ko"], "kind": x["kind"], **x["series"]}
     led = {l["date"]: l["amount_usd"] for l in p["contribution_ledger"]}; inv, cum = [], p["money"]["initial_usd"]
     for d in dates:
         cum += led.get(d, 0.0); inv.append(round(cum, 2))
     series["net_invested"] = {"label_ko": "투입 원금(누적)", "kind": "reference", "value_usd": inv}
-    all_ids = [x["id"] for x in bt["portfolios"]] + [bt["benchmark"]["id"]]
+    all_ids = [x["id"] for x in B.all_blocks(R)]
     default_on = [chosen, R["portfolio"]["targets"]["baseline"]["id"], bt["benchmark"]["id"]]
+    inf_block = B.infeasibility_callout(R); alt_block = B.alternatives_cards(R)
 
     label = B.pf_label(p)
     header = {"title_ko": f"{R['intent']['interpretation']['themes'][0]['label_ko']} 외 {len(R['intent']['interpretation']['themes']) - 1}개 테마 · {R['selection']['metric']} 선정 · {label}",
@@ -154,7 +168,7 @@ def main():
                                                         B.request_table(R), {"type": "callout", "tone": "info", "title_ko": "읽기 전에", "text_ko": header["disclaimer_ko"] + " " + header["chosen_note_ko"]}]},
         {"id": "interpretation", "title_ko": "요청을 이렇게 이해했습니다", "blocks": [{"type": "paragraphs", "items": narr["request_interpretation_ko"]}, B.themes_table(R), B.constraints_table(R), B.soft_table(R)]
             + ([{"type": "cards", "title_ko": "입력 간에 확인한 점", "items": [{"title_ko": c["field"], "text_ko": c["issue_ko"] + " → " + c["resolution_ko"], "meta": []} for c in R["intent"]["interpretation"]["conflicts"]]}] if R["intent"]["interpretation"]["conflicts"] else [])},
-        {"id": "selection", "title_ko": "종목을 고른 과정", "blocks": [{"type": "paragraphs", "items": narr["selection_ko"]}, B.funnel(R),
+        {"id": "selection", "title_ko": "종목을 고른 과정", "blocks": [{"type": "paragraphs", "items": narr["selection_ko"]}, B.funnel(R)] + ([inf_block] if inf_block else []) + [
                                                            {"type": "callout", "tone": "info", "title_ko": "선정 지표", "text_ko": "모멘텀(return_12m_1m)은 최근 12개월 주가 수익률에서 가장 최근 1개월을 뺀 값입니다. 최근 1개월을 빼는 이유는 단기 반전 효과를 피하기 위해서이며, 값이 높은 순서로 뽑습니다."},
                                                            B.selection_table(R), B.excluded_table(R), B.diff_table(R)]},
         {"id": "construction", "title_ko": "포트폴리오를 이렇게 나눴습니다", "blocks": [{"type": "paragraphs", "items": narr["construction_ko"]}, B.baseline_table(R), B.templates_table(R)]
@@ -168,7 +182,7 @@ def main():
             {"type": "area", "title_ko": "고점 대비 낙폭", "dataset": "drawdown", "series_ids": default_on, "default_on": default_on, "y_format": "pct"},
             {"type": "paragraphs", "items": interp["risk_fit_ko"]}, B.comparison_table(R), B.yearly_table(R, chosen), B.monthly_table(R, chosen), B.contribution_bar(R, chosen),
             B.checkpoints_block(R, chosen)] + ([v_tab, {"type": "paragraphs", "items": interp["view_review_ko"]}] if v_tab and interp["view_review_ko"] else [])},
-        {"id": "validation", "title_ko": "검증 결과와 추천", "blocks": [{"type": "paragraphs", "items": interp["validation_ko"]}, t1, t2, rec_card,
+        {"id": "validation", "title_ko": "검증 결과와 추천", "blocks": [{"type": "paragraphs", "items": interp["validation_ko"]}, t1, t2, rec_card] + ([alt_block] if alt_block else []) + ([inf_block] if inf_block else []) + [
                                                              {"type": "cards", "title_ko": "다음에 검토할 수 있는 선택지", "items": [{"title_ko": f"선택지 {i + 1}", "text_ko": s, "meta": []} for i, s in enumerate(interp["next_actions_ko"])]}]},
         {"id": "assumptions", "title_ko": "전제와 한계", "blocks": [{"type": "paragraphs", "items": narr["assumptions_ko"] + narr["reconsideration_ko"]},
                                                         {"type": "cards", "title_ko": "확인한 한계", "items": [{"title_ko": f"한계 {i + 1}", "text_ko": s, "meta": []} for i, s in enumerate(B.limitations(R))]}]},

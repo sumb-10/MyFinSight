@@ -43,7 +43,8 @@ def main():
                                     themes_block=themes_block(themes),
                                     exclude_block=exclude_block(intent.get("exclude_theme_rules", [])),
                                     candidates_block=block)
-        ans = call_llm("04_classify", system, user, batch=bi, stub_file=None)
+        ans = call_llm("04_classify", system, user, batch=bi, stub_file=None,
+                       validator=lambda a: (_ for _ in ()).throw(AssertionError("results must be a list of {ticker,...}")) if not isinstance(a.get("results"), list) else None)
         want = {x["ticker"] for x in batch}
         got = {r["ticker"]: r for r in ans["results"] if r["ticker"] in want}
         extra = {r["ticker"] for r in ans["results"]} - want

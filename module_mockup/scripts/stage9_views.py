@@ -48,7 +48,7 @@ def main():
     system = system.replace("{{as_of}}", str(as_of)).replace("{{max_conf}}", str(max_conf)).replace("{{n_sets}}", str(n_sets)) \
                    .replace("{{views_per_set}}", str(per_set)).replace("{{abs_range}}", f"{PC.ABS_RETURN_RANGE[0]:+.0%} ~ {PC.ABS_RETURN_RANGE[1]:+.0%}") \
                    .replace("{{rel_range}}", f"{PC.REL_RETURN_RANGE[0]:+.0%} ~ {PC.REL_RETURN_RANGE[1]:+.0%}")
-    ans = call_llm("09_views", system, user)
+    ans = call_llm("09_views", system, user, validator=lambda a: (_ for _ in ()).throw(AssertionError("sets must be a non-empty list")) if not (isinstance(a.get("sets"), list) and a["sets"]) else None)
 
     # ── guardrails ──
     warnings, sets, known = [], [], set(tk)

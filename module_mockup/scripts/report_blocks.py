@@ -149,16 +149,49 @@ def assumptions_callout(R):
     return {"type": "callout", "tone": "info", "title_ko": "백테스트 가정", "text_ko": txt}
 
 
+def all_blocks(R):
+    """portfolios + every benchmark + validation alternatives (same block shape)."""
+    return [*R["backtest"]["portfolios"], *R["backtest"].get("benchmarks", [R["backtest"]["benchmark"]]), *R["validation"].get("alternatives", [])]
+
+
 def comparison_table(R):
     rows = []
     status = {r["id"]: r["status"] for r in R["validation"]["results"]}
-    for p in [*R["backtest"]["portfolios"], R["backtest"]["benchmark"]]:
+    status.update({a["id"]: a["status"] for a in R["validation"].get("alternatives", [])})
+    for p in all_blocks(R):
         h, m = p["headline"], p["metrics"]
-        rows.append({"name": pf_label(p) if p["kind"] != "benchmark" else p["name_ko"], "kind": {"black_litterman": "시나리오", "template": "규칙", "benchmark": "비교지수"}[p["kind"]],
+        rows.append({"name": pf_label(p) if p["kind"] not in ("benchmark", "alternative") else p["name_ko"], "kind": {"black_litterman": "시나리오", "template": "규칙", "benchmark": "비교지수", "alternative": "대안"}[p["kind"]],
                      "cagr": h["cagr"], "vol": m["risk"]["ann_vol"], "sharpe": h["sharpe"], "mdd": h["max_drawdown"], "excess": h["excess_cagr"],
                      "final": h["final_value_usd"], "irr": p["money"]["irr_annual"], "status": {"pass": "통과", "warn": "주의", "fail": "미통과"}.get(status.get(p["id"]), "-")})
     return table("포트폴리오 비교 (같은 기간·같은 적립)", [("name", "포트폴리오", "text"), ("kind", "종류", "text"), ("cagr", "CAGR", "pct"), ("vol", "변동성", "pct"), ("sharpe", "Sharpe", "ratio"),
-                 ("mdd", "최대낙폭", "pct"), ("excess", "비교지수 대비", "pp"), ("final", "최종 평가금액", "usd"), ("irr", "적립 기준 연수익(XIRR)", "pct"), ("status", "검증", "text")], rows)
+                 ("mdd", "최대낙폭", "pct"), ("excess", "비교지수 대비", "pp"), ("final", "최종 평가금액", "usd"), ("irr", "적립 기준 연수익(XIRR)", "pct"), ("status", "검증", "text")], rows,
+                 note="비교지수 대비는 사용자가 지정한 비교지수(" + R["portfolio"]["backtest_spec"]["benchmark"] + ") 기준입니다. 대안은 검증 단계가 만든 현금 혼합 변형입니다.")
+
+
+def infeasibility_callout(R):
+    bt_sel, sel26 = R["selection"]["backtest_as_of"], R["selection"]["as_of_2026"]
+    inf = bt_sel.get("infeasibility") or sel26.get("infeasibility")
+    if inf:
+        txt = (f"선정된 종목의 섹터 구성으로는 종목당 {inf['stock_cap']:.0%}·섹터당 {inf['sector_cap']:.0%} 상한 안에서 투자금 전체를 배분할 수 없습니다(배분 가능 {inf['capacity']:.0%}). "
+               f"섹터별 종목 수: " + ", ".join(f"{k} {v}" for k, v in inf["sector_counts"].items()) + ". 선택지: " + " / ".join(inf["options_ko"]))
+        return {"type": "callout", "tone": "caution", "title_ko": "상한 안에서 배분할 수 없는 구성", "text_ko": txt}
+    ov = bt_sel.get("sector_overflow") or sel26.get("sector_overflow")
+    if ov:
+        return {"type": "callout", "tone": "info", "title_ko": "섹터 상한이 비중을 누른 부분", "text_ko": ov["note_ko"] + f" (해당 종목: {', '.join(ov['tickers'])})"}
+    return None
+
+
+def alternatives_cards(R):
+    alts = R["validation"].get("alternatives", [])
+    if not alts: return None
+    items = []
+    for a in alts:
+        h = a["headline"]
+        items.append({"title_ko": a["name_ko"], "text_ko": a["reason_ko"],
+                      "meta": [{"label_ko": "검증", "value": {"pass": "통과", "warn": "주의", "fail": "미통과"}[a["status"]] + (" (" + ", ".join(c["rule"] for c in a["checks"] if c["status"] != "pass") + ")" if a["status"] != "pass" else "")},
+                               {"label_ko": "CAGR / 최대낙폭 / Sharpe", "value": f"{h['cagr']:+.1%} / {h['max_drawdown']:.1%} / {h['sharpe']:.2f}"},
+                               {"label_ko": "최종 평가금액", "value": f"{h['final_value_usd']:,.0f} USD"}]})
+    return {"type": "cards", "title_ko": "검토 가능한 대안 (검증 단계가 계산)", "items": items}
 
 
 def yearly_table(R, chosen):
@@ -217,8 +250,14 @@ def sources_table(R):
 
 def parameters_table(R):
     pp, pb, mm, d = R["parameters"]["portfolio"], R["parameters"]["backtest"], R["portfolio"]["market_model"], R["request"]["derived"]
-    rows = [{"k": "환율", "v": f"{R['money_krw']['direction']} ({d['fx_date']})"}, {"k": "공분산 추정", "v": f"구성일 이전 {pp['LOOKBACK_DAYS']}거래일, {pp['SHRINKAGE']} 수축 ({mm['lookback']['start']}~{mm['lookback']['end']})"},
-            {"k": "Black-Litterman", "v": f"τ={pp['TAU']}, 위험회피 δ={mm['delta']}, 뷰 신뢰도 하한 {pp['CONFIDENCE_FLOOR']}"},
+    bfx = R["money_krw"].get("backtest_fx") or {}
+    dsrc = mm.get("delta_source", "fixed")
+    dtxt = (f"시장 내재 δ {mm.get('delta_market')} (SPY {mm.get('delta_window', {}).get('start')}~{mm.get('delta_window', {}).get('end')}) × 성향 배수 {mm.get('delta_multiplier')} = {mm['delta']}"
+            if dsrc == "market_implied" else f"성향별 상수 {mm['delta']}")
+    rows = [{"k": "환율(요청 시점)", "v": f"{R['money_krw']['direction']} ({d['fx_date']})"},
+            {"k": "환율(백테스트 구성일)", "v": f"{bfx.get('direction', '-')} ({bfx.get('fx_date', '-')}, {bfx.get('fx_source', '-')}) — 백테스트 초기자본·적립 환산에 사용"},
+            {"k": "공분산 추정", "v": f"구성일 이전 {pp['LOOKBACK_DAYS']}거래일, {pp['SHRINKAGE']} 수축 ({mm['lookback']['start']}~{mm['lookback']['end']})"},
+            {"k": "Black-Litterman", "v": f"τ={pp['TAU']}, 위험회피 δ: {dtxt}, 뷰 신뢰도 하한 {pp['CONFIDENCE_FLOOR']}"},
             {"k": "백테스트", "v": f"거래비용 {pb['COMMISSION_BPS']}bp, 무위험수익률 {pb['RISK_FREE_RATE']:.0%}, 소수 주식 {'허용' if not pb['INTEGER_POSITIONS'] else '불허'}, 체크포인트 {pb['CHECKPOINT_FREQ']}"},
             {"k": "분석 모델", "v": f"{R['parameters']['llm']['model']} (의도 해석·테마 분류·시나리오 뷰·리포트 서술)"}]
     return table("계산 조건", [("k", "항목", "text"), ("v", "값", "text")], rows)

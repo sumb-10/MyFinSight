@@ -27,7 +27,11 @@ def main():
                                 as_of=req["derived"]["as_of"],
                                 initial_amount_usd=f"{req['derived']['initial_amount_usd']:,.0f}",
                                 gics_tree=render_tree(desc))
-    ans = call_llm("02_intent", system, user)
+    def _check(ans):
+        th = ans.get("interpretation", {}).get("themes")
+        assert isinstance(th, list) and th, "interpretation.themes must be a non-empty list"
+        for k in ("screen", "risk_params", "news_tilt", "validation_criteria", "report_settings"): assert k in ans, f"missing key {k}"
+    ans = call_llm("02_intent", system, user, validator=_check)
 
     # ── code-side guardrails on the LLM answer ──
     warnings = []

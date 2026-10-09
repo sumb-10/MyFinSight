@@ -33,13 +33,17 @@ def filter_by_gics(desc: dict, codes: list[str]) -> dict[str, list[str]]:
     return hits
 
 
-def search_keywords(desc: dict, words: list[str]) -> dict[str, list[str]]:
-    """ticker -> keywords found (case-insensitive) in name / keywords / company_summary."""
+import re as _re
+
+
+def search_keywords(desc: dict, words: list[str], min_len: int = 3) -> dict[str, list[str]]:
+    """ticker -> keywords found as whole words/phrases (case-insensitive) in name / keywords / company_summary.
+    Whole-word matching avoids 'chip' -> Chipotle, 'storage' -> Public Storage; keywords shorter than min_len are ignored."""
     hits = {}
-    lw = [w.lower() for w in words if w.strip()]
+    pats = [(w.lower(), _re.compile(r"(?<![a-z0-9])" + _re.escape(w.lower()) + r"(?![a-z0-9])")) for w in words if len(w.strip()) >= min_len]
     for t, c in desc["companies"].items():
         hay = " ".join([c["name"], " ".join(c.get("keywords", [])), c.get("company_summary", "")]).lower()
-        m = [w for w in lw if w in hay]
+        m = [w for w, p in pats if p.search(hay)]
         if m:
             hits[t] = m
     return hits

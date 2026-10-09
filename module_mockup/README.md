@@ -66,7 +66,9 @@ $P scripts/build_descriptor.py               # 1회. 디스크립터 생성 (재
 $P scripts/run_pipeline.py --request input/01_user_request.example.jsonc      # 1~5단계, stub 모드 (기본, API 호출 없음)
 $P scripts/run_pipeline.py --stop-at 15                                      # 1~15단계 (7~15 는 input/02_backtest_request.jsonc 사용)
 MYFINSIGHT_LLM=api $P scripts/stage14_report.py && $P scripts/stage15_publish.py   # 리포트 서술을 gpt-6-luna 로 새로 생성 → Front 에 반영
+$P scripts/run_pipeline.py --from 11 --stop-at 15                            # 중간부터 재실행 (앞 단계 output 재사용)
 $P scripts/backtest_engine.py && $P scripts/backtest_metrics.py              # 백테스트 엔진·지표 자체 검증
+$P -m pytest tests -q                                                        # 불변식 테스트 (output/ 기준; MYFINSIGHT_TEST_RUN=1 이면 전체 재실행)
 $P scripts/stage12_validate.py --max-drawdown 0.30                           # 검증 기준을 바꿔 다시 판정 (백테스트 재실행 없음)
 $P scripts/portfolio.py                                                      # 포트폴리오 수학 자체 검증 (BL 수렴·뷰 방향·제약)
 MYFINSIGHT_LLM=api $P scripts/run_pipeline.py --explain                      # 실제 LLM 호출 + 비용 리포트
@@ -75,7 +77,7 @@ $P scripts/llm_cost_report.py                                                # �
 
 리포트 화면: `cd Front && source ~/.nvm/nvm.sh && nvm use && pnpm dev` 후 http://localhost:5173/#/pipeline (화면 코드는 `Front/src/pipeline/`, 기존 앱 화면은 `#/home`).
 
-LLM 설정은 `scripts/llm_config.py` 한 곳(모델명·생성 옵션·단가·.env 위치)에서 바꾼다. 모드는 `MYFINSIGHT_LLM=stub|api`. API 모드는 호출마다 `output/llm_usage.jsonl` 에 토큰·비용을 기록하고 원문 응답을 `output/llm_raw/` 에 남긴다(stub 으로 재사용 가능).
+LLM 설정은 `scripts/llm_config.py` 한 곳(모델명·생성 옵션·단가·.env 위치)에서 바꾼다. 모드는 `MYFINSIGHT_LLM=stub|api`. API 모드는 호출마다 `output/llm_usage.jsonl` 에 토큰·비용을 기록하고 원문 응답을 `output/llm_raw/` 에 남기며, 같은 프롬프트는 `output/llm_cache/` 에서 재사용한다(`MYFINSIGHT_LLM_CACHE=0` 으로 끔). 응답이 깨지거나 검증에 실패하면 오류를 되먹여 1회 재시도한다. 14단계 stub 갱신은 `--update-stubs` 를 줄 때만 한다.
 
 포트폴리오 설정(추정 윈도 756일, Ledoit-Wolf 수축, τ=0.05, 위험회피 δ, 뷰 수익률 범위, 템플릿 목록)은 `scripts/portfolio_config.py`, 백테스트 설정(거래비용 5bp, 소수 주식, 무위험수익률 4%, 체크포인트 빈도, 드리프트 허용치, 변동성 밴드)은 `scripts/backtest_config.py` 에 있다.
 
@@ -87,5 +89,6 @@ LLM 설정은 `scripts/llm_config.py` 한 곳(모델명·생성 옵션·단가·
 - yfinance 재무제표는 분기 5개까지라 `low_per`/`quality` 는 최근 4년 범위에서만 as-of 계산이 가능하다.
 - 사업 설명이 규칙 기반("회사명 — 세부산업")인 동안은 키워드 매칭 오탐이 많다. 4단계 분류 LLM 이 걸러내며, 재무 수집·LLM#0 실행 후 개선된다.
 - 9단계 뷰는 뉴스 데이터 없이 LLM 이 만든 플레이스홀더라 기준일 이후 정보가 섞일 수 있다(`hindsight_risk: true`). 시총 비중은 현재 발행주식수 × 과거 종가의 근사치다.
+- 12단계는 추천이 없을 때 중심 포트폴리오에 현금을 섞어 과거 최대낙폭이 허용치에 들어오는 "현금 혼합안"을 계산해 `alternatives` 로 제공한다(현금 수익 0 가정). 11단계는 사용자 비교지수(SPY) 외에 QQQ 도 같은 적립으로 돌려 `benchmarks` 에 담는다(상대 지표·R3 는 SPY 기준). 5단계는 섹터 상한 때문에 목표 종목 수를 못 채우면 `infeasibility` 로 사유와 선택지를 남긴다. 백테스트 초기자본은 구성일 환율로 다시 환산한다(`backtest_spec.capital.fx_*`). 위험회피 δ 는 기본 `market_implied`(SPY 내재 δ × 성향 배수).
 - 10단계 타겟 비중은 구성일 기준 정적이다. 실제 서비스는 리밸런싱마다 뷰를 재생성해야 한다. 11단계도 같은 정적 비중을 리밸런싱마다 복원한다(walk-forward 재선정은 미구현).
 - 백테스트는 adj_close(배당 재투자)·거래비용 5bp·소수 주식 가정이며 세금·슬리피지는 없다. 시총 비중 템플릿은 현재 발행주식수 기준 근사다.
