@@ -111,7 +111,11 @@ def apply_constraints(w, max_stock, max_sector, sectors, total=1.0, max_iter=PC.
 
 
 def _sector_constraints(sectors, max_sector, total):
+    """Per-sector caps as inequalities. A cap that cannot bind (>= total, e.g. a single-sector theme with cap 1.0)
+    is skipped: together with the sum constraint it is redundant and makes SLSQP report 'incompatible'."""
     cons = []
+    if max_sector * total >= total - 1e-9:
+        return cons
     for s in np.unique(sectors):
         m = (np.asarray(sectors) == s).astype(float)
         cons.append({"type": "ineq", "fun": (lambda w, m=m: max_sector * total - m @ w)})
@@ -173,6 +177,7 @@ def black_litterman(cov, pi, P, Q, conf, tau=PC.TAU):
 def optimize_utility(mu, cov, delta, w_base, max_stock, max_sector, sectors, max_tilt, total=1.0, min_weight=PC.MIN_WEIGHT):
     """max w'mu - delta/2 w'Σw  s.t. sum=total, min_weight<=w<=max_stock, |w-w_base|<=max_tilt, sector caps."""
     n = len(mu)
+    w_base = np.asarray(w_base, float); w_base = w_base / w_base.sum() * total        # exact feasibility of the start point
     lo = np.maximum(min_weight, w_base - max_tilt); hi = np.maximum(lo + 1e-9, np.minimum(max_stock, w_base + max_tilt))
     cons = [{"type": "eq", "fun": lambda w: w.sum() - total}] + _sector_constraints(sectors, max_sector, total)
     res = minimize(lambda w: -(w @ mu - delta / 2 * w @ cov @ w), w_base, method="SLSQP",

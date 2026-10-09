@@ -16,10 +16,10 @@ from descriptor import load_descriptor
 from portfolio import trading_days
 import backtest_config as BC
 import backtest_metrics as M
-from backtest_engine import (load_price_panel, rebalance_dates, contribution_dates, run_static_portfolio, extract_raw, xirr)
+from backtest_engine import (load_price_panel, rebalance_dates, contribution_dates, run_static_portfolio, run_dynamic_portfolio, extract_raw, xirr)
 from schemas import BacktestResults
 
-EXTRA_BENCHMARKS = ["QQQ"]      # run alongside the user's benchmark (same contributions); relative metrics stay vs the user's one
+EXTRA_BENCHMARKS = ["QQQ", "XLV"]      # run alongside the user's benchmark (same contributions); relative metrics stay vs the user's one
 
 
 def _f(x, n=6):
@@ -47,16 +47,21 @@ def flat_to_date(res, n_days):
             "active_return_vs_baseline": (m["vs_baseline"] or {}).get("active_return"), "reliable": n_days >= BC.TRADING_DAYS}
 
 
-def build_checkpoints(raw, bench_raw, panel, targets, sectors, cp_dates, rb_set, last, cfg, views, implied, as_of, end):
+def build_checkpoints(raw, bench_raw, panel, targets, sectors, cp_dates, rb_set, last, cfg, views, implied, as_of, end, targets_by_date=None):
     sw, pos, tx, tv = raw["security_weights"], raw["positions"], raw["transactions"], raw["turnover"]
     idx, values, flows = raw["index"], raw["values"], raw["flows"]
     cols = [c for c in targets if c in sw.columns]
     contrib = flows.copy(); contrib.iloc[0] = 0.0
     cum_contrib = contrib.cumsum()
     r_assets = panel[cols].pct_change().reindex(sw.index).fillna(0.0)
-    tgt = pd.Series(targets)[cols]
+    tbd = {pd.Timestamp(k): v for k, v in (targets_by_date or {}).items()}
     out, prev = [], None
     for seq, d in enumerate(cp_dates):
+        if tbd:
+            past = [k for k in sorted(tbd) if k <= d]
+            tgt = pd.Series({c: tbd[past[-1]].get(c, 0.0) for c in cols}) if past else pd.Series(targets)[cols]
+        else:
+            tgt = pd.Series(targets)[cols]
         kind = "rebalance" if d in rb_set else ("closing" if d == last else "monthly")
         pos_d = sw.index.get_loc(d)
         before = sw.iloc[pos_d - 1][cols] if pos_d > 0 else None
@@ -154,21 +159,29 @@ def run_raw(ctx, pid, weights):
     return extract_raw(b, res, ctx["as_of"])
 
 
+def run_raw_dynamic(ctx, pid, weights_by_date):
+    b, res = run_dynamic_portfolio(pid, weights_by_date, ctx["panel"], ctx["cap"]["initial_amount_usd"], ctx["cd"], ctx["amount"])
+    return extract_raw(b, res, ctx["as_of"])
+
+
 def evaluate(ctx, p, raw, kind, bench_raw, baseline_idx):
     views = p.get("views_applied") if kind == "black_litterman" else None
     cfg = {"rb": ctx["rb"], "rf": ctx["rf"], "target_return": ctx["target_return"], "max_stock": ctx["cons"]["max_weight_per_stock"],
            "max_sector": ctx["cons"]["max_weight_per_sector"], "baseline_idx": baseline_idx}
     res = M.compute_all(raw, bench_raw["index"], ctx["panel"], p["weights"], ctx["sectors"], ctx["rb"], ctx["rf"], ctx["target_return"],
                         cfg["max_stock"], cfg["max_sector"], xirr, baseline_idx=baseline_idx, views=views, implied=ctx["mm"]["implied_returns"], as_of=ctx["as_of"], end=ctx["end"])
-    cps = build_checkpoints(raw, bench_raw, ctx["panel"], p["weights"], ctx["sectors"], ctx["cp_dates"], ctx["rb_set"], ctx["last"], cfg, views, ctx["mm"]["implied_returns"], ctx["as_of"], ctx["end"])
+    cps = build_checkpoints(raw, bench_raw, ctx["panel"], p["weights"], ctx["sectors"], ctx["cp_dates"], ctx["rb_set"], ctx["last"], cfg, views, ctx["mm"]["implied_returns"], ctx["as_of"], ctx["end"],
+                            targets_by_date=p.get("weights_by_date"))
     m = res["metrics"]; hits = [v["hit"] for v in res["view_diagnostics"]]
-    headline = {"final_value_usd": res["money"]["final_value_usd"], "cagr": m["return"]["cagr"], "excess_cagr": m["vs_benchmark"]["excess_cagr"],
-                "max_drawdown": m["risk"]["max_drawdown"], "sharpe": m["risk_adjusted"]["sharpe"], "view_hit_ratio": _f(np.mean(hits)) if hits else None}
+    headline = {"final_value_usd": res["money"]["final_value_usd"], "cagr": m["return"]["cagr"], "period_return": m["return"]["total_return"],
+                "excess_cagr": m["vs_benchmark"]["excess_cagr"], "max_drawdown": m["risk"]["max_drawdown"], "sharpe": m["risk_adjusted"]["sharpe"],
+                "view_hit_ratio": _f(np.mean(hits)) if hits else None, "annualized_reliable": len(raw["index"]) - 1 >= BC.TRADING_DAYS}
     contrib = raw["flows"].copy(); contrib.iloc[0] = 0.0
     ledger = [{"date": str(d.date()), "amount_usd": _f(v, 2), "value_before_usd": _f(raw["values"].shift(1).get(d, np.nan), 2)} for d, v in contrib[contrib > 0].items()]
     dd = M.drawdown_series(raw["index"])
-    return {"id": p["id"], "kind": kind, "name_ko": p.get("name_ko", p["id"]), "title_ko": p.get("title_ko"), "portfolio_view": p.get("portfolio_view"),
-            "target_weights": p["weights"], "headline": headline, "metrics": m, "money": res["money"],
+    return {"id": p["id"], "kind": kind, "mode": "walkforward" if p.get("weights_by_date") else "static", "name_ko": p.get("name_ko", p["id"]), "title_ko": p.get("title_ko"),
+            "portfolio_view": p.get("portfolio_view"), "target_weights": p["weights"], "weights_by_date": p.get("weights_by_date"), "views_by_date": p.get("views_by_date"),
+            "fallback_dates": p.get("fallback_dates"), "headline": headline, "metrics": m, "money": res["money"],
             "series": {"index": [_f(x, 4) for x in raw["index"]], "value_usd": [_f(x, 2) for x in raw["values"]], "drawdown": [_f(x, 5) for x in dd]},
             "monthly_returns": res["monthly_returns"], "yearly_returns": res["yearly_returns"], "checkpoints": cps,
             "contribution_ledger": ledger, "events": build_events(raw, ctx["rb"], ctx["cd"], cps),
@@ -187,19 +200,36 @@ def main():
     primary_raw = bench_raws[ctx["bench"]]
     runs = {p["id"]: run_raw(ctx, p["id"], p["weights"]) for p in targets["portfolios"] + targets["templates"]}
     baseline_idx = runs[ctx["baseline_id"]]["index"]
+    # ── walk-forward (dynamic) portfolios, if stage 10w produced target paths for this request ──
+    wf_path = OUTPUT / "10w_target_paths.json"
+    wf = load_json(wf_path) if wf_path.exists() else None
+    if wf and wf.get("request_id") == targets["request_id"]:
+        for p in wf["portfolios"]:
+            last_w = p["weights_by_date"][max(p["weights_by_date"])]
+            p["weights"] = last_w
+            runs[p["id"]] = run_raw_dynamic(ctx, p["id"], p["weights_by_date"])
+        print(f"         walk-forward portfolios: {[p['id'] for p in wf['portfolios']]} over {wf['dates']}", flush=True)
+    else:
+        wf = None
     bench_blocks = [evaluate(ctx, {"id": r["id"], "name_ko": f"{b} 매수보유 (동일 적립)", "weights": {b: 1.0}}, r, "benchmark", primary_raw, None) for b, r in bench_raws.items()]
     blocks = []
     for p in targets["portfolios"]:
         blocks.append(evaluate(ctx, p, runs[p["id"]], "black_litterman", primary_raw, baseline_idx)); print(f"         {p['id']:<14} done", flush=True)
     for p in targets["templates"]:
         blocks.append(evaluate(ctx, p, runs[p["id"]], "template", primary_raw, None if p["id"] == ctx["baseline_id"] else baseline_idx)); print(f"         {p['id']:<14} done", flush=True)
+    for p in (wf["portfolios"] if wf else []):
+        if p["kind"] == "black_litterman":
+            p["views_applied"] = [v for d in sorted(p["views_by_date"]) for v in p["views_by_date"][d]]
+        blocks.append(evaluate(ctx, p, runs[p["id"]], p["kind"], primary_raw, baseline_idx)); print(f"         {p['id']:<14} done (walk-forward)", flush=True)
     ranking = sorted([{"id": b["id"], "kind": b["kind"], "sharpe": b["headline"]["sharpe"], "cagr": b["headline"]["cagr"], "max_drawdown": b["headline"]["max_drawdown"],
                        "final_value_usd": b["headline"]["final_value_usd"], "excess_cagr": b["headline"]["excess_cagr"]} for b in blocks],
                      key=lambda r: -(r["sharpe"] if r["sharpe"] is not None else -9))
     meta = pq.read_metadata(RAW / "prices.parquet")
     repro = {"engine_config": {k: getattr(BC, k) for k in dir(BC) if k.isupper()}, "bt_version": btlib.__version__,
              "prices_file": {"rows": meta.num_rows, "last_date": str(ctx["panel"].index[-1].date())}, "targets_sha256": hashlib.sha256(open(a.targets, "rb").read()).hexdigest()[:16]}
-    out = BacktestResults(request_id=targets["request_id"], period={**spec["period"], "trading_days": int(len(ctx["panel"]))},
+    n_days = int(len(ctx["panel"]))
+    out = BacktestResults(request_id=targets["request_id"], period={**spec["period"], "trading_days": n_days, "window_days": n_days - 1, "annualized_reliable": n_days - 1 >= BC.TRADING_DAYS},
+                          mode="static_weights" + (" + walkforward" if wf else ""),
                           engine={"library": f"bt {btlib.__version__}", "prices": "adj_close (dividends reinvested)", "commission_bps": BC.COMMISSION_BPS,
                                   "fractional_shares": not BC.INTEGER_POSITIONS, "risk_free_rate": ctx["rf"],
                                   "contributions": f"monthly flow invested at target weights, first trading day on/after day {ctx['cap']['contribution_day']}",
@@ -218,7 +248,7 @@ def main():
     print(f"         {'id':<20}{'cagr':>8}{'vol':>8}{'sharpe':>8}{'mdd':>8}{'excess':>8}{'final$':>10}{'irr':>8}{'hit':>6}")
     for b in [*bench_blocks, *blocks]:
         h, mo = b["headline"], b["money"]
-        print(f"         {b['id']:<20}{h['cagr']:>8.3f}{b['metrics']['risk']['ann_vol']:>8.3f}{h['sharpe'] or 0:>8.2f}{h['max_drawdown']:>8.3f}{(h['excess_cagr'] or 0):>8.3f}{mo['final_value_usd']:>10,.0f}{mo['irr_annual'] or 0:>8.3f}{'' if h['view_hit_ratio'] is None else h['view_hit_ratio']:>6}")
+        print(f"         {b['id']:<20}{h['cagr']:>8.3f}{b['metrics']['risk']['ann_vol']:>8.3f}{h['sharpe'] or 0:>8.2f}{h['max_drawdown']:>8.3f}{(h['excess_cagr'] or 0):>8.3f}{mo['final_value_usd']:>10,.0f}{mo['irr_annual'] or 0:>8.3f}{'' if h['view_hit_ratio'] is None else h['view_hit_ratio']:>6}  period={h['period_return']:+.3f}")
 
 
 if __name__ == "__main__":

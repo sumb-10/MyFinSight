@@ -20,3 +20,9 @@ TEMPLATE_NAMES_KO = {
     "min_variance": ("최소분산", "포트폴리오 분산을 최소화하는 비중 (제약 포함 최적화)"),
 }
 MAX_ITER = 50                       # cap-and-redistribute iterations
+
+# news evidence (stage 9a) — team DB + optional web-search records
+NEWS_WINDOW_DAYS = 14               # evidence window before each construction date: [d - 14d, d)
+NEWS_PER_TICKER = 10                # headlines kept per ticker per window (deduplicated, newest first)
+MIN_NEWS_TICKERS = 3                # a window needs news for at least this many tickers to generate news views
+NEWS_LANGS = ("en",)

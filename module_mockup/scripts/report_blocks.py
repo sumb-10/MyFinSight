@@ -4,6 +4,9 @@ import math
 NAMES = {"equal_weight": "동일비중", "market_cap": "시가총액비중", "inverse_volatility": "역변동성비중", "min_variance": "최소분산"}
 
 
+STATUS_KO = {"pass": "통과", "warn": "주의", "fail": "미통과", "info": "참고"}
+LEVEL_KO = {"hard": "필수", "soft": "권장", "info": "참고"}
+
 def pf_label(p):
     return p.get("title_ko") and f"시나리오: {p['title_ko']}" or NAMES.get(p["id"], p.get("name_ko", p["id"]))
 
@@ -17,10 +20,16 @@ def kpis(R, chosen):
     p = next(x for x in R["backtest"]["portfolios"] if x["id"] == chosen)
     h, krw = p["headline"], R["money_krw"]["by_portfolio"][chosen]
     bench = R["backtest"]["benchmark"]["id"].replace("benchmark_", "")
+    short = not R["backtest"]["period"].get("annualized_reliable", True)
+    days = R["backtest"]["period"].get("window_days", R["backtest"]["period"]["trading_days"])
+    b = R["backtest"]["benchmark"]["metrics"]["return"]["total_return"]
+    ret_kpi = ({"id": "cagr", "label_ko": f"기간 수익률 ({days}거래일)", "value": h.get("period_return", p["metrics"]["return"]["total_return"]), "format": "pct", "note_ko": f"연 환산 {h['cagr']:+.1%} 는 1년 미만 창이라 참고만"}
+               if short else {"id": "cagr", "label_ko": "연평균 수익률 (CAGR)", "value": h["cagr"], "format": "pct", "note_ko": "백테스트 기간 기준 연 환산"})
+    ex_kpi = ({"id": "excess", "label_ko": f"비교지수({bench}) 대비 (기간)", "value": p["metrics"]["return"]["total_return"] - b, "format": "pp", "note_ko": "같은 기간 누적 수익률 차이"}
+              if short else {"id": "excess", "label_ko": f"비교지수({bench}) 대비", "value": h["excess_cagr"], "format": "pp", "note_ko": "같은 기간 CAGR 차이"})
     return [
         {"id": "final_value", "label_ko": "최종 평가금액", "value": h["final_value_usd"], "format": "usd", "note_ko": f"약 {krw['final_value_krw']:,.0f}원 · 투입 원금 {p['money']['net_invested_usd']:,.0f} USD"},
-        {"id": "cagr", "label_ko": "연평균 수익률 (CAGR)", "value": h["cagr"], "format": "pct", "note_ko": "백테스트 기간 기준 연 환산"},
-        {"id": "excess", "label_ko": f"비교지수({bench}) 대비", "value": h["excess_cagr"], "format": "pp", "note_ko": "같은 기간 CAGR 차이"},
+        ret_kpi, ex_kpi,
         {"id": "mdd", "label_ko": "최대낙폭 (MDD)", "value": h["max_drawdown"], "format": "pct", "note_ko": f"손실 감내 수준 {R['intent']['risk_params']['effective_max_drawdown']:.0%}"},
         {"id": "sharpe", "label_ko": "Sharpe 비율", "value": h["sharpe"], "format": "ratio", "note_ko": f"무위험수익률 {R['parameters']['backtest']['RISK_FREE_RATE']:.0%} 가정"},
         {"id": "view_hit", "label_ko": "시나리오 뷰 적중률", "value": h["view_hit_ratio"], "format": "pct", "note_ko": "Black-Litterman 뷰의 방향이 맞은 비율" if h["view_hit_ratio"] is not None else "기준 포트폴리오에는 뷰가 없습니다"},
@@ -162,7 +171,7 @@ def comparison_table(R):
         h, m = p["headline"], p["metrics"]
         rows.append({"name": pf_label(p) if p["kind"] not in ("benchmark", "alternative") else p["name_ko"], "kind": {"black_litterman": "시나리오", "template": "규칙", "benchmark": "비교지수", "alternative": "대안"}[p["kind"]],
                      "cagr": h["cagr"], "vol": m["risk"]["ann_vol"], "sharpe": h["sharpe"], "mdd": h["max_drawdown"], "excess": h["excess_cagr"],
-                     "final": h["final_value_usd"], "irr": p["money"]["irr_annual"], "status": {"pass": "통과", "warn": "주의", "fail": "미통과"}.get(status.get(p["id"]), "-")})
+                     "final": h["final_value_usd"], "irr": p["money"]["irr_annual"], "status": STATUS_KO.get(status.get(p["id"]), "-")})
     return table("포트폴리오 비교 (같은 기간·같은 적립)", [("name", "포트폴리오", "text"), ("kind", "종류", "text"), ("cagr", "CAGR", "pct"), ("vol", "변동성", "pct"), ("sharpe", "Sharpe", "ratio"),
                  ("mdd", "최대낙폭", "pct"), ("excess", "비교지수 대비", "pp"), ("final", "최종 평가금액", "usd"), ("irr", "적립 기준 연수익(XIRR)", "pct"), ("status", "검증", "text")], rows,
                  note="비교지수 대비는 사용자가 지정한 비교지수(" + R["portfolio"]["backtest_spec"]["benchmark"] + ") 기준입니다. 대안은 검증 단계가 만든 현금 혼합 변형입니다.")
@@ -188,7 +197,7 @@ def alternatives_cards(R):
     for a in alts:
         h = a["headline"]
         items.append({"title_ko": a["name_ko"], "text_ko": a["reason_ko"],
-                      "meta": [{"label_ko": "검증", "value": {"pass": "통과", "warn": "주의", "fail": "미통과"}[a["status"]] + (" (" + ", ".join(c["rule"] for c in a["checks"] if c["status"] != "pass") + ")" if a["status"] != "pass" else "")},
+                      "meta": [{"label_ko": "검증", "value": STATUS_KO[a["status"]] + (" (" + ", ".join(c["rule"] for c in a["checks"] if c["status"] != "pass") + ")" if a["status"] != "pass" else "")},
                                {"label_ko": "CAGR / 최대낙폭 / Sharpe", "value": f"{h['cagr']:+.1%} / {h['max_drawdown']:.1%} / {h['sharpe']:.2f}"},
                                {"label_ko": "최종 평가금액", "value": f"{h['final_value_usd']:,.0f} USD"}]})
     return {"type": "cards", "title_ko": "검토 가능한 대안 (검증 단계가 계산)", "items": items}
@@ -235,9 +244,9 @@ def view_table(R, chosen):
 
 def validation_tables(R, chosen):
     res = next(r for r in R["validation"]["results"] if r["id"] == chosen)
-    rows = [{"rule": c["rule"], "name": c["name_ko"], "level": "필수" if c["level"] == "hard" else "권장", "msg": c["message_ko"], "status": {"pass": "통과", "warn": "주의", "fail": "미통과"}[c["status"]]} for c in res["checks"]]
+    rows = [{"rule": c["rule"], "name": c["name_ko"], "level": LEVEL_KO.get(c["level"], c["level"]), "msg": c["message_ko"], "status": STATUS_KO[c["status"]]} for c in res["checks"]]
     t1 = table(f"검증 규칙 ({pf_label(next(x for x in R['backtest']['portfolios'] if x['id'] == chosen))})", [("rule", "규칙", "text"), ("name", "항목", "text"), ("level", "수준", "text"), ("msg", "측정 결과", "text"), ("status", "판정", "text")], rows)
-    rows2 = [{"name": pf_label(next(x for x in R["backtest"]["portfolios"] if x["id"] == r["id"])), "status": {"pass": "통과", "warn": "주의", "fail": "미통과"}[r["status"]],
+    rows2 = [{"name": pf_label(next(x for x in R["backtest"]["portfolios"] if x["id"] == r["id"])), "status": STATUS_KO[r["status"]],
               "fails": ", ".join(f"{c['rule']} {c['name_ko']}" for c in r["checks"] if c["status"] == "fail") or "-", "warns": ", ".join(f"{c['rule']} {c['name_ko']}" for c in r["checks"] if c["status"] == "warn") or "-"}
              for r in R["validation"]["results"]]
     t2 = table("전체 포트폴리오 검증 요약", [("name", "포트폴리오", "text"), ("status", "판정", "text"), ("fails", "미통과 항목", "text"), ("warns", "주의 항목", "text")], rows2)
@@ -274,6 +283,63 @@ def execution_table(R):
             {"stage": "리포트", "what": "결과 해석 + 서술 생성", "llm": "2회"}]
     note = f"누적 LLM 비용 약 {u['total_cost_usd']:.4f} USD ({u.get('model')})" if u.get("available") else None
     return table("실행 기록", [("stage", "단계", "text"), ("what", "처리 내용", "text"), ("llm", "분석 모델 호출", "text")], rows, note=note)
+
+
+def evidence_table(records, title="뉴스 근거"):
+    rows = [{"id": r["evidence_id"], "date": r["published_at"], "ticker": r["ticker"], "origin": "팀 DB" if r.get("origin", "db") == "db" else "웹 검색", "publisher": r.get("publisher") or r.get("source", ""),
+             "title": r["title"], "url": r["url"]} for r in records]
+    return table(title, [("id", "근거", "text"), ("date", "날짜", "text"), ("ticker", "종목", "text"), ("origin", "출처", "text"), ("publisher", "발행사", "text"), ("title", "제목", "text"), ("url", "링크", "url")], rows,
+                 note="팀 DB 뉴스는 수집된 헤드라인(본문 없음)이며, 웹 검색 근거는 DB에 해당 기간 기사가 없어 보충한 것입니다.")
+
+
+def walkforward_blocks(R):
+    wf = R["portfolio"].get("walkforward")
+    if not wf: return []
+    bt_by = {p["id"]: p for p in R["backtest"]["portfolios"]}
+    bl = next(p for p in wf["portfolios"] if p["kind"] == "black_litterman")
+    ev = (R["portfolio"].get("news_evidence") or {}).get("all_evidence", {})
+    rows = []
+    for d in wf["dates"]:
+        ns = wf["news_summary"][d]; views = bl["views_by_date"].get(d, [])
+        w = bl["weights_by_date"][d]; base = next(p for p in wf["portfolios"] if p["id"] == "wf_equal_weight")["weights_by_date"][d]
+        top = sorted(((t, w[t] - base[t]) for t in w), key=lambda x: -abs(x[1]))[:3]
+        rows.append({"date": d, "window": f"{ns['window'][0]} ~ {ns['window'][1]}", "articles": ns["n_articles"], "tickers": ns["n_tickers_with_news"], "origin": ", ".join(f"{k} {v}" for k, v in ns["origin_counts"].items() if v),
+                     "views": len(views), "delta": ", ".join(f"{t} {x:+.1%}" for t, x in top) if views else "기준 비중 유지 (뉴스 부족)"})
+    blocks = [table("리밸런싱 시점별 뉴스와 비중 변화", [("date", "리밸런싱일", "text"), ("window", "뉴스 창", "text"), ("articles", "기사 수", "int"), ("tickers", "뉴스 있는 종목", "int"), ("origin", "출처", "text"), ("views", "뷰 수", "int"), ("delta", "기준 대비 주요 변화", "text")], rows)]
+    cards = []
+    for d in wf["dates"]:
+        for v in bl["views_by_date"].get(d, []):
+            cards.append({"title_ko": f"{d} · {v['summary_ko'].split(' — ')[0]}", "text_ko": v.get("rationale_ko", ""), "meta": [{"label_ko": "근거", "value": ", ".join(v.get("evidence_ids", [])) or "-"}, {"label_ko": "신뢰도", "value": f"{v['confidence']:.2f}"}]})
+    if cards: blocks.append({"type": "cards", "title_ko": "뉴스로 만든 뷰 (리밸런싱 시점별)", "items": cards})
+    used = sorted({i for d in wf["dates"] for v in bl["views_by_date"].get(d, []) for i in v.get("evidence_ids", [])})
+    if used: blocks.append(evidence_table([ev[i] for i in used if i in ev], "뷰에 인용된 뉴스 근거 (walk-forward)"))
+    for pid in [bl["id"], "wf_equal_weight"]:
+        p = bt_by.get(pid)
+        if p:
+            h = p["headline"]
+            blocks.append({"type": "callout", "tone": "info", "title_ko": p["name_ko"], "text_ko": f"기간 수익률 {h['period_return']:+.2%}, 최대낙폭 {h['max_drawdown']:.2%}, 최종 평가금액 {h['final_value_usd']:,.0f} USD" + (f" · 뉴스 부족으로 기준 비중을 쓴 날짜: {', '.join(bl['fallback_dates'])}" if pid == bl["id"] and bl["fallback_dates"] else "")})
+    return blocks
+
+
+def forward_blocks(R):
+    f = R["portfolio"].get("forward")
+    if not f: return []
+    blocks = []
+    nw = f.get("news_window")
+    blocks.append({"type": "callout", "tone": "info", "title_ko": f"기준일 {f['as_of']}", "text_ko": (f"뉴스 창 {nw['window'][0]} ~ {nw['window'][1]}, 기사 {nw['n_articles']}건, 뉴스 있는 종목 {nw['n_tickers_with_news']}개. " if nw else "") +
+                   f"구성일 시장모형(δ={f['market_model']['delta']}, {f['market_model']['delta_source']})으로 규칙 4개와 뉴스 뷰 Black-Litterman {len(f['portfolios'])}개를 만들었습니다. 이 구성은 백테스트하지 않았습니다(이후 가격 데이터 없음)."})
+    for p in f["portfolios"]:
+        blocks.append({"type": "cards", "title_ko": p["name_ko"], "items": [{"title_ko": p["title_ko"], "text_ko": p["portfolio_view"], "meta": [
+            {"label_ko": "베이스라인 대비 주요 변화", "value": ", ".join(f"{t} {x:+.1%}" for t, x in sorted(p["delta_vs_baseline"].items(), key=lambda x: -abs(x[1]))[:4])},
+            {"label_ko": "예상 수익·변동성", "value": f"{p['ex_ante']['exp_return']:.1%} / {p['ex_ante']['vol']:.1%}"},
+            {"label_ko": "근거", "value": ", ".join(sorted({i for v in p["views_applied"] for i in v.get("evidence_ids", [])})) or "-"}]}]})
+        blocks.append(donut(f"{p['name_ko']} 배분 비중", p["weights"]))
+    chosen = f["portfolios"][0] if f["portfolios"] else f["templates"][0]
+    rows = [{"ticker": x["ticker"], "w": x["weight"], "usd": x["usd"], "krw": x["krw"]} for x in chosen["allocation"]]
+    blocks.append(table(f"배분 금액 ({chosen['name_ko']}, 투자금 {f['capital']['initial_amount_usd']:,.0f} USD, 환율 {f['capital']['fx_rate']:,.2f})", [("ticker", "티커", "text"), ("w", "비중", "pct1"), ("usd", "USD", "usd"), ("krw", "원화", "krw")], rows))
+    used = sorted({i for p in f["portfolios"] for v in p["views_applied"] for i in v.get("evidence_ids", [])})
+    if used: blocks.append(evidence_table([f["evidence"][i] for i in used if i in f["evidence"]], "뷰에 인용된 뉴스 근거 (현재 구성)"))
+    return blocks
 
 
 def limitations(R):

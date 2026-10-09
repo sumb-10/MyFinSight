@@ -381,11 +381,24 @@ class ViewsConfig(BaseModel):
     views_per_set: int = Field(ge=1, le=8, default=4)
 
 
+class WalkforwardConfig(BaseModel):
+    enabled: bool = False
+    view_sets: int = Field(ge=1, le=5, default=1)
+    views_per_set: int = Field(ge=1, le=8, default=4)
+
+
+class ForwardConfig(BaseModel):
+    enabled: bool = False
+    as_of: Optional[date] = None            # None -> price data end
+
+
 class BacktestRequest(BaseModel):
     request_id: str
     confirmation: Confirmation
     backtest: BacktestWindow
     views: ViewsConfig = ViewsConfig()
+    walkforward: WalkforwardConfig = WalkforwardConfig()
+    forward_construction: ForwardConfig = ForwardConfig()
 
 
 class Period(BaseModel):
@@ -513,7 +526,8 @@ class View(BaseModel):
     confidence: float = Field(gt=0, le=1)
     horizon_months: int = Field(ge=1, le=60, default=12)
     rationale_ko: str
-    evidence_type: str = "llm_placeholder"
+    evidence_type: str = "llm_placeholder"      # llm_placeholder | news | web_search
+    evidence_ids: list[str] = []
 
     @model_validator(mode="after")
     def _shape(self):
@@ -585,6 +599,10 @@ class Checkpoint(BaseModel):
 class PortfolioResult(BaseModel):
     id: str
     kind: Literal["black_litterman", "template", "benchmark", "alternative"]
+    mode: str = "static"
+    weights_by_date: Optional[dict] = None
+    views_by_date: Optional[dict] = None
+    fallback_dates: Optional[list] = None
     name_ko: str
     title_ko: Optional[str] = None
     portfolio_view: Optional[str] = None
@@ -638,8 +656,8 @@ class BacktestResults(BaseModel):
 class Check(BaseModel):
     rule: str
     name_ko: str
-    level: Literal["hard", "soft"]
-    status: Literal["pass", "warn", "fail"]
+    level: Literal["hard", "soft", "info"]
+    status: Literal["pass", "warn", "fail", "info"]
     value: Optional[float] = None
     threshold: Optional[float] = None
     message_ko: str
@@ -692,8 +710,10 @@ class ResultsBundle(BaseModel):
                 if len(v) != n:
                     raise ValueError(f"backtest.{p['id']}.series.{k} length {len(v)} != {n}")
         ids = {p["id"] for p in self.backtest["portfolios"]}
-        if ids != {t["id"] for t in self.portfolio["targets"]["portfolios"] + self.portfolio["targets"]["templates"]}:
-            raise ValueError("backtest portfolios != target portfolios")
+        static_ids = {t["id"] for t in self.portfolio["targets"]["portfolios"] + self.portfolio["targets"]["templates"]}
+        wf_ids = {p["id"] for p in (self.portfolio.get("walkforward") or {}).get("portfolios", [])}
+        if ids != static_ids | wf_ids:
+            raise ValueError(f"backtest portfolios {sorted(ids)} != targets {sorted(static_ids | wf_ids)}")
         need = ids | {self.backtest["benchmark"]["id"]} | {b["id"] for b in self.backtest.get("benchmarks", [])} | {a["id"] for a in self.validation.get("alternatives", [])}
         if set(self.money_krw["by_portfolio"]) != need:
             raise ValueError(f"money_krw.by_portfolio must cover {sorted(need)}")

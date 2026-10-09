@@ -33,10 +33,8 @@ def _save_prompt(stage, system, user, batch=None):
 
 
 def _api_key():
-    key = os.environ.get(C.API_KEY_ENV)
-    if not key and Path(C.ENV_FILE).exists():
-        kv = dict(re.findall(r'^\s*([A-Z0-9_]+)\s*=\s*"?([^"\n]*)"?\s*$', Path(C.ENV_FILE).read_text(), flags=re.M))
-        key = kv.get(C.API_KEY_ENV)
+    from common import load_dotenv
+    key = os.environ.get(C.API_KEY_ENV) or load_dotenv(C.ENV_FILE).get(C.API_KEY_ENV)
     if not key:
         raise RuntimeError(f"{C.API_KEY_ENV} not found in env or {C.ENV_FILE}")
     return key

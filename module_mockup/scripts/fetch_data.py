@@ -95,7 +95,7 @@ def main():
     print(f"      {len(uni)} unique tickers")
 
     print(f"[2/3] downloading {args.years}y daily prices for benchmarks")
-    bench = download_prices(["SPY", "QQQ", "^GSPC", "^NDX"], args.years)
+    bench = download_prices(["SPY", "QQQ", "XLV", "IWM", "^GSPC", "^NDX"], args.years)
     bench.to_parquet(RAW / "benchmarks.parquet", index=False)
 
     print(f"[3/3] downloading {args.years}y daily prices for constituents")

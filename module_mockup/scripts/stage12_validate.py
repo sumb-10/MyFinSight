@@ -14,19 +14,22 @@ import backtest_config as BC
 import backtest_metrics as M
 from schemas import Validation
 
-STATUS_KO = {"pass": "통과", "warn": "주의", "fail": "미통과"}
+STATUS_KO = {"pass": "통과", "warn": "주의", "fail": "미통과", "info": "참고"}
 
 
 def check(rule, name, level, ok, value, threshold, msg):
-    return {"rule": rule, "name_ko": name, "level": level, "status": "pass" if ok else ("fail" if level == "hard" else "warn"),
-            "value": value, "threshold": threshold, "message_ko": msg}
+    status = "info" if level == "info" else ("pass" if ok else ("fail" if level == "hard" else "warn"))
+    return {"rule": rule, "name_ko": name, "level": level, "status": status, "value": value, "threshold": threshold, "message_ko": msg}
 
 
-def evaluate_checks(p, crit, n_days, expected_rb, sector_of):
+def evaluate_checks(p, crit, n_days, expected_rb, sector_of, short_window=False):
+    """short_window: annualized-return / volatility rules become informational (level 'info')."""
     m, h = p["metrics"], p["headline"]; cks = []
+    soft = "info" if short_window else "soft"
     mdd = abs(m["risk"]["max_drawdown"])
     cks.append(check("R1", "최대낙폭", "hard", mdd <= crit["max_drawdown"], mdd, crit["max_drawdown"], f"최대낙폭 {mdd:.1%} {'≤' if mdd <= crit['max_drawdown'] else '>'} 허용 {crit['max_drawdown']:.0%}"))
-    cks.append(check("R2", "목표수익", "soft", m["return"]["cagr"] >= crit["target_annual_return"], m["return"]["cagr"], crit["target_annual_return"], f"CAGR {m['return']['cagr']:.1%} vs 목표 {crit['target_annual_return']:.0%}"))
+    cks.append(check("R2", "목표수익", soft, m["return"]["cagr"] >= crit["target_annual_return"], m["return"]["cagr"], crit["target_annual_return"],
+                     f"CAGR {m['return']['cagr']:.1%} vs 목표 {crit['target_annual_return']:.0%}" + (f" (기간 수익률 {m['return']['total_return']:+.1%}; 창이 1년 미만이라 참고만)" if short_window else "")))
     ex = m["vs_benchmark"]["excess_cagr"] or 0.0
     cks.append(check("R3", "비교지수 대비", "soft", ex > 0, ex, 0.0, f"{crit['benchmark']} 대비 초과 CAGR {ex:+.1%}"))
     rb_cps = [cp for cp in p["checkpoints"] if cp["kind"] == "rebalance"] or p["checkpoints"][:1]
@@ -46,7 +49,7 @@ def evaluate_checks(p, crit, n_days, expected_rb, sector_of):
     n_hold = sum(1 for w in p["target_weights"].values() if w > 1e-6)
     cks.append(check("R6", "종목 수", "hard", n_hold >= crit["min_holdings"], n_hold, crit["min_holdings"], f"보유 종목 {n_hold}개 vs 최소 {crit['min_holdings']}개"))
     vol = m["risk"]["ann_vol"]
-    cks.append(check("R7", "변동성 적합", "soft", vol <= crit["vol_band"], vol, crit["vol_band"], f"연변동성 {vol:.1%} vs 성향({crit['volatility_preference']}) 상한 {crit['vol_band']:.0%}"))
+    cks.append(check("R7", "변동성 적합", soft, vol <= crit["vol_band"], vol, crit["vol_band"], f"연변동성 {vol:.1%} vs 성향({crit['volatility_preference']}) 상한 {crit['vol_band']:.0%}" + (" (창이 1년 미만이라 참고만)" if short_window else "")))
     ok8 = all(len(v) == n_days for v in p["series"].values()) and m["trading"]["n_rebalances"] == expected_rb
     cks.append(check("R8", "데이터 무결성", "hard", ok8, float(len(p["series"]["index"])), float(n_days), f"시계열 {len(p['series']['index'])}일, 리밸런싱 {m['trading']['n_rebalances']}회"))
     n_fail = sum(c["status"] == "fail" for c in cks); n_warn = sum(c["status"] == "warn" for c in cks)
@@ -85,7 +88,7 @@ def build_alternative(res, targets, chosen, crit, n_days, expected_rb, sector_of
     alt = {"id": f"cash_blend_{chosen}", "name_ko": f"현금 혼합안: {p.get('name_ko', chosen)} × {1 - c:.0%} + 현금 {c:.0%}", "weights": weights}
     raw = S11.run_raw(ctx, alt["id"], weights)
     block = S11.evaluate(ctx, alt, raw, "alternative", bench_raw, base_raw["index"])
-    cks, status, n_fail, n_warn = evaluate_checks(block, crit, n_days, expected_rb, sector_of)
+    cks, status, n_fail, n_warn = evaluate_checks(block, crit, n_days, expected_rb, sector_of, not res["period"].get("annualized_reliable", True))
     block.update({"cash_ratio": c, "base_id": chosen, "checks": cks, "status": status, "n_fail": n_fail, "n_warn": n_warn,
                   "reason_ko": f"{p.get('name_ko', chosen)}의 과거 최대낙폭이 허용 {crit['max_drawdown']:.0%}를 넘어, 같은 종목 비중을 {1 - c:.0%}로 줄이고 {c:.0%}를 현금(수익 0 가정)으로 두었을 때의 결과입니다. "
                                f"실제 백테스트 최대낙폭 {block['headline']['max_drawdown']:.1%}, CAGR {block['headline']['cagr']:.1%}."})
@@ -109,8 +112,10 @@ def main():
     n_days = res["period"]["trading_days"]; expected_rb = res["portfolios"][0]["metrics"]["trading"]["n_rebalances"]
     desc = load_descriptor(); sector_of = lambda t: desc["companies"][t]["gics"]["sector"]["name"] if t in desc["companies"] else t
     results, table, warnings = [], [], []
+    short_window = not res["period"].get("annualized_reliable", True)
+    if short_window: warnings.append(f"window of {n_days} trading days < 252: R2/R7 are informational only (annualized figures unreliable)")
     for p in res["portfolios"]:
-        cks, status, n_fail, n_warn = evaluate_checks(p, crit, n_days, expected_rb, sector_of)
+        cks, status, n_fail, n_warn = evaluate_checks(p, crit, n_days, expected_rb, sector_of, short_window)
         results.append({"id": p["id"], "kind": p["kind"], "status": status, "checks": cks, "n_fail": n_fail, "n_warn": n_warn})
         table.append(row_of(p, status, {"n_fail": n_fail, "n_warn": n_warn}))
     for b in res.get("benchmarks", [res["benchmark"]]):

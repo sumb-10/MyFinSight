@@ -67,13 +67,15 @@ class ContributeOnDates(bt.Algo):
     """Inject `amount` as a capital flow on the given dates and invest it immediately at the target
     weights (existing holdings are not rebalanced). Flows do not affect the TWR price index."""
     def __init__(self, dates, amount, weights):
+        """weights: dict (static) or callable(now: Timestamp) -> dict (date-varying targets)."""
         super().__init__()
-        self.dates, self.amount, self.weights = set(pd.Timestamp(d) for d in dates), float(amount), dict(weights)
+        self.dates, self.amount, self.weights = set(pd.Timestamp(d) for d in dates), float(amount), weights
 
     def __call__(self, target):
         if target.now in self.dates and self.amount > 0:
             target.adjust(self.amount, flow=True)
-            for t, w in self.weights.items():
+            w_now = self.weights(target.now) if callable(self.weights) else self.weights
+            for t, w in w_now.items():
                 if t in target.children and w > 0:
                     target.allocate(self.amount * w, child=t)
         return True
@@ -87,6 +89,25 @@ def run_static_portfolio(pid, weights: dict, data: pd.DataFrame, initial_capital
     b = bt.Backtest(strat, data[list(weights)].copy(), name=pid, initial_capital=float(initial_capital),
                     commissions=lambda q, p: abs(q) * p * BC.COMMISSION_BPS / 1e4,
                     integer_positions=BC.INTEGER_POSITIONS, progress_bar=False)
+    res = bt.run(b)
+    return b, res
+
+
+def run_dynamic_portfolio(pid, weights_by_date: dict, data: pd.DataFrame, initial_capital, contrib_dates, contrib_amount):
+    """Targets that change on their own dates (walk-forward). weights_by_date: {date-like: {ticker: w}}."""
+    wdf = pd.DataFrame({pd.Timestamp(d): w for d, w in weights_by_date.items()}).T.sort_index().fillna(0.0)
+    cols = list(wdf.columns)
+    dates = list(wdf.index)
+
+    def latest(now):
+        past = wdf[wdf.index <= now]
+        return (past.iloc[-1] if len(past) else wdf.iloc[0]).to_dict()
+
+    algos = [ContributeOnDates(contrib_dates, contrib_amount, latest), bt.algos.RunOnDate(*dates), bt.algos.SelectAll(),
+             bt.algos.WeighTarget(wdf), bt.algos.Rebalance()]
+    strat = bt.Strategy(pid, algos)
+    b = bt.Backtest(strat, data[cols].copy(), name=pid, initial_capital=float(initial_capital),
+                    commissions=lambda q, p: abs(q) * p * BC.COMMISSION_BPS / 1e4, integer_positions=BC.INTEGER_POSITIONS, progress_bar=False)
     res = bt.run(b)
     return b, res
 

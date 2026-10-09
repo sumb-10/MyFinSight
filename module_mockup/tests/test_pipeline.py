@@ -82,6 +82,30 @@ def test_backtest_invariants():
         assert abs((m["return"]["cagr"] - r["engine"]["risk_free_rate"]) / m["risk"]["ann_vol"] - m["risk_adjusted"]["sharpe"]) < 1e-5, p["id"]
 
 
+def test_news_stages_if_present():
+    p = OUT / "09a_news_evidence.json"
+    if not p.exists():
+        pytest.skip("no news stage output")
+    ev = json.loads(p.read_text(encoding="utf-8"))
+    for d, w in ev["windows"].items():
+        for t, ids in w["tickers"].items():
+            for i in ids:
+                r = ev["all_evidence"][i]
+                assert r["url"] and r["published_at"] and r["origin"] in ("db", "web_search"), i
+                assert w["window"][0] <= r["published_at"] < w["window"][1], (i, r["published_at"], w["window"])
+    wf = OUT / "10w_target_paths.json"
+    if wf.exists():
+        W = json.loads(wf.read_text(encoding="utf-8")); bl = next(x for x in W["portfolios"] if x["kind"] == "black_litterman")
+        base = next(x for x in W["portfolios"] if x["id"] == "wf_equal_weight")
+        for d in W["dates"]:
+            w, b = bl["weights_by_date"][d], base["weights_by_date"][d]
+            assert abs(sum(w.values()) - 1) < 1e-4 and min(w.values()) >= 0.01 - 1e-9, d
+            for v in bl["views_by_date"].get(d, []):
+                assert v.get("evidence_ids"), (d, "news view without evidence")
+            if d in bl["fallback_dates"]:
+                assert w == b, (d, "fallback must equal baseline")
+
+
 def test_validation_and_alternative():
     v, r = load("12_validation.json"), load("11_backtest_results.json")
     ids = {p["id"] for p in r["portfolios"]}
@@ -99,11 +123,12 @@ def test_results_bundle_and_report():
     for sid, s in doc["datasets"]["series"].items():
         for k in ("index", "value_usd", "drawdown"):
             if k in s: assert len(s[k]) == n, sid
-    assert len(doc["sections"]) == 8 and len(doc["kpis"]) == 6
+    assert len(doc["sections"]) >= 8 and len(doc["kpis"]) == 6
     types = {b["type"] for s in doc["sections"] for b in s["blocks"]}
     assert {"paragraphs", "kpis", "table", "donut", "line", "area", "bar", "funnel", "callout", "cards", "checkpoints", "glossary"} <= types
     chosen = doc["header"]["chosen_portfolio_id"]
     p = next(x for x in R["backtest"]["portfolios"] if x["id"] == chosen)
     kpi = {k["id"]: k["value"] for k in doc["kpis"]}
-    assert kpi["cagr"] == p["headline"]["cagr"] and kpi["final_value"] == p["money"]["final_value_usd"]
+    expected_ret = p["headline"]["cagr"] if R["backtest"]["period"].get("annualized_reliable", True) else p["headline"].get("period_return", p["metrics"]["return"]["total_return"])
+    assert kpi["cagr"] == expected_ret and kpi["final_value"] == p["money"]["final_value_usd"]
     assert not any("banned word" in w for w in doc["warnings"])

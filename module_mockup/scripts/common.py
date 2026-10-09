@@ -49,6 +49,21 @@ def render_template(template: str, **vars_) -> str:
     return template
 
 
+def load_dotenv(path=None) -> dict:
+    """Parse KEY=VALUE lines of a .env file (quotes and trailing ' # comments' stripped). Env vars override."""
+    p = Path(path) if path else ROOT.parent / ".env"
+    kv = {}
+    if p.exists():
+        for line in p.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line: continue
+            k, v = line.split("=", 1); k = k.strip(); v = v.strip()
+            if v[:1] in ("'", '"') and v[-1:] == v[:1]: v = v[1:-1]
+            else: v = re.split(r"\s+#", v, 1)[0].strip()
+            kv[k] = v
+    return kv
+
+
 def stage_meta(request_id: str, stage: str, **extra) -> dict:
     import datetime as _dt
     return {"request_id": request_id, "stage": stage,

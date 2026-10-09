@@ -50,6 +50,9 @@ def main():
     spec, mm, base = load_json(OUTPUT / "07_backtest_spec.json"), load_json(OUTPUT / "08_market_model.json"), load_json(OUTPUT / "08_baseline_portfolios.json")
     views, targets = load_json(OUTPUT / "09_views.json"), load_json(OUTPUT / "10_target_portfolios.json")
     bt, val = load_json(OUTPUT / "11_backtest_results.json"), load_json(OUTPUT / "12_validation.json")
+    news_ev, wf, fwd = opt(OUTPUT / "09a_news_evidence.json"), opt(OUTPUT / "10w_target_paths.json"), opt(OUTPUT / "10f_forward_portfolios.json")
+    same = lambda x: x if x and x.get("request_id") == req["request_id"] else None
+    news_ev, wf, fwd = same(news_ev), same(wf), same(fwd)
     desc = load_descriptor()
     warnings = []
     for name, obj in [("01", req), ("02", intent), ("03", cand), ("04", tag), ("05", sel), ("07", spec), ("09", views), ("10", targets), ("11", bt), ("12", val)]:
@@ -91,7 +94,8 @@ def main():
     # ── portfolio block (market model without the full covariance) ──
     mm_small = {k: mm[k] for k in ["as_of", "lookback", "tickers", "ann_vol", "cap_weights", "delta", "tau", "baseline_id", "implied_returns", "shrinkage", "notes"]}
     portfolio = {"backtest_spec": {k: spec[k] for k in ["period", "capital", "rebalance_rule", "benchmark"]}, "market_model": mm_small,
-                 "baselines": base, "views": views, "targets": targets}
+                 "baselines": base, "views": views, "targets": targets,
+                 "news_evidence": news_ev, "walkforward": wf, "forward": fwd}
 
     # ── KRW conversion ──
     fx = req["derived"]["fx_rate"]                       # request-date FX (what the user saw when asking)
@@ -111,11 +115,14 @@ def main():
                   "backtest": {k: getattr(BC, k) for k in ["COMMISSION_BPS", "INTEGER_POSITIONS", "RISK_FREE_RATE", "TRADING_DAYS", "DRIFT_TOLERANCE", "CHECKPOINT_FREQ", "VOL_BANDS"]},
                   "llm": {"model": LC.MODEL, "provider": LC.PROVIDER, "reasoning_effort": LC.REASONING_EFFORT}}
 
+    for name, obj in [("09a", news_ev), ("10w", wf), ("10f", fwd)]:
+        for w in (obj or {}).get("warnings", []) or []:
+            warnings.append({"stage": name, "message": w})
     bundle = ResultsBundle(request_id=req["request_id"], generated_at=dt.datetime.now().isoformat(timespec="seconds"), pipeline_version=PIPELINE_VERSION,
                            request=req, intent=intent, selection=selection, portfolio=portfolio, backtest=bt, validation=val, money_krw=money_krw,
                            llm_usage=llm_usage_summary(), sources=SOURCES, parameters=parameters, warnings=warnings)
     path = dump_json(bundle.model_dump(mode="json"), a.out)
-    print(f"[stage13] ok -> {path} ({path.stat().st_size / 1e6:.2f} MB)\n         selection table={len(table)} funnel={[f['count'] for f in funnel]} "
+    print(f"[stage13] ok -> {path} ({path.stat().st_size / 1e6:.2f} MB) news={'yes' if news_ev else 'no'} walkforward={'yes' if wf else 'no'} forward={'yes' if fwd else 'no'}\n         selection table={len(table)} funnel={[f['count'] for f in funnel]} "
           f"portfolios={len(bt['portfolios'])} series={len(bt['series_dates'])} validation={val['summary']} warnings={len(warnings)} fx={money_krw['direction']}")
 
 

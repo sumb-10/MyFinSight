@@ -54,6 +54,9 @@ def main():
     # ── window & calendar ──
     d0, d1 = dt.date.fromisoformat(req["derived"]["price_data_start"]), dt.date.fromisoformat(req["derived"]["price_data_end"])
     bw = bt_req.backtest
+    if bw.end_date > d1:
+        warnings.append(f"backtest end_date {bw.end_date} clamped to price data end {d1}")
+        bw = bw.model_copy(update={"end_date": d1})
     if not (d0 <= bw.start_date < bw.end_date <= d1):
         raise SystemExit(f"[stage7] backtest window {bw.start_date}..{bw.end_date} outside data {d0}..{d1}")
     bench = bw.benchmark or req["risk"]["benchmark"]

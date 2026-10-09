@@ -36,6 +36,15 @@ def facts_for_interpret(R, chosen):
             "benchmark": {"label": b["name_ko"], "headline": b["headline"], "yearly_returns": b["yearly_returns"], "money": b["money"]},
             "other_benchmarks": [{"label": x["name_ko"], "headline": x["headline"]} for x in bt.get("benchmarks", []) if x["id"] != b["id"]],
             "alternatives": [{"id": x["id"], "label": x["name_ko"], "cash_ratio": x["cash_ratio"], "headline": x["headline"], "status": x["status"], "reason_ko": x["reason_ko"]} for x in val.get("alternatives", [])],
+            "window": {"trading_days": bt["period"]["trading_days"], "annualized_reliable": bt["period"].get("annualized_reliable", True),
+                       "note": "창이 1년 미만이면 CAGR·Sharpe·XIRR 같은 연환산 값은 참고용이며 기간 수익률(total_return)로 말해야 함"},
+            "walkforward": ({"dates": R["portfolio"]["walkforward"]["dates"], "news_summary": R["portfolio"]["walkforward"]["news_summary"],
+                             "fallback_dates": next(p for p in R["portfolio"]["walkforward"]["portfolios"] if p["kind"] == "black_litterman")["fallback_dates"],
+                             "results": [{"id": x["id"], "label": x["name_ko"], "headline": x["headline"]} for x in bt["portfolios"] if x.get("mode") == "walkforward"]}
+                            if R["portfolio"].get("walkforward") else None),
+            "forward": ({"as_of": R["portfolio"]["forward"]["as_of"], "news_window": R["portfolio"]["forward"].get("news_window"),
+                         "portfolios": [{"id": x["id"], "title": x["title_ko"], "views": [v["summary_ko"] for v in x["views_applied"]], "evidence_ids": sorted({i for v in x["views_applied"] for i in v.get("evidence_ids", [])})} for x in R["portfolio"]["forward"]["portfolios"]]}
+                        if R["portfolio"].get("forward") else None),
             "selection_infeasibility": R["selection"]["backtest_as_of"].get("infeasibility"),
             "sector_overflow": R["selection"]["backtest_as_of"].get("sector_overflow"),
             "baseline_equal_weight": {"headline": base["headline"], "money": base["money"]},
@@ -61,7 +70,13 @@ def facts_for_narrate(R, chosen, interp):
                              "scenarios": [{"title": s["title_ko"], "narrative": s["portfolio_view"].split("\n")[0], "views": [v["summary_ko"] for v in s["views_applied"]],
                                             "top_delta": sorted(s["delta_vs_baseline"].items(), key=lambda x: -abs(x[1]))[:3]} for s in R["portfolio"]["targets"]["portfolios"]],
                              "chosen": {"id": chosen, "label": B.pf_label(p), "allocation": B.allocation_table(R, chosen)["rows"]}},
-            "interpretation": interp, "limitations": B.limitations(R),
+            "interpretation": {**interp, "window": R["backtest"]["period"]},
+            "forward": ({"as_of": R["portfolio"]["forward"]["as_of"], "news_window": R["portfolio"]["forward"].get("news_window"),
+                         "portfolios": [{"id": x["id"], "title": x["title_ko"], "narrative": x["portfolio_view"].split("\n")[0], "views": [v["summary_ko"] for v in x["views_applied"]],
+                                         "evidence_ids": sorted({i for v in x["views_applied"] for i in v.get("evidence_ids", [])}), "top_delta": sorted(x["delta_vs_baseline"].items(), key=lambda y: -abs(y[1]))[:3]} for x in R["portfolio"]["forward"]["portfolios"]],
+                         "evidence": {i: {"date": e["published_at"], "origin": e.get("origin", "db"), "publisher": e.get("publisher"), "title": e["title"]} for i, e in R["portfolio"]["forward"]["evidence"].items()}}
+                        if R["portfolio"].get("forward") else None),
+            "limitations": B.limitations(R),
             "parameters": {r["k"]: r["v"] for r in B.parameters_table(R)["rows"]}}
 
 
@@ -133,7 +148,9 @@ def main():
             if src.exists(): shutil.copy(src, STUBS / f"{stage}.example.json")
         warnings.append("stubs/14a,14b updated from this API run")
     known = set(); known_numbers({k: v for k, v in R.items() if k != "backtest"}, known); known_numbers({k: v for k, v in R["backtest"].items() if k != "series_dates"}, known)
-    for key in ["performance_ko", "risk_fit_ko", "validation_ko", "view_review_ko", "next_actions_ko"]: warnings += audit(interp[key], known, f"14a.{key}")
+    interp.setdefault("news_ko", []); narr.setdefault("forward_ko", [])
+    for key in ["performance_ko", "risk_fit_ko", "validation_ko", "view_review_ko", "next_actions_ko", "news_ko"]: warnings += audit(interp[key], known, f"14a.{key}")
+    warnings += audit(narr["forward_ko"], known, "14b.forward_ko")
     for key in ["overview_ko", "request_interpretation_ko", "selection_ko", "construction_ko", "assumptions_ko", "reconsideration_ko"]: warnings += audit(narr[key], known, f"14b.{key}")
 
     # ── datasets ──
@@ -182,8 +199,10 @@ def main():
             {"type": "area", "title_ko": "고점 대비 낙폭", "dataset": "drawdown", "series_ids": default_on, "default_on": default_on, "y_format": "pct"},
             {"type": "paragraphs", "items": interp["risk_fit_ko"]}, B.comparison_table(R), B.yearly_table(R, chosen), B.monthly_table(R, chosen), B.contribution_bar(R, chosen),
             B.checkpoints_block(R, chosen)] + ([v_tab, {"type": "paragraphs", "items": interp["view_review_ko"]}] if v_tab and interp["view_review_ko"] else [])},
+    ] + ([{"id": "walkforward", "title_ko": "뉴스가 바꾼 것 (2주마다 다시 본 뷰)", "blocks": [{"type": "paragraphs", "items": interp.get("news_ko") or ["리밸런싱 시점마다 직전 2주 뉴스 헤드라인으로 뷰를 새로 만들어 기준 비중을 조정한 결과입니다."]}] + B.walkforward_blocks(R)}] if R["portfolio"].get("walkforward") else []) + [
         {"id": "validation", "title_ko": "검증 결과와 추천", "blocks": [{"type": "paragraphs", "items": interp["validation_ko"]}, t1, t2, rec_card] + ([alt_block] if alt_block else []) + ([inf_block] if inf_block else []) + [
                                                              {"type": "cards", "title_ko": "다음에 검토할 수 있는 선택지", "items": [{"title_ko": f"선택지 {i + 1}", "text_ko": s, "meta": []} for i, s in enumerate(interp["next_actions_ko"])]}]},
+    ] + ([{"id": "forward", "title_ko": f"지금 구성한다면 ({R['portfolio']['forward']['as_of']} 기준)", "blocks": [{"type": "paragraphs", "items": narr.get("forward_ko") or ["가장 최근 가격과 뉴스로 다시 만든 구성입니다. 백테스트 결과가 아니라 현재 시점의 제안입니다."]}] + B.forward_blocks(R)}] if R["portfolio"].get("forward") else []) + [
         {"id": "assumptions", "title_ko": "전제와 한계", "blocks": [{"type": "paragraphs", "items": narr["assumptions_ko"] + narr["reconsideration_ko"]},
                                                         {"type": "cards", "title_ko": "확인한 한계", "items": [{"title_ko": f"한계 {i + 1}", "text_ko": s, "meta": []} for i, s in enumerate(B.limitations(R))]}]},
         {"id": "references", "title_ko": "참고자료와 분석 조건", "blocks": [B.sources_table(R), B.parameters_table(R), B.execution_table(R), {"type": "glossary", "items": narr["glossary"]}]},
