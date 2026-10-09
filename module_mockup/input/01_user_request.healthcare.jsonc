@@ -1,0 +1,131 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// MyFinSight 파이프라인 최초 입력 : 사용자 프로필 + 투자조건 + 자연어 아이디어
+//
+// - 이 파일은 JSONC(주석 허용 JSON)이며, 파이프라인은 scripts/common.py 의
+//   load_jsonc() 로 주석을 제거한 뒤 읽는다.
+// - [HARD] 표시 = 규칙 기반(Pydantic)으로 기계 검증하며 절대 위반 불가
+// - [SOFT] 표시 = LLM 이 해석하여 전략에 반영하는 값
+// - 금액 단위는 capital.currency 기준, 비율은 0~1 소수
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  // 요청 식별자. 이후 모든 단계의 output 에 그대로 전파되어 추적에 사용
+  "request_id": "req_2026-10-10_hc1",
+  // 요청 생성 시각 (ISO 8601, KST)
+  "created_at": "2026-10-10T00:30:00+09:00",
+
+  // ── 1. 투자자 프로필 ─────────────────────────────────────────────────────
+  // 종목 선정에는 직접 쓰이지 않지만, 설명 수준 조절과 위험 가드레일 보정에 사용
+  "profile": {
+    // 서비스 내 사용자 식별자
+    "user_id": "user_hojin",
+    // 연령대 : "20s" | "30s" | "40s" | "50s" | "60s+"  [SOFT] 투자 기간·위험 수용력 참고
+    "age_band": "20s",
+    // 투자 경험 : "none" | "beginner" | "intermediate" | "advanced"  [SOFT] 리포트 설명 난이도
+    "investment_experience": "beginner",
+    // 금융 지식 수준 : "basic" | "intermediate" | "expert"  [SOFT] 용어 설명 여부
+    "financial_knowledge": "basic",
+    // 총 금융자산 중 이번 투자금이 차지하는 비율. 높을수록 보수적으로 보정  [SOFT]
+    "investable_ratio_of_assets": 0.3
+  },
+
+  // ── 2. 투자 자금 ─────────────────────────────────────────────────────────
+  // 종목·비중 → 실제 배분금액 계산, 백테스트 초기자본·정기납입에 사용
+  "capital": {
+    // 최초 투자금 (currency 단위)  [HARD]
+    "initial_amount": 10000000,
+    // 사용자가 입력한 금액의 통화 : "KRW" | "USD"
+    "currency": "KRW",
+    // 실제 종목이 거래되는 통화. 미국 주식이므로 USD. 환산 시 start_date 환율 적용
+    "trading_currency": "USD",
+    // 월 적립액. 0 이면 거치식. 백테스트에 정기납입으로 반영  [HARD]
+    "monthly_contribution": 500000,
+    // 매월 적립일 (1~28)
+    "contribution_day": 25
+  },
+
+  // ── 3. 투자 기간 ─────────────────────────────────────────────────────────
+  "horizon": {
+    // 포트폴리오 구성 기준일 (as-of). 스크린·재무지표는 이 날짜 이전 정보만 사용,
+    // 백테스트는 이 날짜부터 시작  [HARD]
+    "start_date": "2026-10-08",
+    // 목표 보유 기간(년). 리밸런싱 횟수·장기/단기 지표 선택에 영향  [SOFT]
+    "target_years": 3,
+    // 투자 목적 : "wealth_growth" | "income" | "capital_preservation" | "retirement"  [SOFT]
+    "purpose": "wealth_growth"
+  },
+
+  // ── 4. 위험 성향 ─────────────────────────────────────────────────────────
+  // 최적화 목적함수와 검증 모듈의 합격 기준이 여기서 결정됨
+  "risk": {
+    // 위험 성향 등급 : "conservative" | "moderate" | "aggressive"  [SOFT]
+    "risk_tolerance": "moderate",
+    // 허용 가능한 최대 낙폭(MDD). 백테스트 MDD 가 이 값을 넘으면 검증 실패  [HARD]
+    "max_drawdown_tolerance": 0.25,
+    // 큰 손실 발생 시 예상 행동 : "sell" | "hold" | "buy_more"
+    // "sell" 이면 실제 허용 MDD 를 더 낮게 보정  [SOFT]
+    "loss_reaction": "hold",
+    // 목표 연환산 수익률. 검증 모듈에서 백테스트 CAGR 과 비교  [SOFT]
+    "target_annual_return": 0.12,
+    // 성과 비교 기준 지수/ETF 티커. 리포트의 모든 차트에 함께 표시
+    "benchmark": "SPY"
+  },
+
+  // ── 5. 하드 제약 ─────────────────────────────────────────────────────────
+  // 전부 [HARD]. LLM 해석 없이 Pydantic 규칙으로 검증하며 위반 시 재실행
+  "constraints": {
+    // 종목 선택 범위. 현재 지원 : "SP500", "NASDAQ100"
+    "universe": ["SP500", "NASDAQ100"],
+    // 허용 자산 유형 : "stock" | "etf"
+    "asset_types": ["stock", "etf"],
+    // 포트폴리오 종목 수. target = 사용자가 원하는 종목 수,
+    // min~max = 테마 후보가 부족하거나 넘칠 때 허용하는 범위 (target 은 이 범위 안이어야 함)
+    "num_holdings": { "target": 15, "min": 10, "max": 20 },
+    // 종목당 최대 비중 (0~1)
+    "max_weight_per_stock": 0.15,
+    // 섹터당 최대 비중 (0~1). universe.json 의 sector 기준
+    "max_weight_per_sector": 1.0,
+    // 최소 현금 보유 비율 (0~1)
+    "min_cash_ratio": 0.0,
+    // 절대 포함하지 않을 종목 티커
+    "exclude_tickers": [],
+    // 절대 포함하지 않을 섹터 (GICS 섹터명)
+    "exclude_sectors": [],
+    // 절대 포함하지 않을 테마. 정량 분류가 없으므로 LLM 태깅 결과로 필터
+    "exclude_themes": ["tobacco", "gambling"],
+    // 반드시 포함할 종목 티커 (비중은 최적화가 결정)
+    "must_include_tickers": [],
+    // 리밸런싱 주기 = count × unit (예: 1×quarter = 분기마다, 2×month = 두 달마다)
+    //   unit : "2w" (2주) | "1m" (한 달) | "1q" (분기) | "6m" (반기) | "1y" (일 년)
+    //   count : 1 이상의 정수. 리밸런싱을 하지 않으려면 count 를 0 으로
+    "rebalance": { "count": 1, "unit": "2w" },
+    // 레버리지 ETF·신용 허용 여부
+    "allow_leverage": false,
+    // 공매도 허용 여부
+    "allow_short": false,
+    // 최소 시가총액 (USD). 소형주 제외용
+    "min_market_cap_usd": 20000000000,
+    // 최소 일평균 거래대금 (USD). 유동성 필터
+    "min_avg_daily_volume_usd": 50000000
+  },
+
+  // ── 6. 전략 템플릿 선택 ───────────────────────────────────────────────────
+  // 종목 선정 → 베이스라인 가중 → 뉴스 틸트 3단계 구조의 분기 스위치
+  "strategy_preference": {
+    // 종목 스크린 템플릿 : "low_per" | "momentum" | "low_volatility" | "high_dividend" | "quality"
+    // 펀더멘털 템플릿(low_per, quality)은 재무 데이터 한계로 백테스트 최근 4년만 가능
+    "template": "momentum",
+    // 베이스라인 비중 규칙 : "equal_weight" | "market_cap" | "inverse_volatility" | "min_variance"
+    "baseline_weighting": "equal_weight",
+    // true 면 베이스라인 위에 Black-Litterman 으로 뉴스·LLM 뷰를 반영해 비중 조정
+    "use_news_tilt": true
+  },
+
+  // ── 7. 자연어 아이디어 ───────────────────────────────────────────────────
+  // 유일한 비정형 입력. LLM 이 테마 추출 → 종목 태깅 → 뷰(view) 생성에 사용
+  "natural_language": {
+    // 사용자가 직접 입력한 투자 아이디어 원문
+    "idea": "헬스케어 쪽에 투자하고 싶어요. 비만·당뇨 치료제, 의료기기, 헬스케어 서비스처럼 고령화와 신약 수요로 성장하는 기업 중 최근 1년 주가 흐름이 좋은 종목으로 분산해서 3년 정도 보유하고 싶습니다. 한 종목에 몰빵은 피하고, 임상 실패 위험이 큰 소형 바이오는 빼 주세요.",
+    // 원문 언어 코드. LLM 프롬프트 언어와 리포트 언어 결정
+    "language": "ko"
+  }
+}

@@ -1,0 +1,17 @@
+// 헬스케어 시나리오: 2026-09-08 ~ 2026-10-08, 2주 리밸런싱(9/8·9/22·10/6), 뉴스 근거 뷰 (walk-forward) + 10/8 현재 구성
+{
+  "request_id": "req_2026-10-10_hc1",
+  "confirmation": { "selection_confirmed": true, "removed_tickers": [], "added_tickers": [] },
+  "backtest": {
+    "start_date": "2026-09-08",
+    "end_date": "2026-10-08",
+    "reselect_at_start": true,
+    "benchmark": null,
+    "include_contributions": true
+  },
+  "views": { "n_sets": 5, "views_per_set": 4 },
+  // walk-forward: 리밸런싱 시점마다 뉴스 근거로 뷰 1세트(4개)를 새로 만들어 비중 갱신
+  "walkforward": { "enabled": true, "view_sets": 1, "views_per_set": 4 },
+  // 현재 구성: 가격 데이터 마지막 날(10/8) 기준, 전체 뉴스 창으로 5세트 뷰
+  "forward_construction": { "enabled": true, "as_of": null }
+}

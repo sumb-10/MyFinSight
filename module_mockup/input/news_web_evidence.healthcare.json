@@ -1,0 +1,114 @@
+{
+  "2026-09-08": [
+    {
+      "evidence_id": "web001",
+      "ticker": "LLY",
+      "published_at": "2026-08-27",
+      "source": "WEB_SEARCH",
+      "publisher": "Managed Healthcare Executive",
+      "title": "Zepbound linked to lower healthcare costs in older adults with obesity (Lilly real-world study: 25.4% lower monthly costs by 12-18 months)",
+      "url": "https://www.managedhealthcareexecutive.com/view/zepbound-linked-to-lower-healthcare-costs-in-older-adults-with-obesity"
+    },
+    {
+      "evidence_id": "web002",
+      "ticker": "LLY",
+      "title": "MFN Goes Mid-Market: Nine More Drugmakers Sign Medicaid Pricing Deals as the September 29 Tariff Deadline Approaches (White House MFN agreements now cover 26 manufacturers, 89% of branded market)",
+      "url": "https://biotechbriefings.gibsondunn.com/?p=7097",
+      "published_at": "2026-08-31",
+      "publisher": "Gibson Dunn Biotech Briefings",
+      "source": "WEB_SEARCH"
+    },
+    {
+      "evidence_id": "web003",
+      "ticker": "MRK",
+      "title": "MFN Goes Mid-Market: Nine More Drugmakers Sign Medicaid Pricing Deals as the September 29 Tariff Deadline Approaches (White House MFN agreements now cover 26 manufacturers, 89% of branded market)",
+      "url": "https://biotechbriefings.gibsondunn.com/?p=7097",
+      "published_at": "2026-08-31",
+      "publisher": "Gibson Dunn Biotech Briefings",
+      "source": "WEB_SEARCH"
+    },
+    {
+      "evidence_id": "web004",
+      "ticker": "AMGN",
+      "title": "MFN Goes Mid-Market: Nine More Drugmakers Sign Medicaid Pricing Deals as the September 29 Tariff Deadline Approaches (White House MFN agreements now cover 26 manufacturers, 89% of branded market)",
+      "url": "https://biotechbriefings.gibsondunn.com/?p=7097",
+      "published_at": "2026-08-31",
+      "publisher": "Gibson Dunn Biotech Briefings",
+      "source": "WEB_SEARCH"
+    },
+    {
+      "evidence_id": "web005",
+      "ticker": "JNJ",
+      "title": "MFN Goes Mid-Market: Nine More Drugmakers Sign Medicaid Pricing Deals as the September 29 Tariff Deadline Approaches (White House MFN agreements now cover 26 manufacturers, 89% of branded market)",
+      "url": "https://biotechbriefings.gibsondunn.com/?p=7097",
+      "published_at": "2026-08-31",
+      "publisher": "Gibson Dunn Biotech Briefings",
+      "source": "WEB_SEARCH"
+    },
+    {
+      "evidence_id": "web006",
+      "ticker": "MRK",
+      "published_at": "2026-09-02",
+      "source": "WEB_SEARCH",
+      "publisher": "Merck (Business Wire)",
+      "title": "Merck to Participate in the Wells Fargo 21st Annual Healthcare Conference 2026 (CFO Litchfield, Dr. Dean Li fireside chat Sept. 9)",
+      "url": "https://s2.q4cdn.com/584635680/files/doc_news/Merck-to-Participate-in-the-Wells-Fargo-21st-Annual-Healthcare-Conference-2026.pdf"
+    },
+    {
+      "evidence_id": "web007",
+      "ticker": "AMGN",
+      "published_at": "2026-09-02",
+      "source": "WEB_SEARCH",
+      "publisher": "Amgen (PR Newswire)",
+      "title": "IMDELLTRA in combination with IMFINZI demonstrated landmark improvement in overall survival in first-line extensive-stage small cell lung cancer",
+      "url": "https://investors.amgen.com/news-and-events/press-releases"
+    },
+    {
+      "evidence_id": "web008",
+      "ticker": "AMGN",
+      "published_at": "2026-09-02",
+      "source": "WEB_SEARCH",
+      "publisher": "Amgen (PR Newswire)",
+      "title": "AMGEN TO PRESENT AT THE 2026 WELLS FARGO HEALTHCARE CONFERENCE (Sept. 10; CFO Dittrich, CMO Burton)",
+      "url": "https://www.1stoncology.com/blog/?p=113275"
+    },
+    {
+      "evidence_id": "web009",
+      "ticker": "CVS",
+      "published_at": "2026-09-04",
+      "source": "WEB_SEARCH",
+      "publisher": "Trendlyne",
+      "title": "CVS Health Corp board meeting (XNYS, 04 Sep 2026)",
+      "url": "https://us.trendlyne.com/us/equity/board-meeting/CVS/1403304/cvs-health-corp-board_meeting/"
+    }
+  ],
+  "2026-09-22": [
+    {
+      "evidence_id": "web010",
+      "ticker": "MRK",
+      "published_at": "2026-09-08",
+      "source": "WEB_SEARCH",
+      "publisher": "Merck (Business Wire)",
+      "title": "Merck to Participate in the Morgan Stanley 24th Annual Global Healthcare Conference 2026 (CEO Davis, Dr. Dean Li fireside chat Sept. 14)",
+      "url": "https://s2.q4cdn.com/584635680/files/doc_news/Merck-to-Participate-in-the-Morgan-Stanley-24th-Annual-Global-Healthcare-Conference-2026.pdf"
+    },
+    {
+      "evidence_id": "web011",
+      "ticker": "AMGN",
+      "published_at": "2026-09-09",
+      "source": "WEB_SEARCH",
+      "publisher": "Amgen (PR Newswire)",
+      "title": "Amgen to present at the Morgan Stanley 24th Annual Global Healthcare Conference (Sept. 15; R&D head Bradner, CFO Dittrich)",
+      "url": "https://investors.amgen.com/node/37671/pdf"
+    },
+    {
+      "evidence_id": "web012",
+      "ticker": "UNH",
+      "published_at": "2026-09-15",
+      "source": "WEB_SEARCH",
+      "publisher": "UnitedHealth Group (Business Wire)",
+      "title": "UnitedHealth Group Announces Earnings Release Date (Q3 2026 results on Oct. 13; dividend $2.32 payable Sept. 22)",
+      "url": "https://secure.businesswire.com/news/home/20260915310982/en/UnitedHealth-Group-Announces-Earnings-Release-Date"
+    }
+  ]
+}
