@@ -1,39 +1,29 @@
-# 팀 저장소 맨 위 .gitignore (하위 폴더 어디에 있어도 적용됨)
-
-# 비밀값: DB 주소·API 키
 .env
-.env.*
-!.env.example
-*credentials*.json
-
-# 로컬 DB·캐시. 역할 A 의 data/ 는 그 폴더 안 .gitignore 가 뺌
-# (여기 data/ 를 쓰면 src/myfinsight/data 코드까지 빠져서 안 씀)
+.env.server
+# 로컬 DB·키 파일 (SQLite data/myfinsight.db 등)
+/data/
+# 만든 결과물 (종목 사전 등). 참조 자료 backend/data/config·reference 는 저장소에 넣음
+/backend/data/processed/
+# 푸시 안 하는 개인 보관 폴더 (개인 문서, 일회성·안 쓰는 코드)
+/_local/
 *.db
-*.sqlite3
+*credentials*.json
 .cache/
-
-# 파이썬
 .venv/
 venv/
 __pycache__/
-*.py[cod]
-*.egg-info/
 .pytest_cache/
 .ruff_cache/
-.ipynb_checkpoints/
-
-# 노드 (프론트)
-node_modules/
-dist/
-build/
-.next/
-
-# 에디터·OS
-.vscode/
-.idea/
+*.egg-info/
+# 실행 로그 (확인용, 저장소에 안 넣음)
+logs/
+*.log
+# 비밀값: .env 외의 .env.* 도 (예시 파일만 올림)
+.env.*
+!.env.example
+# macOS·편집기 부산물
 .DS_Store
-Thumbs.db
-desktop.ini
-
-# 수집은 개인 저장소 Actions 가 함. 맨 위에 collect.yml 이 들어와도 팀 저장소에서는 안 돌게 뺌
-/.github/workflows/collect.yml
+# 개인 PC 백필용 (절전 설정을 바꿈)
+scripts/run_overnight.bat
+# 정기 수집은 role-a-server 레포에서만 돌림 (팀 레포에서 중복 수집 방지)
+.github/workflows/collect.yml
