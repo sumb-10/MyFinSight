@@ -1,0 +1,426 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "myfinsight/store/profile.schema.json",
+  "title": "ProfileStore",
+  "description": "사용자 프로필 1개와 버전 이력. 파일: store/data/profile.json. 프로필을 수정하면 versions에 새 버전을 추가하고 current_version을 올린다. 과거 리포트는 자기 profile_version을 참조하므로 바뀌지 않는다 (R1).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "profile_id",
+    "current_version",
+    "versions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "profile_id": {
+      "type": "string",
+      "default": "default",
+      "description": "단일 사용자이므로 보통 'default'"
+    },
+    "current_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "versions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/ProfileVersion"
+      }
+    }
+  },
+  "$defs": {
+    "Profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "user_id",
+        "age_band",
+        "investment_experience",
+        "financial_knowledge",
+        "investable_ratio_of_assets"
+      ],
+      "properties": {
+        "user_id": {
+          "type": "string"
+        },
+        "age_band": {
+          "enum": [
+            "20s",
+            "30s",
+            "40s",
+            "50s",
+            "60s+"
+          ]
+        },
+        "investment_experience": {
+          "enum": [
+            "none",
+            "beginner",
+            "intermediate",
+            "advanced"
+          ]
+        },
+        "financial_knowledge": {
+          "enum": [
+            "basic",
+            "intermediate",
+            "expert"
+          ]
+        },
+        "investable_ratio_of_assets": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "Capital": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "initial_amount",
+        "currency"
+      ],
+      "properties": {
+        "initial_amount": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "currency": {
+          "enum": [
+            "KRW",
+            "USD"
+          ]
+        },
+        "trading_currency": {
+          "const": "USD"
+        },
+        "monthly_contribution": {
+          "type": "number",
+          "minimum": 0,
+          "default": 0
+        },
+        "contribution_day": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 28,
+          "default": 25
+        }
+      }
+    },
+    "Horizon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_years",
+        "purpose"
+      ],
+      "properties": {
+        "target_years": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "purpose": {
+          "enum": [
+            "wealth_growth",
+            "income",
+            "capital_preservation",
+            "retirement"
+          ]
+        },
+        "backtest_years": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3,
+          "description": "백테스트 창 길이(년). K2: 사용자 지정, 기본 3"
+        }
+      }
+    },
+    "Risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "risk_tolerance",
+        "max_drawdown_tolerance",
+        "loss_reaction",
+        "target_annual_return",
+        "benchmark"
+      ],
+      "properties": {
+        "risk_tolerance": {
+          "type": "string",
+          "enum": [
+            "conservative",
+            "moderate",
+            "aggressive"
+          ]
+        },
+        "max_drawdown_tolerance": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "loss_reaction": {
+          "enum": [
+            "sell",
+            "hold",
+            "buy_more"
+          ]
+        },
+        "target_annual_return": {
+          "type": "number"
+        },
+        "benchmark": {
+          "type": "string",
+          "description": "비교지수 티커 (예: SPY, KOSPI 200 추종 ETF)"
+        }
+      }
+    },
+    "Constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "universe",
+        "asset_types",
+        "num_holdings",
+        "max_weight_per_stock",
+        "max_weight_per_sector",
+        "rebalance"
+      ],
+      "properties": {
+        "universe": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "SP500",
+              "NASDAQ100",
+              "KOSPI200"
+            ]
+          }
+        },
+        "asset_types": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "stock",
+              "etf"
+            ]
+          }
+        },
+        "num_holdings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "target",
+            "min",
+            "max"
+          ],
+          "properties": {
+            "target": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "min": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "description": "min <= target <= max (코드 검증)"
+        },
+        "max_weight_per_stock": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "max_weight_per_sector": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "min_cash_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 1,
+          "default": 0
+        },
+        "exclude_tickers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "exclude_sectors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "exclude_themes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "must_include_tickers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "rebalance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "count",
+            "unit"
+          ],
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "0 = 리밸런싱 없음"
+            },
+            "unit": {
+              "enum": [
+                "2w",
+                "1m",
+                "1q",
+                "6m",
+                "1y"
+              ]
+            }
+          }
+        },
+        "allow_leverage": {
+          "type": "boolean",
+          "default": false
+        },
+        "allow_short": {
+          "type": "boolean",
+          "default": false
+        },
+        "min_market_cap_usd": {
+          "type": "number",
+          "minimum": 0,
+          "default": 0
+        },
+        "min_avg_daily_volume_usd": {
+          "type": "number",
+          "minimum": 0,
+          "default": 0
+        }
+      }
+    },
+    "StrategyPreference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "template",
+        "baseline_weighting"
+      ],
+      "properties": {
+        "template": {
+          "enum": [
+            "low_per",
+            "quality",
+            "momentum",
+            "low_volatility",
+            "high_dividend"
+          ]
+        },
+        "baseline_weighting": {
+          "enum": [
+            "equal_weight",
+            "market_cap",
+            "inverse_volatility",
+            "min_variance"
+          ]
+        },
+        "use_news_tilt": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "ProfileVersion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "created_at",
+        "risk_type_computed",
+        "risk_type_overridden",
+        "profile",
+        "capital",
+        "horizon",
+        "risk",
+        "constraints",
+        "strategy_preference"
+      ],
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "note": {
+          "type": "string",
+          "description": "수정 사유(선택)"
+        },
+        "risk_type_computed": {
+          "type": "string",
+          "enum": [
+            "conservative",
+            "moderate",
+            "aggressive"
+          ],
+          "description": "간이 진단 결과"
+        },
+        "risk_type_overridden": {
+          "type": "boolean",
+          "description": "risk.risk_tolerance가 진단 결과와 다른지"
+        },
+        "diagnosis_answers": {
+          "type": "object",
+          "description": "간이 진단 문항 답변(자유 형식)"
+        },
+        "profile": {
+          "$ref": "#/$defs/Profile"
+        },
+        "capital": {
+          "$ref": "#/$defs/Capital"
+        },
+        "horizon": {
+          "$ref": "#/$defs/Horizon"
+        },
+        "risk": {
+          "$ref": "#/$defs/Risk"
+        },
+        "constraints": {
+          "$ref": "#/$defs/Constraints"
+        },
+        "strategy_preference": {
+          "$ref": "#/$defs/StrategyPreference"
+        }
+      }
+    }
+  }
+}

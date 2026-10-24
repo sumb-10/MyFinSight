@@ -3,3 +3,7 @@ __pycache__/
 output/
 *.log
 .DS_Store
+
+# local JSON store (user data) — never commit
+store/data/*
+!store/data/.gitkeep

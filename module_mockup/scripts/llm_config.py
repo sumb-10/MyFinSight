@@ -45,5 +45,5 @@ PRICING_USD_PER_1M = {
 }
 
 # Where llm.py appends one line per call (JSONL) for the cost report.
-USAGE_LOG = ROOT / "output" / "llm_usage.jsonl"
-RAW_DIR = ROOT / "output" / "llm_raw"
+USAGE_LOG = ROOT / "output" / "llm_usage.jsonl"   # shared across runs (each line carries run_id)
+# raw answers go to <run output dir>/llm_raw/ (see common.OUTPUT); the prompt-hash cache is shared at output/llm_cache/

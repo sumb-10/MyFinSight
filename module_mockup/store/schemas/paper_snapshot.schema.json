@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "myfinsight/store/paper_snapshot.schema.json",
+  "title": "PaperSnapshot",
+  "description": "트래킹 일일 스냅샷. 파일: store/data/paper/<paper_id>/snapshots.jsonl — 1줄 = 이 객체 1개, 거래일당 1줄, 줄 추가만. 지표 정의는 M5-02와 같다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "date",
+    "value_usd",
+    "cash_usd",
+    "weights",
+    "drawdown",
+    "return_since_start",
+    "status"
+  ],
+  "properties": {
+    "date": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "value_usd": {
+      "type": "number",
+      "minimum": 0
+    },
+    "cash_usd": {
+      "type": "number",
+      "minimum": 0
+    },
+    "holdings_value_usd": {
+      "type": "number",
+      "minimum": 0
+    },
+    "weights": {
+      "type": "object",
+      "description": "ticker -> weight (0~1), 합 1",
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      }
+    },
+    "drawdown": {
+      "type": "number",
+      "maximum": 0,
+      "description": "고점 대비 낙폭(음수 또는 0)"
+    },
+    "return_since_start": {
+      "type": "number",
+      "description": "시작 이후 누적 수익률(적립 반영: 평가액/납입 합계 − 1)"
+    },
+    "contribution_usd": {
+      "type": "number",
+      "minimum": 0,
+      "default": 0,
+      "description": "이 날 들어온 적립금"
+    },
+    "contributions_total_usd": {
+      "type": "number",
+      "minimum": 0
+    },
+    "benchmark_value_usd": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "같은 자본·적립으로 비교지수를 보유했을 때의 평가액"
+    },
+    "fx_rate": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "이 날의 USD/KRW (KR 종목 환산·원화 표시용)"
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "delayed",
+        "hold"
+      ],
+      "description": "ok 정상 / delayed 데이터 지연(스냅샷 미생성 알림용) / hold 한쪽 시장 휴장으로 직전 종가 유지"
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    }
+  }
+}

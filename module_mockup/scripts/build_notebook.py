@@ -6,9 +6,11 @@
 import argparse, os, shutil, subprocess, sys, tempfile
 from pathlib import Path
 import nbformat as nbf
-from common import ROOT, OUTPUT
+if "--run-id" in sys.argv:                                  # must be set before common resolves OUTPUT
+    os.environ["MYFINSIGHT_RUN_ID"] = sys.argv[sys.argv.index("--run-id") + 1]
+from common import ROOT, OUTPUT, RUN_ID
 
-NB = ROOT / "notebooks" / "results_overview.ipynb"
+NB = ROOT / "notebooks" / (f"{RUN_ID}.ipynb" if RUN_ID else "results_overview.ipynb")
 cells = []
 md = lambda s: cells.append(nbf.v4.new_markdown_cell(s.strip()))
 code = lambda s: cells.append(nbf.v4.new_code_cell(s.strip()))

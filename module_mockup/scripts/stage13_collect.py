@@ -6,7 +6,8 @@ out: output/13_results.json   -> the only input of the report stage (14) and of 
 """
 import argparse, datetime as dt, json
 from collections import defaultdict
-from common import OUTPUT, load_json, dump_json
+from common import OUTPUT, load_json, dump_json, RAW, RUN_ID
+import llm_config as C
 from descriptor import load_descriptor
 import portfolio_config as PC, backtest_config as BC, llm_config as LC
 from schemas import ResultsBundle
@@ -23,21 +24,45 @@ SOURCES = [
 ]
 
 
+DB_SOURCES = [
+    {"id": "src_prices", "name": "팀 데이터베이스 price_daily", "what": "일별 주가·수정주가·거래량 (여러 소스의 합의값 CONSENSUS 우선, 1종목·1일 1행)", "url": None},
+    {"id": "src_company", "name": "팀 데이터베이스 financials (SEC EDGAR)", "what": "발행주식수 (시가총액 필터·시가총액 비중)", "url": "https://www.sec.gov/edgar"},
+    {"id": "src_fx", "name": "팀 데이터베이스 fx_daily", "what": "원/달러 환율 USDKRW (투자금 환산 기준일 종가)", "url": None},
+    {"id": "src_bench", "name": "Yahoo Finance (yfinance) 캐시 사본", "what": "비교지수 ETF (SPY·QQQ·XLV) — 팀 DB 미보유로 캐시 사본 사용", "url": "https://finance.yahoo.com"},
+    {"id": "src_news", "name": "팀 데이터베이스 news", "what": "종목 뉴스 헤드라인 (GOOGLE_RSS·NEWSAPI·NAVER_NEWS), 구성일 직전 14일 창", "url": None},
+]
+
+
+def sources_list(manifest):
+    """DB-synced cache -> DB sources; otherwise the yfinance sources."""
+    if not manifest:
+        return SOURCES
+    keep = [dict(s) for s in SOURCES if s["id"] not in ("src_prices", "src_company", "src_fx")]
+    for s_ in keep:
+        if s_["id"] == "src_llm":
+            s_["what"] = "의도 해석, 테마 분류, 시나리오 뷰(정적 뷰는 뉴스 미연결, walk-forward·현재 구성은 DB 뉴스 근거), 리포트 서술"
+    return DB_SOURCES + keep
+
+
 def opt(path):
     return load_json(path) if path.exists() else None
 
 
 def llm_usage_summary():
-    p = OUTPUT / "llm_usage.jsonl"
+    p = C.USAGE_LOG
     if not p.exists():
         return {"available": False}
     rows = [json.loads(l) for l in open(p, encoding="utf-8") if l.strip()]
+    if RUN_ID:
+        rows = [r for r in rows if r.get("run_id") == RUN_ID]
+    if not rows:
+        return {"available": False}
     per = defaultdict(lambda: {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0})
     for r in rows:
         s = per[r["stage"]]; s["calls"] += 1; s["prompt_tokens"] += r["prompt_tokens"]; s["completion_tokens"] += r["completion_tokens"]; s["cost_usd"] += r["cost_usd"] or 0
     for s in per.values(): s["cost_usd"] = round(s["cost_usd"], 6)
     return {"available": True, "model": rows[-1]["model"], "by_stage": dict(per), "total_cost_usd": round(sum(s["cost_usd"] for s in per.values()), 6),
-            "note": "누적 로그 기준(여러 실행 포함)"}
+            "note": f"run_id={RUN_ID} 기준" if RUN_ID else "누적 로그 기준(여러 실행 포함)"}
 
 
 def main():
@@ -118,9 +143,13 @@ def main():
     for name, obj in [("09a", news_ev), ("10w", wf), ("10f", fwd)]:
         for w in (obj or {}).get("warnings", []) or []:
             warnings.append({"stage": name, "message": w})
+    manifest = opt(RAW / "db_sync_manifest.json")
+    if manifest:
+        warnings += [{"stage": "data", "message": f"DB 동기화({manifest['synced_at']}): {g}"} for g in manifest.get("gaps", [])]
+        parameters["data_source"] = {k: manifest[k] for k in ("synced_at", "db", "raw_dir", "prices", "fx", "shares", "benchmarks") if k in manifest}
     bundle = ResultsBundle(request_id=req["request_id"], generated_at=dt.datetime.now().isoformat(timespec="seconds"), pipeline_version=PIPELINE_VERSION,
                            request=req, intent=intent, selection=selection, portfolio=portfolio, backtest=bt, validation=val, money_krw=money_krw,
-                           llm_usage=llm_usage_summary(), sources=SOURCES, parameters=parameters, warnings=warnings)
+                           llm_usage=llm_usage_summary(), sources=sources_list(manifest), parameters=parameters, warnings=warnings)
     path = dump_json(bundle.model_dump(mode="json"), a.out)
     print(f"[stage13] ok -> {path} ({path.stat().st_size / 1e6:.2f} MB) news={'yes' if news_ev else 'no'} walkforward={'yes' if wf else 'no'} forward={'yes' if fwd else 'no'}\n         selection table={len(table)} funnel={[f['count'] for f in funnel]} "
           f"portfolios={len(bt['portfolios'])} series={len(bt['series_dates'])} validation={val['summary']} warnings={len(warnings)} fx={money_krw['direction']}")

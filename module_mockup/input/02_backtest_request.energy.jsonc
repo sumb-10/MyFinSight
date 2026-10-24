@@ -1,0 +1,9 @@
+// 에너지 전환 시나리오(MVP, 팀 DB): 2021-01-04 ~ 2026-10-09, 매월 리밸런싱(시작일 재선정), walk-forward 사용
+{
+  "request_id": "req_2026-10-10_eng1",
+  "confirmation": { "selection_confirmed": true, "removed_tickers": [], "added_tickers": [] },
+  "backtest": { "start_date": "2021-01-04", "end_date": "2026-10-09", "reselect_at_start": true, "benchmark": null, "include_contributions": true },
+  "views": { "n_sets": 5, "views_per_set": 4 },
+  "walkforward": { "enabled": true, "view_sets": 1, "views_per_set": 4 },
+  "forward_construction": { "enabled": true, "as_of": null }
+}

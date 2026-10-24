@@ -9,7 +9,8 @@ import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "output"
+sys.path.insert(0, str(ROOT / "scripts"))
+from common import OUTPUT as OUT      # per-run dir: $MYFINSIGHT_RUN_ID or output/latest
 PY = sys.executable
 
 
@@ -96,7 +97,8 @@ def test_news_stages_if_present():
     wf = OUT / "10w_target_paths.json"
     if wf.exists():
         W = json.loads(wf.read_text(encoding="utf-8")); bl = next(x for x in W["portfolios"] if x["kind"] == "black_litterman")
-        base = next(x for x in W["portfolios"] if x["id"] == "wf_equal_weight")
+        base_id = "wf_" + json.loads((OUT / "10_target_portfolios.json").read_text(encoding="utf-8"))["baseline"]["id"]   # user's baseline template
+        base = next(x for x in W["portfolios"] if x["id"] == base_id)
         for d in W["dates"]:
             w, b = bl["weights_by_date"][d], base["weights_by_date"][d]
             assert abs(sum(w.values()) - 1) < 1e-4 and min(w.values()) >= 0.01 - 1e-9, d

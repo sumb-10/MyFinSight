@@ -64,6 +64,8 @@ def generate_views(tickers, as_of, mm, base_weights, intent, n_sets, per_set, ma
             bad = [x for x in v.get("long", []) + v.get("short", []) if x not in known]
             if bad:
                 warnings.append(f"{s_.get('scenario_id')}: view dropped, unknown tickers {bad}"); continue
+            if not v.get("long") or (v.get("type") == "relative" and not v.get("short")) or (v.get("type") == "absolute" and v.get("short")):
+                warnings.append(f"{s_.get('scenario_id')}: view dropped, malformed legs long={v.get('long')} short={v.get('short')}"); continue
             key = (tuple(sorted(v["long"])), tuple(sorted(v.get("short", []))))
             if key in seen:
                 warnings.append(f"{s_.get('scenario_id')}: duplicate view {key} dropped"); continue

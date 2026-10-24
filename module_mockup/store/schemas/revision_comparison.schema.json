@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "myfinsight/store/revision_comparison.schema.json",
+  "title": "RevisionComparison",
+  "description": "원안·수정안 비교 결과. 파일: store/data/comparisons/<comparison_id>.json. 같은 백테스트 창·자본·비교지수일 때만 성과표를 채운다 (R10).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "comparison_id",
+    "base_run_id",
+    "revised_run_id",
+    "base_report_id",
+    "revised_report_id",
+    "created_at",
+    "same_window",
+    "condition_changes",
+    "ticker_changes",
+    "weight_changes",
+    "rule_changes",
+    "performance_table"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "comparison_id": {
+      "type": "string",
+      "pattern": "^cmp_run_\\d{8}_\\d{6}__run_\\d{8}_\\d{6}$"
+    },
+    "base_run_id": {
+      "type": "string"
+    },
+    "revised_run_id": {
+      "type": "string"
+    },
+    "base_report_id": {
+      "type": "string"
+    },
+    "revised_report_id": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "same_window": {
+      "type": "boolean",
+      "description": "창·자본·비교지수·리밸런싱 규칙이 같은지. false면 performance_table은 비어 있고 warnings에 사유"
+    },
+    "window": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "end": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "benchmark": {
+          "type": "string"
+        }
+      }
+    },
+    "condition_changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "field",
+          "before",
+          "after"
+        ],
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "before": {},
+          "after": {}
+        }
+      }
+    },
+    "ticker_changes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "added",
+        "removed",
+        "kept"
+      ],
+      "properties": {
+        "added": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "removed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "kept": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "weight_changes": {
+      "type": "object",
+      "description": "ticker -> {before, after} (선택 포트폴리오 기준, 없는 쪽은 0)",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "before",
+          "after"
+        ],
+        "properties": {
+          "before": {
+            "type": "number"
+          },
+          "after": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "rule_changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "rule",
+          "before",
+          "after"
+        ],
+        "properties": {
+          "rule": {
+            "type": "string"
+          },
+          "before": {},
+          "after": {}
+        }
+      }
+    },
+    "performance_table": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "metric",
+          "base",
+          "revised"
+        ],
+        "properties": {
+          "metric": {
+            "type": "string"
+          },
+          "base": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "revised": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "diff": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "unit": {
+            "enum": [
+              "pct",
+              "pctp",
+              "usd",
+              "ratio",
+              "count"
+            ]
+          }
+        }
+      }
+    },
+    "pros_cons_ko": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "LLM #6(선택) 장점·불리한 점. 숫자 대조 통과분만",
+      "properties": {
+        "pros": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    }
+  }
+}

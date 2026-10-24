@@ -8,11 +8,27 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 INPUT = ROOT / "input"
-OUTPUT = ROOT / "output"
+OUTPUT_ROOT = ROOT / "output"               # shared: llm_cache/, llm_usage.jsonl, latest -> <run_id>
+
+
+def _resolve_output():
+    """Per-run output dir: $MYFINSIGHT_RUN_ID -> output/<run_id>; else output/latest (symlink) if present; else output/ (legacy flat)."""
+    rid = os.environ.get("MYFINSIGHT_RUN_ID")
+    if rid:
+        return OUTPUT_ROOT / rid
+    latest = OUTPUT_ROOT / "latest"
+    return latest if latest.exists() else OUTPUT_ROOT
+
+
+OUTPUT = _resolve_output()
+RUN_ID = os.environ.get("MYFINSIGHT_RUN_ID") or (OUTPUT.resolve().name if OUTPUT != OUTPUT_ROOT else None)
 PROMPTS = ROOT / "prompts"
 STUBS = ROOT / "stubs"
 REFERENCE = ROOT / "data" / "reference"      # small, reproducible, committed
 PROCESSED = ROOT / "data" / "processed"      # descriptor etc., committed
+STORE = ROOT / "store"                       # local JSON store (docs/module_prototype.md 부록 H)
+STORE_SCHEMAS = STORE / "schemas"            # JSON Schema, committed
+STORE_DATA = STORE / "data"                  # user data, git-ignored
 
 DATA_HOME = Path(os.environ.get("MYFINSIGHT_DATA", Path.home() / ".myfinsight" / "data"))
 RAW = DATA_HOME / "raw"                      # yfinance caches, NOT committed, NOT on Drive

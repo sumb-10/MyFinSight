@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "myfinsight/store/run_index.schema.json",
+  "title": "RunIndex",
+  "description": "run 색인과 작업 큐 상태. 파일: store/data/runs.json. 큐 워커(M0-05)가 QUEUED → RUNNING → 종료 상태로 갱신한다. 단계별 상세 상태는 DB run_step에 있다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "runs"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "runs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Run"
+      }
+    }
+  },
+  "$defs": {
+    "Run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "request_id",
+        "status",
+        "queued_at",
+        "output_dir"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "pattern": "^run_[A-Za-z0-9_-]+$"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "success",
+            "partial",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "queued_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "finished_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "output_dir": {
+          "type": "string",
+          "description": "단계 JSON이 있는 디렉터리 (output/<run_id>/)"
+        },
+        "report_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "성공 시 = run_id (DB report)"
+        },
+        "llm_mode": {
+          "enum": [
+            "stub",
+            "api"
+          ]
+        },
+        "error_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error_message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scenario": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "요청 파일 이름의 시나리오 부분 (01_user_request.<scenario>.jsonc)"
+        },
+        "request_file": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "backtest_file": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "data_dir": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "MYFINSIGHT_DATA (DB 동기화 캐시 등)"
+        },
+        "stop_at": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "news": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

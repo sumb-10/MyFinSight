@@ -71,11 +71,11 @@ import type {
   Tendency,
 } from "./types"
 
-type Route = { page: "home" } | { page: "profile" mode?: "setup" | "edit" } | {
+type Route = { page: "home" } | { page: "profile"; mode?: "setup" | "edit" } | {
   page: "review"
-} | { page: "run" } | { page: "reports" } | { page: "report" id: string } | {
+} | { page: "run" } | { page: "reports" } | { page: "report"; id: string } | {
   page: "paper"
-} | { page: "paper-detail" id: string } | { page: "comparison" id: string }
+} | { page: "paper-detail"; id: string } | { page: "comparison"; id: string }
 
 const EMPTY_PROFILE: Profile = {
   ...DEMO_PROFILE,
@@ -2165,7 +2165,7 @@ function ReportDetail({
   const evidenceById = (id: string) =>
     report.evidence.find((item) => item.id === id)
   const prose = (
-    paragraph: { text: string citationIds: string[] },
+    paragraph: { text: string; citationIds: string[] },
     key: string,
   ) => (
     <p key={key} className="max-w-4xl text-[15px] leading-8 text-slate-700">
@@ -3010,7 +3010,7 @@ function SecurityPanel({
   )
 }
 
-function SourcePanel({ item, close }: { item: Evidence close: () => void }) {
+function SourcePanel({ item, close }: { item: Evidence; close: () => void }) {
   return (
     <SidePanel title="참고자료 상세" close={close}>
       <dl className="space-y-5">

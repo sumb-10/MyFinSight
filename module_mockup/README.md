@@ -25,7 +25,8 @@ export P=~/.venvs/myfinsight/bin/python
 | `scripts/` | 단계 스크립트. `common.py`(경로·JSONC 로더) `schemas.py`(Pydantic) `llm.py`(LLM 교체 지점) `descriptor.py` `metrics.py` |
 | `data/reference/gics_taxonomy.json` | GICS 163 세부산업 × 4단계 (Wikipedia 파싱) |
 | `data/processed/sp500_nasdaq100_descriptor.json` | 유니버스 디스크립터: 종목별 GICS 태그·키워드·한 줄 소개 |
-| `output/` | 단계별 산출물 + `output/prompts/` 에 실제 렌더링된 프롬프트 (git 제외) |
+| `output/<run_id>/` | 실행별 산출물: 단계 JSON, `inputs/`(입력 사본), `run_meta.json`, `prompts/`(렌더링된 프롬프트), `llm_raw/`, `llm_cost_report.json`. `output/latest` 는 최근 실행 링크, `output/llm_cache/`·`output/llm_usage.jsonl` 은 실행 간 공유 (모두 git 제외) |
+| `store/` | 로컬 JSON 저장소: `schemas/`(JSON Schema, git 포함), `data/`(프로필·요청·run 색인·트래킹, git 제외). `data/runs.json` 에 실행 목록이 쌓인다 |
 
 ## 파이프라인
 
@@ -69,14 +70,16 @@ $P scripts/fetch_fundamentals.py             # 1회. 재무제표·info·배당 
 $P scripts/build_descriptor.py               # 1회. 디스크립터 생성 (재무 수집 후 다시 실행하면 사업 설명이 채워짐)
 
 $P scripts/run_pipeline.py --request input/01_user_request.example.jsonc      # 1~5단계, stub 모드 (기본, API 호출 없음)
-$P scripts/run_pipeline.py --stop-at 14                                      # 1~14단계 (7~14 는 input/02_backtest_request.jsonc 사용)
+$P scripts/run_pipeline.py --stop-at 14                                      # 1~14단계 (7~14 는 input/02_backtest_request.jsonc 사용) -> output/run_example_<일시>/
+$P scripts/run_pipeline.py --request input/01_user_request.<name>.jsonc --backtest-request input/02_backtest_request.<name>.jsonc --run-id run_<name>_x   # 실행 id 지정
 MYFINSIGHT_LLM=api $P scripts/run_pipeline.py --request input/01_user_request.healthcare.jsonc --backtest-request input/02_backtest_request.healthcare.jsonc --news --web-evidence input/news_web_evidence.healthcare.json --stop-at 14   # 헬스케어 + 뉴스 시나리오 (9a·10w·10f 포함)
-$P scripts/build_notebook.py                                                 # 13_results.json → notebooks/results_overview.ipynb 재생성·실행
+$P scripts/build_notebook.py [--run-id run_x]                                # output/<run_id>/13_results.json → notebooks/<run_id>.ipynb (기본: output/latest)
+MYFINSIGHT_DATA=~/.myfinsight/data_db $P scripts/db_sync.py                   # 팀 DB → 캐시 동기화 (가격·환율·발행주식수; 비교지수는 yfinance 캐시 사본). 이후 같은 MYFINSIGHT_DATA 로 파이프라인 실행
 $P scripts/db_probe.py                                                       # 팀 뉴스 DB 연결 점검 (읽기 전용)
 MYFINSIGHT_LLM=api $P scripts/stage14_report.py                              # 리포트 서술을 gpt-6-luna 로 새로 생성 (같은 입력이면 llm_cache 재사용)
 $P scripts/run_pipeline.py --from 11 --stop-at 14                            # 중간부터 재실행 (앞 단계 output 재사용)
 $P scripts/backtest_engine.py && $P scripts/backtest_metrics.py              # 백테스트 엔진·지표 자체 검증
-$P -m pytest tests -q                                                        # 불변식 테스트 (output/ 기준; MYFINSIGHT_TEST_RUN=1 이면 전체 재실행)
+$P -m pytest tests -q                                                        # 불변식 테스트 (output/latest 또는 MYFINSIGHT_RUN_ID 기준; MYFINSIGHT_TEST_RUN=1 이면 전체 재실행)
 $P scripts/stage12_validate.py --max-drawdown 0.30                           # 검증 기준을 바꿔 다시 판정 (백테스트 재실행 없음)
 $P scripts/portfolio.py                                                      # 포트폴리오 수학 자체 검증 (BL 수렴·뷰 방향·제약)
 MYFINSIGHT_LLM=api $P scripts/run_pipeline.py --explain                      # 실제 LLM 호출 + 비용 리포트

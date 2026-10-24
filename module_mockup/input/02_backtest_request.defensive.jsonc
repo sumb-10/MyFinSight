@@ -1,0 +1,16 @@
+// 경기방어 시나리오(MVP, 팀 DB 데이터): 백테스트 2020-01-02 ~ 2026-10-09 (약 6.8년, 코로나 급락·2022 약세장 포함),
+// 분기 리밸런싱(시작일 재선정), 정적 BL 시나리오 5세트 + walk-forward(리밸런싱마다 DB 뉴스 뷰, 뉴스 없는 시점은 기준 비중) + 2026-10-09 현재 구성
+{
+  "request_id": "req_2026-10-10_def1",
+  "confirmation": { "selection_confirmed": true, "removed_tickers": [], "added_tickers": [] },
+  "backtest": {
+    "start_date": "2020-01-02",
+    "end_date": "2026-10-09",
+    "reselect_at_start": true,
+    "benchmark": null,
+    "include_contributions": true
+  },
+  "views": { "n_sets": 5, "views_per_set": 4 },
+  "walkforward": { "enabled": true, "view_sets": 1, "views_per_set": 4 },
+  "forward_construction": { "enabled": true, "as_of": null }
+}

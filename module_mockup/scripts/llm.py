@@ -73,7 +73,7 @@ def _cache_key(stage, system, user):
 
 def _call_openai(stage, system, user, batch, feedback=None):
     import openai
-    cache_dir = C.RAW_DIR.parent / "llm_cache"
+    cache_dir = C.USAGE_LOG.parent / "llm_cache"
     key = _cache_key(stage, system, user + (feedback or ""))
     if os.environ.get("MYFINSIGHT_LLM_CACHE", "1") == "1" and (cache_dir / f"{key}.json").exists():
         print(f"  [llm] {stage}{'' if batch is None else f' b{batch}'}: cache hit ({key})", flush=True)
@@ -109,7 +109,7 @@ def _call_openai(stage, system, user, batch, feedback=None):
            "finish_reason": resp.choices[0].finish_reason}
     C.USAGE_LOG.parent.mkdir(parents=True, exist_ok=True)
     with open(C.USAGE_LOG, "a", encoding="utf-8") as f: f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-    raw = C.RAW_DIR / (f"{stage}" + (f"_b{batch}" if batch is not None else "") + ".json")
+    raw = OUTPUT / "llm_raw" / (f"{stage}" + (f"_b{batch}" if batch is not None else "") + ".json")
     raw.parent.mkdir(parents=True, exist_ok=True)
     raw.write_text(text, encoding="utf-8")
     print(f"  [llm] {stage}{'' if batch is None else f' b{batch}'}: {u.prompt_tokens} in / {u.completion_tokens} out "
