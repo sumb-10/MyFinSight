@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myfinsight"
+version = "0.1.0"
+description = "MyFinSight 프로토타입 - 역할 A 데이터 수집·정규화·품질·저장 (M02-01~05)"
+requires-python = ">=3.11"  # PC(백필)는 3.11, GitHub Actions 는 3.13 (명세 C-01)
+dependencies = [
+    "pydantic>=2.6,<3",
+    "pandas>=2.1,<3",
+    "numpy>=2.1,<3",  # 2.1 부터 Python 3.11~3.13 휠이 모두 있음
+    "requests>=2.31",
+    "SQLAlchemy>=2.0,<2.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "httpx"]
+real = ["yfinance>=0.2.50"]  # 진짜 모드에서 yfinance 를 쓸 때만
+# PostgreSQL 저장소 (AWS Lightsail·로컬). 드라이버는 psycopg 3 (명세 C-01). SQLite 만 쓰면 필요 없음
+postgres = ["psycopg[binary]>=3.2"]
+# 서비스용 데이터 API (backend/api/app.py, docs/인스턴스_API.md)
+api = ["fastapi>=0.110", "uvicorn[standard]>=0.29"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["backend*"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# 문서(.md)의 코드 예시는 설명용으로 줄 맞춤을 그대로 둔다 (ruff 0.15+ 는 .md 코드 블록도 포맷함)
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["UP042"]  # 명세 M00-02 가 (str, Enum) 형태를 지정
+
+[tool.ruff.lint.per-file-ignores]
+# 역할 A 원본 크롤러 모양을 알아보기 쉽게 그대로 둔다 (긴 줄 허용)
+"backend/adapters/crawlers/*_client.py" = ["E501"]
+"backend/tests/test_real_adapters.py" = ["E501"]
+"backend/tests/test_constituents.py" = ["E501"]  # 위키백과 HTML 예시
+"backend/tests/test_repository.py" = ["E501"]
+"backend/tests/test_normalizer.py" = ["E501"]

@@ -1,0 +1,203 @@
+# KOSPI 200 종목별 GICS 세부산업 (Module2 §5, K17). 회사의 주력 사업으로 사람이 정함. reviewed=false 는 분류가 갈릴 수 있어 검수가 필요한 종목
+ticker,name,gics_sub_industry_code,gics_sub_industry,reviewed,basis
+005930,삼성전자,45202030,"Technology Hardware, Storage & Peripherals",true,스마트폰·가전·메모리 반도체 (MSCI 분류와 같게 하드웨어)
+000660,SK하이닉스,45301020,Semiconductors,true,DRAM·NAND 메모리 반도체
+402340,SK스퀘어,20105010,Industrial Conglomerates,false,SK하이닉스 지분 중심 투자지주 (반도체 또는 다각화 지주 분류 가능)
+009150,삼성전기,45203015,Electronic Components,true,MLCC·카메라모듈·패키지기판
+373220,LG에너지솔루션,20104010,Electrical Components & Equipment,true,2차전지 셀 제조
+005380,현대차,25102010,Automobile Manufacturers,true,완성차 제조
+207940,삼성바이오로직스,35203010,Life Sciences Tools & Services,true,바이오의약품 위탁개발생산(CDMO)
+105560,KB금융,40101010,Diversified Banks,true,국민은행 중심 금융지주
+032830,삼성생명,40301020,Life & Health Insurance,true,생명보험
+028260,삼성물산,20105010,Industrial Conglomerates,true,건설·상사·패션·리조트와 계열사 지분을 가진 복합기업
+012450,한화에어로스페이스,20101010,Aerospace & Defense,true,항공 엔진·자주포 등 방산
+034020,두산에너빌리티,20104020,Heavy Electrical Equipment,true,발전 설비(원전·가스터빈) 제조
+055550,신한지주,40101010,Diversified Banks,true,신한은행 중심 금융지주
+329180,HD현대중공업,20106010,Construction Machinery & Heavy Transportation Equipment,true,선박 건조 (GICS 는 조선을 대형 운송장비로 분류)
+000270,기아,25102010,Automobile Manufacturers,true,완성차 제조
+006400,삼성SDI,45203015,Electronic Components,true,2차전지·전자재료 (MSCI 는 IT 전자부품으로 분류)
+068270,셀트리온,35201010,Biotechnology,false,바이오시밀러 개발·생산 (제약으로 볼 수도 있음)
+034730,SK,20105010,Industrial Conglomerates,true,SK그룹 지주회사 (에너지·통신·반도체 등)
+066570,LG전자,25201040,Household Appliances,false,생활가전·TV·전장 (가전 전자제품으로 볼 수도 있음)
+086790,하나금융지주,40101010,Diversified Banks,true,하나은행 중심 금융지주
+012330,현대모비스,25101010,Automotive Parts & Equipment,true,자동차 모듈·핵심 부품·AS 부품
+010120,LS ELECTRIC,20104010,Electrical Components & Equipment,true,전력기기·자동화 기기
+035420,NAVER,50203010,Interactive Media & Services,true,검색 포털·커머스·콘텐츠 플랫폼
+000810,삼성화재,40301040,Property & Casualty Insurance,true,손해보험
+096770,SK이노베이션,10102030,Oil & Gas Refining & Marketing,true,석유 정제·석유화학·배터리 (정유 매출 비중 최대)
+298040,효성중공업,20104020,Heavy Electrical Equipment,true,변압기·차단기 등 중전기
+042700,한미반도체,45301010,Semiconductor Materials & Equipment,true,반도체 후공정 장비 (TC 본더)
+005490,POSCO홀딩스,15104050,Steel,true,철강 (포스코 지주회사)
+316140,우리금융지주,40101010,Diversified Banks,true,우리은행 중심 금융지주
+267260,HD현대일렉트릭,20104020,Heavy Electrical Equipment,true,변압기·배전기기
+042660,한화오션,20106010,Construction Machinery & Heavy Transportation Equipment,true,선박·해양플랜트 건조
+009540,HD한국조선해양,20106010,Construction Machinery & Heavy Transportation Equipment,true,조선 중간지주 (HD현대중공업 등)
+010130,고려아연,15104020,Diversified Metals & Mining,true,아연·연·귀금속 제련
+000150,두산,20105010,Industrial Conglomerates,true,두산그룹 지주회사 (전자소재·에너빌리티·밥캣 등)
+138040,메리츠금융지주,40301040,Property & Casualty Insurance,false,메리츠화재·메리츠증권 지주 (손해보험 비중 큼)
+011200,HMM,20303010,Marine Transportation,true,컨테이너 해운
+015760,한국전력,55101010,Electric Utilities,true,전력 판매·송배전
+051910,LG화학,15101020,Diversified Chemicals,true,석유화학·첨단소재·생명과학 (배터리 자회사 포함)
+010950,S-Oil,10102030,Oil & Gas Refining & Marketing,true,석유 정제
+017670,SK텔레콤,50102010,Wireless Telecommunication Services,true,이동통신
+033780,KT&G,30203010,Tobacco,true,담배·인삼
+010140,삼성중공업,20106010,Construction Machinery & Heavy Transportation Equipment,true,선박·해양플랜트 건조
+006800,미래에셋증권,40203020,Investment Banking & Brokerage,true,증권 중개·투자은행
+018260,삼성에스디에스,45102010,IT Consulting & Other Services,true,IT 서비스·시스템 통합·물류 플랫폼
+003670,포스코퓨처엠,20104010,Electrical Components & Equipment,false,2차전지 양극재·음극재와 내화물 (소재로 볼 수도 있음)
+079550,LIG디펜스앤에어로스페이스,20101010,Aerospace & Defense,true,유도무기 등 방산 (옛 LIG넥스원)
+003550,LG,20105010,Industrial Conglomerates,true,LG그룹 지주회사
+024110,기업은행,40101010,Diversified Banks,true,중소기업 대출 중심 국책은행
+267250,HD현대,20105010,Industrial Conglomerates,true,HD현대그룹 지주회사 (조선·정유·건설기계)
+272210,한화시스템,20101010,Aerospace & Defense,true,방산 전자·ICT
+086280,현대글로비스,20301010,Air Freight & Logistics,true,종합 물류·완성차 해상운송
+035720,카카오,50203010,Interactive Media & Services,true,메신저 기반 플랫폼·콘텐츠
+278470,에이피알,30302010,Personal Care Products,true,화장품·뷰티 디바이스
+011070,LG이노텍,45203015,Electronic Components,true,카메라모듈·기판소재
+064350,현대로템,20101010,Aerospace & Defense,false,K2 전차 등 방산과 철도차량 (철도는 대형 운송장비)
+030200,KT,50101020,Integrated Telecommunication Services,true,유무선 통신
+047810,한국항공우주,20101010,Aerospace & Defense,true,군용·민수 항공기 제조
+000720,현대건설,20103010,Construction & Engineering,true,건축·토목·플랜트 건설
+005830,DB손해보험,40301040,Property & Casualty Insurance,true,손해보험
+003490,대한항공,20302010,Passenger Airlines,true,여객·화물 항공
+443060,HD현대마린솔루션,20106010,Construction Machinery & Heavy Transportation Equipment,false,선박 AS·부품·개조 서비스
+307950,현대오토에버,45102010,IT Consulting & Other Services,true,현대차그룹 IT 서비스·차량 소프트웨어
+005940,NH투자증권,40203020,Investment Banking & Brokerage,true,증권 중개·투자은행
+047050,포스코인터내셔널,20107010,Trading Companies & Distributors,true,무역·에너지(가스전)
+071050,한국금융지주,40203020,Investment Banking & Brokerage,true,한국투자증권 중심 금융지주
+078930,GS,20105010,Industrial Conglomerates,false,"GS그룹 지주회사 (GS칼텍스·GS에너지·리테일, 정유로 볼 수도 있음)"
+323410,카카오뱅크,40101010,Diversified Banks,true,인터넷전문은행
+259960,크래프톤,50202020,Interactive Home Entertainment,true,게임 개발 (배틀그라운드)
+007660,이수페타시스,45203015,Electronic Components,true,고다층 인쇄회로기판(PCB)
+028050,삼성E&A,20103010,Construction & Engineering,true,플랜트 설계·조달·시공(EPC)
+006260,LS,20105010,Industrial Conglomerates,true,LS그룹 지주회사 (전선·전력기기)
+003230,삼양식품,30202030,Packaged Foods & Meats,true,라면 등 가공식품
+0126Z0,삼성에피스홀딩스,35201010,Biotechnology,false,"삼성바이오에피스 지주 (바이오시밀러), 2025년 분할 신규 상장"
+180640,한진칼,20302010,Passenger Airlines,false,대한항공 지주회사
+009830,한화솔루션,15101020,Diversified Chemicals,false,석유화학·태양광(큐셀)·소재 (태양광 비중이 커지면 재검토)
+016360,삼성증권,40203020,Investment Banking & Brokerage,true,증권 중개·자산관리
+161390,한국타이어앤테크놀로지,25101020,Tires & Rubber,true,타이어 제조
+090430,아모레퍼시픽,30302010,Personal Care Products,true,화장품
+039490,키움증권,40203020,Investment Banking & Brokerage,true,온라인 증권 중개
+047040,대우건설,20103010,Construction & Engineering,true,주택·토목·플랜트 건설
+021240,코웨이,25201040,Household Appliances,true,정수기·공기청정기 등 생활가전 렌털
+064400,LG씨엔에스,45102010,IT Consulting & Other Services,true,IT 서비스·시스템 통합
+000880,한화,20105010,Industrial Conglomerates,true,한화그룹 지주회사 (방산·화학·금융·건설)
+062040,산일전기,20104020,Heavy Electrical Equipment,false,특수 변압기 (전기 부품으로 볼 수도 있음)
+128940,한미약품,35202010,Pharmaceuticals,true,전문의약품
+032640,LG유플러스,50101020,Integrated Telecommunication Services,false,이동통신·유선·IPTV (무선 통신으로 볼 수도 있음)
+001440,대한전선,20104010,Electrical Components & Equipment,true,전력·통신 케이블
+352820,하이브,50202010,Movies & Entertainment,true,음악·아티스트 매니지먼트
+000990,DB하이텍,45301020,Semiconductors,true,8인치 반도체 파운드리
+326030,SK바이오팜,35202010,Pharmaceuticals,false,신약(세노바메이트) 개발·판매 (바이오로 볼 수도 있음)
+036570,NC,50202020,Interactive Home Entertainment,true,게임 개발 (옛 엔씨소프트)
+175330,JB금융지주,40101015,Regional Banks,false,전북·광주은행 중심 지방 금융지주 (대형 은행으로 볼 수도 있음)
+241560,두산밥캣,20106010,Construction Machinery & Heavy Transportation Equipment,true,소형 건설장비
+011790,SKC,15101010,Commodity Chemicals,false,화학·동박·유리기판 (사업 전환 중이라 재검토 필요)
+377300,카카오페이,40201060,Transaction & Payment Processing Services,true,간편결제·금융 플랫폼
+000100,유한양행,35202010,Pharmaceuticals,true,전문·일반의약품
+267270,HD건설기계,20106010,Construction Machinery & Heavy Transportation Equipment,true,굴착기 등 건설장비 (HD현대건설기계·인프라코어 통합)
+454910,두산로보틱스,20106020,Industrial Machinery & Supplies & Components,true,협동로봇
+052690,한전기술,20103010,Construction & Engineering,true,원전·화력 발전소 설계 엔지니어링
+029780,삼성카드,40202010,Consumer Finance,true,신용카드·할부금융
+088350,한화생명,40301020,Life & Health Insurance,true,생명보험
+138930,BNK금융지주,40101015,Regional Banks,false,부산·경남은행 중심 지방 금융지주 (대형 은행으로 볼 수도 있음)
+066970,엘앤에프,20104010,Electrical Components & Equipment,false,2차전지 양극재 (소재로 볼 수도 있음)
+051900,LG생활건강,30302010,Personal Care Products,true,화장품·생활용품·음료 (화장품 비중 최대)
+082740,한화엔진,20106020,Industrial Machinery & Supplies & Components,false,선박용 엔진 (대형 운송장비로 볼 수도 있음)
+271560,오리온,30202030,Packaged Foods & Meats,true,과자 등 가공식품
+034220,LG디스플레이,45203015,Electronic Components,true,디스플레이 패널
+002380,KCC,15101020,Diversified Chemicals,false,실리콘·도료·건자재 (건축 제품으로 볼 수도 있음)
+010060,OCI홀딩스,15101010,Commodity Chemicals,false,폴리실리콘·화학 지주회사
+001450,현대해상,40301040,Property & Casualty Insurance,true,손해보험
+001040,CJ,20105010,Industrial Conglomerates,true,CJ그룹 지주회사 (식품·물류·엔터·바이오)
+018880,한온시스템,25101010,Automotive Parts & Equipment,true,자동차 공조 부품
+008930,한미사이언스,35202010,Pharmaceuticals,true,한미약품 지주회사
+004020,현대제철,15104050,Steel,true,철강
+035250,강원랜드,25301010,Casinos & Gaming,true,내국인 카지노·리조트
+036460,한국가스공사,55102010,Gas Utilities,true,천연가스 도입·도매 공급
+111770,영원무역,25203010,"Apparel, Accessories & Luxury Goods",true,아웃도어 의류 OEM·자전거(스캇)
+139130,iM금융지주,40101015,Regional Banks,false,iM뱅크(옛 대구은행) 중심 금융지주
+161890,한국콜마,30302010,Personal Care Products,true,화장품 ODM
+028670,팬오션,20303010,Marine Transportation,true,벌크선 해운
+004170,신세계,25503030,Broadline Retail,true,백화점·면세점
+011780,금호석유화학,15101010,Commodity Chemicals,true,합성고무·합성수지
+012750,에스원,20201080,Security & Alarm Services,true,보안 시스템·경비
+014680,한솔케미칼,15101050,Specialty Chemicals,true,반도체용 과산화수소·전구체 등
+022100,포스코DX,45102010,IT Consulting & Other Services,true,IT 서비스·산업 자동화
+192820,코스맥스,30302010,Personal Care Products,true,화장품 ODM
+457190,이수스페셜티케미컬,15101050,Specialty Chemicals,true,황화수소·황화리튬 등 정밀화학
+026960,동서,30202030,Packaged Foods & Meats,true,커피믹스 등 식품 (동서식품 지분)
+251270,넷마블,50202020,Interactive Home Entertainment,true,모바일 게임
+302440,SK바이오사이언스,35201010,Biotechnology,false,백신 개발·생산 (제약으로 볼 수도 있음)
+375500,DL이앤씨,20103010,Construction & Engineering,true,주택·플랜트 건설
+383220,F&F,25203010,"Apparel, Accessories & Luxury Goods",true,의류 브랜드 (MLB·디스커버리)
+450080,에코프로머티,20104010,Electrical Components & Equipment,false,2차전지 전구체 (소재로 볼 수도 있음)
+000240,한국앤컴퍼니,25101020,Tires & Rubber,true,한국타이어 지주회사·배터리
+004370,농심,30202030,Packaged Foods & Meats,true,라면·스낵
+005850,에스엘,25101010,Automotive Parts & Equipment,true,자동차 램프
+007340,DN오토모티브,25101010,Automotive Parts & Equipment,false,자동차 방진 부품·배터리 (인수한 사업 확인 필요)
+011170,롯데케미칼,15101010,Commodity Chemicals,true,석유화학 기초 소재
+017800,현대엘리베이터,20106020,Industrial Machinery & Supplies & Components,true,승강기 제조·유지보수
+023530,롯데쇼핑,25503030,Broadline Retail,true,백화점·마트·슈퍼·이커머스
+097950,CJ제일제당,30202030,Packaged Foods & Meats,true,가공식품·바이오(아미노산)
+002790,아모레퍼시픽홀딩스,30302010,Personal Care Products,true,아모레퍼시픽 지주회사
+004990,롯데지주,20105010,Industrial Conglomerates,false,롯데그룹 지주회사 (식품·유통·화학)
+009420,한올바이오파마,35201010,Biotechnology,true,항체 신약 개발
+009970,영원무역홀딩스,25203010,"Apparel, Accessories & Luxury Goods",true,영원무역 지주회사
+030000,제일기획,50201010,Advertising,true,광고 대행
+051600,한전KPS,20103010,Construction & Engineering,false,발전설비 정비 (시설 서비스로 볼 수도 있음)
+069960,현대백화점,25503030,Broadline Retail,true,백화점·면세점
+073240,금호타이어,25101020,Tires & Rubber,true,타이어 제조
+081660,미스토홀딩스,25203010,"Apparel, Accessories & Luxury Goods",false,휠라 브랜드·아쿠쉬네트(골프용품) 지주 (옛 휠라홀딩스)
+103140,풍산,15104025,Copper,false,신동(구리 가공)·탄약 (방산 비중이 커 재검토 필요)
+112610,씨에스윈드,20104020,Heavy Electrical Equipment,true,풍력 타워
+139480,이마트,30101040,Consumer Staples Merchandise Retail,true,대형마트·창고형 할인점
+204320,HL만도,25101010,Automotive Parts & Equipment,true,제동·조향·현가 부품
+282330,BGF리테일,30101030,Food Retail,true,편의점 (CU)
+483650,달바글로벌,30302010,Personal Care Products,true,화장품 (달바)
+000120,CJ대한통운,20301010,Air Freight & Logistics,true,택배·계약물류
+361610,SK아이이테크놀로지,20104010,Electrical Components & Equipment,false,2차전지 분리막 (소재로 볼 수도 있음)
+120110,코오롱인더,15101020,Diversified Chemicals,false,아라미드·타이어코드·필름·패션
+093370,후성,15101050,Specialty Chemicals,true,불소 화합물·냉매·전해질
+071970,HD현대마린엔진,20106020,Industrial Machinery & Supplies & Components,false,"선박용 엔진 (옛 STX엔진, 대형 운송장비로 볼 수도 있음)"
+011210,현대위아,25101010,Automotive Parts & Equipment,true,자동차 부품·공작기계·방산
+008770,호텔신라,25504040,Other Specialty Retail,false,면세점 매출 비중 최대 (호텔로 볼 수도 있음)
+007070,GS리테일,30101030,Food Retail,true,편의점(GS25)·슈퍼
+006280,녹십자,35201010,Biotechnology,false,혈액제제·백신 (제약으로 볼 수도 있음)
+006040,동원산업,30202030,Packaged Foods & Meats,false,수산·식품·포장재 지주 (스타키스트·동원F&B)
+001800,오리온홀딩스,30202030,Packaged Foods & Meats,true,오리온 지주회사
+001430,세아베스틸지주,15104050,Steel,true,특수강
+017960,한국카본,20106010,Construction Machinery & Heavy Transportation Equipment,false,LNG선 보냉재·복합소재 (소재로 볼 수도 있음)
+069620,대웅제약,35202010,Pharmaceuticals,true,전문의약품·보툴리눔 톡신
+192080,더블유게임즈,50202020,Interactive Home Entertainment,true,소셜 카지노 게임
+300720,한일시멘트,15102010,Construction Materials,true,시멘트·레미탈
+285130,SK케미칼,15101020,Diversified Chemicals,false,친환경 소재·제약 (SK바이오사이언스 지분)
+009240,한샘,25201020,Home Furnishings,true,가구·인테리어
+280360,롯데웰푸드,30202030,Packaged Foods & Meats,true,제과·빙과·식품
+185750,종근당,35202010,Pharmaceuticals,true,전문의약품
+007310,오뚜기,30202030,Packaged Foods & Meats,true,가공식품
+003090,대웅,35202010,Pharmaceuticals,true,대웅제약 지주회사
+003240,태광산업,15101010,Commodity Chemicals,false,석유화학·섬유
+004000,롯데정밀화학,15101010,Commodity Chemicals,false,염소·셀룰로스 계열 정밀화학 (특수 화학으로 볼 수도 있음)
+298020,효성티앤씨,15101010,Commodity Chemicals,false,스판덱스·나일론 섬유 (섬유로 볼 수도 있음)
+071320,지역난방공사,55103010,Multi-Utilities,false,지역난방·열병합 발전
+005300,롯데칠성,30201030,Soft Drinks & Non-alcoholic Beverages,true,음료·주류 (음료 비중 최대)
+034230,파라다이스,25301010,Casinos & Gaming,true,외국인 카지노·호텔
+000080,하이트진로,30201020,Distillers & Vintners,false,"소주·맥주 (소주 비중이 커 증류주, 맥주로 볼 수도 있음)"
+000210,DL,15101010,Commodity Chemicals,false,DL그룹 지주회사 (DL케미칼 석유화학 중심)
+456040,OCI,15101010,Commodity Chemicals,false,카본소재·인산 등 기초화학
+000670,영풍,15104020,Diversified Metals & Mining,true,아연 제련
+001680,대상,30202030,Packaged Foods & Meats,true,조미료·장류·식품 소재
+137310,에스디바이오센서,35101010,Health Care Equipment,false,체외진단 기기·키트 (의료 용품으로 볼 수도 있음)
+002030,아세아,15102010,Construction Materials,true,아세아시멘트 지주회사
+002840,미원상사,15101050,Specialty Chemicals,true,계면활성제 등 정밀화학
+003030,세아제강지주,15104050,Steel,true,강관
+298050,HS효성첨단소재,15101010,Commodity Chemicals,false,타이어코드·탄소섬유 (자동차 부품으로 볼 수도 있음)
+0220W0,한화머시너리앤서비스홀딩스,20106020,Industrial Machinery & Supplies & Components,false,한화 기계·반도체장비·영상보안 사업 지주 (2025년 분할 신규 상장)
+014820,동원시스템즈,15103010,"Metal, Glass & Plastic Containers",false,캔·필름 등 포장재
+008730,율촌화학,15103020,Paper & Plastic Packaging Products & Materials,false,포장 필름·2차전지 파우치
+268280,미원에스씨,15101050,Specialty Chemicals,true,광개시제·UV 경화 소재
+006650,대한유화,15101010,Commodity Chemicals,true,에틸렌·폴리올레핀
+005420,코스모화학,15101010,Commodity Chemicals,false,이산화티타늄·황산코발트
+069260,TKG휴켐스,15101010,Commodity Chemicals,true,질산·DNT 등 기초화학

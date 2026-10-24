@@ -1,0 +1,103 @@
+# Nasdaq-100 보유종목 표, 2026-10-04, 원본 ndx_holdings.csv, 만든 날 2026-10-04
+ticker,name,sector,industry
+AAPL,Apple Inc.,Information Technology,"Technology Hardware, Storage & Peripherals"
+ABNB,"Airbnb, Inc.",Consumer Discretionary,"Hotels, Resorts & Cruise Lines"
+ADBE,Adobe Inc.,Information Technology,Application Software
+ADI,"Analog Devices, Inc.",Information Technology,Semiconductors
+ADP,"Automatic Data Processing, Inc.",Industrials,Human Resource & Employment Services
+ADSK,"Autodesk, Inc.",Information Technology,Application Software
+AEP,"American Electric Power Company, Inc.",Utilities,Electric Utilities
+ALAB,"Astera Labs, Inc.",Information Technology,Semiconductors
+ALNY,"Alnylam Pharmaceuticals, Inc.",Health Care,Biotechnology
+AMAT,"Applied Materials, Inc.",Information Technology,Semiconductor Materials & Equipment
+AMD,"Advanced Micro Devices, Inc.",Information Technology,Semiconductors
+AMGN,Amgen Inc.,Health Care,Biotechnology
+AMZN,"Amazon.com, Inc.",Consumer Discretionary,Broadline Retail
+APP,AppLovin Corporation,Information Technology,Application Software
+ARM,Arm Holdings plc,Information Technology,Semiconductors
+ASML,ASML Holding N.V.,Information Technology,Semiconductor Materials & Equipment
+AVGO,Broadcom Inc.,Information Technology,Semiconductors
+AXON,"Axon Enterprise, Inc.",Industrials,Aerospace & Defense
+BKNG,Booking Holdings Inc.,Consumer Discretionary,"Hotels, Resorts & Cruise Lines"
+BKR,Baker Hughes Company,Energy,Oil & Gas Equipment & Services
+CCEP,Coca-Cola Europacific Partners PLC,Consumer Staples,Soft Drinks & Non-alcoholic Beverages
+CDNS,"Cadence Design Systems, Inc.",Information Technology,Application Software
+CEG,Constellation Energy Corporation,Utilities,Electric Utilities
+CMCSA,Comcast Corporation,Communication Services,Cable & Satellite
+COST,Costco Wholesale Corporation,Consumer Staples,Consumer Staples Merchandise Retail
+CPRT,"Copart, Inc.",Industrials,Diversified Support Services
+CRWD,"CrowdStrike Holdings, Inc.",Information Technology,Systems Software
+CRWV,"CoreWeave, Inc.",Information Technology,Internet Services & Infrastructure
+CSCO,"Cisco Systems, Inc.",Information Technology,Communications Equipment
+CSX,CSX Corporation,Industrials,Rail Transportation
+CTAS,Cintas Corporation,Industrials,Diversified Support Services
+DASH,"DoorDash, Inc.",Consumer Discretionary,Specialized Consumer Services
+DDOG,"Datadog, Inc.",Information Technology,Application Software
+DXCM,"DexCom, Inc.",Health Care,Health Care Equipment
+EXC,Exelon Corporation,Utilities,Electric Utilities
+FANG,"Diamondback Energy, Inc.",Energy,Oil & Gas Exploration & Production
+FAST,Fastenal Company,Industrials,Trading Companies & Distributors
+FER,Ferrovial N.V.,Industrials,Construction & Engineering
+FTNT,"Fortinet, Inc.",Information Technology,Systems Software
+GEHC,GE HealthCare Technologies Inc.,Health Care,Health Care Equipment
+GILD,"Gilead Sciences, Inc.",Health Care,Biotechnology
+GOOG,Alphabet Inc.,Communication Services,Interactive Media & Services
+GOOGL,Alphabet Inc.,Communication Services,Interactive Media & Services
+HON,Honeywell International Inc.,Industrials,Industrial Conglomerates
+HONA,Honeywell Aerospace Inc.,Industrials,Aerospace & Defense
+IDXX,"IDEXX Laboratories, Inc.",Health Care,Health Care Equipment
+INTC,Intel Corporation,Information Technology,Semiconductors
+INTU,Intuit Inc.,Information Technology,Application Software
+ISRG,"Intuitive Surgical, Inc.",Health Care,Health Care Equipment
+KDP,Keurig Dr Pepper Inc.,Consumer Staples,Soft Drinks & Non-alcoholic Beverages
+KLAC,KLA Corporation,Information Technology,Semiconductor Materials & Equipment
+LIN,Linde plc,Materials,Industrial Gases
+LITE,Lumentum Holdings Inc.,Information Technology,Communications Equipment
+LRCX,Lam Research Corporation,Information Technology,Semiconductor Materials & Equipment
+MAR,"Marriott International, Inc.",Consumer Discretionary,"Hotels, Resorts & Cruise Lines"
+MCHP,Microchip Technology Incorporated,Information Technology,Semiconductors
+MDLZ,"Mondelez International, Inc.",Consumer Staples,Packaged Foods & Meats
+MELI,"MercadoLibre, Inc.",Consumer Discretionary,Broadline Retail
+META,"Meta Platforms, Inc.",Communication Services,Interactive Media & Services
+MNST,Monster Beverage Corporation,Consumer Staples,Soft Drinks & Non-alcoholic Beverages
+MPWR,"Monolithic Power Systems, Inc.",Information Technology,Semiconductors
+MRVL,"Marvell Technology, Inc.",Information Technology,Semiconductors
+MSFT,Microsoft Corporation,Information Technology,Systems Software
+MSTR,Strategy Inc,Information Technology,Application Software
+MU,"Micron Technology, Inc.",Information Technology,Semiconductors
+NBIS,Nebius Group N.V.,Information Technology,Internet Services & Infrastructure
+NFLX,"Netflix, Inc.",Communication Services,Movies & Entertainment
+NVDA,NVIDIA Corporation,Information Technology,Semiconductors
+NXPI,NXP Semiconductors N.V.,Information Technology,Semiconductors
+ODFL,"Old Dominion Freight Line, Inc.",Industrials,Cargo Ground Transportation
+ORLY,"O'Reilly Automotive, Inc.",Consumer Discretionary,Automotive Retail
+PANW,"Palo Alto Networks, Inc.",Information Technology,Systems Software
+PAYX,"Paychex, Inc.",Industrials,Human Resource & Employment Services
+PCAR,PACCAR Inc,Industrials,Construction Machinery & Heavy Transportation Equipment
+PDD,PDD Holdings Inc.,Consumer Discretionary,Broadline Retail
+PEP,"PepsiCo, Inc.",Consumer Staples,Soft Drinks & Non-alcoholic Beverages
+PLTR,Palantir Technologies Inc.,Information Technology,Application Software
+PYPL,"PayPal Holdings, Inc.",Financials,Transaction & Payment Processing Services
+QCOM,QUALCOMM Incorporated,Information Technology,Semiconductors
+REGN,"Regeneron Pharmaceuticals, Inc.",Health Care,Biotechnology
+RKLB,Rocket Lab Corporation,Industrials,Aerospace & Defense
+ROP,"Roper Technologies, Inc.",Information Technology,Electronic Equipment & Instruments
+ROST,"Ross Stores, Inc.",Consumer Discretionary,Apparel Retail
+SBUX,Starbucks Corporation,Consumer Discretionary,Restaurants
+SHOP,Shopify Inc.,Information Technology,Internet Services & Infrastructure
+SNDK,Sandisk Corporation,Information Technology,"Technology Hardware, Storage & Peripherals"
+SNPS,"Synopsys, Inc.",Information Technology,Application Software
+SPCX,Space Exploration Technologies Corp.,Industrials,Aerospace & Defense
+STX,Seagate Technology Holdings plc,Information Technology,"Technology Hardware, Storage & Peripherals"
+TER,"Teradyne, Inc.",Information Technology,Semiconductor Materials & Equipment
+TMUS,"T-Mobile US, Inc.",Communication Services,Wireless Telecommunication Services
+TRI,Thomson Reuters Corporation,Industrials,Research & Consulting Services
+TSLA,"Tesla, Inc.",Consumer Discretionary,Automobile Manufacturers
+TTWO,"Take-Two Interactive Software, Inc.",Communication Services,Interactive Home Entertainment
+TXN,Texas Instruments Incorporated,Information Technology,Semiconductors
+VRTX,Vertex Pharmaceuticals Incorporated,Health Care,Biotechnology
+WBD,"Warner Bros. Discovery, Inc.",Communication Services,Broadcasting
+WDAY,"Workday, Inc.",Information Technology,Application Software
+WDC,Western Digital Corporation,Information Technology,"Technology Hardware, Storage & Peripherals"
+WMT,Walmart Inc.,Consumer Staples,Consumer Staples Merchandise Retail
+XEL,Xcel Energy Inc.,Utilities,Multi-Utilities

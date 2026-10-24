@@ -205,13 +205,13 @@ export interface PaperPortfolio {
   updateStatus: "정상" | "업데이트 지연" | "조회 실패"
   series: Point[]
   holdings: PaperHolding[]
-  rebalanceRecords: { date: string summary: string }[]
+  rebalanceRecords: { date: string; summary: string }[]
 }
 
 export interface AnalysisDraft {
   idea: string
   conditions: EffectiveConditions
-  answers: { question: string answer: string }[]
+  answers: { question: string; answer: string }[]
   clarificationCount: number
   mode: "new" | "reanalyze" | "revision"
   sourceReportId?: string

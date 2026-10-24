@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "myfinsight/store/rebalance_record.schema.json",
+  "title": "RebalanceRecord",
+  "description": "트래킹 리밸런싱 기록. 파일: store/data/paper/<paper_id>/rebalances.jsonl — 1줄 = 리밸런싱 1회. M4-05 construct() 재실행 결과(비중만 갱신, K8)와 적용 내역.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "date",
+    "seq",
+    "before_weights",
+    "target_weights",
+    "applied_weights",
+    "trades",
+    "commission_usd",
+    "turnover",
+    "fallback",
+    "skipped"
+  ],
+  "properties": {
+    "date": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "before_weights": {
+      "type": "object",
+      "description": "ticker -> weight (0~1), 합 1",
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      }
+    },
+    "target_weights": {
+      "type": "object",
+      "description": "construct()가 낸 타겟",
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      }
+    },
+    "applied_weights": {
+      "type": "object",
+      "description": "소수 주식·수수료 반영 후 실제 비중",
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      }
+    },
+    "trades": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ticker",
+          "side",
+          "shares",
+          "price",
+          "value_usd"
+        ],
+        "properties": {
+          "ticker": {
+            "type": "string"
+          },
+          "side": {
+            "enum": [
+              "buy",
+              "sell"
+            ]
+          },
+          "shares": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "price": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "USD 환산 종가"
+          },
+          "value_usd": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        }
+      }
+    },
+    "commission_usd": {
+      "type": "number",
+      "minimum": 0
+    },
+    "turnover": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Σ|목표 − 직전| / 2"
+    },
+    "views": {
+      "type": "array",
+      "description": "적용된 뉴스 뷰 요약",
+      "items": {
+        "type": "object",
+        "required": [
+          "summary_ko",
+          "evidence_ids"
+        ],
+        "properties": {
+          "summary_ko": {
+            "type": "string"
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confidence": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "evidence_window": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "end": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "n_articles": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "n_tickers_with_news": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "fallback": {
+      "type": "boolean",
+      "description": "뉴스 부족으로 기준 비중을 쓴 경우 true (K6)"
+    },
+    "skipped": {
+      "type": "boolean",
+      "description": "중지 기간에 지나가 실행하지 않은 리밸런싱일이면 true (K9)"
+    },
+    "max_tilt": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "기준 대비 최대 |Δw|"
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    }
+  }
+}

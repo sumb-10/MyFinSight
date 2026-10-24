@@ -1,0 +1,9 @@
+// AI 모멘텀 재실행(MVP, 팀 DB): 2020-01-02 ~ 2026-10-09, 분기 리밸런싱, walk-forward 사용
+{
+  "request_id": "req_2026-10-10_ai2",
+  "confirmation": { "selection_confirmed": true, "removed_tickers": [], "added_tickers": [] },
+  "backtest": { "start_date": "2020-01-02", "end_date": "2026-10-09", "reselect_at_start": true, "benchmark": null, "include_contributions": true },
+  "views": { "n_sets": 5, "views_per_set": 4 },
+  "walkforward": { "enabled": true, "view_sets": 1, "views_per_set": 4 },
+  "forward_construction": { "enabled": true, "as_of": null }
+}

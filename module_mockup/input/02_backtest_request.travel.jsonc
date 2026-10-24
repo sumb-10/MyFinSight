@@ -1,0 +1,9 @@
+// 여행·레저 소비 시나리오(MVP, 팀 DB): 2022-01-03 ~ 2026-10-09 (약세장 시작), 반기 리밸런싱, walk-forward 끔, 현재 구성만 뉴스 반영
+{
+  "request_id": "req_2026-10-10_trv1",
+  "confirmation": { "selection_confirmed": true, "removed_tickers": [], "added_tickers": [] },
+  "backtest": { "start_date": "2022-01-03", "end_date": "2026-10-09", "reselect_at_start": true, "benchmark": null, "include_contributions": true },
+  "views": { "n_sets": 5, "views_per_set": 4 },
+  "walkforward": { "enabled": false, "view_sets": 1, "views_per_set": 4 },
+  "forward_construction": { "enabled": true, "as_of": null }
+}

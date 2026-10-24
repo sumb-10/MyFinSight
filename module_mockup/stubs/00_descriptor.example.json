@@ -1,0 +1,9 @@
+{
+  "results": [
+    { "ticker": "AAPL", "company_summary_ko": "아이폰·맥·웨어러블과 앱스토어 등 서비스를 판매하는 소비자 전자기기 기업", "keywords": ["smartphone", "iphone", "consumer electronics", "wearables", "app store", "services"] },
+    { "ticker": "NVDA", "company_summary_ko": "데이터센터 AI 학습·추론용 GPU 와 네트워킹을 공급하는 반도체 기업", "keywords": ["gpu", "ai accelerator", "data center", "cuda", "networking", "gaming"] },
+    { "ticker": "MSFT", "company_summary_ko": "Azure 클라우드, 오피스·윈도우 소프트웨어, AI 서비스를 제공하는 기업", "keywords": ["cloud", "azure", "software", "office", "windows", "ai", "data center"] },
+    { "ticker": "EQIX", "company_summary_ko": "전 세계 데이터센터 코로케이션·상호연결 서비스를 제공하는 리츠", "keywords": ["data center", "colocation", "interconnection", "reit", "cloud"] },
+    { "ticker": "PSA", "company_summary_ko": "개인·소상공인 대상 셀프스토리지 창고를 임대하는 리츠", "keywords": ["self storage", "warehouse rental", "reit"] }
+  ]
+}
