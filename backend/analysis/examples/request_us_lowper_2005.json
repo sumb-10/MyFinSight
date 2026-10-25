@@ -1,0 +1,70 @@
+{
+  "request_id": "req_example_us_lowper_2005",
+  "created_at": "2026-10-24T20:00:00+09:00",
+  "profile": {
+    "user_id": "user_hojin",
+    "age_band": "20s",
+    "investment_experience": "beginner",
+    "financial_knowledge": "basic",
+    "investable_ratio_of_assets": 0.3
+  },
+  "capital": {
+    "initial_amount": 10000000,
+    "currency": "KRW",
+    "trading_currency": "USD",
+    "monthly_contribution": 500000,
+    "contribution_day": 25
+  },
+  "horizon": {
+    "start_date": "2026-10-09",
+    "target_years": 10,
+    "purpose": "wealth_growth",
+    "backtest_years": 12
+  },
+  "risk": {
+    "risk_tolerance": "moderate",
+    "max_drawdown_tolerance": 0.4,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.08,
+    "benchmark": "SPY"
+  },
+  "constraints": {
+    "universe": [
+      "SP500",
+      "NASDAQ100"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 12,
+      "min": 8,
+      "max": 16
+    },
+    "max_weight_per_stock": 0.15,
+    "max_weight_per_sector": 0.4,
+    "min_cash_ratio": 0.0,
+    "exclude_tickers": [],
+    "exclude_sectors": [],
+    "exclude_themes": [],
+    "must_include_tickers": [],
+    "rebalance": {
+      "count": 1,
+      "unit": "1q"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 20000000000,
+    "min_avg_daily_volume_usd": 50000000
+  },
+  "strategy_preference": {
+    "template": "low_per",
+    "baseline_weighting": "equal_weight",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "시가총액이 어느 정도 큰 기업 중에서 저PER 위주로 투자하고 싶어요. 백테스트 기간은 2005년부터 약 12년간으로요.",
+    "language": "ko"
+  }
+}

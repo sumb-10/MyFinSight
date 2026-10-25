@@ -1,0 +1,72 @@
+{
+  "request_id": "req_2025-09-25_u80",
+  "created_at": "2025-09-25T16:10:00+09:00",
+  "profile": {
+    "user_id": "user_80",
+    "age_band": "30s",
+    "investment_experience": "none",
+    "financial_knowledge": "basic",
+    "investable_ratio_of_assets": 0.4
+  },
+  "capital": {
+    "initial_amount": 50000000,
+    "currency": "KRW",
+    "trading_currency": "USD",
+    "monthly_contribution": 1000000,
+    "contribution_day": 20
+  },
+  "horizon": {
+    "start_date": "2025-09-22",
+    "target_years": 3,
+    "purpose": "wealth_growth"
+  },
+  "risk": {
+    "risk_tolerance": "aggressive",
+    "max_drawdown_tolerance": 0.4,
+    "loss_reaction": "buy_more",
+    "target_annual_return": 0.12,
+    "benchmark": "QQQ"
+  },
+  "constraints": {
+    "universe": [
+      "SP500",
+      "NASDAQ100"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 5,
+      "min": 3,
+      "max": 8
+    },
+    "max_weight_per_stock": 0.35,
+    "max_weight_per_sector": 0.5,
+    "min_cash_ratio": 0.0,
+    "exclude_tickers": [],
+    "exclude_sectors": [
+      "Consumer Discretionary",
+      "Financials"
+    ],
+    "exclude_themes": [],
+    "must_include_tickers": [],
+    "rebalance": {
+      "count": 1,
+      "unit": "2w"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 10000000000,
+    "min_avg_daily_volume_usd": 100000000
+  },
+  "strategy_preference": {
+    "template": "momentum",
+    "baseline_weighting": "inverse_volatility",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "주식은 처음이라 잘 모르지만, 클라우드·소프트웨어 플랫폼 미국 기업 중 최근 주가 흐름이 강한 종목 위주로 3년 정도 투자하고 싶어요. 자산을 불리는 게 목표예요. 변동성이 커도 괜찮으니 수익률을 최대한 노리고 싶어요. 경기소비재·금융 섹터는 전망이 밝아 보이지 않아서 빼 주세요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

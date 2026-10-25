@@ -1,0 +1,73 @@
+{
+  "request_id": "req_2025-11-27_u43",
+  "created_at": "2025-11-27T15:00:00+09:00",
+  "profile": {
+    "user_id": "user_43",
+    "age_band": "40s",
+    "investment_experience": "beginner",
+    "financial_knowledge": "intermediate",
+    "investable_ratio_of_assets": 0.2
+  },
+  "capital": {
+    "initial_amount": 30000000,
+    "currency": "KRW",
+    "trading_currency": "USD",
+    "monthly_contribution": 300000,
+    "contribution_day": 10
+  },
+  "horizon": {
+    "start_date": "2025-11-25",
+    "target_years": 5,
+    "purpose": "capital_preservation"
+  },
+  "risk": {
+    "risk_tolerance": "conservative",
+    "max_drawdown_tolerance": 0.1,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.04,
+    "benchmark": "SPY"
+  },
+  "constraints": {
+    "universe": [
+      "SP500",
+      "NASDAQ100"
+    ],
+    "asset_types": [
+      "stock"
+    ],
+    "num_holdings": {
+      "target": 30,
+      "min": 27,
+      "max": 40
+    },
+    "max_weight_per_stock": 0.1,
+    "max_weight_per_sector": 0.3,
+    "min_cash_ratio": 0.1,
+    "exclude_tickers": [],
+    "exclude_sectors": [],
+    "exclude_themes": [
+      "adult_entertainment",
+      "fossil_fuels"
+    ],
+    "must_include_tickers": [
+      "PLD"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "1m"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 10000000000,
+    "min_avg_daily_volume_usd": 10000000
+  },
+  "strategy_preference": {
+    "template": "low_volatility",
+    "baseline_weighting": "inverse_volatility",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "미국 리츠와 유틸리티처럼 현금흐름이 안정적인 기업 중 주가가 크게 흔들리지 않는 종목 위주로 5년 정도 투자하고 싶어요. 수익보다 원금 보전이 우선이에요. 크게 벌기보다 크게 잃지 않는 게 중요합니다. 프로로지스(PLD)는 오래 지켜본 회사라 꼭 포함했으면 합니다. 성인 콘텐츠, 화석연료 관련 회사는 원하지 않아요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

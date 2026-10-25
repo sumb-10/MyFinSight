@@ -1,0 +1,73 @@
+{
+  "request_id": "req_2025-02-13_u27",
+  "created_at": "2025-02-13T21:00:00+09:00",
+  "profile": {
+    "user_id": "user_27",
+    "age_band": "60s+",
+    "investment_experience": "advanced",
+    "financial_knowledge": "expert",
+    "investable_ratio_of_assets": 0.5
+  },
+  "capital": {
+    "initial_amount": 100000000,
+    "currency": "KRW",
+    "trading_currency": "USD",
+    "monthly_contribution": 0,
+    "contribution_day": 1
+  },
+  "horizon": {
+    "start_date": "2025-02-12",
+    "target_years": 5,
+    "purpose": "income"
+  },
+  "risk": {
+    "risk_tolerance": "conservative",
+    "max_drawdown_tolerance": 0.15,
+    "loss_reaction": "sell",
+    "target_annual_return": 0.07,
+    "benchmark": "SPY"
+  },
+  "constraints": {
+    "universe": [
+      "SP500",
+      "NASDAQ100"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 25,
+      "min": 22,
+      "max": 35
+    },
+    "max_weight_per_stock": 0.1,
+    "max_weight_per_sector": 0.35,
+    "min_cash_ratio": 0.15,
+    "exclude_tickers": [
+      "DUK"
+    ],
+    "exclude_sectors": [
+      "Financials"
+    ],
+    "exclude_themes": [],
+    "must_include_tickers": [],
+    "rebalance": {
+      "count": 1,
+      "unit": "6m"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 10000000000,
+    "min_avg_daily_volume_usd": 10000000
+  },
+  "strategy_preference": {
+    "template": "high_dividend",
+    "baseline_weighting": "inverse_volatility",
+    "use_news_tilt": false
+  },
+  "natural_language": {
+    "idea": "미국 리츠와 유틸리티처럼 현금흐름이 안정적인 기업 중 배당을 꾸준히 많이 주는 종목 위주로 5년 정도 투자하고 싶어요. 배당으로 꾸준한 현금이 들어왔으면 해요. 손실이 나면 잠을 못 잘 것 같아서 변동성은 최대한 낮췄으면 해요. 그중 듀크 에너지(DUK)는 최근 이슈 때문에 마음이 안 가서 제외해 주세요. 금융 섹터는 잘 몰라서 제외하고 싶어요.",
+    "language": "ko"
+  }
+}

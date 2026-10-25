@@ -22,7 +22,7 @@ from backend.schemas.market import (
     PriceBar,
     PriceMeta,
 )
-from backend.schemas.market_ext import AssetInfo, DisclosureRow, FinancialRow, NewsRow
+from backend.schemas.market_ext import DisclosureRecord, AssetInfo, DisclosureRow, FinancialRow, NewsRecord, NewsRow
 from backend.schemas.runlog import StepRecord
 
 
@@ -233,4 +233,54 @@ class ExtendedRepository(MarketDataRepository, Protocol):
 
     def extra_tickers(self, *, since: datetime | None = None) -> list[str]:
         """요청으로 늘어난 종목 (추가 순서)."""
+        ...
+
+    # ------------------------------------------------------------ 분석 패키지 읽기 (backend/db/analysis_readers.py)
+    def get_price_bars(self, tickers: Sequence[str], start: date, end: date) -> pd.DataFrame:
+        """[start, end] 가격 행 long 형식 (ticker, date, open, high, low, close, adj_close, volume, currency, source)."""
+        ...
+
+    def get_fx_range(self, start: date, end: date, pair: str = "USDKRW") -> list[FxRate]:
+        """[start, end] 환율 (날짜 순)."""
+        ...
+
+    def get_valuation_asof(
+        self, asset_ids: Sequence[str], d: date, *, max_staleness_days: int = 10
+    ) -> dict[str, dict[str, Any]]:
+        """종목별 d 이하 최신 valuation_daily 행 (per, pbr, roe_ttm, dividend_yield, market_cap, shares_outstanding …)."""
+        ...
+
+    def constituents_at(
+        self, index: IndexCode | str, d: date
+    ) -> tuple[date | None, list[IndexConstituent], list[str]]:
+        """d 이하 최신 스냅샷 (없으면 최초 스냅샷 + 경고)."""
+        ...
+
+    def get_news_batch(
+        self,
+        asset_ids: Sequence[str],
+        start: datetime,
+        end: datetime,
+        *,
+        languages: Sequence[str] | None = None,
+        per_asset: int | None = None,
+    ) -> list[NewsRecord]:
+        """여러 종목 기사, [start, end) 반개구간, 종목별 최신순 per_asset 개."""
+        ...
+
+    def get_disclosures_batch(
+        self,
+        asset_ids: Sequence[str],
+        start: date,
+        end: date,
+        *,
+        event_types: Sequence[str] | None = None,
+        per_asset: int | None = None,
+        include_amendments: bool = False,
+    ) -> list[DisclosureRecord]:
+        """여러 종목 공시, 이용 가능일 [start, end) 반개구간, 수정 공시 제외, 종목별 중요도·최신순 per_asset 개."""
+        ...
+
+    def asset_map(self, symbols: Sequence[str] | None = None) -> dict[str, dict[str, Any]]:
+        """yfinance 표기 → 종목 마스터 요약."""
         ...

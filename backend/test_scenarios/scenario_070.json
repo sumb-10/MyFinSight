@@ -1,0 +1,72 @@
+{
+  "request_id": "req_2026-05-28_u70",
+  "created_at": "2026-05-28T17:10:00+09:00",
+  "profile": {
+    "user_id": "user_70",
+    "age_band": "50s",
+    "investment_experience": "intermediate",
+    "financial_knowledge": "intermediate",
+    "investable_ratio_of_assets": 0.25
+  },
+  "capital": {
+    "initial_amount": 20000000,
+    "currency": "KRW",
+    "trading_currency": "USD",
+    "monthly_contribution": 300000,
+    "contribution_day": 10
+  },
+  "horizon": {
+    "start_date": "2026-05-26",
+    "target_years": 3,
+    "purpose": "wealth_growth"
+  },
+  "risk": {
+    "risk_tolerance": "moderate",
+    "max_drawdown_tolerance": 0.15,
+    "loss_reaction": "buy_more",
+    "target_annual_return": 0.08,
+    "benchmark": "QQQ"
+  },
+  "constraints": {
+    "universe": [
+      "SP500",
+      "NASDAQ100"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 20,
+      "min": 18,
+      "max": 30
+    },
+    "max_weight_per_stock": 0.15,
+    "max_weight_per_sector": 0.35,
+    "min_cash_ratio": 0.1,
+    "exclude_tickers": [],
+    "exclude_sectors": [
+      "Consumer Discretionary",
+      "Consumer Staples"
+    ],
+    "exclude_themes": [],
+    "must_include_tickers": [],
+    "rebalance": {
+      "count": 1,
+      "unit": "6m"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 10000000000,
+    "min_avg_daily_volume_usd": 50000000
+  },
+  "strategy_preference": {
+    "template": "momentum",
+    "baseline_weighting": "equal_weight",
+    "use_news_tilt": false
+  },
+  "natural_language": {
+    "idea": "미국 빅테크 대형주 중 최근 주가 흐름이 강한 종목 위주로 3년 정도 투자하고 싶어요. 목돈을 키우고 싶어요. 어느 정도 출렁이는 건 괜찮지만 한 종목에 몰빵하는 건 피하고 싶어요. 경기소비재·필수소비재 섹터는 잘 몰라서 제외하고 싶어요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

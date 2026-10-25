@@ -1,0 +1,76 @@
+{
+  "request_id": "req_2026-07-30_u23",
+  "created_at": "2026-07-30T22:00:00+09:00",
+  "profile": {
+    "user_id": "user_23",
+    "age_band": "40s",
+    "investment_experience": "beginner",
+    "financial_knowledge": "basic",
+    "investable_ratio_of_assets": 0.5
+  },
+  "capital": {
+    "initial_amount": 10000000,
+    "currency": "KRW",
+    "trading_currency": "KRW",
+    "monthly_contribution": 100000,
+    "contribution_day": 28
+  },
+  "horizon": {
+    "start_date": "2026-07-29",
+    "target_years": 2,
+    "purpose": "income"
+  },
+  "risk": {
+    "risk_tolerance": "moderate",
+    "max_drawdown_tolerance": 0.18,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.08,
+    "benchmark": "069500.KS"
+  },
+  "constraints": {
+    "universe": [
+      "KOSPI200"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 15,
+      "min": 13,
+      "max": 25
+    },
+    "max_weight_per_stock": 0.15,
+    "max_weight_per_sector": 0.3,
+    "min_cash_ratio": 0.0,
+    "exclude_tickers": [
+      "017670.KS"
+    ],
+    "exclude_sectors": [],
+    "exclude_themes": [
+      "weapons"
+    ],
+    "must_include_tickers": [
+      "000810.KS",
+      "033780.KS",
+      "105560.KS"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "1q"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 3000000000,
+    "min_avg_daily_volume_usd": 5000000
+  },
+  "strategy_preference": {
+    "template": "high_dividend",
+    "baseline_weighting": "equal_weight",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "통신·금융처럼 배당을 꾸준히 주는 국내 기업 중 2년 정도 투자하고 싶어요. 배당으로 꾸준한 현금이 들어왔으면 해요. 어느 정도 출렁이는 건 괜찮지만 한 종목에 몰빵하는 건 피하고 싶어요. 삼성화재(000810), KT&G(033780), KB금융(105560)은 꼭 넣어 주세요. 그중 SK텔레콤(017670)은 최근 이슈 때문에 마음이 안 가서 제외해 주세요. 무기·방산 관련 회사는 원하지 않아요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

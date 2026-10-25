@@ -1,0 +1,72 @@
+{
+  "request_id": "req_2026-02-06_u50",
+  "created_at": "2026-02-06T13:45:00+09:00",
+  "profile": {
+    "user_id": "user_50",
+    "age_band": "40s",
+    "investment_experience": "advanced",
+    "financial_knowledge": "intermediate",
+    "investable_ratio_of_assets": 0.25
+  },
+  "capital": {
+    "initial_amount": 30000000,
+    "currency": "KRW",
+    "trading_currency": "USD",
+    "monthly_contribution": 0,
+    "contribution_day": 1
+  },
+  "horizon": {
+    "start_date": "2026-02-05",
+    "target_years": 10,
+    "purpose": "retirement"
+  },
+  "risk": {
+    "risk_tolerance": "moderate",
+    "max_drawdown_tolerance": 0.2,
+    "loss_reaction": "buy_more",
+    "target_annual_return": 0.12,
+    "benchmark": "QQQ"
+  },
+  "constraints": {
+    "universe": [
+      "SP500",
+      "NASDAQ100"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 10,
+      "min": 5,
+      "max": 13
+    },
+    "max_weight_per_stock": 0.2,
+    "max_weight_per_sector": 1.0,
+    "min_cash_ratio": 0.05,
+    "exclude_tickers": [
+      "CRWD",
+      "LVS"
+    ],
+    "exclude_sectors": [],
+    "exclude_themes": [],
+    "must_include_tickers": [],
+    "rebalance": {
+      "count": 1,
+      "unit": "6m"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 5000000000,
+    "min_avg_daily_volume_usd": 50000000
+  },
+  "strategy_preference": {
+    "template": "quality",
+    "baseline_weighting": "equal_weight",
+    "use_news_tilt": false
+  },
+  "natural_language": {
+    "idea": "클라우드·소프트웨어 플랫폼 미국 기업 중 재무가 탄탄하고 이익률이 높은 회사 위주로 10년 정도 투자하고 싶어요. 은퇴 자금으로 쓰려고 합니다. 어느 정도 출렁이는 건 괜찮지만 한 종목에 몰빵하는 건 피하고 싶어요. 크라우드스트라이크(CRWD), 라스베이거스 샌즈(LVS)는 지배구조가 마음에 안 들어서 담지 말아 주세요.",
+    "language": "ko"
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "request_id": "req_2026-05-14_u90",
+  "created_at": "2026-05-14T09:45:00+09:00",
+  "profile": {
+    "user_id": "user_90",
+    "age_band": "50s",
+    "investment_experience": "none",
+    "financial_knowledge": "basic",
+    "investable_ratio_of_assets": 0.15
+  },
+  "capital": {
+    "initial_amount": 50000000,
+    "currency": "KRW",
+    "trading_currency": "KRW",
+    "monthly_contribution": 200000,
+    "contribution_day": 15
+  },
+  "horizon": {
+    "start_date": "2026-05-13",
+    "target_years": 2,
+    "purpose": "wealth_growth"
+  },
+  "risk": {
+    "risk_tolerance": "moderate",
+    "max_drawdown_tolerance": 0.2,
+    "loss_reaction": "sell",
+    "target_annual_return": 0.1,
+    "benchmark": "069500.KS"
+  },
+  "constraints": {
+    "universe": [
+      "KOSPI200"
+    ],
+    "asset_types": [
+      "stock"
+    ],
+    "num_holdings": {
+      "target": 10,
+      "min": 5,
+      "max": 15
+    },
+    "max_weight_per_stock": 0.25,
+    "max_weight_per_sector": 0.7,
+    "min_cash_ratio": 0.0,
+    "exclude_tickers": [
+      "009150.KS"
+    ],
+    "exclude_sectors": [
+      "Financials"
+    ],
+    "exclude_themes": [],
+    "must_include_tickers": [
+      "000660.KS"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "1q"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 3000000000,
+    "min_avg_daily_volume_usd": 20000000
+  },
+  "strategy_preference": {
+    "template": "momentum",
+    "baseline_weighting": "equal_weight",
+    "use_news_tilt": false
+  },
+  "natural_language": {
+    "idea": "주식은 처음이라 잘 모르지만, 국내 반도체와 IT 부품 기업 중 최근 주가 흐름이 강한 종목 위주로 2년 정도 투자하고 싶어요. 목돈을 키우고 싶어요. 어느 정도 출렁이는 건 괜찮지만 한 종목에 몰빵하는 건 피하고 싶어요. SK하이닉스(000660)는 꼭 넣어 주세요. 그중 삼성전기(009150)는 최근 이슈 때문에 마음이 안 가서 제외해 주세요. 금융 섹터 종목은 담지 말아 주세요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "request_id": "req_2026-06-12_u10",
+  "created_at": "2026-06-12T10:10:00+09:00",
+  "profile": {
+    "user_id": "user_10",
+    "age_band": "30s",
+    "investment_experience": "advanced",
+    "financial_knowledge": "expert",
+    "investable_ratio_of_assets": 0.8
+  },
+  "capital": {
+    "initial_amount": 10000000,
+    "currency": "KRW",
+    "trading_currency": "USD",
+    "monthly_contribution": 500000,
+    "contribution_day": 28
+  },
+  "horizon": {
+    "start_date": "2026-06-11",
+    "target_years": 10,
+    "purpose": "retirement"
+  },
+  "risk": {
+    "risk_tolerance": "conservative",
+    "max_drawdown_tolerance": 0.12,
+    "loss_reaction": "sell",
+    "target_annual_return": 0.06,
+    "benchmark": "QQQ"
+  },
+  "constraints": {
+    "universe": [
+      "SP500"
+    ],
+    "asset_types": [
+      "stock"
+    ],
+    "num_holdings": {
+      "target": 30,
+      "min": 25,
+      "max": 40
+    },
+    "max_weight_per_stock": 0.1,
+    "max_weight_per_sector": 0.6,
+    "min_cash_ratio": 0.1,
+    "exclude_tickers": [
+      "V"
+    ],
+    "exclude_sectors": [
+      "Materials"
+    ],
+    "exclude_themes": [
+      "alcohol"
+    ],
+    "must_include_tickers": [
+      "VRTX"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "6m"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 50000000000,
+    "min_avg_daily_volume_usd": 50000000
+  },
+  "strategy_preference": {
+    "template": "low_volatility",
+    "baseline_weighting": "inverse_volatility",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "미국 헬스케어와 제약·바이오 기업 중 주가가 크게 흔들리지 않는 종목 위주로 10년 정도 투자하고 싶어요. 노후 대비용 자금이에요. 크게 벌기보다 크게 잃지 않는 게 중요합니다. 버텍스(VRTX)는 오래 지켜본 회사라 꼭 포함했으면 합니다. 비자(V)는 개인적으로 믿음이 안 가서 빼 주세요. 소재 섹터 종목은 담지 말아 주세요. 주류 관련 회사는 원하지 않아요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

@@ -1,0 +1,337 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "myfinsight/store/paper_portfolio.schema.json",
+  "title": "PaperPortfolio",
+  "description": "모의투자(tracking) 객체. 파일: store/data/paper/<paper_id>/portfolio.json. 시작 조건은 생성 시 고정하고(프로필이 바뀌어도 불변), state만 갱신한다 (R11, K9).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "paper_id",
+    "report_id",
+    "run_id",
+    "strategy_id",
+    "name_ko",
+    "start_date",
+    "initial_capital",
+    "contribution",
+    "rebalance_rule",
+    "constraints_snapshot",
+    "tickers",
+    "start_weights",
+    "state",
+    "status",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "paper_id": {
+      "type": "string",
+      "pattern": "^paper_\\d{8}_[0-9a-f]{4}$"
+    },
+    "report_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "strategy_id": {
+      "type": "string",
+      "description": "기준 리포트 안의 포트폴리오 id (추천 또는 사용자가 고른 것)"
+    },
+    "name_ko": {
+      "type": "string"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "트래킹 시작일(거래일). 기본 = 생성일"
+    },
+    "reconstructed_at_start": {
+      "type": "boolean",
+      "default": false,
+      "description": "시작일 > 분석 기준일이라 시작일에 M4-05를 다시 돌렸는지 (K9)"
+    },
+    "initial_capital": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "amount",
+        "currency",
+        "usd",
+        "fx_rate",
+        "fx_date"
+      ],
+      "properties": {
+        "amount": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "currency": {
+          "enum": [
+            "KRW",
+            "USD"
+          ]
+        },
+        "usd": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "fx_rate": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "fx_date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        }
+      }
+    },
+    "contribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "monthly_amount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "currency": {
+          "enum": [
+            "KRW",
+            "USD"
+          ]
+        },
+        "day": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 28
+        }
+      }
+    },
+    "rebalance_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "count",
+        "unit"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unit": {
+          "enum": [
+            "2w",
+            "1m",
+            "1q",
+            "6m",
+            "1y"
+          ]
+        }
+      }
+    },
+    "constraints_snapshot": {
+      "type": "object",
+      "description": "시작 시점의 상한·종목 수·뉴스 틸트 설정(리밸런싱 재구성에 고정 사용)",
+      "additionalProperties": true
+    },
+    "benchmark": {
+      "type": "string",
+      "description": "비교지수 티커"
+    },
+    "tickers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "start_weights": {
+      "type": "object",
+      "description": "시작일 타겟 비중(합 1)",
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "holdings",
+        "cash_usd",
+        "last_snapshot_date"
+      ],
+      "properties": {
+        "holdings": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          },
+          "description": "ticker -> 보유 주수(소수 허용)"
+        },
+        "cash_usd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "last_snapshot_date": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "last_rebalance_date": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "n_rebalances": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "units": {
+          "type": "number",
+          "minimum": 0,
+          "description": "운용 수익률 계산용 단위 수 (적립은 새 단위 발행)"
+        },
+        "unit_price_peak": {
+          "type": "number",
+          "minimum": 0
+        },
+        "benchmark_units": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "contributions_total_usd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "target_weights": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "cash_weight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "update_status": {
+          "enum": [
+            "ok",
+            "delayed"
+          ]
+        },
+        "delayed_reason_ko": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "last_refresh_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "status": {
+      "enum": [
+        "active",
+        "stopped"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "stopped_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "resumed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "history": {
+      "type": "array",
+      "description": "상태 변경 이력(시작·중지·재개)",
+      "items": {
+        "type": "object",
+        "required": [
+          "at",
+          "event"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "event": {
+            "enum": [
+              "started",
+              "stopped",
+              "resumed",
+              "rebalance_skipped",
+              "refresh_failed"
+            ]
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "strategy": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "전략 해석: kind(template|black_litterman|cash_blend), template, cash_ratio, name_ko"
+    },
+    "report_as_of": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "기준 리포트의 분석 기준일"
+    },
+    "benchmark_start_px": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "시작일 비교지수 USD 가격 (비교지수 운용 수익률 = 현재가 ÷ 이 값 − 1)"
+    }
+  }
+}

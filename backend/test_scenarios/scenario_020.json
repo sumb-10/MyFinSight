@@ -1,0 +1,70 @@
+{
+  "request_id": "req_2025-01-15_u20",
+  "created_at": "2025-01-15T13:15:00+09:00",
+  "profile": {
+    "user_id": "user_20",
+    "age_band": "40s",
+    "investment_experience": "beginner",
+    "financial_knowledge": "basic",
+    "investable_ratio_of_assets": 0.1
+  },
+  "capital": {
+    "initial_amount": 100000000,
+    "currency": "KRW",
+    "trading_currency": "KRW",
+    "monthly_contribution": 2000000,
+    "contribution_day": 28
+  },
+  "horizon": {
+    "start_date": "2025-01-14",
+    "target_years": 2,
+    "purpose": "income"
+  },
+  "risk": {
+    "risk_tolerance": "conservative",
+    "max_drawdown_tolerance": 0.08,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.05,
+    "benchmark": "069500.KS"
+  },
+  "constraints": {
+    "universe": [
+      "KOSPI200"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 20,
+      "min": 17,
+      "max": 22
+    },
+    "max_weight_per_stock": 0.1,
+    "max_weight_per_sector": 0.3,
+    "min_cash_ratio": 0.05,
+    "exclude_tickers": [],
+    "exclude_sectors": [],
+    "exclude_themes": [],
+    "must_include_tickers": [
+      "017670.KS"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "1y"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 5000000000,
+    "min_avg_daily_volume_usd": 10000000
+  },
+  "strategy_preference": {
+    "template": "high_dividend",
+    "baseline_weighting": "min_variance",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "통신·금융처럼 배당을 꾸준히 주는 국내 기업 중 2년 정도 투자하고 싶어요. 배당으로 꾸준한 현금이 들어왔으면 해요. 손실이 나면 잠을 못 잘 것 같아서 변동성은 최대한 낮췄으면 해요. SK텔레콤(017670)은 오래 지켜본 회사라 꼭 포함했으면 합니다. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

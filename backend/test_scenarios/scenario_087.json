@@ -1,0 +1,74 @@
+{
+  "request_id": "req_2026-03-11_u87",
+  "created_at": "2026-03-11T17:10:00+09:00",
+  "profile": {
+    "user_id": "user_87",
+    "age_band": "20s",
+    "investment_experience": "beginner",
+    "financial_knowledge": "basic",
+    "investable_ratio_of_assets": 0.8
+  },
+  "capital": {
+    "initial_amount": 20000000,
+    "currency": "KRW",
+    "trading_currency": "KRW",
+    "monthly_contribution": 2000000,
+    "contribution_day": 25
+  },
+  "horizon": {
+    "start_date": "2026-03-10",
+    "target_years": 3,
+    "purpose": "wealth_growth"
+  },
+  "risk": {
+    "risk_tolerance": "aggressive",
+    "max_drawdown_tolerance": 0.25,
+    "loss_reaction": "buy_more",
+    "target_annual_return": 0.25,
+    "benchmark": "069500.KS"
+  },
+  "constraints": {
+    "universe": [
+      "KOSPI200"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 8,
+      "min": 3,
+      "max": 18
+    },
+    "max_weight_per_stock": 0.35,
+    "max_weight_per_sector": 0.35,
+    "min_cash_ratio": 0.0,
+    "exclude_tickers": [],
+    "exclude_sectors": [
+      "Communication Services"
+    ],
+    "exclude_themes": [
+      "fossil_fuels",
+      "gambling",
+      "weapons"
+    ],
+    "must_include_tickers": [],
+    "rebalance": {
+      "count": 1,
+      "unit": "6m"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 2000000000,
+    "min_avg_daily_volume_usd": 2000000
+  },
+  "strategy_preference": {
+    "template": "quality",
+    "baseline_weighting": "market_cap",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "전력기기·원전 등 국내 전력 인프라 기업 중 재무가 탄탄하고 이익률이 높은 회사 위주로 3년 정도 투자하고 싶어요. 자산을 불리는 게 목표예요. 떨어지면 오히려 더 살 생각이라 공격적으로 가도 됩니다. 커뮤니케이션 서비스 섹터는 전망이 밝아 보이지 않아서 빼 주세요. 화석연료, 도박·카지노, 무기·방산 관련 회사는 원하지 않아요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

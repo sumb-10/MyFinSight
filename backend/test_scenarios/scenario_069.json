@@ -1,0 +1,76 @@
+{
+  "request_id": "req_2026-10-11_u69",
+  "created_at": "2026-10-11T15:10:00+09:00",
+  "profile": {
+    "user_id": "user_69",
+    "age_band": "60s+",
+    "investment_experience": "none",
+    "financial_knowledge": "intermediate",
+    "investable_ratio_of_assets": 0.2
+  },
+  "capital": {
+    "initial_amount": 50000000,
+    "currency": "KRW",
+    "trading_currency": "KRW",
+    "monthly_contribution": 0,
+    "contribution_day": 1
+  },
+  "horizon": {
+    "start_date": "2026-10-08",
+    "target_years": 2,
+    "purpose": "capital_preservation"
+  },
+  "risk": {
+    "risk_tolerance": "moderate",
+    "max_drawdown_tolerance": 0.25,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.12,
+    "benchmark": "069500.KS"
+  },
+  "constraints": {
+    "universe": [
+      "KOSPI200"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 15,
+      "min": 10,
+      "max": 17
+    },
+    "max_weight_per_stock": 0.15,
+    "max_weight_per_sector": 0.35,
+    "min_cash_ratio": 0.1,
+    "exclude_tickers": [
+      "352820.KS"
+    ],
+    "exclude_sectors": [],
+    "exclude_themes": [
+      "adult_entertainment",
+      "gambling"
+    ],
+    "must_include_tickers": [
+      "015760.KS",
+      "034020.KS"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "1y"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 1000000000,
+    "min_avg_daily_volume_usd": 2000000
+  },
+  "strategy_preference": {
+    "template": "quality",
+    "baseline_weighting": "market_cap",
+    "use_news_tilt": false
+  },
+  "natural_language": {
+    "idea": "전력기기·원전 등 국내 전력 인프라 기업 중 재무가 탄탄하고 이익률이 높은 회사 위주로 2년 정도 투자하고 싶어요. 원금을 지키는 게 가장 중요합니다. 어느 정도 출렁이는 건 괜찮지만 한 종목에 몰빵하는 건 피하고 싶어요. 한국전력(015760), 두산에너빌리티(034020)는 꼭 넣어 주세요. 하이브(352820)는 지배구조가 마음에 안 들어서 담지 말아 주세요. 성인 콘텐츠, 도박·카지노 관련 회사는 원하지 않아요.",
+    "language": "ko"
+  }
+}

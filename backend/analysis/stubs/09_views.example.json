@@ -1,0 +1,59 @@
+{
+  "sets": [
+    {
+      "scenario_id": "ai_capex_acceleration",
+      "title_ko": "AI 설비투자 가속",
+      "narrative_ko": "생성형 AI 확산으로 하이퍼스케일러의 데이터센터 투자가 예상보다 빠르게 늘어난다고 봅니다. 맞춤형 AI 반도체와 공정 장비, 칩 설계 소프트웨어가 가장 먼저 수혜를 받고, 데이터센터 리츠는 공급 부족으로 임대료가 오르지만 금리 부담이 상쇄합니다.",
+      "views": [
+        { "type": "absolute", "long": ["AVGO"], "short": [], "expected_return_annual": 0.30, "confidence": 0.5, "horizon_months": 12, "rationale_ko": "하이퍼스케일러 맞춤형 AI ASIC·네트워크 칩 수주가 데이터센터 투자 증가와 함께 확대", "evidence_type": "llm_placeholder" },
+        { "type": "absolute", "long": ["KLAC"], "short": [], "expected_return_annual": 0.22, "confidence": 0.4, "horizon_months": 12, "rationale_ko": "첨단 공정·HBM 전환으로 계측·검사 장비 수요가 반도체 사이클 바닥에서 먼저 회복", "evidence_type": "llm_placeholder" },
+        { "type": "relative", "long": ["CDNS", "SNPS"], "short": ["ORCL"], "expected_return_annual": 0.08, "confidence": 0.4, "horizon_months": 12, "rationale_ko": "AI 칩 설계 증가로 EDA 수요가 구조적으로 늘어 전통 DB 소프트웨어보다 성장률 우위", "evidence_type": "llm_placeholder" },
+        { "type": "relative", "long": ["AVGO", "KLAC", "MPWR"], "short": ["EQIX", "DLR"], "expected_return_annual": 0.12, "confidence": 0.45, "horizon_months": 12, "rationale_ko": "설비투자 초기 국면에서는 리츠보다 반도체 공급망의 이익 레버리지가 큼", "evidence_type": "llm_placeholder" }
+      ]
+    },
+    {
+      "scenario_id": "valuation_mean_reversion",
+      "title_ko": "밸류에이션 회귀",
+      "narrative_ko": "2022년 급락 뒤 반등한 고PER 소프트웨어·반도체의 밸류에이션이 과도하다고 봅니다. 이익 성장이 확인될 때까지 대형 플랫폼과 리츠처럼 상대적으로 싼 자산이 우위를 점하고, EDA 종목은 기대수익률이 낮아집니다.",
+      "views": [
+        { "type": "absolute", "long": ["CDNS"], "short": [], "expected_return_annual": 0.05, "confidence": 0.4, "horizon_months": 12, "rationale_ko": "PER 50배 수준의 밸류에이션은 이미 성장 기대를 반영, 멀티플 축소 위험", "evidence_type": "llm_placeholder" },
+        { "type": "absolute", "long": ["SNPS"], "short": [], "expected_return_annual": 0.05, "confidence": 0.35, "horizon_months": 12, "rationale_ko": "CDNS 와 같은 논리, 고밸류에이션의 멀티플 축소", "evidence_type": "llm_placeholder" },
+        { "type": "relative", "long": ["GOOGL", "AMZN"], "short": ["CDNS", "SNPS"], "expected_return_annual": 0.10, "confidence": 0.4, "horizon_months": 12, "rationale_ko": "대형 플랫폼은 비용 절감으로 마진 회복 여지가 크고 상대 밸류에이션이 낮음", "evidence_type": "llm_placeholder" },
+        { "type": "relative", "long": ["EQIX", "DLR"], "short": ["MPWR"], "expected_return_annual": 0.06, "confidence": 0.3, "horizon_months": 12, "rationale_ko": "리츠는 2022년 금리 충격을 이미 반영, 고성장 반도체 대비 하방이 제한적", "evidence_type": "llm_placeholder" }
+      ]
+    },
+    {
+      "scenario_id": "rates_higher_for_longer",
+      "title_ko": "고금리 장기화",
+      "narrative_ko": "인플레이션이 더디게 내려와 기준금리가 오래 높게 유지된다고 봅니다. 부채 비중이 큰 데이터센터 리츠가 가장 불리하고, 현금흐름이 탄탄한 소프트웨어·산업재가 상대적으로 유리합니다.",
+      "views": [
+        { "type": "absolute", "long": ["EQIX"], "short": [], "expected_return_annual": 0.02, "confidence": 0.4, "horizon_months": 12, "rationale_ko": "차입 비용 상승과 cap rate 확대가 리츠 밸류에이션을 압박", "evidence_type": "llm_placeholder" },
+        { "type": "absolute", "long": ["DLR"], "short": [], "expected_return_annual": 0.00, "confidence": 0.4, "horizon_months": 12, "rationale_ko": "EQIX 보다 레버리지가 높아 금리 민감도가 더 큼", "evidence_type": "llm_placeholder" },
+        { "type": "relative", "long": ["ORCL", "ETN"], "short": ["EQIX", "DLR"], "expected_return_annual": 0.10, "confidence": 0.45, "horizon_months": 12, "rationale_ko": "고금리 국면에서 현금흐름·배당 성장 기업이 레버리지 자산보다 우위", "evidence_type": "llm_placeholder" },
+        { "type": "relative", "long": ["GOOGL"], "short": ["AMZN"], "expected_return_annual": 0.05, "confidence": 0.3, "horizon_months": 12, "rationale_ko": "순현금 구조의 GOOGL 이 대규모 투자 중인 AMZN 보다 금리 상승에 덜 민감", "evidence_type": "llm_placeholder" }
+      ]
+    },
+    {
+      "scenario_id": "infrastructure_power_rotation",
+      "title_ko": "인프라·전력 로테이션",
+      "narrative_ko": "AI 데이터센터의 병목이 칩이 아니라 전력·냉각·상면이라고 봅니다. 전력 장비와 데이터센터 리츠로 수혜가 확산되고, 이미 많이 오른 설계 소프트웨어는 상대적으로 뒤처집니다.",
+      "views": [
+        { "type": "absolute", "long": ["ETN"], "short": [], "expected_return_annual": 0.25, "confidence": 0.5, "horizon_months": 12, "rationale_ko": "데이터센터 전력 장비 수주 잔고가 급증하고 가격 결정력이 강화", "evidence_type": "llm_placeholder" },
+        { "type": "absolute", "long": ["DLR"], "short": [], "expected_return_annual": 0.15, "confidence": 0.4, "horizon_months": 12, "rationale_ko": "하이퍼스케일 상면 수요로 선임대 비율과 임대료 상승", "evidence_type": "llm_placeholder" },
+        { "type": "relative", "long": ["ETN", "DLR", "EQIX"], "short": ["CDNS", "SNPS"], "expected_return_annual": 0.08, "confidence": 0.4, "horizon_months": 12, "rationale_ko": "수혜가 설계 단계에서 물리 인프라 단계로 이동", "evidence_type": "llm_placeholder" },
+        { "type": "relative", "long": ["ORCL"], "short": ["AMZN"], "expected_return_annual": 0.06, "confidence": 0.3, "horizon_months": 12, "rationale_ko": "OCI 의 AI 인프라 수주가 성장률을 높이는 반면 AWS 는 성장 둔화 국면", "evidence_type": "llm_placeholder" }
+      ]
+    },
+    {
+      "scenario_id": "consensus_balanced",
+      "title_ko": "컨센서스·균형",
+      "narrative_ko": "특정 시나리오에 베팅하지 않고 시장 컨센서스에 가까운 완만한 뷰만 반영합니다. 대형 플랫폼의 완만한 회복과 반도체 사이클 바닥 통과를 가정하되 신뢰도를 낮게 두어 베이스라인에서 크게 벗어나지 않습니다.",
+      "views": [
+        { "type": "absolute", "long": ["GOOGL"], "short": [], "expected_return_annual": 0.15, "confidence": 0.4, "horizon_months": 12, "rationale_ko": "광고 경기 회복과 비용 통제로 이익 성장 재개", "evidence_type": "llm_placeholder" },
+        { "type": "absolute", "long": ["AMZN"], "short": [], "expected_return_annual": 0.18, "confidence": 0.4, "horizon_months": 12, "rationale_ko": "리테일 마진 정상화와 AWS 성장 안정화", "evidence_type": "llm_placeholder" },
+        { "type": "relative", "long": ["AVGO"], "short": ["KLAC", "MPWR"], "expected_return_annual": 0.05, "confidence": 0.3, "horizon_months": 12, "rationale_ko": "AVGO 는 소프트웨어 비중으로 사이클 변동이 작음", "evidence_type": "llm_placeholder" },
+        { "type": "relative", "long": ["CDNS", "SNPS"], "short": ["EQIX", "DLR"], "expected_return_annual": 0.05, "confidence": 0.3, "horizon_months": 12, "rationale_ko": "구독형 매출의 EDA 가 금리 민감 자산보다 안정적", "evidence_type": "llm_placeholder" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,156 @@
+{
+  "request_id": "req_2026-10-09_001",
+  "spec_version": "1.0",
+  "interpretation": {
+    "summary_ko": "AI 반도체와 클라우드 인프라 기업 가운데 최근 1년 주가 모멘텀이 강한 종목을 15개 골라 3년간 분산 보유하려는 요청.",
+    "themes": [
+      {
+        "id": "ai_semiconductor",
+        "label_ko": "AI 반도체",
+        "description_ko": "AI 학습·추론용 GPU/가속기, 고대역폭 메모리, AI 칩 설계 IP, 첨단 반도체 장비·EDA 등 AI 연산 수요의 직접 수혜 기업",
+        "gics_codes": [
+          "453010"
+        ],
+        "keywords": [
+          "gpu",
+          "ai accelerator",
+          "semiconductor",
+          "chip",
+          "hbm",
+          "memory",
+          "foundry",
+          "lithography",
+          "eda",
+          "data center"
+        ],
+        "example_tickers": [
+          "NVDA",
+          "AMD",
+          "AVGO",
+          "MRVL",
+          "ARM",
+          "MU",
+          "ASML",
+          "AMAT",
+          "LRCX",
+          "KLAC",
+          "ALAB",
+          "SNPS",
+          "CDNS",
+          "TSM"
+        ]
+      },
+      {
+        "id": "cloud_infrastructure",
+        "label_ko": "클라우드 인프라",
+        "description_ko": "하이퍼스케일 클라우드 서비스, AI 전용 클라우드, 데이터센터 서버·네트워크 장비, 데이터센터 전력·냉각, 데이터센터 리츠 등 클라우드 공급 측 기업",
+        "gics_codes": [
+          "45102030",
+          "451020",
+          "45103020",
+          "45202030",
+          "45201020",
+          "20104010",
+          "60108050"
+        ],
+        "keywords": [
+          "cloud",
+          "data center",
+          "hyperscale",
+          "server",
+          "networking",
+          "colocation",
+          "infrastructure",
+          "storage",
+          "power",
+          "cooling"
+        ],
+        "example_tickers": [
+          "MSFT",
+          "AMZN",
+          "GOOGL",
+          "ORCL",
+          "CRWV",
+          "NBIS",
+          "ANET",
+          "DELL",
+          "SMCI",
+          "HPE",
+          "VRT",
+          "EQIX",
+          "DLR",
+          "CSCO"
+        ]
+      }
+    ],
+    "style_hints": [
+      "growth",
+      "momentum",
+      "long_term",
+      "diversified"
+    ],
+    "conflicts": [
+      {
+        "field": "horizon.target_years vs strategy_preference.template",
+        "issue_ko": "3년 장기 보유 의도와 12개월 모멘텀 스크린은 시간 척도가 다름. 모멘텀 효과는 리밸런싱으로 유지됨",
+        "resolution_ko": "명시 입력(momentum, 분기 리밸런싱)을 유지하고 리포트에 리밸런싱 의존성을 명시"
+      }
+    ]
+  },
+  "exclude_theme_rules": [
+    {
+      "theme": "tobacco",
+      "gics_codes": [
+        "30203010"
+      ],
+      "keywords": [
+        "tobacco",
+        "cigarette",
+        "nicotine"
+      ]
+    },
+    {
+      "theme": "gambling",
+      "gics_codes": [
+        "25301010"
+      ],
+      "keywords": [
+        "casino",
+        "gambling",
+        "betting",
+        "sportsbook"
+      ]
+    }
+  ],
+  "screen": {
+    "template": "momentum",
+    "metric": "return_12m_1m",
+    "direction": "desc",
+    "as_of": "2026-04-01",
+    "theme_filter": {
+      "min_confidence": 0.5
+    },
+    "select_top_n": 15
+  },
+  "risk_params": {
+    "risk_tolerance": "moderate",
+    "effective_max_drawdown": 0.25,
+    "volatility_preference": "medium",
+    "notes_ko": "loss_reaction=hold, experience=beginner 이므로 보정 없이 0.25 유지. 자연어에서 변동성 감수 의사를 밝혔으나 '몰빵 회피' 를 함께 말해 medium 유지."
+  },
+  "news_tilt": {
+    "enabled": true,
+    "max_view_confidence": 0.5,
+    "max_tilt_per_stock": 0.05
+  },
+  "validation_criteria": {
+    "benchmark": "SPY",
+    "max_drawdown": 0.25,
+    "target_annual_return": 0.12,
+    "horizon_years": 3
+  },
+  "report_settings": {
+    "language": "ko",
+    "explanation_level": "beginner"
+  }
+}

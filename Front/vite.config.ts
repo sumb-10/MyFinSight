@@ -33,6 +33,8 @@ export default defineConfig(({ mode }) => {
       host: process.env.FIGMA_DEV_SERVER_HOST || '0.0.0.0',
       port: parseInt(process.env.PORT || '8443'),
       strictPort: true,
+      // 분석 서비스 API (backend/analysis/api, uvicorn :8001). VITE_PROXY_TARGET 로 바꿀 수 있다.
+      proxy: { '/api': { target: process.env.VITE_PROXY_TARGET || 'http://localhost:8001', changeOrigin: true } },
       watch: {
         ignored: [
           '**/.figma/**',
@@ -42,6 +44,7 @@ export default defineConfig(({ mode }) => {
     preview: {
       host: process.env.FIGMA_DEV_SERVER_HOST || '0.0.0.0',
       port: parseInt(process.env.PORT || '8443'),
+      proxy: { '/api': { target: process.env.VITE_PROXY_TARGET || 'http://localhost:8001', changeOrigin: true } },
     },
   }
 })

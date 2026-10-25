@@ -1,0 +1,72 @@
+{
+  "request_id": "req_2026-02-04_u79",
+  "created_at": "2026-02-04T15:00:00+09:00",
+  "profile": {
+    "user_id": "user_79",
+    "age_band": "60s+",
+    "investment_experience": "beginner",
+    "financial_knowledge": "basic",
+    "investable_ratio_of_assets": 0.15
+  },
+  "capital": {
+    "initial_amount": 30000000,
+    "currency": "KRW",
+    "trading_currency": "KRW",
+    "monthly_contribution": 300000,
+    "contribution_day": 15
+  },
+  "horizon": {
+    "start_date": "2026-02-02",
+    "target_years": 3,
+    "purpose": "retirement"
+  },
+  "risk": {
+    "risk_tolerance": "conservative",
+    "max_drawdown_tolerance": 0.12,
+    "loss_reaction": "sell",
+    "target_annual_return": 0.04,
+    "benchmark": "069500.KS"
+  },
+  "constraints": {
+    "universe": [
+      "KOSPI200"
+    ],
+    "asset_types": [
+      "stock"
+    ],
+    "num_holdings": {
+      "target": 25,
+      "min": 22,
+      "max": 27
+    },
+    "max_weight_per_stock": 0.1,
+    "max_weight_per_sector": 0.6,
+    "min_cash_ratio": 0.1,
+    "exclude_tickers": [],
+    "exclude_sectors": [
+      "Utilities"
+    ],
+    "exclude_themes": [
+      "alcohol",
+      "gambling"
+    ],
+    "must_include_tickers": [],
+    "rebalance": {
+      "count": 1,
+      "unit": "1q"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 5000000000,
+    "min_avg_daily_volume_usd": 5000000
+  },
+  "strategy_preference": {
+    "template": "low_per",
+    "baseline_weighting": "inverse_volatility",
+    "use_news_tilt": false
+  },
+  "natural_language": {
+    "idea": "밸류업 수혜가 기대되는 국내 은행·금융지주 중 실적 대비 주가가 싼 종목 위주로 3년 정도 투자하고 싶어요. 은퇴 자금으로 쓰려고 합니다. 손실이 나면 잠을 못 잘 것 같아서 변동성은 최대한 낮췄으면 해요. 유틸리티 섹터는 전망이 밝아 보이지 않아서 빼 주세요. 주류, 도박·카지노 관련 회사는 원하지 않아요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

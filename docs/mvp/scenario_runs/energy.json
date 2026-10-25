@@ -1,0 +1,116 @@
+{
+  "name": "energy",
+  "title_ko": "에너지 전환·전력 인프라",
+  "request_id": "req_20261025_001046_4537",
+  "run_id": "run_20261025_001110_4f43",
+  "qa": [
+    {
+      "seq": 1,
+      "field": "natural_language.idea",
+      "question_ko": "에너지 전환 테마의 직접 사업자·장비업체뿐 아니라 배터리 소재·전기차·우라늄 등 인접 공급망 기업도 폭넓게 포함할까요?",
+      "answer": "직접 사업자와 전력·발전 설비 중심"
+    }
+  ],
+  "dialog_seconds": 50.6,
+  "run_seconds": 1136.0,
+  "status": "success",
+  "error": null,
+  "worker_rc": 2,
+  "buckets": [
+    [
+      "conditions",
+      "SUCCESS"
+    ],
+    [
+      "candidates",
+      "SUCCESS"
+    ],
+    [
+      "backtest",
+      "SUCCESS"
+    ],
+    [
+      "validation",
+      "SUCCESS"
+    ],
+    [
+      "report",
+      "SUCCESS"
+    ]
+  ],
+  "report": true,
+  "report_error": null,
+  "rerun_of": "run_20261024_222450_89c1",
+  "rerun_reason": "리포트 검증 게이트가 '보험 보장 우려' 의 명사형 '보장' 을 단정 표현으로 오판 → 동사꼴만 보도록 고친 뒤 재실행",
+  "chosen_label_ko": "동일비중",
+  "verdict_ko": "미국 대형주 유니버스에서 재생에너지, 배터리·에너지저장, 전력망·전력기기, 원전 관련 기업을 대상으로 최근 1년 모멘텀이 강한 종목 약 10개에 집중 투자하려는 요청입니다. 변동성과 낙폭을 감수하는 공격적 성향이며, 투자 기간은 약 5년입니다.",
+  "as_of": "2026-10-23",
+  "kpis": {
+    "final_value": 113848.11,
+    "cagr": 0.317243,
+    "excess": 0.083339,
+    "mdd": -0.329264,
+    "sharpe": 0.978176,
+    "view_hit": null
+  },
+  "n_evidence": 399,
+  "warnings": 0,
+  "validation": {
+    "n_pass": 10,
+    "n_warn": 4,
+    "n_fail": 0,
+    "alternative_note": "chosen portfolio already within the drawdown tolerance"
+  },
+  "recommended": "equal_weight",
+  "chosen_id": "equal_weight",
+  "llm_usage": {
+    "model": "gpt-6-luna",
+    "calls": 43,
+    "cache_hits": 0,
+    "prompt_tokens": 243894,
+    "completion_tokens": 94624,
+    "cost_usd": 0.101572,
+    "by_stage": [
+      "04_classify",
+      "06_explain",
+      "09_views_news_2023-10-23",
+      "09_views_news_2023-11-01",
+      "09_views_news_2023-12-01",
+      "09_views_news_2024-01-02",
+      "09_views_news_2024-02-01",
+      "09_views_news_2024-03-01",
+      "09_views_news_2024-04-01",
+      "09_views_news_2024-05-01",
+      "09_views_news_2024-06-03",
+      "09_views_news_2024-07-01",
+      "09_views_news_2024-08-01",
+      "09_views_news_2024-09-03",
+      "09_views_news_2024-10-01",
+      "09_views_news_2024-11-01",
+      "09_views_news_2024-12-02",
+      "09_views_news_2025-01-02",
+      "09_views_news_2025-02-03",
+      "09_views_news_2025-03-03",
+      "09_views_news_2025-04-01",
+      "09_views_news_2025-05-01",
+      "09_views_news_2025-06-02",
+      "09_views_news_2025-07-01",
+      "09_views_news_2025-08-01",
+      "09_views_news_2025-09-02",
+      "09_views_news_2025-10-01",
+      "09_views_news_2025-11-03",
+      "09_views_news_2025-12-01",
+      "09_views_news_2026-01-02",
+      "09_views_news_2026-02-02",
+      "09_views_news_2026-03-02",
+      "09_views_news_2026-04-01",
+      "09_views_news_2026-05-01",
+      "09_views_news_2026-06-01",
+      "09_views_news_2026-07-01",
+      "09_views_news_2026-08-03",
+      "09_views_news_2026-09-01",
+      "09_views_news_2026-10-01",
+      "09_views_news_2026-10-23_current"
+    ]
+  }
+}

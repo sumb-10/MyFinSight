@@ -1,0 +1,71 @@
+{
+  "request_id": "req_2025-12-17_u64",
+  "created_at": "2025-12-17T23:10:00+09:00",
+  "profile": {
+    "user_id": "user_64",
+    "age_band": "60s+",
+    "investment_experience": "beginner",
+    "financial_knowledge": "basic",
+    "investable_ratio_of_assets": 1.0
+  },
+  "capital": {
+    "initial_amount": 400000,
+    "currency": "USD",
+    "trading_currency": "USD",
+    "monthly_contribution": 0,
+    "contribution_day": 1
+  },
+  "horizon": {
+    "start_date": "2025-12-16",
+    "target_years": 1,
+    "purpose": "income"
+  },
+  "risk": {
+    "risk_tolerance": "conservative",
+    "max_drawdown_tolerance": 0.08,
+    "loss_reaction": "sell",
+    "target_annual_return": 0.05,
+    "benchmark": "SPY"
+  },
+  "constraints": {
+    "universe": [
+      "SP500"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 30,
+      "min": 27,
+      "max": 40
+    },
+    "max_weight_per_stock": 0.1,
+    "max_weight_per_sector": 0.5,
+    "min_cash_ratio": 0.2,
+    "exclude_tickers": [
+      "NFLX",
+      "V"
+    ],
+    "exclude_sectors": [],
+    "exclude_themes": [],
+    "must_include_tickers": [],
+    "rebalance": {
+      "count": 1,
+      "unit": "1q"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 20000000000,
+    "min_avg_daily_volume_usd": 100000000
+  },
+  "strategy_preference": {
+    "template": "low_per",
+    "baseline_weighting": "min_variance",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "배당 매력이 큰 미국 전통 에너지 기업 중 실적 대비 주가가 싼 종목 위주로 1년 정도 투자하고 싶어요. 배당으로 꾸준한 현금이 들어왔으면 해요. 크게 벌기보다 크게 잃지 않는 게 중요합니다. 넷플릭스(NFLX), 비자(V)는 개인적으로 믿음이 안 가서 빼 주세요.",
+    "language": "ko"
+  }
+}

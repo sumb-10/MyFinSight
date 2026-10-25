@@ -1,0 +1,633 @@
+{
+ "$defs": {
+  "DialogMessage": {
+   "properties": {
+    "role": {
+     "enum": [
+      "system",
+      "user",
+      "assistant"
+     ],
+     "title": "Role",
+     "type": "string"
+    },
+    "content": {
+     "title": "Content",
+     "type": "string"
+    }
+   },
+   "required": [
+    "role",
+    "content"
+   ],
+   "title": "DialogMessage",
+   "type": "object"
+  },
+  "FieldError": {
+   "properties": {
+    "field": {
+     "title": "Field",
+     "type": "string"
+    },
+    "message_ko": {
+     "title": "Message Ko",
+     "type": "string"
+    }
+   },
+   "required": [
+    "field",
+    "message_ko"
+   ],
+   "title": "FieldError",
+   "type": "object"
+  },
+  "Question": {
+   "description": "실제로 사용자에게 보여 준 질문과 답.",
+   "properties": {
+    "field": {
+     "title": "Field",
+     "type": "string"
+    },
+    "kind": {
+     "enum": [
+      "missing",
+      "conflict",
+      "ambiguous",
+      "preference",
+      "feasibility"
+     ],
+     "title": "Kind",
+     "type": "string"
+    },
+    "question_ko": {
+     "title": "Question Ko",
+     "type": "string"
+    },
+    "options": {
+     "default": [],
+     "items": {
+      "$ref": "#/$defs/QuestionOption"
+     },
+     "title": "Options",
+     "type": "array"
+    },
+    "allow_free_text": {
+     "default": true,
+     "title": "Allow Free Text",
+     "type": "boolean"
+    },
+    "priority": {
+     "default": 3,
+     "maximum": 5,
+     "minimum": 1,
+     "title": "Priority",
+     "type": "integer"
+    },
+    "why_ko": {
+     "default": "",
+     "title": "Why Ko",
+     "type": "string"
+    },
+    "seq": {
+     "minimum": 1,
+     "title": "Seq",
+     "type": "integer"
+    },
+    "asked_at": {
+     "title": "Asked At",
+     "type": "string"
+    },
+    "field_label_ko": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Field Label Ko"
+    },
+    "answer": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Answer"
+    },
+    "applied": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Applied"
+    },
+    "free_text": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Free Text"
+    },
+    "skipped": {
+     "default": false,
+     "title": "Skipped",
+     "type": "boolean"
+    },
+    "answered_at": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Answered At"
+    }
+   },
+   "required": [
+    "field",
+    "kind",
+    "question_ko",
+    "seq",
+    "asked_at"
+   ],
+   "title": "Question",
+   "type": "object"
+  },
+  "QuestionOption": {
+   "properties": {
+    "value": {
+     "title": "Value"
+    },
+    "label_ko": {
+     "title": "Label Ko",
+     "type": "string"
+    },
+    "patch": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Patch"
+    },
+    "clarification": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Clarification"
+    }
+   },
+   "required": [
+    "value",
+    "label_ko"
+   ],
+   "title": "QuestionOption",
+   "type": "object"
+  },
+  "RevisionChange": {
+   "description": "수정 요청에서 LLM 이 제안하고 코드가 검증한 변경 하나.",
+   "properties": {
+    "field": {
+     "title": "Field",
+     "type": "string"
+    },
+    "value": {
+     "default": null,
+     "title": "Value"
+    },
+    "base_value": {
+     "default": null,
+     "title": "Base Value"
+    },
+    "label_ko": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Label Ko"
+    },
+    "reason_ko": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Reason Ko"
+    },
+    "supported": {
+     "default": true,
+     "title": "Supported",
+     "type": "boolean"
+    },
+    "note_ko": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Note Ko"
+    }
+   },
+   "required": [
+    "field"
+   ],
+   "title": "RevisionChange",
+   "type": "object"
+  },
+  "RevisionDraft": {
+   "description": "자연어 수정 요청 → 변경 초안 (M1-05). 평가 조건(기간·자본·적립·비교지수·리밸런싱)은 원안과 같게 고정한다.",
+   "properties": {
+    "text": {
+     "title": "Text",
+     "type": "string"
+    },
+    "summary_ko": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Summary Ko"
+    },
+    "changes": {
+     "default": [],
+     "items": {
+      "$ref": "#/$defs/RevisionChange"
+     },
+     "title": "Changes",
+     "type": "array"
+    },
+    "unsupported_ko": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "title": "Unsupported Ko",
+     "type": "array"
+    },
+    "idea_update_ko": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Idea Update Ko"
+    },
+    "frozen_fields": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "title": "Frozen Fields",
+     "type": "array"
+    },
+    "base_run_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Base Run Id"
+    }
+   },
+   "required": [
+    "text"
+   ],
+   "title": "RevisionDraft",
+   "type": "object"
+  }
+ },
+ "additionalProperties": false,
+ "description": "store/data/requests/<request_id>.json (analysis_request.schema v2).",
+ "properties": {
+  "schema_version": {
+   "default": 2,
+   "title": "Schema Version",
+   "type": "integer"
+  },
+  "request_id": {
+   "title": "Request Id",
+   "type": "string"
+  },
+  "created_at": {
+   "title": "Created At",
+   "type": "string"
+  },
+  "mode": {
+   "default": "new",
+   "enum": [
+    "new",
+    "rerun",
+    "revision"
+   ],
+   "title": "Mode",
+   "type": "string"
+  },
+  "base_report_id": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Base Report Id"
+  },
+  "profile_version": {
+   "title": "Profile Version",
+   "type": "integer"
+  },
+  "idea": {
+   "title": "Idea",
+   "type": "string"
+  },
+  "language": {
+   "default": "ko",
+   "title": "Language",
+   "type": "string"
+  },
+  "overrides": {
+   "additionalProperties": true,
+   "default": {},
+   "title": "Overrides",
+   "type": "object"
+  },
+  "idea_clarifications": {
+   "default": [],
+   "items": {
+    "type": "string"
+   },
+   "title": "Idea Clarifications",
+   "type": "array"
+  },
+  "questions": {
+   "default": [],
+   "items": {
+    "$ref": "#/$defs/Question"
+   },
+   "title": "Questions",
+   "type": "array"
+  },
+  "messages": {
+   "default": [],
+   "items": {
+    "$ref": "#/$defs/DialogMessage"
+   },
+   "title": "Messages",
+   "type": "array"
+  },
+  "draft_request": {
+   "anyOf": [
+    {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Draft Request"
+  },
+  "derived": {
+   "anyOf": [
+    {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Derived"
+  },
+  "intent": {
+   "anyOf": [
+    {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Intent"
+  },
+  "hard_errors": {
+   "default": [],
+   "items": {
+    "$ref": "#/$defs/FieldError"
+   },
+   "title": "Hard Errors",
+   "type": "array"
+  },
+  "status": {
+   "default": "draft",
+   "enum": [
+    "draft",
+    "confirmed",
+    "cancelled"
+   ],
+   "title": "Status",
+   "type": "string"
+  },
+  "dialog_state": {
+   "default": "asking",
+   "enum": [
+    "asking",
+    "ready",
+    "blocked",
+    "confirmed",
+    "cancelled"
+   ],
+   "title": "Dialog State",
+   "type": "string"
+  },
+  "turn": {
+   "default": 0,
+   "title": "Turn",
+   "type": "integer"
+  },
+  "max_questions": {
+   "default": 5,
+   "title": "Max Questions",
+   "type": "integer"
+  },
+  "blocked_reason_ko": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Blocked Reason Ko"
+  },
+  "effective_request": {
+   "anyOf": [
+    {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Effective Request"
+  },
+  "request_fingerprint": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Request Fingerprint"
+  },
+  "confirmed_at": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Confirmed At"
+  },
+  "run_id": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Run Id"
+  },
+  "context_summary": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Context Summary"
+  },
+  "revision": {
+   "anyOf": [
+    {
+     "$ref": "#/$defs/RevisionDraft"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null
+  },
+  "warnings": {
+   "default": [],
+   "items": {
+    "type": "string"
+   },
+   "title": "Warnings",
+   "type": "array"
+  },
+  "precheck": {
+   "anyOf": [
+    {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Precheck"
+  }
+ },
+ "required": [
+  "request_id",
+  "created_at",
+  "profile_version",
+  "idea"
+ ],
+ "title": "AnalysisRequestDoc",
+ "type": "object",
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "myfinsight/store/analysis_request.schema.json"
+}

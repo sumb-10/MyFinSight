@@ -1,0 +1,71 @@
+{
+  "request_id": "req_2026-03-02_u56",
+  "created_at": "2026-03-02T22:45:00+09:00",
+  "profile": {
+    "user_id": "user_56",
+    "age_band": "40s",
+    "investment_experience": "intermediate",
+    "financial_knowledge": "expert",
+    "investable_ratio_of_assets": 0.5
+  },
+  "capital": {
+    "initial_amount": 80000,
+    "currency": "USD",
+    "trading_currency": "USD",
+    "monthly_contribution": 1500,
+    "contribution_day": 1
+  },
+  "horizon": {
+    "start_date": "2026-02-27",
+    "target_years": 10,
+    "purpose": "retirement"
+  },
+  "risk": {
+    "risk_tolerance": "moderate",
+    "max_drawdown_tolerance": 0.15,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.07,
+    "benchmark": "SPY"
+  },
+  "constraints": {
+    "universe": [
+      "SP500"
+    ],
+    "asset_types": [
+      "stock"
+    ],
+    "num_holdings": {
+      "target": 10,
+      "min": 5,
+      "max": 15
+    },
+    "max_weight_per_stock": 0.2,
+    "max_weight_per_sector": 1.0,
+    "min_cash_ratio": 0.1,
+    "exclude_tickers": [
+      "CVX"
+    ],
+    "exclude_sectors": [
+      "Information Technology"
+    ],
+    "exclude_themes": [],
+    "must_include_tickers": [],
+    "rebalance": {
+      "count": 1,
+      "unit": "6m"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 10000000000,
+    "min_avg_daily_volume_usd": 10000000
+  },
+  "strategy_preference": {
+    "template": "low_per",
+    "baseline_weighting": "equal_weight",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "배당 매력이 큰 미국 전통 에너지 기업 중 실적 대비 주가가 싼 종목 위주로 10년 정도 투자하고 싶어요. 은퇴 자금으로 쓰려고 합니다. 어느 정도 출렁이는 건 괜찮지만 한 종목에 몰빵하는 건 피하고 싶어요. 그중 셰브론(CVX)은 최근 이슈 때문에 마음이 안 가서 제외해 주세요. IT 섹터는 전망이 밝아 보이지 않아서 빼 주세요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

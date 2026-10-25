@@ -1,0 +1,220 @@
+{
+  "name": "scenario_098",
+  "title_ko": "국내 자동차와 부품 기업 중 실적 대비 주가가 싼 종목 위주로 2년 정도…",
+  "scenario_file": "/Users/apple/dev/MyFinSight/backend/test_scenarios/scenario_098.json",
+  "normalized": [
+    "capital.trading_currency KRW → USD (서비스는 USD 로 계산, 표시만 KRW)"
+  ],
+  "overrides": {
+    "horizon.start_date": "2025-12-23"
+  },
+  "request_id": "req_20261025_210653_cf66",
+  "run_id": "run_20261025_210809_bee4",
+  "qa": [
+    {
+      "seq": 1,
+      "field": "constraints.num_holdings",
+      "question_ko": "테마에 맞는 종목이 분석 기준일 기준 4개로, 최소 종목 수 12개(목표 15개)에 못 미칩니다. 어떻게 할까요?",
+      "answer": "종목 수를 4개로 줄이고 종목당 상한을 22%로 올려 전액 투자",
+      "kind": "feasibility",
+      "options": [
+        "종목 수를 4개로 줄이고 종목당 상한을 22%로 올려 전액 투자",
+        "테마를 넓혀 다시 해석 (인접 산업 포함)",
+        "그대로 진행 (현금이 남을 수 있음)"
+      ],
+      "why_ko": "후보가 모자라면 종목당 상한(10%) 때문에 현금이 남습니다 (예: 4종목 × 10% = 40% 투자).",
+      "turn_seconds": 33.1
+    },
+    {
+      "seq": 2,
+      "field": "constraints.max_weight_per_sector",
+      "question_ko": "이 아이디어의 테마는 '경기소비재' 한 섹터에 몰려 있습니다. 지금 섹터당 상한이 50%라 투자금의 35%가 현금으로 남게 됩니다. 어떻게 할까요?",
+      "answer": "이번 분석에서는 섹터 상한을 풀어 전액 투자 (85%)",
+      "kind": "conflict",
+      "options": [
+        "이번 분석에서는 섹터 상한을 풀어 전액 투자 (85%)",
+        "프로필대로 50% 유지 (나머지 35%는 현금)"
+      ],
+      "why_ko": "섹터 상한은 여러 업종에 나눌 때 쓰는 보호 장치라, 한 업종만 담는 테마에서는 뜻한 것보다 현금이 많이 남습니다.",
+      "turn_seconds": 19.5
+    }
+  ],
+  "dialog_seconds": 76.1,
+  "run_seconds": 123.7,
+  "status": "partial",
+  "error": null,
+  "worker_rc": 2,
+  "buckets": [
+    [
+      "conditions",
+      "SUCCESS"
+    ],
+    [
+      "candidates",
+      "PARTIAL"
+    ],
+    [
+      "backtest",
+      "SUCCESS"
+    ],
+    [
+      "validation",
+      "SUCCESS"
+    ],
+    [
+      "report",
+      "SUCCESS"
+    ]
+  ],
+  "steps": [
+    {
+      "step": "01_request",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T12:08:11+00:00",
+      "ended_at": "2026-10-25T12:08:21+00:00",
+      "summary": "기준일 2025-12-23, 유니버스 201종목, 백테스트 2022-12-23~2025-12-23 · 참고 2건",
+      "error_message": null
+    },
+    {
+      "step": "02_intent",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T12:08:21+00:00",
+      "ended_at": "2026-10-25T12:08:21+00:00",
+      "summary": "대화에서 확정된 의도 재사용 (LLM 호출 없음)",
+      "error_message": null
+    },
+    {
+      "step": "03_candidates",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T12:08:21+00:00",
+      "ended_at": "2026-10-25T12:08:21+00:00",
+      "summary": "후보 4개 (제외 7)",
+      "error_message": null
+    },
+    {
+      "step": "04_tagging",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T12:08:21+00:00",
+      "ended_at": "2026-10-25T12:08:24+00:00",
+      "summary": "테마 통과 4개 / 배치 1",
+      "error_message": null
+    },
+    {
+      "step": "05_selection",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T12:08:24+00:00",
+      "ended_at": "2026-10-25T12:08:24+00:00",
+      "summary": "선정 4개 (pe_ttm)",
+      "error_message": null
+    },
+    {
+      "step": "06_explain",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T12:08:24+00:00",
+      "ended_at": "2026-10-25T12:08:48+00:00",
+      "summary": "기업별 근거 4개",
+      "error_message": null
+    },
+    {
+      "step": "07_backtest_spec",
+      "status": "PARTIAL",
+      "started_at": "2026-10-25T12:08:24+00:00",
+      "ended_at": "2026-10-25T12:08:25+00:00",
+      "summary": "창 2022-12-23~2025-12-23, 종목 4개, 비교지수 069500.KS · 확인 필요 1건: 필수 포함 종목 005380.KS은(는) 테마 판정 또는 선정 지표 기준에 맞지 않지만 요청에 따라 포함했습니다.",
+      "error_message": null
+    },
+    {
+      "step": "10f_current",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T12:08:24+00:00",
+      "ended_at": "2026-10-25T12:08:24+00:00",
+      "summary": "기준일 2025-12-23 현재 구성: 템플릿 4 + BL 0",
+      "error_message": null
+    },
+    {
+      "step": "10_targets",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T12:08:48+00:00",
+      "ended_at": "2026-10-25T12:08:48+00:00",
+      "summary": "비중 규칙 4개 + 뉴스 반영 구성 0개 (근거 부족으로 기준 비중 유지)",
+      "error_message": null
+    },
+    {
+      "step": "10w_paths",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T12:08:48+00:00",
+      "ended_at": "2026-10-25T12:08:48+00:00",
+      "summary": "리밸런싱 13회, 뉴스 뷰 적용 0회",
+      "error_message": null
+    },
+    {
+      "step": "11_backtest",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T12:08:48+00:00",
+      "ended_at": "2026-10-25T12:08:51+00:00",
+      "summary": "포트폴리오 11개 + 비교지수 2개, 778거래일",
+      "error_message": null
+    },
+    {
+      "step": "12_validation",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T12:08:51+00:00",
+      "ended_at": "2026-10-25T12:08:51+00:00",
+      "summary": "후보 11개 비교 · 추천(주의: 허용 낙폭 초과 (11.1%p) · 비교지수 하회): 동일비중 · 주의 6개",
+      "error_message": null
+    },
+    {
+      "step": "13_results",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T12:08:51+00:00",
+      "ended_at": "2026-10-25T12:08:51+00:00",
+      "summary": "결과 통합: 포트폴리오 11개, 인용 색인 170건, 경고 6건",
+      "error_message": null
+    },
+    {
+      "step": "14_report",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T12:08:51+00:00",
+      "ended_at": "2026-10-25T12:10:10+00:00",
+      "summary": "리포트 7섹션, KPI 6개, 근거 20건",
+      "error_message": null
+    }
+  ],
+  "report": true,
+  "chosen_label_ko": "동일비중",
+  "verdict_ko": "KOSPI200에서 자동차 제조·부품 기업 중 실적 대비 저평가된 종목을 골라 2년간 투자합니다. 현대차를 반드시 포함하고 총 4개 종목으로 구성하며, 현금 최소 비중 15%를 유지해 투자 비중은 최대 85%로 해석합니다. 지정된 제외 종목과 주류·도박·무기·방산 테마는 제외합니다.",
+  "kpis": {
+    "final_value": 304835.13,
+    "cagr": 0.195685,
+    "excess": -0.015268,
+    "mdd": -0.260926,
+    "sharpe": 0.652138,
+    "view_hit": null
+  },
+  "as_of": null,
+  "n_evidence": 20,
+  "warnings": 0,
+  "validation": {
+    "n_pass": 0,
+    "n_warn": 6,
+    "n_fail": 5,
+    "n_flag": 9,
+    "n_candidates": 11,
+    "n_matched": 2,
+    "alternative_note": null
+  },
+  "recommended": "equal_weight",
+  "chosen_id": "equal_weight",
+  "llm_usage": {
+    "model": "gpt-6-luna",
+    "calls": 2,
+    "cache_hits": 0,
+    "prompt_tokens": 3775,
+    "completion_tokens": 3120,
+    "cost_usd": 0.002282,
+    "by_stage": [
+      "04_classify",
+      "06_explain"
+    ]
+  }
+}

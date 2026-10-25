@@ -1,0 +1,192 @@
+{
+  "name": "scenario_072",
+  "title_ko": "주식은 처음이라 잘 모르지만, 특정 테마 없이 코스피200 전체에서 재무…",
+  "scenario_file": "/Users/apple/dev/MyFinSight/backend/test_scenarios/scenario_072.json",
+  "normalized": [
+    "capital.trading_currency KRW → USD (서비스는 USD 로 계산, 표시만 KRW)"
+  ],
+  "overrides": {
+    "horizon.start_date": "2025-05-27"
+  },
+  "request_id": "req_20261025_205454_5de2",
+  "run_id": "run_20261025_205543_ebf5",
+  "qa": [],
+  "dialog_seconds": 49.2,
+  "run_seconds": 163.9,
+  "status": "partial",
+  "error": null,
+  "worker_rc": 2,
+  "buckets": [
+    [
+      "conditions",
+      "SUCCESS"
+    ],
+    [
+      "candidates",
+      "PARTIAL"
+    ],
+    [
+      "backtest",
+      "SUCCESS"
+    ],
+    [
+      "validation",
+      "SUCCESS"
+    ],
+    [
+      "report",
+      "SUCCESS"
+    ]
+  ],
+  "steps": [
+    {
+      "step": "01_request",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:55:44+00:00",
+      "ended_at": "2026-10-25T11:55:54+00:00",
+      "summary": "기준일 2025-05-27, 유니버스 201종목, 백테스트 2022-05-27~2025-05-27 · 참고 2건",
+      "error_message": null
+    },
+    {
+      "step": "02_intent",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:55:54+00:00",
+      "ended_at": "2026-10-25T11:55:54+00:00",
+      "summary": "대화에서 확정된 의도 재사용 (LLM 호출 없음)",
+      "error_message": null
+    },
+    {
+      "step": "03_candidates",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:55:54+00:00",
+      "ended_at": "2026-10-25T11:55:54+00:00",
+      "summary": "후보 80개 (제외 121)",
+      "error_message": null
+    },
+    {
+      "step": "04_tagging",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:55:54+00:00",
+      "ended_at": "2026-10-25T11:56:25+00:00",
+      "summary": "테마 통과 34개 / 배치 2",
+      "error_message": null
+    },
+    {
+      "step": "05_selection",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:56:25+00:00",
+      "ended_at": "2026-10-25T11:56:25+00:00",
+      "summary": "선정 20개 (roe_ttm)",
+      "error_message": null
+    },
+    {
+      "step": "06_explain",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:56:25+00:00",
+      "ended_at": "2026-10-25T11:57:02+00:00",
+      "summary": "기업별 근거 20개",
+      "error_message": null
+    },
+    {
+      "step": "07_backtest_spec",
+      "status": "PARTIAL",
+      "started_at": "2026-10-25T11:56:25+00:00",
+      "ended_at": "2026-10-25T11:56:26+00:00",
+      "summary": "창 2022-05-27~2025-05-27, 종목 17개, 비교지수 069500.KS · 확인 필요 1건: 선정 지표(ROE) 자료가 있는 종목이 17개로 목표 20개보다 적어 17개만 선정했습니다. 최소 종목 수에 못 미치면 검증에서 미통과가 됩니다.",
+      "error_message": null
+    },
+    {
+      "step": "10f_current",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:56:25+00:00",
+      "ended_at": "2026-10-25T11:56:25+00:00",
+      "summary": "기준일 2025-05-27 현재 구성: 템플릿 4 + BL 0",
+      "error_message": null
+    },
+    {
+      "step": "10_targets",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:57:02+00:00",
+      "ended_at": "2026-10-25T11:57:03+00:00",
+      "summary": "비중 규칙 4개 + 뉴스 반영 구성 0개 (근거 부족으로 기준 비중 유지)",
+      "error_message": null
+    },
+    {
+      "step": "10w_paths",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:57:02+00:00",
+      "ended_at": "2026-10-25T11:57:03+00:00",
+      "summary": "리밸런싱 7회, 뉴스 뷰 적용 0회",
+      "error_message": null
+    },
+    {
+      "step": "11_backtest",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:57:03+00:00",
+      "ended_at": "2026-10-25T11:57:07+00:00",
+      "summary": "포트폴리오 11개 + 비교지수 2개, 778거래일",
+      "error_message": null
+    },
+    {
+      "step": "12_validation",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:57:07+00:00",
+      "ended_at": "2026-10-25T11:57:07+00:00",
+      "summary": "후보 11개 비교 · 추천(주의: 목표수익 미달): 낙폭 맞춤안 (주식 52% + 현금 48%, 동일비중 기준) · 주의 11개",
+      "error_message": null
+    },
+    {
+      "step": "13_results",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:57:07+00:00",
+      "ended_at": "2026-10-25T11:57:07+00:00",
+      "summary": "결과 통합: 포트폴리오 11개, 인용 색인 467건, 경고 4건",
+      "error_message": null
+    },
+    {
+      "step": "14_report",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:57:07+00:00",
+      "ended_at": "2026-10-25T11:58:19+00:00",
+      "summary": "리포트 7섹션, KPI 6개, 근거 64건",
+      "error_message": null
+    }
+  ],
+  "report": true,
+  "chosen_label_ko": "낙폭 맞춤안 (주식 52% + 현금 48%, 동일비중 기준)",
+  "verdict_ko": "특정 테마에 치우치지 않고 KOSPI200 전반에서 재무 건전성과 수익성이 높은 기업을 중심으로 3년간 자산 증식을 추구합니다. 분산 투자를 선호하며, 도박·카지노 관련 기업과 삼성전기(009150.KS)는 제외합니다.",
+  "kpis": {
+    "final_value": 36004.55,
+    "cagr": 0.036695,
+    "excess": 0.038608,
+    "mdd": -0.133938,
+    "sharpe": -0.03002,
+    "view_hit": null
+  },
+  "as_of": null,
+  "n_evidence": 64,
+  "warnings": 0,
+  "validation": {
+    "n_pass": 0,
+    "n_warn": 11,
+    "n_fail": 0,
+    "n_flag": 9,
+    "n_candidates": 11,
+    "n_matched": 2,
+    "alternative_note": null
+  },
+  "recommended": "dd_match_equal_weight",
+  "chosen_id": "dd_match_equal_weight",
+  "llm_usage": {
+    "model": "gpt-6-luna",
+    "calls": 3,
+    "cache_hits": 0,
+    "prompt_tokens": 15687,
+    "completion_tokens": 14077,
+    "cost_usd": 0.010567,
+    "by_stage": [
+      "04_classify",
+      "06_explain"
+    ]
+  }
+}

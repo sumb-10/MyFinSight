@@ -1,0 +1,72 @@
+{
+  "request_id": "req_2026-10-12_u31",
+  "created_at": "2026-10-12T20:45:00+09:00",
+  "profile": {
+    "user_id": "user_31",
+    "age_band": "60s+",
+    "investment_experience": "advanced",
+    "financial_knowledge": "intermediate",
+    "investable_ratio_of_assets": 0.3
+  },
+  "capital": {
+    "initial_amount": 300000000,
+    "currency": "KRW",
+    "trading_currency": "USD",
+    "monthly_contribution": 0,
+    "contribution_day": 1
+  },
+  "horizon": {
+    "start_date": "2026-10-09",
+    "target_years": 1,
+    "purpose": "income"
+  },
+  "risk": {
+    "risk_tolerance": "conservative",
+    "max_drawdown_tolerance": 0.08,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.07,
+    "benchmark": "SPY"
+  },
+  "constraints": {
+    "universe": [
+      "SP500"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 30,
+      "min": 27,
+      "max": 40
+    },
+    "max_weight_per_stock": 0.1,
+    "max_weight_per_sector": 0.5,
+    "min_cash_ratio": 0.1,
+    "exclude_tickers": [
+      "PANW"
+    ],
+    "exclude_sectors": [],
+    "exclude_themes": [],
+    "must_include_tickers": [
+      "CVX"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "6m"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 10000000000,
+    "min_avg_daily_volume_usd": 50000000
+  },
+  "strategy_preference": {
+    "template": "high_dividend",
+    "baseline_weighting": "equal_weight",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "배당 매력이 큰 미국 전통 에너지 기업 중 배당을 꾸준히 많이 주는 종목 위주로 1년 정도 투자하고 싶어요. 매달 생활비에 보탤 현금흐름이 필요해요. 크게 벌기보다 크게 잃지 않는 게 중요합니다. 셰브론(CVX)은 꼭 넣어 주세요. 팔로알토 네트웍스(PANW)는 지배구조가 마음에 안 들어서 담지 말아 주세요.",
+    "language": "ko"
+  }
+}

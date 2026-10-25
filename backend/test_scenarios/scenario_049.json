@@ -1,0 +1,74 @@
+{
+  "request_id": "req_2026-08-20_u49",
+  "created_at": "2026-08-20T22:30:00+09:00",
+  "profile": {
+    "user_id": "user_49",
+    "age_band": "40s",
+    "investment_experience": "advanced",
+    "financial_knowledge": "expert",
+    "investable_ratio_of_assets": 0.25
+  },
+  "capital": {
+    "initial_amount": 30000000,
+    "currency": "KRW",
+    "trading_currency": "USD",
+    "monthly_contribution": 500000,
+    "contribution_day": 25
+  },
+  "horizon": {
+    "start_date": "2026-08-17",
+    "target_years": 7,
+    "purpose": "wealth_growth"
+  },
+  "risk": {
+    "risk_tolerance": "conservative",
+    "max_drawdown_tolerance": 0.15,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.04,
+    "benchmark": "SPY"
+  },
+  "constraints": {
+    "universe": [
+      "SP500"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 15,
+      "min": 12,
+      "max": 17
+    },
+    "max_weight_per_stock": 0.1,
+    "max_weight_per_sector": 0.3,
+    "min_cash_ratio": 0.05,
+    "exclude_tickers": [
+      "META"
+    ],
+    "exclude_sectors": [],
+    "exclude_themes": [
+      "adult_entertainment",
+      "alcohol",
+      "weapons"
+    ],
+    "must_include_tickers": [],
+    "rebalance": {
+      "count": 1,
+      "unit": "1y"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 50000000000,
+    "min_avg_daily_volume_usd": 50000000
+  },
+  "strategy_preference": {
+    "template": "high_dividend",
+    "baseline_weighting": "equal_weight",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "미국 리츠와 유틸리티처럼 현금흐름이 안정적인 기업 중 배당을 꾸준히 많이 주는 종목 위주로 7년 정도 투자하고 싶어요. 자산을 불리는 게 목표예요. 크게 벌기보다 크게 잃지 않는 게 중요합니다. 메타(META)는 이미 다른 계좌에 있어서 제외해 주세요. 성인 콘텐츠, 주류, 무기·방산 관련 회사는 원하지 않아요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

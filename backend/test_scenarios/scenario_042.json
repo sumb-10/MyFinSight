@@ -1,0 +1,75 @@
+{
+  "request_id": "req_2026-03-20_u42",
+  "created_at": "2026-03-20T14:30:00+09:00",
+  "profile": {
+    "user_id": "user_42",
+    "age_band": "40s",
+    "investment_experience": "advanced",
+    "financial_knowledge": "intermediate",
+    "investable_ratio_of_assets": 0.5
+  },
+  "capital": {
+    "initial_amount": 30000000,
+    "currency": "KRW",
+    "trading_currency": "USD",
+    "monthly_contribution": 100000,
+    "contribution_day": 25
+  },
+  "horizon": {
+    "start_date": "2026-03-19",
+    "target_years": 7,
+    "purpose": "income"
+  },
+  "risk": {
+    "risk_tolerance": "moderate",
+    "max_drawdown_tolerance": 0.15,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.08,
+    "benchmark": "SPY"
+  },
+  "constraints": {
+    "universe": [
+      "SP500"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 20,
+      "min": 15,
+      "max": 30
+    },
+    "max_weight_per_stock": 0.15,
+    "max_weight_per_sector": 0.4,
+    "min_cash_ratio": 0.1,
+    "exclude_tickers": [
+      "O"
+    ],
+    "exclude_sectors": [],
+    "exclude_themes": [
+      "tobacco",
+      "weapons"
+    ],
+    "must_include_tickers": [
+      "JNJ"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "6m"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 5000000000,
+    "min_avg_daily_volume_usd": 10000000
+  },
+  "strategy_preference": {
+    "template": "high_dividend",
+    "baseline_weighting": "equal_weight",
+    "use_news_tilt": false
+  },
+  "natural_language": {
+    "idea": "배당을 꾸준히 늘려 온 미국 기업 중 7년 정도 투자하고 싶어요. 매달 생활비에 보탤 현금흐름이 필요해요. 적당한 위험은 감수할 수 있어요. 존슨앤드존슨(JNJ)은 확신이 있어서 반드시 담고 싶어요. 다만 리얼티인컴(O)은 이미 따로 많이 갖고 있어서 이번엔 빼 주세요. 담배, 무기·방산 관련 회사는 원하지 않아요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

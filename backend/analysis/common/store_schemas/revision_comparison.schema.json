@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "myfinsight/store/revision_comparison.schema.json",
+  "title": "RevisionComparison",
+  "description": "수정안 비교 문서. compare.compare() 가 만든다. 성과표는 평가 조건이 같을 때(same_window)만 채운다.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "comparison_id",
+    "base_run_id",
+    "revised_run_id",
+    "base_report_id",
+    "revised_report_id",
+    "created_at",
+    "same_window",
+    "condition_changes",
+    "ticker_changes",
+    "weight_changes",
+    "rule_changes",
+    "performance_table"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "comparison_id": {
+      "type": "string",
+      "pattern": "^cmp_run_\\d{8}_\\d{6}__run_\\d{8}_\\d{6}$"
+    },
+    "base_run_id": {
+      "type": "string"
+    },
+    "revised_run_id": {
+      "type": "string"
+    },
+    "base_report_id": {
+      "type": "string"
+    },
+    "revised_report_id": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "same_window": {
+      "type": "boolean",
+      "description": "창·자본·비교지수·리밸런싱 규칙이 같은지. false면 performance_table은 비어 있고 warnings에 사유"
+    },
+    "window": {
+      "type": "object"
+    },
+    "condition_changes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "ticker_changes": {
+      "type": "object",
+      "properties": {
+        "added": {
+          "type": "array"
+        },
+        "removed": {
+          "type": "array"
+        },
+        "kept": {
+          "type": "array"
+        }
+      }
+    },
+    "weight_changes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "rule_changes": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "performance_table": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "pros_cons_ko": {
+      "type": "object",
+      "properties": {
+        "pros_ko": {
+          "type": "array"
+        },
+        "cons_ko": {
+          "type": "array"
+        },
+        "note_ko": {
+          "type": "string"
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    }
+  }
+}

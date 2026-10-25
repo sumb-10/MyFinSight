@@ -1,0 +1,83 @@
+{
+  "name": "ai",
+  "title_ko": "AI 반도체·클라우드 모멘텀",
+  "request_id": "req_20261025_143219_e0eb",
+  "run_id": "run_20261025_143240_16e3",
+  "qa": [],
+  "dialog_seconds": 20.9,
+  "run_seconds": 325.0,
+  "status": "partial",
+  "error": null,
+  "worker_rc": 0,
+  "buckets": [
+    [
+      "conditions",
+      "SUCCESS"
+    ],
+    [
+      "candidates",
+      "SUCCESS"
+    ],
+    [
+      "backtest",
+      "SUCCESS"
+    ],
+    [
+      "validation",
+      "PARTIAL"
+    ],
+    [
+      "report",
+      "SUCCESS"
+    ]
+  ],
+  "report": true,
+  "chosen_label_ko": "현금 혼합안: 동일비중 × 71% + 현금 29%",
+  "verdict_ko": "AI 반도체와 클라우드 인프라 관련 기업 중 최근 12개월 주가 흐름이 강한 종목을 선정해 약 3년간 보유하려는 의도입니다. 변동성은 중간 수준으로 감수하되 종목을 분산하고 한 종목에 집중하지 않으려는 선호가 있습니다.",
+  "kpis": {
+    "final_value": 45125.05,
+    "cagr": 0.459344,
+    "excess": 0.225968,
+    "mdd": -0.248107,
+    "sharpe": 1.662362,
+    "view_hit": null
+  },
+  "as_of": "2026-10-23",
+  "n_evidence": 202,
+  "warnings": 0,
+  "validation": {
+    "n_pass": 0,
+    "n_warn": 0,
+    "n_fail": 14,
+    "alternative_note": null
+  },
+  "recommended": null,
+  "chosen_id": "cash_blend_equal_weight",
+  "llm_usage": {
+    "model": "gpt-6-luna",
+    "calls": 19,
+    "cache_hits": 0,
+    "prompt_tokens": 164885,
+    "completion_tokens": 58585,
+    "cost_usd": 0.060979,
+    "by_stage": [
+      "04_classify",
+      "06_explain",
+      "09_views_news_2023-10-23",
+      "09_views_news_2024-01-02",
+      "09_views_news_2024-04-01",
+      "09_views_news_2024-07-01",
+      "09_views_news_2024-10-01",
+      "09_views_news_2025-01-02",
+      "09_views_news_2025-04-01",
+      "09_views_news_2025-07-01",
+      "09_views_news_2025-10-01",
+      "09_views_news_2026-01-02",
+      "09_views_news_2026-04-01",
+      "09_views_news_2026-07-01",
+      "09_views_news_2026-10-01",
+      "09_views_news_2026-10-23_current"
+    ]
+  },
+  "report_error": null
+}

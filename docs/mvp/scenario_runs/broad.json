@@ -1,0 +1,74 @@
+{
+  "name": "broad",
+  "title_ko": "대형 우량주 전반 장기 보유",
+  "request_id": "req_20261024_222328_56b8",
+  "run_id": "run_20261024_222356_7e24",
+  "qa": [],
+  "dialog_seconds": 28.0,
+  "run_seconds": 516.0,
+  "status": "partial",
+  "error": null,
+  "worker_rc": 2,
+  "buckets": [
+    [
+      "conditions",
+      "SUCCESS"
+    ],
+    [
+      "candidates",
+      "PARTIAL"
+    ],
+    [
+      "backtest",
+      "SUCCESS"
+    ],
+    [
+      "validation",
+      "SUCCESS"
+    ],
+    [
+      "report",
+      "SUCCESS"
+    ]
+  ],
+  "report": true,
+  "report_error": null,
+  "chosen_label_ko": "시가총액비중",
+  "verdict_ko": "특정 산업에 치우치지 않고 미국의 대형·우량 기업에 분산 투자하며, 변동성이 낮은 종목을 중심으로 장기 보유하려는 요청입니다. 담배·도박·무기 관련 테마를 제외하고 연 1회 리밸런싱하는 것으로 해석했습니다.",
+  "as_of": "2026-10-23",
+  "kpis": {
+    "final_value": 125486.14,
+    "cagr": 0.192931,
+    "excess": -0.040973,
+    "mdd": -0.101395,
+    "sharpe": 1.303801,
+    "view_hit": null
+  },
+  "n_evidence": 107,
+  "warnings": 0,
+  "validation": {
+    "n_pass": 0,
+    "n_warn": 14,
+    "n_fail": 0,
+    "alternative_note": "chosen portfolio already within the drawdown tolerance"
+  },
+  "recommended": "market_cap",
+  "chosen_id": "market_cap",
+  "llm_usage": {
+    "model": "gpt-6-luna",
+    "calls": 11,
+    "cache_hits": 0,
+    "prompt_tokens": 81847,
+    "completion_tokens": 37661,
+    "cost_usd": 0.036197,
+    "by_stage": [
+      "04_classify",
+      "06_explain",
+      "09_views_news_2023-10-23",
+      "09_views_news_2024-01-02",
+      "09_views_news_2025-01-02",
+      "09_views_news_2026-01-02",
+      "09_views_news_2026-10-23_current"
+    ]
+  }
+}

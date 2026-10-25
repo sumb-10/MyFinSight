@@ -103,3 +103,5 @@ LLM 설정은 `scripts/llm_config.py` 한 곳(모델명·생성 옵션·단가·
 - 12단계는 추천이 없을 때 중심 포트폴리오에 현금을 섞어 과거 최대낙폭이 허용치에 들어오는 "현금 혼합안"을 계산해 `alternatives` 로 제공한다(현금 수익 0 가정). 11단계는 사용자 비교지수(SPY) 외에 QQQ·XLV 도 같은 적립으로 돌려 `benchmarks` 에 담는다(상대 지표·R3 는 SPY 기준). 백테스트 창이 252 거래일 미만이면 연환산 지표는 `annualized_reliable: false` 로 표시되고 R2·R7 은 `info`(참고) 판정이 된다. 5단계는 섹터 상한 때문에 목표 종목 수를 못 채우면 `infeasibility` 로 사유와 선택지를 남긴다. 백테스트 초기자본은 구성일 환율로 다시 환산한다(`backtest_spec.capital.fx_*`). 위험회피 δ 는 기본 `market_implied`(SPY 내재 δ × 성향 배수).
 - 10단계 타겟 비중은 구성일 기준 정적이며 11단계가 리밸런싱마다 같은 비중을 복원한다. `--news` 경로의 10w 는 리밸런싱마다 시장모형·뉴스 뷰·BL 을 다시 계산한 날짜별 비중(`wf_*`)을 쓰지만, 종목 재선정은 하지 않는다(walk-forward 재선정 미구현). 뉴스가 `MIN_NEWS_TICKERS` 미만인 날짜는 기준 비중으로 두고 `fallback_dates` 에 남긴다.
 - 백테스트는 adj_close(배당 재투자)·거래비용 5bp·소수 주식 가정이며 세금·슬리피지는 없다. 시총 비중 템플릿은 현재 발행주식수 기준 근사다.
+
+> **2026-10-24 이후**: 이 폴더는 실험 기록으로 동결됐다. 서비스 구현은 `backend/analysis/`(일곱 모듈 패키지, Repository 직결, 대화형 요청 확정, 큐·워커·API·7섹션 리포트)로 옮겼다. 자세한 구조는 `backend/analysis/README.md`, 남은 계획은 `docs/TODO.md`.
