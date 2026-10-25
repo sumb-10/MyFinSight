@@ -1,0 +1,71 @@
+{
+  "request_id": "req_2026-05-12_u85",
+  "created_at": "2026-05-12T13:15:00+09:00",
+  "profile": {
+    "user_id": "user_85",
+    "age_band": "20s",
+    "investment_experience": "intermediate",
+    "financial_knowledge": "intermediate",
+    "investable_ratio_of_assets": 0.05
+  },
+  "capital": {
+    "initial_amount": 20000000,
+    "currency": "KRW",
+    "trading_currency": "KRW",
+    "monthly_contribution": 0,
+    "contribution_day": 1
+  },
+  "horizon": {
+    "start_date": "2026-05-11",
+    "target_years": 7,
+    "purpose": "wealth_growth"
+  },
+  "risk": {
+    "risk_tolerance": "aggressive",
+    "max_drawdown_tolerance": 0.5,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.15,
+    "benchmark": "069500.KS"
+  },
+  "constraints": {
+    "universe": [
+      "KOSPI200"
+    ],
+    "asset_types": [
+      "stock"
+    ],
+    "num_holdings": {
+      "target": 7,
+      "min": 5,
+      "max": 9
+    },
+    "max_weight_per_stock": 0.25,
+    "max_weight_per_sector": 0.4,
+    "min_cash_ratio": 0.0,
+    "exclude_tickers": [],
+    "exclude_sectors": [],
+    "exclude_themes": [],
+    "must_include_tickers": [
+      "006400.KS",
+      "051910.KS",
+      "373220.KS"
+    ],
+    "rebalance": {
+      "count": 2,
+      "unit": "1m"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 1000000000,
+    "min_avg_daily_volume_usd": 10000000
+  },
+  "strategy_preference": {
+    "template": "low_per",
+    "baseline_weighting": "equal_weight",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "국내 2차전지 소재·셀 기업 중 실적 대비 주가가 싼 종목 위주로 7년 정도 투자하고 싶어요. 자산을 불리는 게 목표예요. 변동성이 커도 괜찮으니 수익률을 최대한 노리고 싶어요. 삼성SDI(006400), LG화학(051910), LG에너지솔루션(373220)은 오래 지켜본 회사라 꼭 포함했으면 합니다.",
+    "language": "ko"
+  }
+}

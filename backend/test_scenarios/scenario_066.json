@@ -1,0 +1,73 @@
+{
+  "request_id": "req_2026-03-04_u66",
+  "created_at": "2026-03-04T10:15:00+09:00",
+  "profile": {
+    "user_id": "user_66",
+    "age_band": "40s",
+    "investment_experience": "beginner",
+    "financial_knowledge": "expert",
+    "investable_ratio_of_assets": 0.5
+  },
+  "capital": {
+    "initial_amount": 50000,
+    "currency": "USD",
+    "trading_currency": "USD",
+    "monthly_contribution": 0,
+    "contribution_day": 1
+  },
+  "horizon": {
+    "start_date": "2026-03-02",
+    "target_years": 3,
+    "purpose": "wealth_growth"
+  },
+  "risk": {
+    "risk_tolerance": "aggressive",
+    "max_drawdown_tolerance": 0.25,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.18,
+    "benchmark": "QQQ"
+  },
+  "constraints": {
+    "universe": [
+      "NASDAQ100"
+    ],
+    "asset_types": [
+      "stock"
+    ],
+    "num_holdings": {
+      "target": 12,
+      "min": 7,
+      "max": 17
+    },
+    "max_weight_per_stock": 0.25,
+    "max_weight_per_sector": 0.4,
+    "min_cash_ratio": 0.0,
+    "exclude_tickers": [
+      "NVDA",
+      "TSLA"
+    ],
+    "exclude_sectors": [],
+    "exclude_themes": [
+      "adult_entertainment",
+      "gambling"
+    ],
+    "must_include_tickers": [],
+    "rebalance": {
+      "count": 1,
+      "unit": "1q"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 2000000000,
+    "min_avg_daily_volume_usd": 20000000
+  },
+  "strategy_preference": {
+    "template": "momentum",
+    "baseline_weighting": "market_cap",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "미국 이커머스와 스트리밍 플랫폼 기업 중 최근 주가 흐름이 강한 종목 위주로 3년 정도 투자하고 싶어요. 목돈을 키우고 싶어요. 떨어지면 오히려 더 살 생각이라 공격적으로 가도 됩니다. 엔비디아(NVDA), 테슬라(TSLA)는 지배구조가 마음에 안 들어서 담지 말아 주세요. 성인 콘텐츠, 도박·카지노 관련 회사는 원하지 않아요.",
+    "language": "ko"
+  }
+}

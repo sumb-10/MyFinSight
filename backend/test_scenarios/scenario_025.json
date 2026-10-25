@@ -1,0 +1,73 @@
+{
+  "request_id": "req_2024-12-19_u25",
+  "created_at": "2024-12-19T10:45:00+09:00",
+  "profile": {
+    "user_id": "user_25",
+    "age_band": "50s",
+    "investment_experience": "none",
+    "financial_knowledge": "basic",
+    "investable_ratio_of_assets": 0.15
+  },
+  "capital": {
+    "initial_amount": 50000000,
+    "currency": "KRW",
+    "trading_currency": "USD",
+    "monthly_contribution": 200000,
+    "contribution_day": 1
+  },
+  "horizon": {
+    "start_date": "2024-12-16",
+    "target_years": 3,
+    "purpose": "income"
+  },
+  "risk": {
+    "risk_tolerance": "aggressive",
+    "max_drawdown_tolerance": 0.3,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.15,
+    "benchmark": "SPY"
+  },
+  "constraints": {
+    "universe": [
+      "SP500"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 8,
+      "min": 5,
+      "max": 10
+    },
+    "max_weight_per_stock": 0.25,
+    "max_weight_per_sector": 1.0,
+    "min_cash_ratio": 0.0,
+    "exclude_tickers": [
+      "COST"
+    ],
+    "exclude_sectors": [],
+    "exclude_themes": [],
+    "must_include_tickers": [
+      "CVX",
+      "XOM"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "6m"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 2000000000,
+    "min_avg_daily_volume_usd": 10000000
+  },
+  "strategy_preference": {
+    "template": "low_per",
+    "baseline_weighting": "equal_weight",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "주식은 처음이라 잘 모르지만, 배당 매력이 큰 미국 전통 에너지 기업 중 실적 대비 주가가 싼 종목 위주로 3년 정도 투자하고 싶어요. 배당으로 꾸준한 현금이 들어왔으면 해요. 떨어지면 오히려 더 살 생각이라 공격적으로 가도 됩니다. 셰브론(CVX), 엑슨모빌(XOM)은 꼭 넣어 주세요. 코스트코(COST)는 이미 다른 계좌에 있어서 제외해 주세요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

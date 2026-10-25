@@ -42,6 +42,10 @@
 
 합성 수치와 실제 리서치 자료를 함께 사용할 때는 정성 근거와 수치 실험의 성격을 참고자료에서 구분한다. 내부 fixture 분류를 모든 화면의 배지로 노출하지 않는다.
 
+**공시 근거 (2026-10-25 라운드 4).** 정성 자료는 뉴스 헤드라인(`ev<news_id>`)과 공시 사건(`dc<disclosure_id>`) 두 종류다. 공시는 SEC EDGAR(8-K·10-Q·10-K)와 DART 의 사건 목록으로, 사건 종류·양식·항목·접수일·**이용 가능일**(`available_on`)만 있고 본문은 없다. 구성일 d 의 뷰에는 `[d−45일, d)` 창의 공시가 뉴스(14일)보다 **앞선 주 근거**로 들어가고, 공시만 인용한 뷰의 신뢰도는 0.25 로 묶인다(설정). 리포트 §2 시장 분석·§3 기업별 근거(90일 사건 요약)·§4 타임라인(리밸런싱일별 공시 건수)에도 쓴다. 공시는 사건의 존재만 알려 주며 결과(좋았다·나빴다)를 뜻하지 않는다 — 화면 문구도 그렇게 쓴다.
+
+**리포트 문서 v2 (`doc_version: 2`).** `summary`(대시보드), `evidence`(인용된 근거만), `evidence_summary{total, cited, by_kind}`, 블록 공통 `group_ko`/`group_open`/`src`, 새 블록 `evidence_ref`·`weights_compare`·`timeline`·`companies`, 시계열이 600점을 넘으면 `datasets.sampling`(stride, 첫/끝·최대낙폭 고점·저점 고정). 보조 조회: `GET /reports/{id}/evidence`(페이지·필터), `/evidence/{eid}`(한 건 + 인용 문장), `/checkpoints/{seq}`(시점 상세), `/series`(전체 해상도). 옛 v1 문서는 서버(`present_doc`)와 화면(`lib/reportNormalize.ts normalizeDoc`)이 모두 변환한다: `evidence` 블록 → `evidence_ref`, `checkpoints` → `timeline`, 있는 정보로 `summary` 유도. 응답은 gzip 으로 온다.
+
 ## 4. 저장과 재접속
 
 프로필, 완료 리포트, 모의투자와 관계를 localStorage 또는 IndexedDB에 저장한다. 브라우저 저장은 클라우드·운영체제 파일·브라우저 간 동기화가 아니다. 정상 화면에 반복 안내하지 않되 관련 설정과 오류는 정확하게 표현한다.

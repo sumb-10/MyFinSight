@@ -1,21 +1,23 @@
-import React, { useEffect, useState } from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App'
-import PipelineReport from './pipeline/PipelineReport'
-import './index.css'
+import React, { useEffect, useState } from "react"
+import ReactDOM from "react-dom/client"
+import App from "./app/App"
+import { Providers } from "./app/providers"
+import { createServiceAsync } from "./api/service"
+import type { AnalysisService } from "./api/service"
+import "./index.css"
 
-// `#/pipeline...` renders the analysis-pipeline report (data from /pipeline/report.json); everything else is the existing app.
 function Root() {
-  const [hash, setHash] = useState(window.location.hash)
-  useEffect(() => {
-    const onHash = () => setHash(window.location.hash)
-    window.addEventListener('hashchange', onHash)
-    return () => window.removeEventListener('hashchange', onHash)
-  }, [])
-  return hash.startsWith('#/pipeline') ? <PipelineReport /> : <App />
+  const [service, setService] = useState<AnalysisService | null>(null)
+  useEffect(() => { void createServiceAsync().then(setService) }, [])
+  if (!service) return <div className="p-10 text-sm text-slate-500">초기화 중…</div>
+  return (
+    <Providers service={service}>
+      <App />
+    </Providers>
+  )
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <Root />
   </React.StrictMode>,

@@ -1,0 +1,69 @@
+{
+  "request_id": "req_2025-07-10_u32",
+  "created_at": "2025-07-10T20:45:00+09:00",
+  "profile": {
+    "user_id": "user_32",
+    "age_band": "30s",
+    "investment_experience": "beginner",
+    "financial_knowledge": "basic",
+    "investable_ratio_of_assets": 0.5
+  },
+  "capital": {
+    "initial_amount": 20000,
+    "currency": "USD",
+    "trading_currency": "USD",
+    "monthly_contribution": 200,
+    "contribution_day": 10
+  },
+  "horizon": {
+    "start_date": "2025-07-07",
+    "target_years": 3,
+    "purpose": "income"
+  },
+  "risk": {
+    "risk_tolerance": "moderate",
+    "max_drawdown_tolerance": 0.2,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.12,
+    "benchmark": "SPY"
+  },
+  "constraints": {
+    "universe": [
+      "SP500"
+    ],
+    "asset_types": [
+      "stock"
+    ],
+    "num_holdings": {
+      "target": 20,
+      "min": 18,
+      "max": 25
+    },
+    "max_weight_per_stock": 0.15,
+    "max_weight_per_sector": 0.6,
+    "min_cash_ratio": 0.05,
+    "exclude_tickers": [],
+    "exclude_sectors": [],
+    "exclude_themes": [],
+    "must_include_tickers": [
+      "CVX"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "1y"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 20000000000,
+    "min_avg_daily_volume_usd": 50000000
+  },
+  "strategy_preference": {
+    "template": "low_per",
+    "baseline_weighting": "market_cap",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "배당 매력이 큰 미국 전통 에너지 기업 중 실적 대비 주가가 싼 종목 위주로 3년 정도 투자하고 싶어요. 매달 생활비에 보탤 현금흐름이 필요해요. 적당한 위험은 감수할 수 있어요. 셰브론(CVX)은 꼭 넣어 주세요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

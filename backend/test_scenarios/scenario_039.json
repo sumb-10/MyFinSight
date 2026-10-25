@@ -1,0 +1,77 @@
+{
+  "request_id": "req_2026-02-15_u39",
+  "created_at": "2026-02-15T14:45:00+09:00",
+  "profile": {
+    "user_id": "user_39",
+    "age_band": "30s",
+    "investment_experience": "beginner",
+    "financial_knowledge": "intermediate",
+    "investable_ratio_of_assets": 0.6
+  },
+  "capital": {
+    "initial_amount": 5000000,
+    "currency": "KRW",
+    "trading_currency": "KRW",
+    "monthly_contribution": 300000,
+    "contribution_day": 15
+  },
+  "horizon": {
+    "start_date": "2026-02-13",
+    "target_years": 3,
+    "purpose": "capital_preservation"
+  },
+  "risk": {
+    "risk_tolerance": "conservative",
+    "max_drawdown_tolerance": 0.08,
+    "loss_reaction": "sell",
+    "target_annual_return": 0.05,
+    "benchmark": "069500.KS"
+  },
+  "constraints": {
+    "universe": [
+      "KOSPI200"
+    ],
+    "asset_types": [
+      "stock"
+    ],
+    "num_holdings": {
+      "target": 30,
+      "min": 27,
+      "max": 40
+    },
+    "max_weight_per_stock": 0.1,
+    "max_weight_per_sector": 0.4,
+    "min_cash_ratio": 0.2,
+    "exclude_tickers": [
+      "128940.KS"
+    ],
+    "exclude_sectors": [],
+    "exclude_themes": [
+      "adult_entertainment",
+      "gambling",
+      "tobacco"
+    ],
+    "must_include_tickers": [
+      "055550.KS",
+      "105560.KS",
+      "316140.KS"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "6m"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 3000000000,
+    "min_avg_daily_volume_usd": 10000000
+  },
+  "strategy_preference": {
+    "template": "high_dividend",
+    "baseline_weighting": "equal_weight",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "밸류업 수혜가 기대되는 국내 은행·금융지주 중 배당을 꾸준히 많이 주는 종목 위주로 3년 정도 투자하고 싶어요. 원금을 지키는 게 가장 중요합니다. 크게 벌기보다 크게 잃지 않는 게 중요합니다. 신한지주(055550), KB금융(105560), 우리금융지주(316140)는 꼭 넣어 주세요. 한미약품(128940)은 개인적으로 믿음이 안 가서 빼 주세요. 성인 콘텐츠, 도박·카지노, 담배 관련 회사는 원하지 않아요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

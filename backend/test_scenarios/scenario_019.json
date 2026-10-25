@@ -1,0 +1,70 @@
+{
+  "request_id": "req_2026-09-16_u19",
+  "created_at": "2026-09-16T19:45:00+09:00",
+  "profile": {
+    "user_id": "user_19",
+    "age_band": "40s",
+    "investment_experience": "beginner",
+    "financial_knowledge": "basic",
+    "investable_ratio_of_assets": 0.1
+  },
+  "capital": {
+    "initial_amount": 10000000,
+    "currency": "KRW",
+    "trading_currency": "USD",
+    "monthly_contribution": 0,
+    "contribution_day": 1
+  },
+  "horizon": {
+    "start_date": "2026-09-15",
+    "target_years": 10,
+    "purpose": "retirement"
+  },
+  "risk": {
+    "risk_tolerance": "moderate",
+    "max_drawdown_tolerance": 0.2,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.07,
+    "benchmark": "QQQ"
+  },
+  "constraints": {
+    "universe": [
+      "NASDAQ100"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 20,
+      "min": 15,
+      "max": 22
+    },
+    "max_weight_per_stock": 0.15,
+    "max_weight_per_sector": 0.4,
+    "min_cash_ratio": 0.0,
+    "exclude_tickers": [],
+    "exclude_sectors": [],
+    "exclude_themes": [],
+    "must_include_tickers": [
+      "MSFT"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "1q"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 20000000000,
+    "min_avg_daily_volume_usd": 10000000
+  },
+  "strategy_preference": {
+    "template": "quality",
+    "baseline_weighting": "min_variance",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "미국 빅테크 대형주 중 재무가 탄탄하고 이익률이 높은 회사 위주로 10년 정도 투자하고 싶어요. 노후 대비용 자금이에요. 어느 정도 출렁이는 건 괜찮지만 한 종목에 몰빵하는 건 피하고 싶어요. 마이크로소프트(MSFT)는 확신이 있어서 반드시 담고 싶어요.",
+    "language": "ko"
+  }
+}

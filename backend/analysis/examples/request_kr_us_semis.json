@@ -1,0 +1,73 @@
+{
+  "request_id": "req_example_kr_us_semis",
+  "created_at": "2026-10-24T20:00:00+09:00",
+  "profile": {
+    "user_id": "user_hojin",
+    "age_band": "20s",
+    "investment_experience": "beginner",
+    "financial_knowledge": "basic",
+    "investable_ratio_of_assets": 0.3
+  },
+  "capital": {
+    "initial_amount": 10000000,
+    "currency": "KRW",
+    "trading_currency": "USD",
+    "monthly_contribution": 500000,
+    "contribution_day": 25
+  },
+  "horizon": {
+    "start_date": "2026-10-09",
+    "target_years": 3,
+    "purpose": "wealth_growth"
+  },
+  "risk": {
+    "risk_tolerance": "moderate",
+    "max_drawdown_tolerance": 0.35,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.12,
+    "benchmark": "SPY"
+  },
+  "constraints": {
+    "universe": [
+      "SP500",
+      "NASDAQ100",
+      "KOSPI200"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 12,
+      "min": 8,
+      "max": 16
+    },
+    "max_weight_per_stock": 0.15,
+    "max_weight_per_sector": 0.4,
+    "min_cash_ratio": 0.0,
+    "exclude_tickers": [],
+    "exclude_sectors": [],
+    "exclude_themes": [
+      "tobacco",
+      "gambling"
+    ],
+    "must_include_tickers": [],
+    "rebalance": {
+      "count": 1,
+      "unit": "1q"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 5000000000,
+    "min_avg_daily_volume_usd": 20000000
+  },
+  "strategy_preference": {
+    "template": "momentum",
+    "baseline_weighting": "equal_weight",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "미국과 한국의 반도체·메모리 기업에 나눠서 투자하고 싶습니다. 삼성전자, SK하이닉스 같은 한국 대형 반도체와 미국 반도체 장비·메모리 회사를 함께 담아 3년 정도 들고 가려고 합니다. 한 종목 비중은 15%를 넘지 않게 해 주세요.",
+    "language": "ko"
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "request_id": "req_2026-07-08_u51",
+  "created_at": "2026-07-08T09:15:00+09:00",
+  "profile": {
+    "user_id": "user_51",
+    "age_band": "40s",
+    "investment_experience": "beginner",
+    "financial_knowledge": "intermediate",
+    "investable_ratio_of_assets": 0.6
+  },
+  "capital": {
+    "initial_amount": 10000,
+    "currency": "USD",
+    "trading_currency": "USD",
+    "monthly_contribution": 0,
+    "contribution_day": 1
+  },
+  "horizon": {
+    "start_date": "2026-07-06",
+    "target_years": 10,
+    "purpose": "capital_preservation"
+  },
+  "risk": {
+    "risk_tolerance": "conservative",
+    "max_drawdown_tolerance": 0.08,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.06,
+    "benchmark": "SPY"
+  },
+  "constraints": {
+    "universe": [
+      "SP500"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 20,
+      "min": 17,
+      "max": 25
+    },
+    "max_weight_per_stock": 0.1,
+    "max_weight_per_sector": 0.3,
+    "min_cash_ratio": 0.2,
+    "exclude_tickers": [
+      "COST"
+    ],
+    "exclude_sectors": [],
+    "exclude_themes": [],
+    "must_include_tickers": [
+      "MCD"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "1q"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 50000000000,
+    "min_avg_daily_volume_usd": 100000000
+  },
+  "strategy_preference": {
+    "template": "quality",
+    "baseline_weighting": "equal_weight",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "미국 생활필수품·소비재 브랜드 기업 중 재무가 탄탄하고 이익률이 높은 회사 위주로 10년 정도 투자하고 싶어요. 수익보다 원금 보전이 우선이에요. 크게 벌기보다 크게 잃지 않는 게 중요합니다. 맥도날드(MCD)는 꼭 넣어 주세요. 그중 코스트코(COST)는 최근 이슈 때문에 마음이 안 가서 제외해 주세요.",
+    "language": "ko"
+  }
+}

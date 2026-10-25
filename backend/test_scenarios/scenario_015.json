@@ -1,0 +1,75 @@
+{
+  "request_id": "req_2026-05-12_u15",
+  "created_at": "2026-05-12T22:45:00+09:00",
+  "profile": {
+    "user_id": "user_15",
+    "age_band": "40s",
+    "investment_experience": "advanced",
+    "financial_knowledge": "expert",
+    "investable_ratio_of_assets": 0.4
+  },
+  "capital": {
+    "initial_amount": 10000000,
+    "currency": "KRW",
+    "trading_currency": "USD",
+    "monthly_contribution": 100000,
+    "contribution_day": 25
+  },
+  "horizon": {
+    "start_date": "2026-05-11",
+    "target_years": 3,
+    "purpose": "wealth_growth"
+  },
+  "risk": {
+    "risk_tolerance": "moderate",
+    "max_drawdown_tolerance": 0.18,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.1,
+    "benchmark": "QQQ"
+  },
+  "constraints": {
+    "universe": [
+      "SP500"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 10,
+      "min": 8,
+      "max": 15
+    },
+    "max_weight_per_stock": 0.15,
+    "max_weight_per_sector": 0.5,
+    "min_cash_ratio": 0.0,
+    "exclude_tickers": [],
+    "exclude_sectors": [
+      "Consumer Discretionary",
+      "Energy"
+    ],
+    "exclude_themes": [],
+    "must_include_tickers": [
+      "JNJ",
+      "LLY",
+      "VRTX"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "1q"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 20000000000,
+    "min_avg_daily_volume_usd": 50000000
+  },
+  "strategy_preference": {
+    "template": "quality",
+    "baseline_weighting": "market_cap",
+    "use_news_tilt": false
+  },
+  "natural_language": {
+    "idea": "미국 헬스케어와 제약·바이오 기업 중 재무가 탄탄하고 이익률이 높은 회사 위주로 3년 정도 투자하고 싶어요. 목돈을 키우고 싶어요. 적당한 위험은 감수할 수 있어요. 존슨앤드존슨(JNJ), 일라이 릴리(LLY), 버텍스(VRTX)는 꼭 넣어 주세요. 경기에 너무 민감한 경기소비재·에너지 섹터는 빼 주세요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

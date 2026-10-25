@@ -1,0 +1,76 @@
+{
+  "request_id": "req_2026-07-25_u91",
+  "created_at": "2026-07-25T16:15:00+09:00",
+  "profile": {
+    "user_id": "user_91",
+    "age_band": "40s",
+    "investment_experience": "advanced",
+    "financial_knowledge": "expert",
+    "investable_ratio_of_assets": 0.25
+  },
+  "capital": {
+    "initial_amount": 30000000,
+    "currency": "KRW",
+    "trading_currency": "KRW",
+    "monthly_contribution": 0,
+    "contribution_day": 1
+  },
+  "horizon": {
+    "start_date": "2026-07-23",
+    "target_years": 7,
+    "purpose": "wealth_growth"
+  },
+  "risk": {
+    "risk_tolerance": "moderate",
+    "max_drawdown_tolerance": 0.15,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.08,
+    "benchmark": "069500.KS"
+  },
+  "constraints": {
+    "universe": [
+      "KOSPI200"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 15,
+      "min": 13,
+      "max": 18
+    },
+    "max_weight_per_stock": 0.15,
+    "max_weight_per_sector": 0.35,
+    "min_cash_ratio": 0.05,
+    "exclude_tickers": [
+      "024110.KS",
+      "096770.KS"
+    ],
+    "exclude_sectors": [],
+    "exclude_themes": [
+      "fossil_fuels",
+      "weapons"
+    ],
+    "must_include_tickers": [
+      "267260.KS"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "6m"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 3000000000,
+    "min_avg_daily_volume_usd": 10000000
+  },
+  "strategy_preference": {
+    "template": "quality",
+    "baseline_weighting": "equal_weight",
+    "use_news_tilt": false
+  },
+  "natural_language": {
+    "idea": "전력기기·원전 등 국내 전력 인프라 기업 중 재무가 탄탄하고 이익률이 높은 회사 위주로 7년 정도 투자하고 싶어요. 목돈을 키우고 싶어요. 어느 정도 출렁이는 건 괜찮지만 한 종목에 몰빵하는 건 피하고 싶어요. HD현대일렉트릭(267260)은 확신이 있어서 반드시 담고 싶어요. 기업은행(024110), SK이노베이션(096770)은 개인적으로 믿음이 안 가서 빼 주세요. 화석연료, 무기·방산 관련 회사는 원하지 않아요.",
+    "language": "ko"
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "request_id": "req_2025-07-11_u01",
+  "created_at": "2025-07-11T13:00:00+09:00",
+  "profile": {
+    "user_id": "user_1",
+    "age_band": "60s+",
+    "investment_experience": "beginner",
+    "financial_knowledge": "intermediate",
+    "investable_ratio_of_assets": 0.2
+  },
+  "capital": {
+    "initial_amount": 500000000,
+    "currency": "KRW",
+    "trading_currency": "USD",
+    "monthly_contribution": 100000,
+    "contribution_day": 25
+  },
+  "horizon": {
+    "start_date": "2025-07-10",
+    "target_years": 3,
+    "purpose": "wealth_growth"
+  },
+  "risk": {
+    "risk_tolerance": "aggressive",
+    "max_drawdown_tolerance": 0.5,
+    "loss_reaction": "buy_more",
+    "target_annual_return": 0.2,
+    "benchmark": "QQQ"
+  },
+  "constraints": {
+    "universe": [
+      "SP500",
+      "NASDAQ100"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 7,
+      "min": 4,
+      "max": 10
+    },
+    "max_weight_per_stock": 0.3,
+    "max_weight_per_sector": 0.5,
+    "min_cash_ratio": 0.0,
+    "exclude_tickers": [],
+    "exclude_sectors": [
+      "Industrials",
+      "Materials"
+    ],
+    "exclude_themes": [],
+    "must_include_tickers": [],
+    "rebalance": {
+      "count": 1,
+      "unit": "1q"
+    },
+    "allow_leverage": true,
+    "allow_short": true,
+    "min_market_cap_usd": 10000000000,
+    "min_avg_daily_volume_usd": 20000000
+  },
+  "strategy_preference": {
+    "template": "momentum",
+    "baseline_weighting": "equal_weight",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "AI 반도체와 데이터센터 관련 미국 기업 중 최근 주가 흐름이 강한 종목 위주로 3년 정도 투자하고 싶어요. 목돈을 키우고 싶어요. 떨어지면 오히려 더 살 생각이라 공격적으로 가도 됩니다. 경기에 너무 민감한 산업재·소재 섹터는 빼 주세요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

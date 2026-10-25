@@ -1,0 +1,77 @@
+{
+  "request_id": "req_2025-12-24_u98",
+  "created_at": "2025-12-24T08:10:00+09:00",
+  "profile": {
+    "user_id": "user_98",
+    "age_band": "50s",
+    "investment_experience": "intermediate",
+    "financial_knowledge": "intermediate",
+    "investable_ratio_of_assets": 1.0
+  },
+  "capital": {
+    "initial_amount": 200000000,
+    "currency": "KRW",
+    "trading_currency": "KRW",
+    "monthly_contribution": 1000000,
+    "contribution_day": 28
+  },
+  "horizon": {
+    "start_date": "2025-12-23",
+    "target_years": 2,
+    "purpose": "retirement"
+  },
+  "risk": {
+    "risk_tolerance": "conservative",
+    "max_drawdown_tolerance": 0.15,
+    "loss_reaction": "buy_more",
+    "target_annual_return": 0.07,
+    "benchmark": "069500.KS"
+  },
+  "constraints": {
+    "universe": [
+      "KOSPI200"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 15,
+      "min": 12,
+      "max": 25
+    },
+    "max_weight_per_stock": 0.1,
+    "max_weight_per_sector": 0.5,
+    "min_cash_ratio": 0.15,
+    "exclude_tickers": [
+      "032830.KS",
+      "373220.KS"
+    ],
+    "exclude_sectors": [],
+    "exclude_themes": [
+      "alcohol",
+      "gambling",
+      "weapons"
+    ],
+    "must_include_tickers": [
+      "005380.KS"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "1q"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 3000000000,
+    "min_avg_daily_volume_usd": 2000000
+  },
+  "strategy_preference": {
+    "template": "low_per",
+    "baseline_weighting": "min_variance",
+    "use_news_tilt": false
+  },
+  "natural_language": {
+    "idea": "국내 자동차와 부품 기업 중 실적 대비 주가가 싼 종목 위주로 2년 정도 투자하고 싶어요. 은퇴 자금으로 쓰려고 합니다. 크게 벌기보다 크게 잃지 않는 게 중요합니다. 현대차(005380)는 확신이 있어서 반드시 담고 싶어요. 삼성생명(032830), LG에너지솔루션(373220)은 지배구조가 마음에 안 들어서 담지 말아 주세요. 주류, 도박·카지노, 무기·방산 관련 회사는 원하지 않아요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

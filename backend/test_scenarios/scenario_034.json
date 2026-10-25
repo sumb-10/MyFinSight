@@ -1,0 +1,70 @@
+{
+  "request_id": "req_2026-08-01_u34",
+  "created_at": "2026-08-01T13:30:00+09:00",
+  "profile": {
+    "user_id": "user_34",
+    "age_band": "40s",
+    "investment_experience": "advanced",
+    "financial_knowledge": "intermediate",
+    "investable_ratio_of_assets": 0.2
+  },
+  "capital": {
+    "initial_amount": 50000000,
+    "currency": "KRW",
+    "trading_currency": "KRW",
+    "monthly_contribution": 0,
+    "contribution_day": 1
+  },
+  "horizon": {
+    "start_date": "2026-07-29",
+    "target_years": 2,
+    "purpose": "wealth_growth"
+  },
+  "risk": {
+    "risk_tolerance": "aggressive",
+    "max_drawdown_tolerance": 0.25,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.12,
+    "benchmark": "069500.KS"
+  },
+  "constraints": {
+    "universe": [
+      "KOSPI200"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 10,
+      "min": 8,
+      "max": 20
+    },
+    "max_weight_per_stock": 0.25,
+    "max_weight_per_sector": 0.5,
+    "min_cash_ratio": 0.0,
+    "exclude_tickers": [],
+    "exclude_sectors": [],
+    "exclude_themes": [],
+    "must_include_tickers": [
+      "035420.KS"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "1q"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 2000000000,
+    "min_avg_daily_volume_usd": 2000000
+  },
+  "strategy_preference": {
+    "template": "quality",
+    "baseline_weighting": "market_cap",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "국내 인터넷 플랫폼·게임·엔터 기업 중 재무가 탄탄하고 이익률이 높은 회사 위주로 2년 정도 투자하고 싶어요. 자산을 불리는 게 목표예요. 떨어지면 오히려 더 살 생각이라 공격적으로 가도 됩니다. NAVER(035420)은 오래 지켜본 회사라 꼭 포함했으면 합니다.",
+    "language": "ko"
+  }
+}

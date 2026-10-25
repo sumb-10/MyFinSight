@@ -1,0 +1,90 @@
+{
+  "name": "kr",
+  "title_ko": "미국·한국 반도체·메모리",
+  "request_id": "req_20261025_145613_1283",
+  "run_id": "run_20261025_145628_6382",
+  "qa": [
+    {
+      "seq": 1,
+      "field": "constraints.max_weight_per_sector",
+      "question_ko": "이 아이디어의 테마는 '정보기술' 한 섹터에 몰려 있습니다. 지금 섹터당 상한이 40%라 투자금의 60%가 현금으로 남게 됩니다. 어떻게 할까요?",
+      "answer": "이번 분석에서는 섹터 상한을 풀어 전액 투자 (100%)"
+    }
+  ],
+  "dialog_seconds": 14.5,
+  "run_seconds": 264.0,
+  "status": "partial",
+  "error": null,
+  "worker_rc": 0,
+  "buckets": [
+    [
+      "conditions",
+      "SUCCESS"
+    ],
+    [
+      "candidates",
+      "PARTIAL"
+    ],
+    [
+      "backtest",
+      "SUCCESS"
+    ],
+    [
+      "validation",
+      "PARTIAL"
+    ],
+    [
+      "report",
+      "SUCCESS"
+    ]
+  ],
+  "report": true,
+  "chosen_label_ko": "현금 혼합안: 동일비중 × 76% + 현금 24%",
+  "verdict_ko": "미국과 한국의 반도체 메모리 및 반도체 장비 기업에 투자하며, 최근 12개월 모멘텀을 기준으로 3년간 운용하려는 요청입니다. 목표 보유 종목은 12개이고 종목당 비중은 최대 15%입니다. 섹터 상한은 100%로 설정되어 특정 섹터에 집중될 수 있습니다.",
+  "kpis": {
+    "final_value": 56831.2,
+    "cagr": 0.527444,
+    "excess": 0.301537,
+    "mdd": -0.350444,
+    "sharpe": 1.538746,
+    "view_hit": null
+  },
+  "as_of": "2026-10-23",
+  "n_evidence": 152,
+  "warnings": 0,
+  "validation": {
+    "n_pass": 0,
+    "n_warn": 0,
+    "n_fail": 14,
+    "alternative_note": null
+  },
+  "recommended": null,
+  "chosen_id": "cash_blend_equal_weight",
+  "llm_usage": {
+    "model": "gpt-6-luna",
+    "calls": 17,
+    "cache_hits": 0,
+    "prompt_tokens": 98098,
+    "completion_tokens": 44568,
+    "cost_usd": 0.040629,
+    "by_stage": [
+      "04_classify",
+      "06_explain",
+      "09_views_news_2023-10-23",
+      "09_views_news_2024-01-02",
+      "09_views_news_2024-04-01",
+      "09_views_news_2024-07-01",
+      "09_views_news_2024-10-01",
+      "09_views_news_2025-01-02",
+      "09_views_news_2025-04-01",
+      "09_views_news_2025-07-01",
+      "09_views_news_2025-10-01",
+      "09_views_news_2026-01-02",
+      "09_views_news_2026-04-01",
+      "09_views_news_2026-07-01",
+      "09_views_news_2026-10-01",
+      "09_views_news_2026-10-23_current"
+    ]
+  },
+  "report_error": null
+}

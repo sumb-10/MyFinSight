@@ -1,0 +1,72 @@
+{
+  "request_id": "req_2025-08-23_u52",
+  "created_at": "2025-08-23T11:10:00+09:00",
+  "profile": {
+    "user_id": "user_52",
+    "age_band": "30s",
+    "investment_experience": "intermediate",
+    "financial_knowledge": "expert",
+    "investable_ratio_of_assets": 0.05
+  },
+  "capital": {
+    "initial_amount": 10000000,
+    "currency": "KRW",
+    "trading_currency": "KRW",
+    "monthly_contribution": 0,
+    "contribution_day": 1
+  },
+  "horizon": {
+    "start_date": "2025-08-20",
+    "target_years": 5,
+    "purpose": "income"
+  },
+  "risk": {
+    "risk_tolerance": "conservative",
+    "max_drawdown_tolerance": 0.08,
+    "loss_reaction": "sell",
+    "target_annual_return": 0.05,
+    "benchmark": "069500.KS"
+  },
+  "constraints": {
+    "universe": [
+      "KOSPI200"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 20,
+      "min": 17,
+      "max": 25
+    },
+    "max_weight_per_stock": 0.1,
+    "max_weight_per_sector": 0.6,
+    "min_cash_ratio": 0.05,
+    "exclude_tickers": [],
+    "exclude_sectors": [
+      "Consumer Staples"
+    ],
+    "exclude_themes": [
+      "weapons"
+    ],
+    "must_include_tickers": [],
+    "rebalance": {
+      "count": 1,
+      "unit": "1q"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 10000000000,
+    "min_avg_daily_volume_usd": 5000000
+  },
+  "strategy_preference": {
+    "template": "quality",
+    "baseline_weighting": "market_cap",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "국내 자동차와 부품 기업 중 재무가 탄탄하고 이익률이 높은 회사 위주로 5년 정도 투자하고 싶어요. 배당으로 꾸준한 현금이 들어왔으면 해요. 크게 벌기보다 크게 잃지 않는 게 중요합니다. 필수소비재 섹터는 전망이 밝아 보이지 않아서 빼 주세요. 무기·방산 관련 회사는 원하지 않아요.",
+    "language": "ko"
+  }
+}

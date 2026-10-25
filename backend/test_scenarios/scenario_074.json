@@ -1,0 +1,76 @@
+{
+  "request_id": "req_2026-08-19_u74",
+  "created_at": "2026-08-19T18:00:00+09:00",
+  "profile": {
+    "user_id": "user_74",
+    "age_band": "60s+",
+    "investment_experience": "advanced",
+    "financial_knowledge": "intermediate",
+    "investable_ratio_of_assets": 0.3
+  },
+  "capital": {
+    "initial_amount": 30000000,
+    "currency": "KRW",
+    "trading_currency": "KRW",
+    "monthly_contribution": 0,
+    "contribution_day": 1
+  },
+  "horizon": {
+    "start_date": "2026-08-18",
+    "target_years": 5,
+    "purpose": "wealth_growth"
+  },
+  "risk": {
+    "risk_tolerance": "conservative",
+    "max_drawdown_tolerance": 0.12,
+    "loss_reaction": "sell",
+    "target_annual_return": 0.05,
+    "benchmark": "069500.KS"
+  },
+  "constraints": {
+    "universe": [
+      "KOSPI200"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 20,
+      "min": 17,
+      "max": 25
+    },
+    "max_weight_per_stock": 0.1,
+    "max_weight_per_sector": 0.4,
+    "min_cash_ratio": 0.15,
+    "exclude_tickers": [
+      "096770.KS"
+    ],
+    "exclude_sectors": [
+      "Consumer Staples"
+    ],
+    "exclude_themes": [],
+    "must_include_tickers": [
+      "024110.KS",
+      "105560.KS",
+      "138040.KS"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "1q"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 3000000000,
+    "min_avg_daily_volume_usd": 2000000
+  },
+  "strategy_preference": {
+    "template": "high_dividend",
+    "baseline_weighting": "market_cap",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "밸류업 수혜가 기대되는 국내 은행·금융지주 중 배당을 꾸준히 많이 주는 종목 위주로 5년 정도 투자하고 싶어요. 목돈을 키우고 싶어요. 손실이 나면 잠을 못 잘 것 같아서 변동성은 최대한 낮췄으면 해요. 기업은행(024110), KB금융(105560), 메리츠금융지주(138040)는 꼭 넣어 주세요. SK이노베이션(096770)은 개인적으로 믿음이 안 가서 빼 주세요. 필수소비재 섹터는 전망이 밝아 보이지 않아서 빼 주세요.",
+    "language": "ko"
+  }
+}

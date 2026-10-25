@@ -1,0 +1,70 @@
+{
+  "request_id": "req_2026-07-19_u18",
+  "created_at": "2026-07-19T15:15:00+09:00",
+  "profile": {
+    "user_id": "user_18",
+    "age_band": "20s",
+    "investment_experience": "none",
+    "financial_knowledge": "basic",
+    "investable_ratio_of_assets": 0.5
+  },
+  "capital": {
+    "initial_amount": 3000000,
+    "currency": "KRW",
+    "trading_currency": "KRW",
+    "monthly_contribution": 600000,
+    "contribution_day": 1
+  },
+  "horizon": {
+    "start_date": "2026-07-17",
+    "target_years": 5,
+    "purpose": "income"
+  },
+  "risk": {
+    "risk_tolerance": "conservative",
+    "max_drawdown_tolerance": 0.08,
+    "loss_reaction": "sell",
+    "target_annual_return": 0.05,
+    "benchmark": "069500.KS"
+  },
+  "constraints": {
+    "universe": [
+      "KOSPI200"
+    ],
+    "asset_types": [
+      "stock"
+    ],
+    "num_holdings": {
+      "target": 25,
+      "min": 23,
+      "max": 27
+    },
+    "max_weight_per_stock": 0.1,
+    "max_weight_per_sector": 0.4,
+    "min_cash_ratio": 0.05,
+    "exclude_tickers": [],
+    "exclude_sectors": [],
+    "exclude_themes": [],
+    "must_include_tickers": [
+      "033780.KS",
+      "105560.KS"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "1m"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 10000000000,
+    "min_avg_daily_volume_usd": 10000000
+  },
+  "strategy_preference": {
+    "template": "high_dividend",
+    "baseline_weighting": "market_cap",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "통신·금융처럼 배당을 꾸준히 주는 국내 기업 중 5년 정도 투자하고 싶어요. 배당으로 꾸준한 현금이 들어왔으면 해요. 크게 벌기보다 크게 잃지 않는 게 중요합니다. KT&G(033780), KB금융(105560)은 확신이 있어서 반드시 담고 싶어요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

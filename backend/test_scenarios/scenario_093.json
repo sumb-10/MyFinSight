@@ -1,0 +1,72 @@
+{
+  "request_id": "req_2026-10-10_u93",
+  "created_at": "2026-10-10T09:45:00+09:00",
+  "profile": {
+    "user_id": "user_93",
+    "age_band": "50s",
+    "investment_experience": "beginner",
+    "financial_knowledge": "basic",
+    "investable_ratio_of_assets": 1.0
+  },
+  "capital": {
+    "initial_amount": 50000000,
+    "currency": "KRW",
+    "trading_currency": "KRW",
+    "monthly_contribution": 2000000,
+    "contribution_day": 10
+  },
+  "horizon": {
+    "start_date": "2026-10-08",
+    "target_years": 3,
+    "purpose": "retirement"
+  },
+  "risk": {
+    "risk_tolerance": "aggressive",
+    "max_drawdown_tolerance": 0.35,
+    "loss_reaction": "buy_more",
+    "target_annual_return": 0.12,
+    "benchmark": "069500.KS"
+  },
+  "constraints": {
+    "universe": [
+      "KOSPI200"
+    ],
+    "asset_types": [
+      "stock"
+    ],
+    "num_holdings": {
+      "target": 10,
+      "min": 7,
+      "max": 15
+    },
+    "max_weight_per_stock": 0.25,
+    "max_weight_per_sector": 0.3,
+    "min_cash_ratio": 0.0,
+    "exclude_tickers": [
+      "006400.KS"
+    ],
+    "exclude_sectors": [],
+    "exclude_themes": [
+      "adult_entertainment",
+      "alcohol"
+    ],
+    "must_include_tickers": [],
+    "rebalance": {
+      "count": 1,
+      "unit": "1m"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 2000000000,
+    "min_avg_daily_volume_usd": 10000000
+  },
+  "strategy_preference": {
+    "template": "momentum",
+    "baseline_weighting": "inverse_volatility",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "국내 2차전지 소재·셀 기업 중 최근 주가 흐름이 강한 종목 위주로 3년 정도 투자하고 싶어요. 은퇴 자금으로 쓰려고 합니다. 떨어지면 오히려 더 살 생각이라 공격적으로 가도 됩니다. 다만 삼성SDI(006400)는 이미 따로 많이 갖고 있어서 이번엔 빼 주세요. 성인 콘텐츠, 주류 관련 회사는 원하지 않아요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

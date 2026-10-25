@@ -1,0 +1,218 @@
+{
+  "name": "scenario_097",
+  "title_ko": "국내 반도체와 IT 부품 기업 중 최근 주가 흐름이 강한 종목 위주로 5…",
+  "scenario_file": "/Users/apple/dev/MyFinSight/backend/test_scenarios/scenario_097.json",
+  "normalized": [
+    "capital.trading_currency KRW → USD (서비스는 USD 로 계산, 표시만 KRW)"
+  ],
+  "overrides": {
+    "horizon.start_date": "2026-10-08"
+  },
+  "request_id": "req_20261025_184158_5824",
+  "run_id": "run_20261025_184228_1537",
+  "qa": [
+    {
+      "seq": 1,
+      "field": "constraints.max_weight_per_sector",
+      "question_ko": "이 아이디어의 테마는 '정보기술' 한 섹터에 몰려 있습니다. 지금 섹터당 상한이 70%라 투자금의 20%가 현금으로 남게 됩니다. 어떻게 할까요?",
+      "answer": "이번 분석에서는 섹터 상한을 풀어 전액 투자 (90%)",
+      "kind": "conflict",
+      "options": [
+        "이번 분석에서는 섹터 상한을 풀어 전액 투자 (90%)",
+        "프로필대로 70% 유지 (나머지 20%는 현금)"
+      ],
+      "why_ko": "섹터 상한은 여러 업종에 나눌 때 쓰는 보호 장치라, 한 업종만 담는 테마에서는 뜻한 것보다 현금이 많이 남습니다.",
+      "turn_seconds": 11.1
+    }
+  ],
+  "dialog_seconds": 30.2,
+  "run_seconds": 294.1,
+  "status": "partial",
+  "error": null,
+  "worker_rc": 2,
+  "buckets": [
+    [
+      "conditions",
+      "SUCCESS"
+    ],
+    [
+      "candidates",
+      "PARTIAL"
+    ],
+    [
+      "backtest",
+      "SUCCESS"
+    ],
+    [
+      "validation",
+      "PARTIAL"
+    ],
+    [
+      "report",
+      "SUCCESS"
+    ]
+  ],
+  "steps": [
+    {
+      "step": "01_request",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T09:42:30+00:00",
+      "ended_at": "2026-10-25T09:42:39+00:00",
+      "summary": "기준일 2026-10-08, 유니버스 201종목, 백테스트 2023-10-08~2026-10-08 · 참고 1건",
+      "error_message": null
+    },
+    {
+      "step": "02_intent",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T09:42:39+00:00",
+      "ended_at": "2026-10-25T09:42:39+00:00",
+      "summary": "대화에서 확정된 의도 재사용 (LLM 호출 없음)",
+      "error_message": null
+    },
+    {
+      "step": "03_candidates",
+      "status": "PARTIAL",
+      "started_at": "2026-10-25T09:42:39+00:00",
+      "ended_at": "2026-10-25T09:42:40+00:00",
+      "summary": "후보 10개 (제외 2) · 확인 필요 1건: 테마 후보가 10개로 목표 종목 수 15개보다 적습니다. 테마를 넓히거나 목표 종목 수를 줄여 보세요.",
+      "error_message": null
+    },
+    {
+      "step": "04_tagging",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T09:42:40+00:00",
+      "ended_at": "2026-10-25T09:42:54+00:00",
+      "summary": "테마 통과 7개 / 배치 1",
+      "error_message": null
+    },
+    {
+      "step": "05_selection",
+      "status": "PARTIAL",
+      "started_at": "2026-10-25T09:42:54+00:00",
+      "ended_at": "2026-10-25T09:42:54+00:00",
+      "summary": "선정 7개 (return_12m_1m) · 확인 필요 1건: 선정 지표(모멘텀) 자료가 있는 종목이 7개로 목표 15개보다 적어 7개만 선정했습니다. 최소 종목 수에 못 미치면 검증에서 미통과가 됩니다.",
+      "error_message": null
+    },
+    {
+      "step": "06_explain",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T09:42:54+00:00",
+      "ended_at": "2026-10-25T09:43:17+00:00",
+      "summary": "기업별 근거 7개",
+      "error_message": null
+    },
+    {
+      "step": "07_backtest_spec",
+      "status": "PARTIAL",
+      "started_at": "2026-10-25T09:42:54+00:00",
+      "ended_at": "2026-10-25T09:42:59+00:00",
+      "summary": "창 2025-09-16~2026-10-08, 종목 7개, 비교지수 069500.KS · 확인 필요 2건: 백테스트 시작일 2023-10-10 에는 선정 지표 자료가 있는 종목이 최소 종목 수(12)보다 적어 시작을 2025-09-16 로 옮김 (24개월 뒤, 선정 7종목); 선정 지표(모멘텀) 자료가 있는 종목이 7개로 목표 15개보다 적어 7개만 선정했습니다. 최소 종목 수에 못 미치면 검증에서 미통과가 됩니다.",
+      "error_message": null
+    },
+    {
+      "step": "10f_current",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T09:42:54+00:00",
+      "ended_at": "2026-10-25T09:43:45+00:00",
+      "summary": "기준일 2026-10-08 현재 구성: 템플릿 4 + BL 5",
+      "error_message": null
+    },
+    {
+      "step": "10_targets",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T09:43:45+00:00",
+      "ended_at": "2026-10-25T09:44:39+00:00",
+      "summary": "템플릿 4 + BL 5 (뉴스 뷰)",
+      "error_message": null
+    },
+    {
+      "step": "10w_paths",
+      "status": "PARTIAL",
+      "started_at": "2026-10-25T09:43:45+00:00",
+      "ended_at": "2026-10-25T09:45:27+00:00",
+      "summary": "리밸런싱 14회, 뉴스 뷰 적용 14회 · 확인 필요 1건: 뉴스 뷰 비중 최적화가 수렴하지 않아 해당 시점에는 뷰를 반영하지 않고 기준 비중을 사용했습니다. (2회, 2026-02-02~2026-07-01)",
+      "error_message": null
+    },
+    {
+      "step": "11_backtest",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T09:45:27+00:00",
+      "ended_at": "2026-10-25T09:45:30+00:00",
+      "summary": "포트폴리오 14개 + 비교지수 2개, 274거래일",
+      "error_message": null
+    },
+    {
+      "step": "12_validation",
+      "status": "PARTIAL",
+      "started_at": "2026-10-25T09:45:30+00:00",
+      "ended_at": "2026-10-25T09:45:30+00:00",
+      "summary": "통과 0 / 주의 0 / 미통과 14, 추천 없음, 선택안 cash_blend_market_cap · 확인 필요 1건: 모든 포트폴리오가 필수 검증 규칙을 통과하지 못했습니다. 미통과 규칙: 최대낙폭(R1) 14개. 허용 낙폭·목표를 조정하거나 현금 혼합안을 검토해 보세요.",
+      "error_message": null
+    },
+    {
+      "step": "13_results",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T09:45:30+00:00",
+      "ended_at": "2026-10-25T09:45:30+00:00",
+      "summary": "결과 통합: 포트폴리오 14개, 인용 색인 1310건, 경고 12건",
+      "error_message": null
+    },
+    {
+      "step": "14_report",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T09:45:30+00:00",
+      "ended_at": "2026-10-25T09:47:19+00:00",
+      "summary": "리포트 7섹션, KPI 6개, 근거 220건",
+      "error_message": null
+    }
+  ],
+  "report": true,
+  "chosen_label_ko": "현금 혼합안: 시가총액비중 × 50% + 현금 55%",
+  "verdict_ko": "KOSPI200에서 국내 반도체 및 IT 부품 기업 중 최근 주가 흐름이 강한 종목을 중심으로 5년간 자산 증식을 추구합니다. 에너지 섹터와 주류·도박 관련 기업은 제외하며, 섹터별 비중 상한은 90%로 설정합니다.",
+  "kpis": {
+    "final_value": 142637.65,
+    "cagr": 0.832786,
+    "excess": -0.347507,
+    "mdd": -0.238213,
+    "sharpe": 2.654021,
+    "view_hit": null
+  },
+  "as_of": null,
+  "n_evidence": 220,
+  "warnings": 0,
+  "validation": {
+    "n_pass": 0,
+    "n_warn": 0,
+    "n_fail": 14,
+    "alternative_note": null
+  },
+  "recommended": null,
+  "chosen_id": "cash_blend_market_cap",
+  "llm_usage": {
+    "model": "gpt-6-luna",
+    "calls": 18,
+    "cache_hits": 0,
+    "prompt_tokens": 115914,
+    "completion_tokens": 46373,
+    "cost_usd": 0.04527,
+    "by_stage": [
+      "04_classify",
+      "06_explain",
+      "09_views_news_2025-09-16",
+      "09_views_news_2025-10-01",
+      "09_views_news_2025-11-03",
+      "09_views_news_2025-12-01",
+      "09_views_news_2026-01-02",
+      "09_views_news_2026-02-02",
+      "09_views_news_2026-03-03",
+      "09_views_news_2026-04-01",
+      "09_views_news_2026-05-04",
+      "09_views_news_2026-06-01",
+      "09_views_news_2026-07-01",
+      "09_views_news_2026-08-03",
+      "09_views_news_2026-09-01",
+      "09_views_news_2026-10-01",
+      "09_views_news_2026-10-08_current"
+    ]
+  }
+}

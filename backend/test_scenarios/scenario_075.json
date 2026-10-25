@@ -1,0 +1,70 @@
+{
+  "request_id": "req_2026-05-13_u75",
+  "created_at": "2026-05-13T22:10:00+09:00",
+  "profile": {
+    "user_id": "user_75",
+    "age_band": "40s",
+    "investment_experience": "intermediate",
+    "financial_knowledge": "intermediate",
+    "investable_ratio_of_assets": 1.0
+  },
+  "capital": {
+    "initial_amount": 100000000,
+    "currency": "KRW",
+    "trading_currency": "USD",
+    "monthly_contribution": 0,
+    "contribution_day": 1
+  },
+  "horizon": {
+    "start_date": "2026-05-12",
+    "target_years": 5,
+    "purpose": "wealth_growth"
+  },
+  "risk": {
+    "risk_tolerance": "aggressive",
+    "max_drawdown_tolerance": 0.35,
+    "loss_reaction": "buy_more",
+    "target_annual_return": 0.18,
+    "benchmark": "SPY"
+  },
+  "constraints": {
+    "universe": [
+      "SP500",
+      "NASDAQ100"
+    ],
+    "asset_types": [
+      "stock"
+    ],
+    "num_holdings": {
+      "target": 10,
+      "min": 5,
+      "max": 15
+    },
+    "max_weight_per_stock": 0.25,
+    "max_weight_per_sector": 0.5,
+    "min_cash_ratio": 0.0,
+    "exclude_tickers": [
+      "ORCL"
+    ],
+    "exclude_sectors": [],
+    "exclude_themes": [],
+    "must_include_tickers": [],
+    "rebalance": {
+      "count": 1,
+      "unit": "1m"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 5000000000,
+    "min_avg_daily_volume_usd": 10000000
+  },
+  "strategy_preference": {
+    "template": "momentum",
+    "baseline_weighting": "market_cap",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "클라우드·소프트웨어 플랫폼 미국 기업 중 최근 주가 흐름이 강한 종목 위주로 5년 정도 투자하고 싶어요. 목돈을 키우고 싶어요. 떨어지면 오히려 더 살 생각이라 공격적으로 가도 됩니다. 다만 오라클(ORCL)은 이미 따로 많이 갖고 있어서 이번엔 빼 주세요.",
+    "language": "ko"
+  }
+}

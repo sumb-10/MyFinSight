@@ -1,0 +1,75 @@
+{
+  "request_id": "req_2026-10-10_u26",
+  "created_at": "2026-10-10T19:45:00+09:00",
+  "profile": {
+    "user_id": "user_26",
+    "age_band": "30s",
+    "investment_experience": "intermediate",
+    "financial_knowledge": "intermediate",
+    "investable_ratio_of_assets": 0.5
+  },
+  "capital": {
+    "initial_amount": 10000,
+    "currency": "USD",
+    "trading_currency": "USD",
+    "monthly_contribution": 0,
+    "contribution_day": 1
+  },
+  "horizon": {
+    "start_date": "2026-10-09",
+    "target_years": 7,
+    "purpose": "wealth_growth"
+  },
+  "risk": {
+    "risk_tolerance": "aggressive",
+    "max_drawdown_tolerance": 0.5,
+    "loss_reaction": "buy_more",
+    "target_annual_return": 0.12,
+    "benchmark": "QQQ"
+  },
+  "constraints": {
+    "universe": [
+      "NASDAQ100"
+    ],
+    "asset_types": [
+      "stock"
+    ],
+    "num_holdings": {
+      "target": 5,
+      "min": 3,
+      "max": 8
+    },
+    "max_weight_per_stock": 0.35,
+    "max_weight_per_sector": 0.6,
+    "min_cash_ratio": 0.0,
+    "exclude_tickers": [
+      "PANW"
+    ],
+    "exclude_sectors": [],
+    "exclude_themes": [
+      "fossil_fuels",
+      "tobacco",
+      "weapons"
+    ],
+    "must_include_tickers": [
+      "NVDA"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "1q"
+    },
+    "allow_leverage": false,
+    "allow_short": true,
+    "min_market_cap_usd": 10000000000,
+    "min_avg_daily_volume_usd": 100000000
+  },
+  "strategy_preference": {
+    "template": "momentum",
+    "baseline_weighting": "inverse_volatility",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "AI 반도체와 데이터센터 관련 미국 기업 중 최근 주가 흐름이 강한 종목 위주로 7년 정도 투자하고 싶어요. 자산을 불리는 게 목표예요. 떨어지면 오히려 더 살 생각이라 공격적으로 가도 됩니다. 엔비디아(NVDA)는 확신이 있어서 반드시 담고 싶어요. 팔로알토 네트웍스(PANW)는 개인적으로 믿음이 안 가서 빼 주세요. 화석연료, 담배, 무기·방산 관련 회사는 원하지 않아요.",
+    "language": "ko"
+  }
+}

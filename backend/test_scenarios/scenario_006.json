@@ -1,0 +1,76 @@
+{
+  "request_id": "req_2025-11-08_u06",
+  "created_at": "2025-11-08T18:00:00+09:00",
+  "profile": {
+    "user_id": "user_6",
+    "age_band": "30s",
+    "investment_experience": "intermediate",
+    "financial_knowledge": "basic",
+    "investable_ratio_of_assets": 0.2
+  },
+  "capital": {
+    "initial_amount": 10000000,
+    "currency": "KRW",
+    "trading_currency": "USD",
+    "monthly_contribution": 200000,
+    "contribution_day": 28
+  },
+  "horizon": {
+    "start_date": "2025-11-05",
+    "target_years": 7,
+    "purpose": "wealth_growth"
+  },
+  "risk": {
+    "risk_tolerance": "aggressive",
+    "max_drawdown_tolerance": 0.5,
+    "loss_reaction": "buy_more",
+    "target_annual_return": 0.12,
+    "benchmark": "SPY"
+  },
+  "constraints": {
+    "universe": [
+      "SP500",
+      "NASDAQ100"
+    ],
+    "asset_types": [
+      "stock"
+    ],
+    "num_holdings": {
+      "target": 8,
+      "min": 3,
+      "max": 13
+    },
+    "max_weight_per_stock": 0.35,
+    "max_weight_per_sector": 0.6,
+    "min_cash_ratio": 0.05,
+    "exclude_tickers": [
+      "DUK"
+    ],
+    "exclude_sectors": [
+      "Real Estate"
+    ],
+    "exclude_themes": [],
+    "must_include_tickers": [
+      "ASML",
+      "AVGO",
+      "NVDA"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "1q"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 5000000000,
+    "min_avg_daily_volume_usd": 100000000
+  },
+  "strategy_preference": {
+    "template": "quality",
+    "baseline_weighting": "market_cap",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "AI 반도체와 데이터센터 관련 미국 기업 중 재무가 탄탄하고 이익률이 높은 회사 위주로 7년 정도 투자하고 싶어요. 목돈을 키우고 싶어요. 떨어지면 오히려 더 살 생각이라 공격적으로 가도 됩니다. ASML(ASML), 브로드컴(AVGO), 엔비디아(NVDA)는 확신이 있어서 반드시 담고 싶어요. 듀크 에너지(DUK)는 개인적으로 믿음이 안 가서 빼 주세요. 부동산 섹터는 전망이 밝아 보이지 않아서 빼 주세요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

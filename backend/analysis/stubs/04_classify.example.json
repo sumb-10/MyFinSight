@@ -1,0 +1,800 @@
+{
+  "results": [
+    {
+      "ticker": "AAPL",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.2,
+      "reason_ko": "소비자 기기 중심, 클라우드 인프라 공급자 아님",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "ACN",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.3,
+      "reason_ko": "IT 컨설팅, 클라우드 전환 서비스",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "ADI",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.35,
+      "reason_ko": "아날로그 반도체, AI 비중 낮음",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "AEP",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.35,
+      "reason_ko": "데이터센터 전력 수요 수혜 유틸리티",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "AES",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.3,
+      "reason_ko": "데이터센터 재생에너지 PPA 공급",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "AKAM",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.45,
+      "reason_ko": "CDN·엣지 클라우드",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "ALAB",
+      "in_theme": true,
+      "themes": [
+        "ai_semiconductor",
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.85,
+      "reason_ko": "AI 서버용 PCIe/CXL 연결 반도체",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "AMAT",
+      "in_theme": true,
+      "themes": [
+        "ai_semiconductor"
+      ],
+      "confidence": 0.75,
+      "reason_ko": "반도체 증착·식각 장비, AI 칩 공정 수혜",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "AMD",
+      "in_theme": true,
+      "themes": [
+        "ai_semiconductor"
+      ],
+      "confidence": 0.9,
+      "reason_ko": "MI 시리즈 AI 가속기와 EPYC 서버 CPU",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "AME",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.2,
+      "reason_ko": "정밀계측·전자부품, 간접 연관",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "AMZN",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.9,
+      "reason_ko": "AWS 1위 클라우드 인프라",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "ANET",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.9,
+      "reason_ko": "AI 데이터센터용 고속 이더넷 스위치",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "ARM",
+      "in_theme": true,
+      "themes": [
+        "ai_semiconductor"
+      ],
+      "confidence": 0.8,
+      "reason_ko": "AI·서버용 CPU 설계 IP 라이선스",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "ASML",
+      "in_theme": true,
+      "themes": [
+        "ai_semiconductor"
+      ],
+      "confidence": 0.85,
+      "reason_ko": "첨단 AI 칩 생산에 필수인 EUV 노광장비 독점",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "AVGO",
+      "in_theme": true,
+      "themes": [
+        "ai_semiconductor",
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.9,
+      "reason_ko": "하이퍼스케일러 맞춤형 AI ASIC 과 데이터센터 네트워크 칩",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "BE",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.55,
+      "reason_ko": "데이터센터용 연료전지 전력",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "CDNS",
+      "in_theme": true,
+      "themes": [
+        "ai_semiconductor"
+      ],
+      "confidence": 0.65,
+      "reason_ko": "AI 칩 설계용 EDA 툴·IP",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "CIEN",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.5,
+      "reason_ko": "데이터센터 간 광네트워크 장비",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "CMG",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.0,
+      "reason_ko": "레스토랑, 키워드 오매칭",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "CRWD",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.3,
+      "reason_ko": "클라우드 보안 SaaS, 인프라 아님",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "CSCO",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.6,
+      "reason_ko": "데이터센터 네트워크 장비, AI 수주 확대",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "CTSH",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.25,
+      "reason_ko": "IT 서비스 아웃소싱",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "DELL",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.8,
+      "reason_ko": "AI 서버 최대 공급사 중 하나",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "DLR",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.9,
+      "reason_ko": "하이퍼스케일 데이터센터 리츠",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "EMR",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.3,
+      "reason_ko": "산업자동화 중심, 데이터센터 비중 낮음",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "EQIX",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.9,
+      "reason_ko": "글로벌 데이터센터 코로케이션 리츠",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "ETN",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.5,
+      "reason_ko": "데이터센터 전력장비 수요 급증",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "EXR",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.0,
+      "reason_ko": "개인용 셀프스토리지 리츠, 키워드 오매칭",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "FFIV",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.4,
+      "reason_ko": "애플리케이션 전송·보안 장비",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "FSLR",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.1,
+      "reason_ko": "태양광 모듈, 반도체 산업 분류지만 AI 무관",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "FTNT",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.3,
+      "reason_ko": "네트워크 보안 장비",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "GDDY",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.25,
+      "reason_ko": "도메인·웹호스팅",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "GEN",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.1,
+      "reason_ko": "소비자 보안 SW",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "GOOGL",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.85,
+      "reason_ko": "Google Cloud·TPU 자체 AI 인프라",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "HPE",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.7,
+      "reason_ko": "AI 서버·네트워크(주니퍼) 공급",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "HPQ",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.2,
+      "reason_ko": "PC·프린터 중심",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "IBM",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.45,
+      "reason_ko": "하이브리드 클라우드·AI 컨설팅, 인프라 비중 제한적",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "INTC",
+      "in_theme": true,
+      "themes": [
+        "ai_semiconductor",
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.55,
+      "reason_ko": "서버 CPU·가우디 가속기·파운드리, AI 경쟁력은 열위",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "IT",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.1,
+      "reason_ko": "IT 리서치·컨설팅",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "KLAC",
+      "in_theme": true,
+      "themes": [
+        "ai_semiconductor"
+      ],
+      "confidence": 0.7,
+      "reason_ko": "반도체 공정 검사·계측 장비",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "KMI",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.1,
+      "reason_ko": "가스 파이프라인, 키워드 오매칭",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "LITE",
+      "in_theme": true,
+      "themes": [
+        "ai_semiconductor",
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.6,
+      "reason_ko": "AI 데이터센터용 광트랜시버·레이저",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "LRCX",
+      "in_theme": true,
+      "themes": [
+        "ai_semiconductor"
+      ],
+      "confidence": 0.75,
+      "reason_ko": "식각·증착 장비, HBM·첨단 공정 수혜",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "MCHP",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.3,
+      "reason_ko": "마이크로컨트롤러 중심, AI 직접 연관 낮음",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "MPWR",
+      "in_theme": true,
+      "themes": [
+        "ai_semiconductor",
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.5,
+      "reason_ko": "AI 서버 GPU 전력관리 반도체",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "MRVL",
+      "in_theme": true,
+      "themes": [
+        "ai_semiconductor",
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.85,
+      "reason_ko": "데이터센터 맞춤 실리콘·광 인터커넥트",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "MSFT",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.9,
+      "reason_ko": "Azure 클라우드와 AI 인프라 대규모 투자",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "MSI",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.1,
+      "reason_ko": "공공안전 통신장비",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "MU",
+      "in_theme": true,
+      "themes": [
+        "ai_semiconductor"
+      ],
+      "confidence": 0.85,
+      "reason_ko": "AI 가속기용 HBM·DRAM 메모리",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "NBIS",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.9,
+      "reason_ko": "AI 전용 GPU 클라우드 사업자",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "NOW",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.3,
+      "reason_ko": "엔터프라이즈 SaaS, 인프라 아님",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "NRG",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.3,
+      "reason_ko": "데이터센터 전력 공급 계약",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "NTAP",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.6,
+      "reason_ko": "엔터프라이즈·클라우드 스토리지",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "NVDA",
+      "in_theme": true,
+      "themes": [
+        "ai_semiconductor",
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.95,
+      "reason_ko": "데이터센터 AI 학습·추론 GPU 가 매출 대부분",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "NXPI",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.25,
+      "reason_ko": "차량·산업용 반도체 중심",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "OKE",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.1,
+      "reason_ko": "가스 파이프라인, 키워드 오매칭",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "ON",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.25,
+      "reason_ko": "차량·산업용 전력반도체 중심",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "ORCL",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.85,
+      "reason_ko": "OCI 클라우드, AI 데이터센터 대형 수주",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "P",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.1,
+      "reason_ko": "회사 정보 불충분",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "PANW",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.3,
+      "reason_ko": "사이버보안, 인프라 아님",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "PSA",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.0,
+      "reason_ko": "개인용 셀프스토리지 리츠, 키워드 오매칭",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "QCOM",
+      "in_theme": true,
+      "themes": [
+        "ai_semiconductor"
+      ],
+      "confidence": 0.45,
+      "reason_ko": "모바일 중심, 온디바이스 AI·데이터센터 CPU 진출 초기",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "ROK",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.15,
+      "reason_ko": "공장자동화, 데이터센터 무관",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "SHOP",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.3,
+      "reason_ko": "이커머스 플랫폼 SaaS, 클라우드 인프라 공급자 아님",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "SMCI",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.9,
+      "reason_ko": "GPU 서버 전문 제조",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "SNDK",
+      "in_theme": true,
+      "themes": [
+        "ai_semiconductor",
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.55,
+      "reason_ko": "데이터센터용 NAND 플래시",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "SNPS",
+      "in_theme": true,
+      "themes": [
+        "ai_semiconductor"
+      ],
+      "confidence": 0.65,
+      "reason_ko": "AI 칩 설계용 EDA 툴·IP",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "STX",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.5,
+      "reason_ko": "데이터센터용 HDD 스토리지",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "SWKS",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.15,
+      "reason_ko": "스마트폰 RF 칩 중심, AI 무관",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "TER",
+      "in_theme": true,
+      "themes": [
+        "ai_semiconductor"
+      ],
+      "confidence": 0.55,
+      "reason_ko": "반도체 테스트 장비, AI 칩 테스트 수요",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "TRGP",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.1,
+      "reason_ko": "가스 파이프라인, 키워드 오매칭",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "TWLO",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.25,
+      "reason_ko": "통신 API 플랫폼",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "TXN",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.3,
+      "reason_ko": "아날로그·임베디드 반도체, AI 직접 연관 낮음",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "VRSN",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.2,
+      "reason_ko": "도메인 레지스트리",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "VRT",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.9,
+      "reason_ko": "데이터센터 전력·냉각 인프라",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "WDC",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.5,
+      "reason_ko": "데이터센터용 HDD 스토리지",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "WMB",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.1,
+      "reason_ko": "가스 파이프라인, 키워드 오매칭",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "ATO",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.05,
+      "reason_ko": "가스 유틸리티, 키워드 오매칭",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "APP",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.2,
+      "reason_ko": "모바일 광고 플랫폼, 인프라 아님",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "ALB",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.05,
+      "reason_ko": "리튬 화학, 키워드 오매칭",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "AEE",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.3,
+      "reason_ko": "미국 중서부 전력 유틸리티, 데이터센터 전력 수요 간접 수혜",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "AMT",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.2,
+      "reason_ko": "통신타워 리츠, 데이터센터 비중 작음",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "EIX",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.3,
+      "reason_ko": "캘리포니아 전력 유틸리티, 간접 수혜",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "DOW",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.05,
+      "reason_ko": "범용 화학, 키워드 오매칭",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "GE",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.1,
+      "reason_ko": "항공엔진, 키워드 오매칭",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "NEE",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.35,
+      "reason_ko": "재생에너지·전력 유틸리티, 데이터센터 전력 공급 계약",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "SBAC",
+      "in_theme": false,
+      "themes": [],
+      "confidence": 0.2,
+      "reason_ko": "통신타워 리츠, 데이터센터 무관",
+      "excluded_theme": null
+    },
+    {
+      "ticker": "VST",
+      "in_theme": true,
+      "themes": [
+        "cloud_infrastructure"
+      ],
+      "confidence": 0.45,
+      "reason_ko": "데이터센터 전력 공급 계약을 늘리는 발전사",
+      "excluded_theme": null
+    }
+  ]
+}

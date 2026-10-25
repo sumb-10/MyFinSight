@@ -1,0 +1,70 @@
+{
+  "request_id": "req_2026-10-10_u67",
+  "created_at": "2026-10-10T09:15:00+09:00",
+  "profile": {
+    "user_id": "user_67",
+    "age_band": "50s",
+    "investment_experience": "advanced",
+    "financial_knowledge": "intermediate",
+    "investable_ratio_of_assets": 0.15
+  },
+  "capital": {
+    "initial_amount": 50000000,
+    "currency": "KRW",
+    "trading_currency": "KRW",
+    "monthly_contribution": 200000,
+    "contribution_day": 20
+  },
+  "horizon": {
+    "start_date": "2026-10-08",
+    "target_years": 1,
+    "purpose": "wealth_growth"
+  },
+  "risk": {
+    "risk_tolerance": "moderate",
+    "max_drawdown_tolerance": 0.2,
+    "loss_reaction": "hold",
+    "target_annual_return": 0.1,
+    "benchmark": "069500.KS"
+  },
+  "constraints": {
+    "universe": [
+      "KOSPI200"
+    ],
+    "asset_types": [
+      "stock"
+    ],
+    "num_holdings": {
+      "target": 20,
+      "min": 17,
+      "max": 22
+    },
+    "max_weight_per_stock": 0.15,
+    "max_weight_per_sector": 0.6,
+    "min_cash_ratio": 0.1,
+    "exclude_tickers": [
+      "036570.KS",
+      "105560.KS"
+    ],
+    "exclude_sectors": [],
+    "exclude_themes": [],
+    "must_include_tickers": [],
+    "rebalance": {
+      "count": 2,
+      "unit": "1q"
+    },
+    "allow_leverage": false,
+    "allow_short": false,
+    "min_market_cap_usd": 3000000000,
+    "min_avg_daily_volume_usd": 5000000
+  },
+  "strategy_preference": {
+    "template": "momentum",
+    "baseline_weighting": "market_cap",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "K-푸드·K-뷰티 같은 국내 소비재 기업 중 최근 주가 흐름이 강한 종목 위주로 1년 정도 투자하고 싶어요. 자산을 불리는 게 목표예요. 어느 정도 출렁이는 건 괜찮지만 한 종목에 몰빵하는 건 피하고 싶어요. NC(036570), KB금융(105560)은 이미 다른 계좌에 있어서 제외해 주세요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

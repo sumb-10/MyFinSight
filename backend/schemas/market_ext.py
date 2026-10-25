@@ -103,6 +103,13 @@ class NewsRow(BaseModel):
     available_on: date | None = None
 
 
+class NewsRecord(NewsRow):
+    """DB 에서 읽은 뉴스 한 건 (news_id 포함). 분석 쪽 인용 ID = f"ev{news_id}"."""
+
+    news_id: int
+    is_first_report: bool | None = None
+
+
 class DisclosureRow(BaseModel):
     """공시 한 건 (DB disclosures). 같은 (출처, 공시 번호, 종목) 은 한 번만 저장."""
 
@@ -121,3 +128,9 @@ class DisclosureRow(BaseModel):
     event_type: str | None = None
     rule_version: str | None = None
     fetched_at: datetime
+
+
+class DisclosureRecord(DisclosureRow):
+    """DB 에서 읽은 공시 한 건 (disclosure_id 포함). 분석 쪽 인용 ID = f"dc{disclosure_id}"."""
+
+    disclosure_id: int

@@ -1,0 +1,211 @@
+{
+  "name": "scenario_000",
+  "title_ko": "배당을 꾸준히 늘려 온 미국 기업 중 10년 정도 투자하고 싶어요. 은퇴…",
+  "scenario_file": "/Users/apple/dev/MyFinSight/backend/test_scenarios/scenario_000.json",
+  "normalized": [],
+  "overrides": {
+    "horizon.start_date": "2025-06-25"
+  },
+  "request_id": "req_20261025_204451_8a8f",
+  "run_id": "run_20261025_204558_96d6",
+  "qa": [
+    {
+      "seq": 1,
+      "field": "strategy_preference.template",
+      "question_ko": "배당을 꾸준히 늘려 온 기업과 현재 배당수익률이 높은 기업 중 어느 기준을 우선할까요?",
+      "answer": "현재 배당수익률이 높은 기업",
+      "kind": "conflict",
+      "options": [
+        "현재 배당수익률이 높은 기업"
+      ],
+      "why_ko": "배당 증가 이력과 현재 배당수익률은 서로 다른 기준이어서 선택에 따라 편입 종목이 달라질 수 있습니다.",
+      "turn_seconds": 20.0
+    }
+  ],
+  "dialog_seconds": 66.7,
+  "run_seconds": 274.2,
+  "status": "partial",
+  "error": null,
+  "worker_rc": 2,
+  "buckets": [
+    [
+      "conditions",
+      "SUCCESS"
+    ],
+    [
+      "candidates",
+      "PARTIAL"
+    ],
+    [
+      "backtest",
+      "SUCCESS"
+    ],
+    [
+      "validation",
+      "SUCCESS"
+    ],
+    [
+      "report",
+      "SUCCESS"
+    ]
+  ],
+  "steps": [
+    {
+      "step": "01_request",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:45:59+00:00",
+      "ended_at": "2026-10-25T11:46:13+00:00",
+      "summary": "기준일 2025-06-25, 유니버스 503종목, 백테스트 2022-06-25~2025-06-25 · 참고 1건",
+      "error_message": null
+    },
+    {
+      "step": "02_intent",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:46:13+00:00",
+      "ended_at": "2026-10-25T11:46:13+00:00",
+      "summary": "대화에서 확정된 의도 재사용 (LLM 호출 없음)",
+      "error_message": null
+    },
+    {
+      "step": "03_candidates",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:46:13+00:00",
+      "ended_at": "2026-10-25T11:46:13+00:00",
+      "summary": "후보 120개 (제외 383)",
+      "error_message": null
+    },
+    {
+      "step": "04_tagging",
+      "status": "PARTIAL",
+      "started_at": "2026-10-25T11:46:13+00:00",
+      "ended_at": "2026-10-25T11:46:46+00:00",
+      "summary": "테마 통과 56개 / 배치 3 · 확인 필요 1건: 필수 포함 종목 PG은(는) 테마 판정 또는 선정 지표 기준에 맞지 않지만 요청에 따라 포함했습니다.",
+      "error_message": null
+    },
+    {
+      "step": "05_selection",
+      "status": "PARTIAL",
+      "started_at": "2026-10-25T11:46:46+00:00",
+      "ended_at": "2026-10-25T11:46:46+00:00",
+      "summary": "선정 25개 (dividend_yield_ttm) · 확인 필요 1건: 필수 포함 종목 PG은(는) 테마 판정 또는 선정 지표 기준에 맞지 않지만 요청에 따라 포함했습니다.",
+      "error_message": null
+    },
+    {
+      "step": "06_explain",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:46:46+00:00",
+      "ended_at": "2026-10-25T11:47:32+00:00",
+      "summary": "기업별 근거 25개",
+      "error_message": null
+    },
+    {
+      "step": "07_backtest_spec",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:46:46+00:00",
+      "ended_at": "2026-10-25T11:46:47+00:00",
+      "summary": "창 2022-06-25~2025-06-25, 종목 25개, 비교지수 SPY · 참고 1건",
+      "error_message": null
+    },
+    {
+      "step": "10f_current",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:46:46+00:00",
+      "ended_at": "2026-10-25T11:47:43+00:00",
+      "summary": "기준일 2025-06-25 현재 구성: 템플릿 4 + BL 5",
+      "error_message": null
+    },
+    {
+      "step": "10_targets",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:47:43+00:00",
+      "ended_at": "2026-10-25T11:48:46+00:00",
+      "summary": "비중 규칙 4개 + 뉴스 반영 구성 5개 (뉴스 뷰 적용)",
+      "error_message": null
+    },
+    {
+      "step": "10w_paths",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:47:43+00:00",
+      "ended_at": "2026-10-25T11:48:52+00:00",
+      "summary": "리밸런싱 7회, 뉴스 뷰 적용 7회",
+      "error_message": null
+    },
+    {
+      "step": "11_backtest",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:48:52+00:00",
+      "ended_at": "2026-10-25T11:48:59+00:00",
+      "summary": "포트폴리오 16개 + 비교지수 2개, 752거래일",
+      "error_message": null
+    },
+    {
+      "step": "12_validation",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:48:59+00:00",
+      "ended_at": "2026-10-25T11:48:59+00:00",
+      "summary": "후보 16개 비교 · 추천(주의: 허용 낙폭 초과 (5.0%p) · 비교지수 하회): 시가총액비중 (walk-forward) · 주의 16개",
+      "error_message": null
+    },
+    {
+      "step": "13_results",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:48:59+00:00",
+      "ended_at": "2026-10-25T11:48:59+00:00",
+      "summary": "결과 통합: 포트폴리오 16개, 인용 색인 2152건, 경고 4건",
+      "error_message": null
+    },
+    {
+      "step": "14_report",
+      "status": "SUCCESS",
+      "started_at": "2026-10-25T11:48:59+00:00",
+      "ended_at": "2026-10-25T11:50:27+00:00",
+      "summary": "리포트 7섹션, KPI 6개, 근거 114건",
+      "error_message": null
+    }
+  ],
+  "report": true,
+  "chosen_label_ko": "시가총액비중 (walk-forward)",
+  "verdict_ko": "은퇴 자금 마련을 위해 미국 기업에 약 10년간 투자하며, 답변에 따라 배당 증가 이력보다 현재 배당수익률이 높은 기업을 우선합니다. 변동성을 최대한 낮추는 것을 선호하고, O와 PG는 포함하며 LLY와 화석연료 관련 기업은 제외합니다.",
+  "kpis": {
+    "final_value": 102561.12,
+    "cagr": 0.10917,
+    "excess": -0.06785,
+    "mdd": -0.129689,
+    "sharpe": 0.591825,
+    "view_hit": null
+  },
+  "as_of": null,
+  "n_evidence": 114,
+  "warnings": 0,
+  "validation": {
+    "n_pass": 0,
+    "n_warn": 16,
+    "n_fail": 0,
+    "n_flag": 14,
+    "n_candidates": 16,
+    "n_matched": 2,
+    "alternative_note": null
+  },
+  "recommended": "wf_market_cap",
+  "chosen_id": "wf_market_cap",
+  "llm_usage": {
+    "model": "gpt-6-luna",
+    "calls": 13,
+    "cache_hits": 0,
+    "prompt_tokens": 138365,
+    "completion_tokens": 47496,
+    "cost_usd": 0.05288,
+    "by_stage": [
+      "04_classify",
+      "06_explain",
+      "09_views_news_2022-06-27",
+      "09_views_news_2022-07-01",
+      "09_views_news_2023-01-03",
+      "09_views_news_2023-07-03",
+      "09_views_news_2024-01-02",
+      "09_views_news_2024-07-01",
+      "09_views_news_2025-01-02",
+      "09_views_news_2025-06-25_current"
+    ]
+  }
+}

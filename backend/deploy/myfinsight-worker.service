@@ -1,0 +1,16 @@
+[Unit]
+Description=MyFinSight analysis worker (FIFO queue, single process)
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/role-a-server
+EnvironmentFile=/home/ubuntu/role-a-server/.env
+Environment=DB_POOL_SIZE=2
+Environment=DB_MAX_OVERFLOW=0
+ExecStart=/home/ubuntu/role-a-server/venv/bin/python -m backend.analysis.executor.worker --poll-sec 2
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,73 @@
+{
+  "request_id": "req_2025-04-24_u30",
+  "created_at": "2025-04-24T09:00:00+09:00",
+  "profile": {
+    "user_id": "user_30",
+    "age_band": "30s",
+    "investment_experience": "none",
+    "financial_knowledge": "basic",
+    "investable_ratio_of_assets": 0.2
+  },
+  "capital": {
+    "initial_amount": 30000000,
+    "currency": "KRW",
+    "trading_currency": "USD",
+    "monthly_contribution": 200000,
+    "contribution_day": 10
+  },
+  "horizon": {
+    "start_date": "2025-04-21",
+    "target_years": 10,
+    "purpose": "retirement"
+  },
+  "risk": {
+    "risk_tolerance": "aggressive",
+    "max_drawdown_tolerance": 0.25,
+    "loss_reaction": "buy_more",
+    "target_annual_return": 0.12,
+    "benchmark": "SPY"
+  },
+  "constraints": {
+    "universe": [
+      "SP500",
+      "NASDAQ100"
+    ],
+    "asset_types": [
+      "stock",
+      "etf"
+    ],
+    "num_holdings": {
+      "target": 12,
+      "min": 9,
+      "max": 22
+    },
+    "max_weight_per_stock": 0.25,
+    "max_weight_per_sector": 0.35,
+    "min_cash_ratio": 0.0,
+    "exclude_tickers": [
+      "JPM"
+    ],
+    "exclude_sectors": [],
+    "exclude_themes": [],
+    "must_include_tickers": [
+      "AAPL"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "1q"
+    },
+    "allow_leverage": true,
+    "allow_short": false,
+    "min_market_cap_usd": 2000000000,
+    "min_avg_daily_volume_usd": 10000000
+  },
+  "strategy_preference": {
+    "template": "momentum",
+    "baseline_weighting": "market_cap",
+    "use_news_tilt": false
+  },
+  "natural_language": {
+    "idea": "주식은 처음이라 잘 모르지만, 특정 테마 없이 미국 시장 전체에서 최근 주가 흐름이 강한 종목 위주로 10년 정도 투자하고 싶어요. 은퇴 자금으로 쓰려고 합니다. 떨어지면 오히려 더 살 생각이라 공격적으로 가도 됩니다. 애플(AAPL)은 확신이 있어서 반드시 담고 싶어요. 그중 JP모건(JPM)은 최근 이슈 때문에 마음이 안 가서 제외해 주세요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

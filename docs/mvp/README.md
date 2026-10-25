@@ -1,5 +1,41 @@
 # MVP 시나리오 보고서 모음
 
+## 2026-10-27 라운드 5 수정 뒤 재채점
+
+채점에서 나온 결함(최대낙폭 합격 기준 → 표시·순위, 보기 하나짜리 질문, 후보 부족 시 질문, 창 축소 안내, 프로필 경계값 등)과 Front 사용자 문제 29건을 고친 뒤 같은 5개 시나리오를 다시 돌려 전/후를 비교했다.
+
+- 변경 내용: [`../updates/2026-10-27_round5.md`](../updates/2026-10-27_round5.md)
+- **재채점 결과(전/후 표)**: [`grading/2026-10-27_scorecard.md`](grading/2026-10-27_scorecard.md)
+- 시나리오별 기록: [`grading/2026-10-27/`](grading/2026-10-27/)
+
+## 2026-10-26 채점 (설계보고서 요구사항 기준)
+
+설계보고서의 요구 1~15 를 5/3/1 로 매기고(C1~C6 가중합), `backend/test_scenarios` 100개 중 5개를 골라 실제 DB·실제 LLM 으로 돌린 뒤 결과를 읽고 채점했다.
+
+- 루브릭(채점 기준): [`grading/README.md`](grading/README.md)
+- **채점 결과**: [`grading/2026-10-26_scorecard.md`](grading/2026-10-26_scorecard.md) — 시스템 점수, 시나리오 5개 점수, 결함·개선 목록
+- 시나리오별 기록: [`grading/2026-10-26/`](grading/2026-10-26/) (`scenario_0xx.md` 자동 지표 + 사람 판독, `system_checks.md` 요구 1·3·10·11·14 점검, `metrics.json`, 실행 결과 `scenario_0xx.json`, 재실행 `rerun/`)
+- 도구: `python -m backend.analysis.eval.run_scenarios --files <시나리오.json,...> --answer all --llm api --out <폴더>` 로 실행, `python -m backend.analysis.eval.grade --from <폴더>` 로 자동 지표·기록 뼈대 생성
+
+## 2026-10-25 재실행 (새 패키지 `backend/analysis`, 실제 서비스 경로)
+
+일곱 모듈을 구현한 뒤, 시나리오 7개(아래 다섯 + 헬스케어 + 미국·한국 반도체)를 화면과 같은 경로(아이디어 → 보충 질문 → 조건 확인 → 큐 → 일꾼 → 리포트)로 실제 팀 DB·실제 LLM으로 다시 돌렸다. 결과 파일: `scenario_runs/<이름>.json`, 요약 `scenario_runs/summary_latest.md`, 성과 `scenario_runs/performance_latest.md`, 요구사항 점검 `requirements_check.md`. 리포트는 화면(리포트 메뉴)에서 열 수 있다.
+
+| 시나리오 | 성향 · 선정 · 기준비중 · 리밸런싱 | 백테스트 창 | 종목 | 선택안 | CAGR / MDD / 샤프 | SPY CAGR / MDD | 허용 낙폭 | 투자 비율 | 통과/주의/미통과 | LLM 비용 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| AI 반도체·클라우드 모멘텀 | moderate · momentum · equal_weight · 1×1q | 2023-10-23 ~ 2026-10-23 | 15 | bl_04 | +35.5% / -24.7% / 1.35 | +23.3% / -18.8% | 25% | 85% | 4/2/8 | 0.056 USD |
+| 대형 우량주 전반 장기 보유 | conservative · low_volatility · min_variance · 1×1y | 2023-10-23 ~ 2026-10-23 | 20 | market_cap | +19.3% / -10.1% / 1.30 | +23.4% / -18.8% | 20% | 100% | 0/14/0 | 0.036 USD |
+| 은퇴 대비 경기방어 | conservative · low_volatility · inverse_volatility · 1×1q | 2023-10-23 ~ 2026-10-23 | 15 | wf_bl_news | +18.4% / -10.0% / 1.09 | +23.3% / -18.8% | 25% | 100% | 0/14/0 | 0.051 USD |
+| 에너지 전환·전력 인프라 | aggressive · momentum · market_cap · 1×1m | 2023-10-23 ~ 2026-10-23 | 10 | equal_weight | +31.7% / -32.9% / 0.98 | +23.4% / -18.8% | 40% | 100% | 10/4/0 | 0.102 USD |
+| 헬스케어 (비만·의료기기·서비스) | moderate · momentum · equal_weight · 1×2w | 2023-10-23 ~ 2026-10-23 | 15 | market_cap | +18.7% / -16.0% / 0.85 | +23.3% / -18.8% | 25% | 100% | 0/14/0 | 0.229 USD |
+| 미국·한국 반도체·메모리 | moderate · momentum · equal_weight · 1×1q | 2023-10-23 ~ 2026-10-23 | 9 | bl_04 | +31.4% / -19.3% / 1.50 | +22.6% / -18.8% | 35% | 40% | 0/14/0 | 0.041 USD |
+| 여행·외식·레저 소비 회복 | moderate · momentum · inverse_volatility · 1×6m | 2023-10-23 ~ 2026-10-23 | 12 | wf_bl_news | +20.2% / -29.8% / 0.71 | +23.4% / -18.8% | 30% | 100% | 0/11/3 | 0.031 USD |
+
+- 보충 질문: 7개 중 3개(AI·에너지·헬스케어)에서 1개씩. 상한(5회)에 걸린 경우 없음.
+- 검증 게이트: 에너지 첫 실행이 '보험 보장 우려'의 '보장' 때문에 차단 → 동사꼴만 단정 표현으로 보도록 고친 뒤 재실행 성공. 기준일 이후 뉴스 인용 0건, 색인에 없는 인용 0건.
+- 미국·한국 반도체는 한 섹터 테마에 섹터 상한 40%가 걸려 60%가 현금 → '섹터 상한을 풀까요' 코드 질문 추가.
+- 아래는 실험 단계(`module_mockup`)의 2026-10-10 실행 기록이다.
+
 팀 DB(가격·환율·발행주식수·뉴스)를 데이터 원천으로 파이프라인 1~14단계를 실제 LLM(gpt-6-luna) 호출로 돌린 다섯 시나리오의 결과다. 비교지수 ETF(SPY·QQQ·XLV)만 DB에 없어 yfinance 캐시 사본을 썼다. 각 보고서는 `module_mockup/scripts/mvp_report.py`가 `output/<run_id>/13_results.json`·`14_report.json`에서 결과 절을 생성하고, 시나리오 설명과 해석(`parts/`)을 붙인 것이다. 산출물은 `module_mockup/output/<run_id>/`, 노트북은 `module_mockup/notebooks/<run_id>.ipynb`.
 
 | 시나리오 | 투자자 · 템플릿 · 기준 비중 · 리밸런싱 | 백테스트 창 | 선택 포트폴리오 CAGR / 최대낙폭 | SPY CAGR / 최대낙폭 | 검증 | 대안 | 보고서 |

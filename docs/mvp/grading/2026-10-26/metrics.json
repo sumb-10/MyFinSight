@@ -1,0 +1,4453 @@
+{
+ "scenario_000": {
+  "run_id": "run_20261025_182937_8be9",
+  "scenario_file": "/Users/apple/dev/MyFinSight/backend/test_scenarios/scenario_000.json",
+  "idea": "배당을 꾸준히 늘려 온 미국 기업 중 10년 정도 투자하고 싶어요. 은퇴 자금으로 쓰려고 합니다. 손실이 나면 잠을 못 잘 것 같아서 변동성은 최대한 낮췄으면 해요. 리얼티인컴(O), P&G(PG)는 오래 지켜본 회사라 꼭 포함했으면 합니다. 일라이 릴리(LLY)는 이미 다른 계좌에 있어서 제외해 주세요. 화석연료 관련 회사는 원하지 않아요. 매달 조금씩 추가로 넣을 예정입니다.",
+  "conditions": {
+   "must_include": {
+    "requested": [
+     "O",
+     "PG"
+    ],
+    "in_selection_now": [
+     "O",
+     "PG"
+    ],
+    "in_backtest": [
+     "O",
+     "PG"
+    ],
+    "ok": true
+   },
+   "exclude_tickers": {
+    "requested": [
+     "LLY"
+    ],
+    "leaked": [],
+    "ok": true
+   },
+   "exclude_themes": {
+    "requested": [
+     "fossil_fuels"
+    ],
+    "rules_made": {
+     "fossil_fuels": {
+      "gics": [
+       "10"
+      ],
+      "keywords": [
+       "oil and gas",
+       "crude oil",
+       "natural gas",
+       "fossil fuels",
+       "petroleum"
+      ]
+     }
+    },
+    "ok": true,
+    "filtered_by_theme": {
+     "exclude_theme:fossil_fuels": 9,
+     "exclude_tickers": 1
+    }
+   },
+   "universe": {
+    "requested": [
+     "SP500"
+    ],
+    "selected_markets": [
+     "US"
+    ],
+    "leaked_other_market": [],
+    "ok": true
+   },
+   "min_cash_ratio": {
+    "requested": 0.15,
+    "invested_by_template": {
+     "equal_weight": 0.85,
+     "market_cap": 0.85,
+     "inverse_volatility": 0.85,
+     "min_variance": 0.85
+    },
+    "ok": true
+   },
+   "caps": {
+    "stock": 0.1,
+    "sector": 0.4,
+    "integrity_all_pass": true
+   },
+   "rebalance": {
+    "rule": "반기마다 첫 거래일에 목표 비중으로 리밸런싱",
+    "n_rebalances": 7
+   },
+   "as_of": {
+    "requested": "2025-06-25",
+    "used": "2025-06-25",
+    "ok": true,
+    "derive_warnings": []
+   },
+   "backtest_window": {
+    "start": "2022-06-25",
+    "end": "2025-06-25",
+    "years_requested": null,
+    "trading_days": 752
+   },
+   "template": {
+    "requested": "high_dividend",
+    "metric_used": "vol_60d"
+   },
+   "n_selected": {
+    "target": 25,
+    "min": 22,
+    "selected_now": 25,
+    "backtest": 25
+   }
+  },
+  "dialog": {
+   "n_questions": 1,
+   "max_questions": 5,
+   "questions": [
+    {
+     "seq": 1,
+     "field": "strategy_preference.template",
+     "kind": "conflict",
+     "question_ko": "종목 선정 기준은 무엇을 우선할까요? 현재 high_dividend는 배당수익률을 기준으로 하며, 배당을 꾸준히 늘린 이력을 직접 평가하는 템플릿은 없습니다.",
+     "options": [
+      "낮은 변동성을 우선해 선정",
+      "현재 설정대로 배당수익률을 우선해 선정"
+     ],
+     "answer": "낮은 변동성을 우선해 선정",
+     "skipped": false
+    }
+   ],
+   "overrides": {
+    "horizon.start_date": "2025-06-25",
+    "strategy_preference.template": "low_volatility"
+   },
+   "clarifications": [],
+   "conflicts": [],
+   "summary_ko": "배당을 꾸준히 늘려 온 미국 기업을 테마로 삼되, 사용자의 답에 따라 종목 선정은 낮은 변동성을 우선합니다. 은퇴 자금 목적의 장기 투자이며 O와 PG를 포함하고 LLY와 화석연료 관련 기업은 제외합니다.",
+   "themes": [
+    {
+     "id": "dividend_growth",
+     "label_ko": "꾸준한 배당 성장",
+     "gics": [
+      "1510",
+      "2010",
+      "2020",
+      "2030",
+      "2510",
+      "2520",
+      "2530",
+      "2550",
+      "3010",
+      "3020",
+      "3030",
+      "3510",
+      "3520",
+      "4010",
+      "4020",
+      "4030",
+      "4510",
+      "4520",
+      "4530",
+      "5010",
+      "5020",
+      "5510",
+      "6010",
+      "6020"
+     ],
+     "keywords": [
+      "dividend growth",
+      "dividend increase",
+      "consecutive annual dividend increases",
+      "dividend aristocrat",
+      "dividend history",
+      "dividend payments",
+      "dividend payout",
+      "shareholder distributions"
+     ]
+    }
+   ],
+   "explanation_level": "intermediate",
+   "effective_max_drawdown": 0.064
+  },
+  "selection": {
+   "n_matched": 482,
+   "n_candidates": 120,
+   "by_rule": {
+    "gics_match": 482,
+    "example_match": 4,
+    "must_include": 2
+   },
+   "n_tag_passed": 64,
+   "n_with_metric": 64,
+   "n_selected": 25,
+   "selected": [
+    {
+     "ticker": "O",
+     "name": "Realty Income",
+     "sector": "Real Estate",
+     "rank": 1,
+     "metric": 0.2010067592364786,
+     "theme_conf": 0.9
+    },
+    {
+     "ticker": "PG",
+     "name": "Procter & Gamble",
+     "sector": "Consumer Staples",
+     "rank": 2,
+     "metric": 0.22650803996428479,
+     "theme_conf": 0.98
+    },
+    {
+     "ticker": "KO",
+     "name": "Coca-Cola Company (The)",
+     "sector": "Consumer Staples",
+     "rank": 3,
+     "metric": 0.1977412724690179,
+     "theme_conf": 0.99
+    },
+    {
+     "ticker": "MCD",
+     "name": "McDonald's",
+     "sector": "Consumer Discretionary",
+     "rank": 4,
+     "metric": 0.20952390373307261,
+     "theme_conf": 0.99
+    },
+    {
+     "ticker": "ABT",
+     "name": "Abbott Laboratories",
+     "sector": "Health Care",
+     "rank": 5,
+     "metric": 0.22058956010260597,
+     "theme_conf": 0.95
+    },
+    {
+     "ticker": "PEP",
+     "name": "PepsiCo",
+     "sector": "Consumer Staples",
+     "rank": 6,
+     "metric": 0.22652122600634436,
+     "theme_conf": 0.95
+    },
+    {
+     "ticker": "VZ",
+     "name": "Verizon",
+     "sector": "Communication Services",
+     "rank": 7,
+     "metric": 0.2273167834013148,
+     "theme_conf": 0.8
+    },
+    {
+     "ticker": "TJX",
+     "name": "TJX Companies",
+     "sector": "Consumer Discretionary",
+     "rank": 8,
+     "metric": 0.2326740494671843,
+     "theme_conf": 0.65
+    },
+    {
+     "ticker": "MCK",
+     "name": "McKesson Corporation",
+     "sector": "Health Care",
+     "rank": 9,
+     "metric": 0.24477951665774506,
+     "theme_conf": 0.8
+    },
+    {
+     "ticker": "PM",
+     "name": "Philip Morris International",
+     "sector": "Consumer Staples",
+     "rank": 10,
+     "metric": 0.25052111567899826,
+     "theme_conf": 0.8
+    },
+    {
+     "ticker": "MDT",
+     "name": "Medtronic",
+     "sector": "Health Care",
+     "rank": 11,
+     "metric": 0.25835469936481165,
+     "theme_conf": 0.95
+    },
+    {
+     "ticker": "HD",
+     "name": "Home Depot (The)",
+     "sector": "Consumer Discretionary",
+     "rank": 12,
+     "metric": 0.2598473824041288,
+     "theme_conf": 0.9
+    },
+    {
+     "ticker": "COST",
+     "name": "Costco",
+     "sector": "Consumer Staples",
+     "rank": 13,
+     "metric": 0.2606714295991888,
+     "theme_conf": 0.9
+    },
+    {
+     "ticker": "JNJ",
+     "name": "Johnson & Johnson",
+     "sector": "Health Care",
+     "rank": 14,
+     "metric": 0.261180357918251,
+     "theme_conf": 0.99
+    },
+    {
+     "ticker": "LIN",
+     "name": "Linde plc",
+     "sector": "Materials",
+     "rank": 15,
+     "metric": 0.2794599915376033,
+     "theme_conf": 0.95
+    },
+    {
+     "ticker": "WMT",
+     "name": "Walmart",
+     "sector": "Consumer Staples",
+     "rank": 16,
+     "metric": 0.29049634453261625,
+     "theme_conf": 0.95
+    },
+    {
+     "ticker": "LMT",
+     "name": "Lockheed Martin",
+     "sector": "Industrials",
+     "rank": 17,
+     "metric": 0.29059438827832235,
+     "theme_conf": 0.9
+    },
+    {
+     "ticker": "AMT",
+     "name": "American Tower",
+     "sector": "Real Estate",
+     "rank": 18,
+     "metric": 0.2950768632162927,
+     "theme_conf": 0.7
+    },
+    {
+     "ticker": "CMCSA",
+     "name": "Comcast",
+     "sector": "Communication Services",
+     "rank": 19,
+     "metric": 0.29570710096563674,
+     "theme_conf": 0.85
+    },
+    {
+     "ticker": "PFE",
+     "name": "Pfizer",
+     "sector": "Health Care",
+     "rank": 20,
+     "metric": 0.3069612588811985,
+     "theme_conf": 0.65
+    },
+    {
+     "ticker": "UNP",
+     "name": "Union Pacific Corporation",
+     "sector": "Industrials",
+     "rank": 21,
+     "metric": 0.3091013404981213,
+     "theme_conf": 0.8
+    },
+    {
+     "ticker": "SPGI",
+     "name": "S&P Global",
+     "sector": "Financials",
+     "rank": 22,
+     "metric": 0.32220207684746216,
+     "theme_conf": 0.95
+    },
+    {
+     "ticker": "AMGN",
+     "name": "Amgen",
+     "sector": "Health Care",
+     "rank": 23,
+     "metric": 0.3267083008318694,
+     "theme_conf": 0.75
+    },
+    {
+     "ticker": "CSCO",
+     "name": "Cisco",
+     "sector": "Information Technology",
+     "rank": 24,
+     "metric": 0.32741720179036166,
+     "theme_conf": 0.8
+    },
+    {
+     "ticker": "MSFT",
+     "name": "Microsoft",
+     "sector": "Information Technology",
+     "rank": 25,
+     "metric": 0.33121976565923,
+     "theme_conf": 0.95
+    }
+   ],
+   "sector_counts": {
+    "Real Estate": 2,
+    "Consumer Staples": 6,
+    "Consumer Discretionary": 3,
+    "Health Care": 6,
+    "Communication Services": 2,
+    "Materials": 1,
+    "Industrials": 2,
+    "Financials": 1,
+    "Information Technology": 2
+   },
+   "infeasibility": null,
+   "warnings": []
+  },
+  "construction": {
+   "n_rebalance_dates": 7,
+   "fallback_dates": 0,
+   "dates_with_disclosures": 7,
+   "dates_with_news": 7,
+   "n_views": 28,
+   "views_by_evidence": {
+    "news": 26,
+    "disclosure": 0,
+    "mixed": 2
+   },
+   "start_bl_portfolios": 5,
+   "templates": [
+    "equal_weight",
+    "market_cap",
+    "inverse_volatility",
+    "min_variance"
+   ],
+   "max_tilt": 0.0333333333,
+   "forward_fallback": false,
+   "forward_reason": null
+  },
+  "backtest": {
+   "period": {
+    "start": "2022-06-25",
+    "end": "2025-06-25",
+    "as_of": "2022-06-27",
+    "trading_days": 752,
+    "window_days": 751,
+    "annualized_reliable": true
+   },
+   "engine": {
+    "commission_bps": 5,
+    "n_contributions": 36,
+    "contribution_usd": 1552.45,
+    "risk_free_rate": 0.04,
+    "benchmarks": [
+     "SPY",
+     "QQQ"
+    ]
+   },
+   "benchmark": {
+    "id": "benchmark_SPY",
+    "cagr": 0.177019,
+    "mdd": -0.187648,
+    "final_value_usd": 110993.74,
+    "same_contributions": true
+   },
+   "metrics_present": {
+    "total_return": true,
+    "cagr": true,
+    "ann_vol": true,
+    "sharpe": true,
+    "max_drawdown": true,
+    "excess_cagr": true,
+    "final_value_usd": true,
+    "irr_annual": true
+   },
+   "portfolios": [
+    {
+     "id": "bl_01",
+     "cagr": 0.055081,
+     "cagr_check": 0.055081,
+     "cagr_match": true,
+     "mdd": -0.106709,
+     "mdd_check": -0.106709,
+     "mdd_match": true,
+     "sharpe": 0.14292,
+     "final_value_usd": 88377.12
+    },
+    {
+     "id": "bl_02",
+     "cagr": 0.056208,
+     "cagr_check": 0.056208,
+     "cagr_match": true,
+     "mdd": -0.10616,
+     "mdd_check": -0.10616,
+     "mdd_match": true,
+     "sharpe": 0.152938,
+     "final_value_usd": 89009.27
+    },
+    {
+     "id": "bl_03",
+     "cagr": 0.060558,
+     "cagr_check": 0.060558,
+     "cagr_match": true,
+     "mdd": -0.1045,
+     "mdd_check": -0.1045,
+     "mdd_match": true,
+     "sharpe": 0.195211,
+     "final_value_usd": 88670.25
+    },
+    {
+     "id": "bl_04",
+     "cagr": 0.058969,
+     "cagr_check": 0.058968,
+     "cagr_match": true,
+     "mdd": -0.106594,
+     "mdd_check": -0.106593,
+     "mdd_match": true,
+     "sharpe": 0.180229,
+     "final_value_usd": 89284.94
+    },
+    {
+     "id": "bl_05",
+     "cagr": 0.057305,
+     "cagr_check": 0.057305,
+     "cagr_match": true,
+     "mdd": -0.101013,
+     "mdd_check": -0.101013,
+     "mdd_match": true,
+     "sharpe": 0.164266,
+     "final_value_usd": 88164.61
+    },
+    {
+     "id": "equal_weight",
+     "cagr": 0.062166,
+     "cagr_check": 0.062166,
+     "cagr_match": true,
+     "mdd": -0.108465,
+     "mdd_check": -0.108465,
+     "mdd_match": true,
+     "sharpe": 0.209166,
+     "final_value_usd": 89450.01
+    },
+    {
+     "id": "market_cap",
+     "cagr": 0.053009,
+     "cagr_check": 0.053008,
+     "cagr_match": true,
+     "mdd": -0.10144,
+     "mdd_check": -0.10144,
+     "mdd_match": true,
+     "sharpe": 0.123958,
+     "final_value_usd": 87381.81
+    },
+    {
+     "id": "inverse_volatility",
+     "cagr": 0.057232,
+     "cagr_check": 0.057232,
+     "cagr_match": true,
+     "mdd": -0.106446,
+     "mdd_check": -0.106446,
+     "mdd_match": true,
+     "sharpe": 0.163239,
+     "final_value_usd": 88554.98
+    },
+    {
+     "id": "min_variance",
+     "cagr": 0.046885,
+     "cagr_check": 0.046885,
+     "cagr_match": true,
+     "mdd": -0.103339,
+     "mdd_check": -0.103339,
+     "mdd_match": true,
+     "sharpe": 0.063058,
+     "final_value_usd": 87482.37
+    },
+    {
+     "id": "wf_equal_weight",
+     "cagr": 0.062166,
+     "cagr_check": 0.062166,
+     "cagr_match": true,
+     "mdd": -0.108465,
+     "mdd_check": -0.108465,
+     "mdd_match": true,
+     "sharpe": 0.209166,
+     "final_value_usd": 89450.01
+    },
+    {
+     "id": "wf_market_cap",
+     "cagr": 0.057712,
+     "cagr_check": 0.057712,
+     "cagr_match": true,
+     "mdd": -0.101219,
+     "mdd_check": -0.101218,
+     "mdd_match": true,
+     "sharpe": 0.16854,
+     "final_value_usd": 88538.68
+    },
+    {
+     "id": "wf_inverse_volatility",
+     "cagr": 0.05816,
+     "cagr_check": 0.05816,
+     "cagr_match": true,
+     "mdd": -0.106445,
+     "mdd_check": -0.106445,
+     "mdd_match": true,
+     "sharpe": 0.173207,
+     "final_value_usd": 88895.86
+    },
+    {
+     "id": "wf_min_variance",
+     "cagr": 0.03471,
+     "cagr_check": 0.03471,
+     "cagr_match": true,
+     "mdd": -0.105704,
+     "mdd_check": -0.105704,
+     "mdd_match": true,
+     "sharpe": -0.050211,
+     "final_value_usd": 85111.09
+    },
+    {
+     "id": "wf_bl_news",
+     "cagr": 0.063107,
+     "cagr_check": 0.063107,
+     "cagr_match": true,
+     "mdd": -0.108616,
+     "mdd_check": -0.108616,
+     "mdd_match": true,
+     "sharpe": 0.221497,
+     "final_value_usd": 90187.43
+    }
+   ],
+   "all_recomputed_match": true,
+   "validation": {
+    "summary": {
+     "n_pass": 0,
+     "n_warn": 0,
+     "n_fail": 14,
+     "alternative_note": null
+    },
+    "recommended": null,
+    "reason_ko": null,
+    "chosen": "cash_blend_inverse_volatility",
+    "alternatives": [
+     [
+      "cash_blend_inverse_volatility",
+      "warn"
+     ]
+    ],
+    "criteria": {
+     "max_drawdown": 0.064,
+     "input_max_drawdown": 0.08,
+     "target_annual_return": 0.07,
+     "horizon_years": 10.0,
+     "volatility_preference": "low"
+    },
+    "chosen_checks": [
+     [
+      "R1",
+      "pass",
+      "최대낙폭 6.3% ≤ 허용 6% (같은 기간 SPY 매수보유 (동일 적립) 18.8%)"
+     ],
+     [
+      "R1b",
+      "info",
+      "비교지수보다 낙폭이 작음 (6.3% vs 18.8%)"
+     ],
+     [
+      "R2",
+      "warn",
+      "CAGR 3.4% vs 목표 7% (백테스트 창이 투자기간 10년보다 짧아 전체 CAGR 로 판정)"
+     ],
+     [
+      "R3",
+      "warn",
+      "SPY 대비 초과 CAGR -14.3%"
+     ],
+     [
+      "R7",
+      "pass",
+      "연변동성 6.3% vs 비교지수 17.5%의 1배(안정 성향) = 17.5%"
+     ],
+     [
+      "R4b",
+      "info",
+      "리밸런싱 사이 종목 비중이 상한 안에 머묾"
+     ],
+     [
+      "R5b",
+      "info",
+      "리밸런싱 사이 섹터 비중이 상한 안에 머묾"
+     ]
+    ]
+   },
+   "data_quality": {
+    "expected_days": 752,
+    "usable": 27,
+    "excluded": {},
+    "filled": {}
+   }
+  },
+  "evidence": {
+   "as_of": "2025-06-25",
+   "index_by_kind": {
+    "news": 1809,
+    "disclosure": 179,
+    "financial": 50,
+    "calc": 119
+   },
+   "after_as_of": [],
+   "cited_unique": 33,
+   "cited_total": 58,
+   "missing_citations": [],
+   "window_records_after_end": 0,
+   "n_news_windows": 10,
+   "price_series_last": "2025-06-25",
+   "price_series_within_as_of": true,
+   "doc_evidence": 110,
+   "doc_bytes": 413349,
+   "company_rationale": {
+    "n": 25,
+    "min_paragraphs": 2,
+    "all_cite": true,
+    "detail": [
+     [
+      "VZ",
+      2,
+      1
+     ],
+     [
+      "JNJ",
+      2,
+      1
+     ],
+     [
+      "PG",
+      2,
+      1
+     ],
+     [
+      "KO",
+      2,
+      1
+     ],
+     [
+      "PEP",
+      2,
+      1
+     ],
+     [
+      "MCD",
+      2,
+      1
+     ],
+     [
+      "AMGN",
+      2,
+      1
+     ],
+     [
+      "PM",
+      2,
+      1
+     ],
+     [
+      "LIN",
+      2,
+      1
+     ],
+     [
+      "MDT",
+      2,
+      1
+     ],
+     [
+      "ABT",
+      2,
+      1
+     ],
+     [
+      "CMCSA",
+      2,
+      1
+     ],
+     [
+      "LMT",
+      2,
+      1
+     ],
+     [
+      "UNP",
+      2,
+      1
+     ],
+     [
+      "O",
+      2,
+      1
+     ],
+     [
+      "TJX",
+      2,
+      1
+     ],
+     [
+      "MCK",
+      2,
+      1
+     ],
+     [
+      "HD",
+      2,
+      1
+     ],
+     [
+      "COST",
+      2,
+      1
+     ],
+     [
+      "WMT",
+      2,
+      1
+     ],
+     [
+      "AMT",
+      2,
+      1
+     ],
+     [
+      "PFE",
+      2,
+      1
+     ],
+     [
+      "SPGI",
+      2,
+      1
+     ],
+     [
+      "CSCO",
+      2,
+      1
+     ],
+     [
+      "MSFT",
+      2,
+      1
+     ]
+    ]
+   }
+  },
+  "report": {
+   "present": true,
+   "doc_version": 2,
+   "sections": [
+    "verdict",
+    "market",
+    "companies",
+    "construction",
+    "performance",
+    "assumptions",
+    "references"
+   ],
+   "seven_ok": true,
+   "items_12": [
+    {
+     "item": "요약",
+     "where": "summary 대시보드(판단·KPI) 또는 종합 판단 문단",
+     "ok": true
+    },
+    {
+     "item": "투자조건",
+     "where": "요청 내용·지켜야 하는 조건 표",
+     "ok": true
+    },
+    {
+     "item": "구성",
+     "where": "비중 규칙별 구성·배분 금액",
+     "ok": true
+    },
+    {
+     "item": "전략 규칙",
+     "where": "선정 지표 안내·비중 규칙·리밸런싱(백테스트 가정)",
+     "ok": true
+    },
+    {
+     "item": "구성 근거",
+     "where": "기업별 근거 문단(companies) + 뉴스 뷰 카드",
+     "ok": true
+    },
+    {
+     "item": "기업·시장 정보",
+     "where": "산업과 시장 분석 문단 + 섹터 노출",
+     "ok": true
+    },
+    {
+     "item": "성과",
+     "where": "누적 수익률·평가금액 차트, 비교표, 연도·월별",
+     "ok": true
+    },
+    {
+     "item": "위험",
+     "where": "낙폭 차트, 최대낙폭 KPI, 검증 규칙 표",
+     "ok": true
+    },
+    {
+     "item": "해석",
+     "where": "성과 해석·검증 해석 문단(14a)",
+     "ok": true
+    },
+    {
+     "item": "계산 조건",
+     "where": "계산 조건 표",
+     "ok": true
+    },
+    {
+     "item": "한계",
+     "where": "확인한 한계 카드 + 전제·재검토 문단",
+     "ok": true
+    },
+    {
+     "item": "분석 과정",
+     "where": "선정 과정 깔때기 + 실행 기록 표",
+     "ok": true
+    }
+   ],
+   "items_12_ok": 12,
+   "gate_errors": [],
+   "number_notes": 0,
+   "dev_term_notes": 0,
+   "n_paragraphs": 33,
+   "headline_ko": "추천 없음: 낙폭은 맞췄지만 목표수익·SPY에 미달",
+   "verdict": "추천 없음 · 현금 혼합안 (현금 혼합안: 역변동성비중 × 59% + 현금 50%)",
+   "next_actions": 5,
+   "notices_user": [
+    "모든 포트폴리오가 필수 검증 규칙을 통과하지 못했습니다. 미통과 규칙: 최대낙폭(R1) 14개. 허용 낙폭·목표를 조정하거나 현금 혼합안을 검토해 보세요."
+   ],
+   "title_ko": "꾸준한 배당 성장 · 저변동성 전략",
+   "glossary": 11
+  },
+  "execution": {
+   "status": "partial",
+   "error": null,
+   "elapsed_s": 287,
+   "steps": [
+    [
+     "01_request",
+     "SUCCESS",
+     15.55
+    ],
+    [
+     "02_intent",
+     "SUCCESS",
+     0.0
+    ],
+    [
+     "03_candidates",
+     "SUCCESS",
+     0.96
+    ],
+    [
+     "04_tagging",
+     "SUCCESS",
+     44.92
+    ],
+    [
+     "05_selection",
+     "SUCCESS",
+     0.03
+    ],
+    [
+     "06_explain",
+     "SUCCESS",
+     46.54
+    ],
+    [
+     "07_backtest_spec",
+     "SUCCESS",
+     1.01
+    ],
+    [
+     "10f_current",
+     "SUCCESS",
+     68.32
+    ],
+    [
+     "10_targets",
+     "SUCCESS",
+     48.81
+    ],
+    [
+     "10w_paths",
+     "SUCCESS",
+     60.63
+    ],
+    [
+     "11_backtest",
+     "SUCCESS",
+     3.84
+    ],
+    [
+     "12_validation",
+     "PARTIAL",
+     0.41
+    ],
+    [
+     "13_results",
+     "SUCCESS",
+     0.02
+    ],
+    [
+     "14_report",
+     "SUCCESS",
+     92.26
+    ]
+   ],
+   "steps_fully_recorded": "14/14",
+   "llm_calls": 16,
+   "llm_cost_usd": 0.074907,
+   "llm_cache_hits": 0,
+   "llm_calls_by_stage": {
+    "04_classify": 3,
+    "06_explain": 1,
+    "09_views_news": 9,
+    "14c_market": 1,
+    "14a_interpret": 1,
+    "14b_narrate": 1
+   },
+   "truncated_calls": 0,
+   "notices_user": [
+    "모든 포트폴리오가 필수 검증 규칙을 통과하지 못했습니다. 미통과 규칙: 최대낙폭(R1) 14개. 허용 낙폭·목표를 조정하거나 현금 혼합안을 검토해 보세요."
+   ],
+   "n_warnings_all": 4,
+   "sources": [
+    "src_prices",
+    "src_fx",
+    "src_valuation",
+    "src_universe",
+    "src_news",
+    "src_pipeline",
+    "src_llm",
+    "src_disclosures"
+   ]
+  }
+ },
+ "scenario_014": {
+  "run_id": "run_20261025_183503_d2ce",
+  "scenario_file": "/Users/apple/dev/MyFinSight/backend/test_scenarios/scenario_014.json",
+  "idea": "특정 테마 없이 미국 시장 전체에서 주가가 크게 흔들리지 않는 종목 위주로 1년 정도 투자하고 싶어요. 수익보다 원금 보전이 우선이에요. 손실이 나면 잠을 못 잘 것 같아서 변동성은 최대한 낮췄으면 해요. 애플(AAPL)은 오래 지켜본 회사라 꼭 포함했으면 합니다. 주류, 화석연료, 무기·방산 관련 회사는 원하지 않아요.",
+  "conditions": {
+   "must_include": {
+    "requested": [
+     "AAPL"
+    ],
+    "in_selection_now": [
+     "AAPL"
+    ],
+    "in_backtest": [
+     "AAPL"
+    ],
+    "ok": true
+   },
+   "exclude_tickers": {
+    "requested": [],
+    "leaked": [],
+    "ok": true
+   },
+   "exclude_themes": {
+    "requested": [
+     "alcohol",
+     "fossil_fuels",
+     "weapons"
+    ],
+    "rules_made": {
+     "alcohol": {
+      "gics": [
+       "30201020"
+      ],
+      "keywords": [
+       "alcohol",
+       "alcoholic beverages",
+       "beer",
+       "brewery",
+       "wine"
+      ]
+     },
+     "fossil_fuels": {
+      "gics": [
+       "10101020",
+       "101020"
+      ],
+      "keywords": [
+       "fossil fuels",
+       "oil and gas",
+       "petroleum",
+       "oilfield services",
+       "upstream oil"
+      ]
+     },
+     "weapons": {
+      "gics": [
+       "20101010"
+      ],
+      "keywords": [
+       "weapons",
+       "arms",
+       "military",
+       "defense contractor",
+       "defense systems"
+      ]
+     }
+    },
+    "ok": true,
+    "filtered_by_theme": {
+     "exclude_theme:fossil_fuels": 31,
+     "exclude_theme:weapons": 15,
+     "exclude_theme:alcohol": 7
+    }
+   },
+   "universe": {
+    "requested": [
+     "SP500",
+     "NASDAQ100"
+    ],
+    "selected_markets": [
+     "US"
+    ],
+    "leaked_other_market": [],
+    "ok": true
+   },
+   "min_cash_ratio": {
+    "requested": 0.1,
+    "invested_by_template": {
+     "equal_weight": 0.9,
+     "market_cap": 0.9,
+     "inverse_volatility": 0.9,
+     "min_variance": 0.9
+    },
+    "ok": true
+   },
+   "caps": {
+    "stock": 0.1,
+    "sector": 0.35,
+    "integrity_all_pass": true
+   },
+   "rebalance": {
+    "rule": "반기마다 첫 거래일에 목표 비중으로 리밸런싱",
+    "n_rebalances": 3
+   },
+   "as_of": {
+    "requested": "2026-06-18",
+    "used": "2026-06-18",
+    "ok": true,
+    "derive_warnings": []
+   },
+   "backtest_window": {
+    "start": "2023-06-18",
+    "end": "2026-06-18",
+    "years_requested": null,
+    "trading_days": 268
+   },
+   "template": {
+    "requested": "low_volatility",
+    "metric_used": "vol_60d"
+   },
+   "n_selected": {
+    "target": 30,
+    "min": 28,
+    "selected_now": 28,
+    "backtest": 27
+   }
+  },
+  "dialog": {
+   "n_questions": 0,
+   "max_questions": 5,
+   "questions": [],
+   "overrides": {
+    "horizon.start_date": "2026-06-18"
+   },
+   "clarifications": [],
+   "conflicts": [
+    {
+     "field": "constraints.asset_types",
+     "issue_ko": "원금 보전을 우선하지만 투자 대상은 주식으로 제한되어 있어 원금 보전이 보장되지는 않습니다.",
+     "resolution_ko": "주식만 허용하는 하드 제약을 유지하고 저변동성 선호를 반영합니다. 주식 투자에는 손실 가능성이 있음을 유의해야 합니다.",
+     "idea_value": null
+    }
+   ],
+   "summary_ko": "미국 주식시장에서 특정 테마를 선호하지 않고 저변동성 종목을 중심으로 1년간 원금 보전을 우선해 투자하려는 요청입니다. 투자금은 100,000 USD이며 월 추가납입은 없고, SP500·NASDAQ100 유니버스에서 30종목(28~35종목)을 구성합니다. AAPL은 반드시 포함하고, 종목별 최대 비중 10%, 섹터별 최대 비중 35%, 현금 최소 비중 10%를 적용하며 6개월마다 리밸런싱합니다. 레버리지와 공매도는 허용하지 않고, 시가총액 최소 200억 USD 및 평균 일거래대금 최소 1억 USD 조건을 적용합니다.",
+   "themes": [
+    {
+     "id": "us_broad_market_low_volatility",
+     "label_ko": "미국 시장 전반의 저변동성 주식",
+     "gics": [
+      "10",
+      "15",
+      "20",
+      "25",
+      "30",
+      "35",
+      "40",
+      "45",
+      "50",
+      "55",
+      "60"
+     ],
+     "keywords": [
+      "low volatility",
+      "low beta",
+      "defensive stocks",
+      "stable earnings",
+      "cash flow stability",
+      "regulated utilities",
+      "consumer staples",
+      "healthcare providers"
+     ]
+    }
+   ],
+   "explanation_level": "intermediate",
+   "effective_max_drawdown": 0.15
+  },
+  "selection": {
+   "n_matched": 518,
+   "n_candidates": 120,
+   "by_rule": {
+    "gics_match": 518,
+    "example_match": 1,
+    "must_include": 1,
+    "keyword_match": 36
+   },
+   "n_tag_passed": 28,
+   "n_with_metric": 28,
+   "n_selected": 28,
+   "selected": [
+    {
+     "ticker": "AAPL",
+     "name": "Apple Inc.",
+     "sector": "Information Technology",
+     "rank": 1,
+     "metric": 0.23404762206495744,
+     "theme_conf": 0.34
+    },
+    {
+     "ticker": "MCD",
+     "name": "McDonald's",
+     "sector": "Consumer Discretionary",
+     "rank": 2,
+     "metric": 0.17967942063488546,
+     "theme_conf": 0.7
+    },
+    {
+     "ticker": "JNJ",
+     "name": "Johnson & Johnson",
+     "sector": "Health Care",
+     "rank": 3,
+     "metric": 0.1833378497161423,
+     "theme_conf": 0.82
+    },
+    {
+     "ticker": "LIN",
+     "name": "Linde plc",
+     "sector": "Materials",
+     "rank": 4,
+     "metric": 0.19374080114353942,
+     "theme_conf": 0.62
+    },
+    {
+     "ticker": "MDLZ",
+     "name": "Mondelez International",
+     "sector": "Consumer Staples",
+     "rank": 5,
+     "metric": 0.20667702331139515,
+     "theme_conf": 0.72
+    },
+    {
+     "ticker": "COST",
+     "name": "Costco",
+     "sector": "Consumer Staples",
+     "rank": 6,
+     "metric": 0.2131880796748025,
+     "theme_conf": 0.68
+    },
+    {
+     "ticker": "KVUE",
+     "name": "Kenvue",
+     "sector": "Consumer Staples",
+     "rank": 7,
+     "metric": 0.2193831532859364,
+     "theme_conf": 0.68
+    },
+    {
+     "ticker": "PG",
+     "name": "Procter & Gamble",
+     "sector": "Consumer Staples",
+     "rank": 8,
+     "metric": 0.21960893041541477,
+     "theme_conf": 0.88
+    },
+    {
+     "ticker": "VZ",
+     "name": "Verizon",
+     "sector": "Communication Services",
+     "rank": 9,
+     "metric": 0.22108442837966677,
+     "theme_conf": 0.75
+    },
+    {
+     "ticker": "CHD",
+     "name": "Church & Dwight",
+     "sector": "Consumer Staples",
+     "rank": 10,
+     "metric": 0.23433469399886156,
+     "theme_conf": 0.84
+    },
+    {
+     "ticker": "ABBV",
+     "name": "AbbVie",
+     "sector": "Health Care",
+     "rank": 11,
+     "metric": 0.23929902434076417,
+     "theme_conf": 0.78
+    },
+    {
+     "ticker": "CL",
+     "name": "Colgate-Palmolive",
+     "sector": "Consumer Staples",
+     "rank": 12,
+     "metric": 0.24042305436462516,
+     "theme_conf": 0.86
+    },
+    {
+     "ticker": "AMGN",
+     "name": "Amgen",
+     "sector": "Health Care",
+     "rank": 13,
+     "metric": 0.24765965631195844,
+     "theme_conf": 0.74
+    },
+    {
+     "ticker": "KHC",
+     "name": "Kraft Heinz",
+     "sector": "Consumer Staples",
+     "rank": 14,
+     "metric": 0.24924139039325616,
+     "theme_conf": 0.63
+    },
+    {
+     "ticker": "T",
+     "name": "AT&T",
+     "sector": "Communication Services",
+     "rank": 15,
+     "metric": 0.25155795771103195,
+     "theme_conf": 0.7
+    },
+    {
+     "ticker": "KMB",
+     "name": "Kimberly-Clark",
+     "sector": "Consumer Staples",
+     "rank": 16,
+     "metric": 0.2686382865655048,
+     "theme_conf": 0.78
+    },
+    {
+     "ticker": "NEE",
+     "name": "NextEra Energy",
+     "sector": "Utilities",
+     "rank": 17,
+     "metric": 0.26981666791700654,
+     "theme_conf": 0.72
+    },
+    {
+     "ticker": "MO",
+     "name": "Altria",
+     "sector": "Consumer Staples",
+     "rank": 18,
+     "metric": 0.2709573694077487,
+     "theme_conf": 0.7
+    },
+    {
+     "ticker": "ABT",
+     "name": "Abbott Laboratories",
+     "sector": "Health Care",
+     "rank": 19,
+     "metric": 0.27702816463487173,
+     "theme_conf": 0.82
+    },
+    {
+     "ticker": "MRK",
+     "name": "Merck & Co.",
+     "sector": "Health Care",
+     "rank": 20,
+     "metric": 0.28050416932464634,
+     "theme_conf": 0.62
+    },
+    {
+     "ticker": "CSCO",
+     "name": "Cisco",
+     "sector": "Information Technology",
+     "rank": 21,
+     "metric": 0.4203311084078401,
+     "theme_conf": 0.58
+    },
+    {
+     "ticker": "IBM",
+     "name": "IBM",
+     "sector": "Information Technology",
+     "rank": 22,
+     "metric": 0.5289166452108177,
+     "theme_conf": 0.62
+    },
+    {
+     "ticker": "WMT",
+     "name": "Walmart",
+     "sector": "Consumer Staples",
+     "rank": 23,
+     "metric": 0.2753860881388782,
+     "theme_conf": 0.8
+    },
+    {
+     "ticker": "KR",
+     "name": "Kroger",
+     "sector": "Consumer Staples",
+     "rank": 24,
+     "metric": 0.27569044256719916,
+     "theme_conf": 0.76
+    },
+    {
+     "ticker": "ADM",
+     "name": "Archer Daniels Midland",
+     "sector": "Consumer Staples",
+     "rank": 25,
+     "metric": 0.2841591968949534,
+     "theme_conf": 0.52
+    },
+    {
+     "ticker": "HSY",
+     "name": "Hershey Company (The)",
+     "sector": "Consumer Staples",
+     "rank": 26,
+     "metric": 0.28805154005139044,
+     "theme_conf": 0.65
+    },
+    {
+     "ticker": "PM",
+     "name": "Philip Morris International",
+     "sector": "Consumer Staples",
+     "rank": 27,
+     "metric": 0.3320512435977415,
+     "theme_conf": 0.55
+    },
+    {
+     "ticker": "CASY",
+     "name": "Casey's",
+     "sector": "Consumer Staples",
+     "rank": 28,
+     "metric": 0.47218470796036865,
+     "theme_conf": 0.52
+    }
+   ],
+   "sector_counts": {
+    "Information Technology": 3,
+    "Consumer Discretionary": 1,
+    "Health Care": 5,
+    "Materials": 1,
+    "Consumer Staples": 15,
+    "Communication Services": 2,
+    "Utilities": 1
+   },
+   "infeasibility": null,
+   "warnings": [
+    "only 28 tickers have vol_60d; target 30 -> selecting 28",
+    "sector name preference (9/sector) exceeded for 6 tickers ['WMT', 'KR', 'ADM', 'HSY', 'PM', 'CASY']; sector cap is enforced by weights"
+   ]
+  },
+  "construction": {
+   "n_rebalance_dates": 3,
+   "fallback_dates": 3,
+   "dates_with_disclosures": 0,
+   "dates_with_news": 0,
+   "n_views": 0,
+   "views_by_evidence": {
+    "news": 0,
+    "disclosure": 0,
+    "mixed": 0
+   },
+   "start_bl_portfolios": 0,
+   "templates": [
+    "equal_weight",
+    "market_cap",
+    "inverse_volatility",
+    "min_variance"
+   ],
+   "max_tilt": null,
+   "forward_fallback": true,
+   "forward_reason": "뉴스 반영(use_news_tilt)이 꺼져 있어 기준 비중을 사용"
+  },
+  "backtest": {
+   "period": {
+    "start": "2025-05-27",
+    "end": "2026-06-18",
+    "as_of": "2025-05-27",
+    "trading_days": 268,
+    "window_days": 267,
+    "annualized_reliable": true
+   },
+   "engine": {
+    "commission_bps": 5,
+    "n_contributions": 0,
+    "contribution_usd": 0.0,
+    "risk_free_rate": 0.04,
+    "benchmarks": [
+     "SPY",
+     "QQQ"
+    ]
+   },
+   "benchmark": {
+    "id": "benchmark_SPY",
+    "cagr": 0.263324,
+    "mdd": -0.088803,
+    "final_value_usd": 128038.41,
+    "same_contributions": true
+   },
+   "metrics_present": {
+    "total_return": true,
+    "cagr": true,
+    "ann_vol": true,
+    "sharpe": true,
+    "max_drawdown": true,
+    "excess_cagr": true,
+    "final_value_usd": true,
+    "irr_annual": true
+   },
+   "portfolios": [
+    {
+     "id": "equal_weight",
+     "cagr": 0.113695,
+     "cagr_check": 0.113696,
+     "cagr_match": true,
+     "mdd": -0.063458,
+     "mdd_check": -0.063459,
+     "mdd_match": true,
+     "sharpe": 0.789931,
+     "final_value_usd": 112035.24
+    },
+    {
+     "id": "market_cap",
+     "cagr": 0.14509,
+     "cagr_check": 0.14509,
+     "cagr_match": true,
+     "mdd": -0.059733,
+     "mdd_check": -0.059733,
+     "mdd_match": true,
+     "sharpe": 1.152321,
+     "final_value_usd": 115384.24
+    },
+    {
+     "id": "inverse_volatility",
+     "cagr": 0.105938,
+     "cagr_check": 0.105938,
+     "cagr_match": true,
+     "mdd": -0.065553,
+     "mdd_check": -0.065554,
+     "mdd_match": true,
+     "sharpe": 0.70646,
+     "final_value_usd": 111208.65
+    },
+    {
+     "id": "min_variance",
+     "cagr": 0.159275,
+     "cagr_check": 0.159275,
+     "cagr_match": true,
+     "mdd": -0.04582,
+     "mdd_check": -0.04582,
+     "mdd_match": true,
+     "sharpe": 1.2989,
+     "final_value_usd": 116899.22
+    },
+    {
+     "id": "wf_equal_weight",
+     "cagr": 0.113695,
+     "cagr_check": 0.113696,
+     "cagr_match": true,
+     "mdd": -0.063458,
+     "mdd_check": -0.063459,
+     "mdd_match": true,
+     "sharpe": 0.789931,
+     "final_value_usd": 112035.24
+    },
+    {
+     "id": "wf_market_cap",
+     "cagr": 0.14805,
+     "cagr_check": 0.14805,
+     "cagr_match": true,
+     "mdd": -0.060281,
+     "mdd_check": -0.06028,
+     "mdd_match": true,
+     "sharpe": 1.178324,
+     "final_value_usd": 115700.29
+    },
+    {
+     "id": "wf_inverse_volatility",
+     "cagr": 0.107054,
+     "cagr_check": 0.107054,
+     "cagr_match": true,
+     "mdd": -0.064863,
+     "mdd_check": -0.064863,
+     "mdd_match": true,
+     "sharpe": 0.719031,
+     "final_value_usd": 111327.55
+    },
+    {
+     "id": "wf_min_variance",
+     "cagr": 0.168195,
+     "cagr_check": 0.168196,
+     "cagr_match": true,
+     "mdd": -0.046727,
+     "mdd_check": -0.046727,
+     "mdd_match": true,
+     "sharpe": 1.400713,
+     "final_value_usd": 117852.53
+    },
+    {
+     "id": "wf_bl_news",
+     "cagr": 0.168195,
+     "cagr_check": 0.168196,
+     "cagr_match": true,
+     "mdd": -0.046727,
+     "mdd_check": -0.046727,
+     "mdd_match": true,
+     "sharpe": 1.400713,
+     "final_value_usd": 117852.53
+    }
+   ],
+   "all_recomputed_match": true,
+   "validation": {
+    "summary": {
+     "n_pass": 0,
+     "n_warn": 9,
+     "n_fail": 0,
+     "alternative_note": "chosen portfolio already within the drawdown tolerance"
+    },
+    "recommended": "wf_min_variance",
+    "reason_ko": "허용 낙폭을 지킨 포트폴리오 중 목표수익·변동성 조건을 만족하고 Sharpe 가 가장 높음(1.40). CAGR 16.8%, 최대낙폭 -4.7% (허용 15% 대비 여유 10.3%p), 최종 평가금액 117,853 USD.",
+    "chosen": "wf_min_variance",
+    "alternatives": [],
+    "criteria": {
+     "max_drawdown": 0.15,
+     "input_max_drawdown": 0.15,
+     "target_annual_return": 0.05,
+     "horizon_years": 1.0,
+     "volatility_preference": "low"
+    },
+    "chosen_checks": [
+     [
+      "R1",
+      "pass",
+      "최대낙폭 4.7% ≤ 허용 15% (같은 기간 SPY 매수보유 (동일 적립) 8.9%)"
+     ],
+     [
+      "R1b",
+      "info",
+      "비교지수보다 낙폭이 작음 (4.7% vs 8.9%)"
+     ],
+     [
+      "R2",
+      "pass",
+      "투자기간 1년 구간 16개 중 100%가 목표 연 5% 달성 (구간 수익률 중앙값 연 +20.0%, 최악 연 +18.8%; 전체 CAGR 16.8%)"
+     ],
+     [
+      "R3",
+      "warn",
+      "SPY 대비 초과 CAGR -9.5%"
+     ],
+     [
+      "R7",
+      "pass",
+      "연변동성 9.2% vs 비교지수 12.3%의 1배(안정 성향) = 12.3%"
+     ],
+     [
+      "R4b",
+      "info",
+      "리밸런싱 사이에 종목 비중이 상한의 1.25배를 넘은 적 있음 (CSCO, JNJ) — 리밸런싱 주기를 줄이면 완화됩니다"
+     ],
+     [
+      "R5b",
+      "info",
+      "리밸런싱 사이 섹터 비중이 상한 안에 머묾"
+     ],
+     [
+      "R9",
+      "info",
+      "투자 90%, 현금 10%"
+     ]
+    ]
+   },
+   "data_quality": {
+    "expected_days": 268,
+    "usable": 29,
+    "excluded": {},
+    "filled": {}
+   }
+  },
+  "evidence": {
+   "as_of": "2026-06-18",
+   "index_by_kind": {
+    "news": 277,
+    "disclosure": 107,
+    "financial": 55,
+    "calc": 77
+   },
+   "after_as_of": [],
+   "cited_unique": 64,
+   "cited_total": 90,
+   "missing_citations": [],
+   "window_records_after_end": 0,
+   "n_news_windows": 1,
+   "price_series_last": "2026-06-18",
+   "price_series_within_as_of": true,
+   "doc_evidence": 64,
+   "doc_bytes": 246404,
+   "company_rationale": {
+    "n": 28,
+    "min_paragraphs": 2,
+    "all_cite": true,
+    "detail": [
+     [
+      "JNJ",
+      2,
+      2
+     ],
+     [
+      "CSCO",
+      2,
+      2
+     ],
+     [
+      "MO",
+      2,
+      2
+     ],
+     [
+      "LIN",
+      2,
+      2
+     ],
+     [
+      "MCD",
+      2,
+      2
+     ],
+     [
+      "COST",
+      2,
+      2
+     ],
+     [
+      "CHD",
+      2,
+      2
+     ],
+     [
+      "KR",
+      2,
+      2
+     ],
+     [
+      "AAPL",
+      2,
+      2
+     ],
+     [
+      "T",
+      2,
+      2
+     ],
+     [
+      "IBM",
+      2,
+      2
+     ],
+     [
+      "MRK",
+      2,
+      2
+     ],
+     [
+      "VZ",
+      2,
+      2
+     ],
+     [
+      "ABT",
+      2,
+      2
+     ],
+     [
+      "WMT",
+      2,
+      2
+     ],
+     [
+      "PM",
+      2,
+      2
+     ],
+     [
+      "MDLZ",
+      2,
+      2
+     ],
+     [
+      "KVUE",
+      2,
+      2
+     ],
+     [
+      "PG",
+      2,
+      2
+     ],
+     [
+      "ABBV",
+      2,
+      2
+     ],
+     [
+      "CL",
+      2,
+      2
+     ],
+     [
+      "AMGN",
+      2,
+      2
+     ],
+     [
+      "KHC",
+      2,
+      2
+     ],
+     [
+      "KMB",
+      2,
+      2
+     ],
+     [
+      "NEE",
+      2,
+      2
+     ],
+     [
+      "ADM",
+      2,
+      2
+     ],
+     [
+      "HSY",
+      2,
+      2
+     ],
+     [
+      "CASY",
+      2,
+      2
+     ]
+    ]
+   }
+  },
+  "report": {
+   "present": true,
+   "doc_version": 2,
+   "sections": [
+    "verdict",
+    "market",
+    "companies",
+    "construction",
+    "performance",
+    "assumptions",
+    "references"
+   ],
+   "seven_ok": true,
+   "items_12": [
+    {
+     "item": "요약",
+     "where": "summary 대시보드(판단·KPI) 또는 종합 판단 문단",
+     "ok": true
+    },
+    {
+     "item": "투자조건",
+     "where": "요청 내용·지켜야 하는 조건 표",
+     "ok": true
+    },
+    {
+     "item": "구성",
+     "where": "비중 규칙별 구성·배분 금액",
+     "ok": true
+    },
+    {
+     "item": "전략 규칙",
+     "where": "선정 지표 안내·비중 규칙·리밸런싱(백테스트 가정)",
+     "ok": true
+    },
+    {
+     "item": "구성 근거",
+     "where": "기업별 근거 문단(companies) + 뉴스 뷰 카드",
+     "ok": true
+    },
+    {
+     "item": "기업·시장 정보",
+     "where": "산업과 시장 분석 문단 + 섹터 노출",
+     "ok": true
+    },
+    {
+     "item": "성과",
+     "where": "누적 수익률·평가금액 차트, 비교표, 연도·월별",
+     "ok": true
+    },
+    {
+     "item": "위험",
+     "where": "낙폭 차트, 최대낙폭 KPI, 검증 규칙 표",
+     "ok": true
+    },
+    {
+     "item": "해석",
+     "where": "성과 해석·검증 해석 문단(14a)",
+     "ok": true
+    },
+    {
+     "item": "계산 조건",
+     "where": "계산 조건 표",
+     "ok": true
+    },
+    {
+     "item": "한계",
+     "where": "확인한 한계 카드 + 전제·재검토 문단",
+     "ok": true
+    },
+    {
+     "item": "분석 과정",
+     "where": "선정 과정 깔때기 + 실행 기록 표",
+     "ok": true
+    }
+   ],
+   "items_12_ok": 12,
+   "gate_errors": [],
+   "number_notes": 0,
+   "dev_term_notes": 0,
+   "n_paragraphs": 32,
+   "headline_ko": "조건부 추천: 낙폭은 제한했지만 SPY를 밑돌았습니다.",
+   "verdict": "추천 (주의 있음): 최소분산 (walk-forward)",
+   "next_actions": 4,
+   "notices_user": [
+    "필수 포함 종목 AAPL은(는) 테마 판정 또는 선정 지표 기준에 맞지 않지만 요청에 따라 포함했습니다.",
+    "선정 지표(변동성) 자료가 있는 종목이 28개로 목표 30개보다 적어 28개만 선정했습니다. 최소 종목 수에 못 미치면 검증에서 미통과가 됩니다.",
+    "백테스트 시작일 2023-06-20 에는 선정 지표 자료가 있는 종목이 최소 종목 수(28)보다 적어 시작을 2025-05-27 로 옮김 (24개월 뒤, 선정 27종목)"
+   ],
+   "title_ko": "미국 시장 전반의 저변동성 주식 · 저변동성 전략",
+   "glossary": 10
+  },
+  "execution": {
+   "status": "partial",
+   "error": null,
+   "elapsed_s": 192,
+   "steps": [
+    [
+     "01_request",
+     "SUCCESS",
+     14.53
+    ],
+    [
+     "02_intent",
+     "SUCCESS",
+     0.0
+    ],
+    [
+     "03_candidates",
+     "SUCCESS",
+     0.93
+    ],
+    [
+     "04_tagging",
+     "PARTIAL",
+     38.7
+    ],
+    [
+     "05_selection",
+     "PARTIAL",
+     0.03
+    ],
+    [
+     "06_explain",
+     "SUCCESS",
+     44.27
+    ],
+    [
+     "07_backtest_spec",
+     "PARTIAL",
+     10.81
+    ],
+    [
+     "10f_current",
+     "SUCCESS",
+     0.43
+    ],
+    [
+     "10_targets",
+     "SUCCESS",
+     0.31
+    ],
+    [
+     "10w_paths",
+     "SUCCESS",
+     0.51
+    ],
+    [
+     "11_backtest",
+     "SUCCESS",
+     1.2
+    ],
+    [
+     "12_validation",
+     "SUCCESS",
+     0.0
+    ],
+    [
+     "13_results",
+     "SUCCESS",
+     0.01
+    ],
+    [
+     "14_report",
+     "SUCCESS",
+     91.37
+    ]
+   ],
+   "steps_fully_recorded": "14/14",
+   "llm_calls": 7,
+   "llm_cost_usd": 0.029149,
+   "llm_cache_hits": 0,
+   "llm_calls_by_stage": {
+    "04_classify": 3,
+    "06_explain": 1,
+    "14c_market": 1,
+    "14a_interpret": 1,
+    "14b_narrate": 1
+   },
+   "truncated_calls": 0,
+   "notices_user": [
+    "필수 포함 종목 AAPL은(는) 테마 판정 또는 선정 지표 기준에 맞지 않지만 요청에 따라 포함했습니다.",
+    "선정 지표(변동성) 자료가 있는 종목이 28개로 목표 30개보다 적어 28개만 선정했습니다. 최소 종목 수에 못 미치면 검증에서 미통과가 됩니다.",
+    "백테스트 시작일 2023-06-20 에는 선정 지표 자료가 있는 종목이 최소 종목 수(28)보다 적어 시작을 2025-05-27 로 옮김 (24개월 뒤, 선정 27종목)"
+   ],
+   "n_warnings_all": 10,
+   "sources": [
+    "src_prices",
+    "src_fx",
+    "src_valuation",
+    "src_universe",
+    "src_news",
+    "src_pipeline",
+    "src_llm",
+    "src_disclosures"
+   ]
+  }
+ },
+ "scenario_072": {
+  "run_id": "run_20261025_183844_a22b",
+  "scenario_file": "/Users/apple/dev/MyFinSight/backend/test_scenarios/scenario_072.json",
+  "idea": "주식은 처음이라 잘 모르지만, 특정 테마 없이 코스피200 전체에서 재무가 탄탄하고 이익률이 높은 회사 위주로 3년 정도 투자하고 싶어요. 목돈을 키우고 싶어요. 어느 정도 출렁이는 건 괜찮지만 한 종목에 몰빵하는 건 피하고 싶어요. 삼성전기(009150)는 이미 다른 계좌에 있어서 제외해 주세요. 도박·카지노 관련 회사는 원하지 않아요. 매달 조금씩 추가로 넣을 예정입니다.",
+  "conditions": {
+   "must_include": {
+    "requested": [],
+    "in_selection_now": [],
+    "in_backtest": [],
+    "ok": true
+   },
+   "exclude_tickers": {
+    "requested": [
+     "009150.KS"
+    ],
+    "leaked": [],
+    "ok": true
+   },
+   "exclude_themes": {
+    "requested": [
+     "gambling"
+    ],
+    "rules_made": {
+     "gambling": {
+      "gics": [
+       "25301010"
+      ],
+      "keywords": [
+       "casino",
+       "gambling",
+       "gaming",
+       "wagering",
+       "sports betting"
+      ]
+     }
+    },
+    "ok": true,
+    "filtered_by_theme": {
+     "exclude_tickers": 1,
+     "exclude_theme:gambling": 2
+    }
+   },
+   "universe": {
+    "requested": [
+     "KOSPI200"
+    ],
+    "selected_markets": [
+     "KR"
+    ],
+    "leaked_other_market": [],
+    "ok": true
+   },
+   "min_cash_ratio": {
+    "requested": 0.05,
+    "invested_by_template": {
+     "equal_weight": 0.95,
+     "market_cap": 0.95,
+     "inverse_volatility": 0.95,
+     "min_variance": 0.95
+    },
+    "ok": true
+   },
+   "caps": {
+    "stock": 0.15,
+    "sector": 0.35,
+    "integrity_all_pass": true
+   },
+   "rebalance": {
+    "rule": "반기마다 첫 거래일에 목표 비중으로 리밸런싱",
+    "n_rebalances": 7
+   },
+   "as_of": {
+    "requested": "2025-05-27",
+    "used": "2025-05-27",
+    "ok": true,
+    "derive_warnings": []
+   },
+   "backtest_window": {
+    "start": "2022-05-27",
+    "end": "2025-05-27",
+    "years_requested": null,
+    "trading_days": 778
+   },
+   "template": {
+    "requested": "quality",
+    "metric_used": "roe_ttm"
+   },
+   "n_selected": {
+    "target": 20,
+    "min": 17,
+    "selected_now": 20,
+    "backtest": 20
+   }
+  },
+  "dialog": {
+   "n_questions": 0,
+   "max_questions": 5,
+   "questions": [],
+   "overrides": {
+    "horizon.start_date": "2025-05-27"
+   },
+   "clarifications": [],
+   "conflicts": [
+    {
+     "field": "risk.target_annual_return",
+     "issue_ko": "연 12% 목표 수익률은 최대 허용 낙폭 15%와 함께 달성하기에는 도전적인 조합일 수 있습니다.",
+     "resolution_ko": "두 입력값을 그대로 검증 기준에 반영하되, 목표 수익률 달성이 보장되는 것은 아니라는 점을 주의사항으로 기록합니다.",
+     "idea_value": null
+    },
+    {
+     "field": "capital.trading_currency",
+     "issue_ko": "투자 유니버스는 KOSPI200이고 투자 원금은 KRW인데 거래 통화는 USD로 설정되어 있어 통화 설정이 서로 맞지 않을 수 있습니다.",
+     "resolution_ko": "입력된 값을 임의로 변경하지 않고 유지하며, 실제 주문 단계에서 거래 통화와 환전 처리를 확인해야 합니다.",
+     "idea_value": null
+    }
+   ],
+   "summary_ko": "특정 테마에 한정하지 않고 KOSPI200 전반에서 재무 건전성과 수익성이 높은 기업을 중심으로 3년간 자산 증식을 추구합니다. 종목과 업종 쏠림을 피하고, 삼성전기와 도박·카지노 관련 기업은 제외합니다.",
+   "themes": [
+    {
+     "id": "broad_market_quality",
+     "label_ko": "시장 전반의 재무 건전성·수익성",
+     "gics": [
+      "10",
+      "15",
+      "20",
+      "25",
+      "30",
+      "35",
+      "40",
+      "45",
+      "50",
+      "55",
+      "60"
+     ],
+     "keywords": [
+      "return on equity",
+      "operating margin",
+      "net margin",
+      "profitability",
+      "strong balance sheet",
+      "free cash flow",
+      "low debt",
+      "earnings quality"
+     ]
+    }
+   ],
+   "explanation_level": "beginner",
+   "effective_max_drawdown": 0.135
+  },
+  "selection": {
+   "n_matched": 201,
+   "n_candidates": 80,
+   "by_rule": {
+    "gics_match": 201,
+    "example_match": 3
+   },
+   "n_tag_passed": 37,
+   "n_with_metric": 35,
+   "n_selected": 20,
+   "selected": [
+    {
+     "ticker": "267260.KS",
+     "name": "HD현대일렉트릭",
+     "sector": "Industrials",
+     "rank": 1,
+     "metric": 0.4242437355335114,
+     "theme_conf": 0.62
+    },
+    {
+     "ticker": "003230.KS",
+     "name": "삼양식품",
+     "sector": "Consumer Staples",
+     "rank": 2,
+     "metric": 0.39170536244663556,
+     "theme_conf": 0.8
+    },
+    {
+     "ticker": "012450.KS",
+     "name": "한화에어로스페이스",
+     "sector": "Industrials",
+     "rank": 3,
+     "metric": 0.37224071115501367,
+     "theme_conf": 0.55
+    },
+    {
+     "ticker": "042700.KS",
+     "name": "한미반도체",
+     "sector": "Information Technology",
+     "rank": 4,
+     "metric": 0.24050866780598412,
+     "theme_conf": 0.62
+    },
+    {
+     "ticker": "138040.KS",
+     "name": "메리츠금융지주",
+     "sector": "Financials",
+     "rank": 5,
+     "metric": 0.22194408171449737,
+     "theme_conf": 0.75
+    },
+    {
+     "ticker": "079550.KS",
+     "name": "LIG디펜스앤에어로스페이스",
+     "sector": "Industrials",
+     "rank": 6,
+     "metric": 0.20418232722727628,
+     "theme_conf": 0.5
+    },
+    {
+     "ticker": "021240.KS",
+     "name": "코웨이",
+     "sector": "Consumer Discretionary",
+     "rank": 7,
+     "metric": 0.1977266599446932,
+     "theme_conf": 0.75
+    },
+    {
+     "ticker": "005830.KS",
+     "name": "DB손해보험",
+     "sector": "Financials",
+     "rank": 8,
+     "metric": 0.19277589159719324,
+     "theme_conf": 0.8
+    },
+    {
+     "ticker": "028050.KS",
+     "name": "삼성E&A",
+     "sector": "Industrials",
+     "rank": 9,
+     "metric": 0.18588600441616368,
+     "theme_conf": 0.55
+    },
+    {
+     "ticker": "000270.KS",
+     "name": "기아",
+     "sector": "Consumer Discretionary",
+     "rank": 10,
+     "metric": 0.18118884505260405,
+     "theme_conf": 0.85
+    },
+    {
+     "ticker": "086280.KS",
+     "name": "현대글로비스",
+     "sector": "Industrials",
+     "rank": 11,
+     "metric": 0.14105457785484407,
+     "theme_conf": 0.6
+    },
+    {
+     "ticker": "010120.KS",
+     "name": "LS ELECTRIC",
+     "sector": "Industrials",
+     "rank": 12,
+     "metric": 0.12801160980560558,
+     "theme_conf": 0.7
+    },
+    {
+     "ticker": "000810.KS",
+     "name": "삼성화재",
+     "sector": "Financials",
+     "rank": 13,
+     "metric": 0.12508127391263682,
+     "theme_conf": 0.85
+    },
+    {
+     "ticker": "033780.KS",
+     "name": "KT&G",
+     "sector": "Consumer Staples",
+     "rank": 14,
+     "metric": 0.1240860530283313,
+     "theme_conf": 0.8
+    },
+    {
+     "ticker": "005380.KS",
+     "name": "현대차",
+     "sector": "Consumer Discretionary",
+     "rank": 15,
+     "metric": 0.11688957886327188,
+     "theme_conf": 0.85
+    },
+    {
+     "ticker": "271560.KS",
+     "name": "오리온",
+     "sector": "Consumer Staples",
+     "rank": 16,
+     "metric": 0.11507170435286374,
+     "theme_conf": 0.8
+    },
+    {
+     "ticker": "017670.KS",
+     "name": "SK텔레콤",
+     "sector": "Communication Services",
+     "rank": 17,
+     "metric": 0.1136904408346372,
+     "theme_conf": 0.75
+    },
+    {
+     "ticker": "161390.KS",
+     "name": "한국타이어앤테크놀로지",
+     "sector": "Consumer Discretionary",
+     "rank": 18,
+     "metric": 0.09803261172713193,
+     "theme_conf": 0.7
+    },
+    {
+     "ticker": "012330.KS",
+     "name": "현대모비스",
+     "sector": "Consumer Discretionary",
+     "rank": 19,
+     "metric": 0.09596793095725875,
+     "theme_conf": 0.65
+    },
+    {
+     "ticker": "005930.KS",
+     "name": "삼성전자",
+     "sector": "Information Technology",
+     "rank": 20,
+     "metric": 0.09227519265262647,
+     "theme_conf": 0.8
+    }
+   ],
+   "sector_counts": {
+    "Industrials": 6,
+    "Consumer Staples": 3,
+    "Information Technology": 2,
+    "Financials": 3,
+    "Consumer Discretionary": 5,
+    "Communication Services": 1
+   },
+   "infeasibility": null,
+   "warnings": []
+  },
+  "construction": {
+   "n_rebalance_dates": 7,
+   "fallback_dates": 7,
+   "dates_with_disclosures": 0,
+   "dates_with_news": 0,
+   "n_views": 0,
+   "views_by_evidence": {
+    "news": 0,
+    "disclosure": 0,
+    "mixed": 0
+   },
+   "start_bl_portfolios": 0,
+   "templates": [
+    "equal_weight",
+    "market_cap",
+    "inverse_volatility",
+    "min_variance"
+   ],
+   "max_tilt": null,
+   "forward_fallback": true,
+   "forward_reason": "뉴스 반영(use_news_tilt)이 꺼져 있어 기준 비중을 사용"
+  },
+  "backtest": {
+   "period": {
+    "start": "2022-05-27",
+    "end": "2025-05-27",
+    "as_of": "2022-05-27",
+    "trading_days": 778,
+    "window_days": 777,
+    "annualized_reliable": true
+   },
+   "engine": {
+    "commission_bps": 5,
+    "n_contributions": 36,
+    "contribution_usd": 794.35,
+    "risk_free_rate": 0.04,
+    "benchmarks": [
+     "069500.KS",
+     "QQQ"
+    ]
+   },
+   "benchmark": {
+    "id": "benchmark_069500.KS",
+    "cagr": -0.001913,
+    "mdd": -0.311075,
+    "final_value_usd": 34679.84,
+    "same_contributions": true
+   },
+   "metrics_present": {
+    "total_return": true,
+    "cagr": true,
+    "ann_vol": true,
+    "sharpe": true,
+    "max_drawdown": true,
+    "excess_cagr": true,
+    "final_value_usd": true,
+    "irr_annual": true
+   },
+   "portfolios": [
+    {
+     "id": "equal_weight",
+     "cagr": 0.053695,
+     "cagr_check": 0.053695,
+     "cagr_match": true,
+     "mdd": -0.241931,
+     "mdd_check": -0.241931,
+     "mdd_match": true,
+     "sharpe": 0.069702,
+     "final_value_usd": 38242.43
+    },
+    {
+     "id": "market_cap",
+     "cagr": 0.027829,
+     "cagr_check": 0.027829,
+     "cagr_match": true,
+     "mdd": -0.256658,
+     "mdd_check": -0.256659,
+     "mdd_match": true,
+     "sharpe": -0.060265,
+     "final_value_usd": 35698.83
+    },
+    {
+     "id": "inverse_volatility",
+     "cagr": 0.055634,
+     "cagr_check": 0.055634,
+     "cagr_match": true,
+     "mdd": -0.242773,
+     "mdd_check": -0.242773,
+     "mdd_match": true,
+     "sharpe": 0.079769,
+     "final_value_usd": 38506.93
+    },
+    {
+     "id": "min_variance",
+     "cagr": 0.061481,
+     "cagr_check": 0.061481,
+     "cagr_match": true,
+     "mdd": -0.248816,
+     "mdd_check": -0.248816,
+     "mdd_match": true,
+     "sharpe": 0.101007,
+     "final_value_usd": 39118.46
+    },
+    {
+     "id": "wf_equal_weight",
+     "cagr": 0.053695,
+     "cagr_check": 0.053695,
+     "cagr_match": true,
+     "mdd": -0.241931,
+     "mdd_check": -0.241931,
+     "mdd_match": true,
+     "sharpe": 0.069702,
+     "final_value_usd": 38242.43
+    },
+    {
+     "id": "wf_market_cap",
+     "cagr": 0.010463,
+     "cagr_check": 0.010463,
+     "cagr_match": true,
+     "mdd": -0.256449,
+     "mdd_check": -0.25645,
+     "mdd_match": true,
+     "sharpe": -0.145944,
+     "final_value_usd": 34485.54
+    },
+    {
+     "id": "wf_inverse_volatility",
+     "cagr": 0.055449,
+     "cagr_check": 0.055449,
+     "cagr_match": true,
+     "mdd": -0.242622,
+     "mdd_check": -0.242621,
+     "mdd_match": true,
+     "sharpe": 0.079428,
+     "final_value_usd": 38492.86
+    },
+    {
+     "id": "wf_min_variance",
+     "cagr": 0.060565,
+     "cagr_check": 0.060565,
+     "cagr_match": true,
+     "mdd": -0.234931,
+     "mdd_check": -0.234931,
+     "mdd_match": true,
+     "sharpe": 0.098482,
+     "final_value_usd": 38928.63
+    },
+    {
+     "id": "wf_bl_news",
+     "cagr": 0.053695,
+     "cagr_check": 0.053695,
+     "cagr_match": true,
+     "mdd": -0.241931,
+     "mdd_check": -0.241931,
+     "mdd_match": true,
+     "sharpe": 0.069702,
+     "final_value_usd": 38242.43
+    }
+   ],
+   "all_recomputed_match": true,
+   "validation": {
+    "summary": {
+     "n_pass": 0,
+     "n_warn": 0,
+     "n_fail": 9,
+     "alternative_note": null
+    },
+    "recommended": null,
+    "reason_ko": null,
+    "chosen": "cash_blend_equal_weight",
+    "alternatives": [
+     [
+      "cash_blend_equal_weight",
+      "warn"
+     ]
+    ],
+    "criteria": {
+     "max_drawdown": 0.135,
+     "input_max_drawdown": 0.15,
+     "target_annual_return": 0.12,
+     "horizon_years": 3.0,
+     "volatility_preference": "medium"
+    },
+    "chosen_checks": [
+     [
+      "R1",
+      "pass",
+      "최대낙폭 13.4% ≤ 허용 14% (같은 기간 069500.KS 매수보유 (동일 적립) 31.1%)"
+     ],
+     [
+      "R1b",
+      "info",
+      "비교지수보다 낙폭이 작음 (13.4% vs 31.1%)"
+     ],
+     [
+      "R2",
+      "warn",
+      "투자기간 3년 구간 22개 중 0%가 목표 연 12% 달성 (구간 수익률 중앙값 연 +3.4%, 최악 연 +1.6%; 전체 CAGR 3.0%)"
+     ],
+     [
+      "R3",
+      "pass",
+      "069500.KS 대비 초과 CAGR +3.2%"
+     ],
+     [
+      "R7",
+      "pass",
+      "연변동성 10.5% vs 비교지수 23.6%의 1.3배(중립 성향) = 30.6%"
+     ],
+     [
+      "R4b",
+      "info",
+      "리밸런싱 사이 종목 비중이 상한 안에 머묾"
+     ],
+     [
+      "R5b",
+      "info",
+      "리밸런싱 사이 섹터 비중이 상한 안에 머묾"
+     ]
+    ]
+   },
+   "data_quality": {
+    "expected_days": 778,
+    "usable": 22,
+    "excluded": {},
+    "filled": {}
+   }
+  },
+  "evidence": {
+   "as_of": "2025-05-27",
+   "index_by_kind": {
+    "news": 191,
+    "disclosure": 147,
+    "financial": 40,
+    "calc": 84
+   },
+   "after_as_of": [],
+   "cited_unique": 54,
+   "cited_total": 91,
+   "missing_citations": [],
+   "window_records_after_end": 0,
+   "n_news_windows": 1,
+   "price_series_last": "2025-05-27",
+   "price_series_within_as_of": true,
+   "doc_evidence": 54,
+   "doc_bytes": 293865,
+   "company_rationale": {
+    "n": 20,
+    "min_paragraphs": 2,
+    "all_cite": true,
+    "detail": [
+     [
+      "021240.KS",
+      2,
+      2
+     ],
+     [
+      "028050.KS",
+      2,
+      3
+     ],
+     [
+      "000270.KS",
+      2,
+      2
+     ],
+     [
+      "086280.KS",
+      2,
+      3
+     ],
+     [
+      "033780.KS",
+      2,
+      2
+     ],
+     [
+      "005380.KS",
+      2,
+      3
+     ],
+     [
+      "017670.KS",
+      2,
+      2
+     ],
+     [
+      "161390.KS",
+      2,
+      3
+     ],
+     [
+      "012330.KS",
+      2,
+      3
+     ],
+     [
+      "005930.KS",
+      2,
+      2
+     ],
+     [
+      "267260.KS",
+      2,
+      2
+     ],
+     [
+      "003230.KS",
+      2,
+      2
+     ],
+     [
+      "012450.KS",
+      2,
+      3
+     ],
+     [
+      "042700.KS",
+      2,
+      2
+     ],
+     [
+      "138040.KS",
+      2,
+      3
+     ],
+     [
+      "079550.KS",
+      2,
+      2
+     ],
+     [
+      "005830.KS",
+      2,
+      2
+     ],
+     [
+      "010120.KS",
+      2,
+      2
+     ],
+     [
+      "000810.KS",
+      2,
+      2
+     ],
+     [
+      "271560.KS",
+      2,
+      2
+     ]
+    ]
+   }
+  },
+  "report": {
+   "present": true,
+   "doc_version": 2,
+   "sections": [
+    "verdict",
+    "market",
+    "companies",
+    "construction",
+    "performance",
+    "assumptions",
+    "references"
+   ],
+   "seven_ok": true,
+   "items_12": [
+    {
+     "item": "요약",
+     "where": "summary 대시보드(판단·KPI) 또는 종합 판단 문단",
+     "ok": true
+    },
+    {
+     "item": "투자조건",
+     "where": "요청 내용·지켜야 하는 조건 표",
+     "ok": true
+    },
+    {
+     "item": "구성",
+     "where": "비중 규칙별 구성·배분 금액",
+     "ok": true
+    },
+    {
+     "item": "전략 규칙",
+     "where": "선정 지표 안내·비중 규칙·리밸런싱(백테스트 가정)",
+     "ok": true
+    },
+    {
+     "item": "구성 근거",
+     "where": "기업별 근거 문단(companies) + 뉴스 뷰 카드",
+     "ok": true
+    },
+    {
+     "item": "기업·시장 정보",
+     "where": "산업과 시장 분석 문단 + 섹터 노출",
+     "ok": true
+    },
+    {
+     "item": "성과",
+     "where": "누적 수익률·평가금액 차트, 비교표, 연도·월별",
+     "ok": true
+    },
+    {
+     "item": "위험",
+     "where": "낙폭 차트, 최대낙폭 KPI, 검증 규칙 표",
+     "ok": true
+    },
+    {
+     "item": "해석",
+     "where": "성과 해석·검증 해석 문단(14a)",
+     "ok": true
+    },
+    {
+     "item": "계산 조건",
+     "where": "계산 조건 표",
+     "ok": true
+    },
+    {
+     "item": "한계",
+     "where": "확인한 한계 카드 + 전제·재검토 문단",
+     "ok": true
+    },
+    {
+     "item": "분석 과정",
+     "where": "선정 과정 깔때기 + 실행 기록 표",
+     "ok": true
+    }
+   ],
+   "items_12_ok": 12,
+   "gate_errors": [],
+   "number_notes": 0,
+   "dev_term_notes": 0,
+   "n_paragraphs": 33,
+   "headline_ko": "추천 없음 — 현금 혼합안은 낙폭 기준을 지켰지만 목표수익에는 못 미쳤습니다.",
+   "verdict": "추천 없음 · 현금 혼합안 (현금 혼합안: 동일비중 × 53% + 현금 50%)",
+   "next_actions": 4,
+   "notices_user": [
+    "모든 포트폴리오가 필수 검증 규칙을 통과하지 못했습니다. 미통과 규칙: 최대낙폭(R1) 9개. 허용 낙폭·목표를 조정하거나 현금 혼합안을 검토해 보세요."
+   ],
+   "title_ko": "시장 전반의 재무 건전성·수익성 · 퀄리티 전략",
+   "glossary": 10
+  },
+  "execution": {
+   "status": "partial",
+   "error": null,
+   "elapsed_s": 182,
+   "steps": [
+    [
+     "01_request",
+     "SUCCESS",
+     9.38
+    ],
+    [
+     "02_intent",
+     "SUCCESS",
+     0.0
+    ],
+    [
+     "03_candidates",
+     "SUCCESS",
+     0.3
+    ],
+    [
+     "04_tagging",
+     "SUCCESS",
+     42.16
+    ],
+    [
+     "05_selection",
+     "SUCCESS",
+     0.14
+    ],
+    [
+     "06_explain",
+     "SUCCESS",
+     39.18
+    ],
+    [
+     "07_backtest_spec",
+     "SUCCESS",
+     0.46
+    ],
+    [
+     "10f_current",
+     "SUCCESS",
+     0.31
+    ],
+    [
+     "10_targets",
+     "SUCCESS",
+     0.25
+    ],
+    [
+     "10w_paths",
+     "SUCCESS",
+     0.73
+    ],
+    [
+     "11_backtest",
+     "SUCCESS",
+     2.28
+    ],
+    [
+     "12_validation",
+     "PARTIAL",
+     0.36
+    ],
+    [
+     "13_results",
+     "SUCCESS",
+     0.01
+    ],
+    [
+     "14_report",
+     "SUCCESS",
+     87.16
+    ]
+   ],
+   "steps_fully_recorded": "14/14",
+   "llm_calls": 6,
+   "llm_cost_usd": 0.026554,
+   "llm_cache_hits": 0,
+   "llm_calls_by_stage": {
+    "04_classify": 2,
+    "06_explain": 1,
+    "14c_market": 1,
+    "14a_interpret": 1,
+    "14b_narrate": 1
+   },
+   "truncated_calls": 0,
+   "notices_user": [
+    "모든 포트폴리오가 필수 검증 규칙을 통과하지 못했습니다. 미통과 규칙: 최대낙폭(R1) 9개. 허용 낙폭·목표를 조정하거나 현금 혼합안을 검토해 보세요."
+   ],
+   "n_warnings_all": 4,
+   "sources": [
+    "src_prices",
+    "src_fx",
+    "src_valuation",
+    "src_universe",
+    "src_news",
+    "src_pipeline",
+    "src_llm",
+    "src_disclosures"
+   ]
+  }
+ },
+ "scenario_097": {
+  "run_id": "run_20261025_184228_1537",
+  "scenario_file": "/Users/apple/dev/MyFinSight/backend/test_scenarios/scenario_097.json",
+  "idea": "국내 반도체와 IT 부품 기업 중 최근 주가 흐름이 강한 종목 위주로 5년 정도 투자하고 싶어요. 자산을 불리는 게 목표예요. 적당한 위험은 감수할 수 있어요. 경기에 너무 민감한 에너지 섹터는 빼 주세요. 주류, 도박·카지노 관련 회사는 원하지 않아요. 매달 조금씩 추가로 넣을 예정입니다.",
+  "conditions": {
+   "must_include": {
+    "requested": [],
+    "in_selection_now": [],
+    "in_backtest": [],
+    "ok": true
+   },
+   "exclude_tickers": {
+    "requested": [],
+    "leaked": [],
+    "ok": true
+   },
+   "exclude_themes": {
+    "requested": [
+     "alcohol",
+     "gambling"
+    ],
+    "rules_made": {
+     "energy": {
+      "gics": [
+       "10"
+      ],
+      "keywords": [
+       "energy",
+       "oil and gas",
+       "refining",
+       "petroleum",
+       "fuel"
+      ]
+     },
+     "alcohol": {
+      "gics": [
+       "30201020"
+      ],
+      "keywords": [
+       "alcohol",
+       "distilled spirits",
+       "liquor",
+       "wine",
+       "distiller"
+      ]
+     },
+     "gambling": {
+      "gics": [
+       "25301010"
+      ],
+      "keywords": [
+       "casino",
+       "gambling",
+       "gaming",
+       "wagering",
+       "betting"
+      ]
+     }
+    },
+    "ok": true,
+    "filtered_by_theme": {}
+   },
+   "universe": {
+    "requested": [
+     "KOSPI200"
+    ],
+    "selected_markets": [
+     "KR"
+    ],
+    "leaked_other_market": [],
+    "ok": true
+   },
+   "min_cash_ratio": {
+    "requested": 0.1,
+    "invested_by_template": {
+     "equal_weight": 0.9,
+     "market_cap": 0.9,
+     "inverse_volatility": 0.9,
+     "min_variance": 0.9
+    },
+    "ok": true
+   },
+   "caps": {
+    "stock": 0.15,
+    "sector": 0.9,
+    "integrity_all_pass": false
+   },
+   "rebalance": {
+    "rule": "매월 첫 거래일에 목표 비중으로 리밸런싱",
+    "n_rebalances": 14
+   },
+   "as_of": {
+    "requested": "2026-10-08",
+    "used": "2026-10-08",
+    "ok": true,
+    "derive_warnings": []
+   },
+   "backtest_window": {
+    "start": "2023-10-08",
+    "end": "2026-10-08",
+    "years_requested": null,
+    "trading_days": 274
+   },
+   "template": {
+    "requested": "momentum",
+    "metric_used": "return_12m_1m"
+   },
+   "n_selected": {
+    "target": 15,
+    "min": 12,
+    "selected_now": 7,
+    "backtest": 7
+   }
+  },
+  "dialog": {
+   "n_questions": 1,
+   "max_questions": 5,
+   "questions": [
+    {
+     "seq": 1,
+     "field": "constraints.max_weight_per_sector",
+     "kind": "conflict",
+     "question_ko": "이 아이디어의 테마는 '정보기술' 한 섹터에 몰려 있습니다. 지금 섹터당 상한이 70%라 투자금의 20%가 현금으로 남게 됩니다. 어떻게 할까요?",
+     "options": [
+      "이번 분석에서는 섹터 상한을 풀어 전액 투자 (90%)",
+      "프로필대로 70% 유지 (나머지 20%는 현금)"
+     ],
+     "answer": "이번 분석에서는 섹터 상한을 풀어 전액 투자 (90%)",
+     "skipped": false
+    }
+   ],
+   "overrides": {
+    "horizon.start_date": "2026-10-08",
+    "constraints.max_weight_per_sector": 0.9
+   },
+   "clarifications": [],
+   "conflicts": [],
+   "summary_ko": "KOSPI200에서 국내 반도체 및 IT 부품 기업 중 최근 주가 흐름이 강한 종목을 중심으로 5년간 자산 증식을 추구합니다. 에너지 섹터와 주류·도박 관련 기업은 제외하며, 섹터별 비중 상한은 90%로 설정합니다.",
+   "themes": [
+    {
+     "id": "semiconductors",
+     "label_ko": "반도체",
+     "gics": [
+      "453010"
+     ],
+     "keywords": [
+      "semiconductor",
+      "chip",
+      "wafer",
+      "foundry",
+      "memory chip",
+      "dram",
+      "nand flash",
+      "semiconductor equipment"
+     ]
+    },
+    {
+     "id": "it_components",
+     "label_ko": "IT 전자 부품",
+     "gics": [
+      "45203015"
+     ],
+     "keywords": [
+      "electronic components",
+      "printed circuit board",
+      "pcb",
+      "multilayer ceramic capacitor",
+      "mlcc",
+      "camera module",
+      "optical module",
+      "connector"
+     ]
+    }
+   ],
+   "explanation_level": "intermediate",
+   "effective_max_drawdown": 0.25
+  },
+  "selection": {
+   "n_matched": 12,
+   "n_candidates": 10,
+   "by_rule": {
+    "gics_match": 11,
+    "example_match": 3,
+    "keyword_match": 12
+   },
+   "n_tag_passed": 7,
+   "n_with_metric": 7,
+   "n_selected": 7,
+   "selected": [
+    {
+     "ticker": "009150.KS",
+     "name": "삼성전기",
+     "sector": "Information Technology",
+     "rank": 1,
+     "metric": 5.960764118905686,
+     "theme_conf": 0.95
+    },
+    {
+     "ticker": "000660.KS",
+     "name": "SK하이닉스",
+     "sector": "Information Technology",
+     "rank": 2,
+     "metric": 3.6156394402934913,
+     "theme_conf": 0.99
+    },
+    {
+     "ticker": "011070.KS",
+     "name": "LG이노텍",
+     "sector": "Information Technology",
+     "rank": 3,
+     "metric": 2.2159091839638863,
+     "theme_conf": 0.6
+    },
+    {
+     "ticker": "042700.KS",
+     "name": "한미반도체",
+     "sector": "Information Technology",
+     "rank": 4,
+     "metric": 1.3032662851539905,
+     "theme_conf": 0.99
+    },
+    {
+     "ticker": "000990.KS",
+     "name": "DB하이텍",
+     "sector": "Information Technology",
+     "rank": 5,
+     "metric": 0.540056859244852,
+     "theme_conf": 0.99
+    },
+    {
+     "ticker": "007660.KS",
+     "name": "이수페타시스",
+     "sector": "Information Technology",
+     "rank": 6,
+     "metric": 0.39990983747290154,
+     "theme_conf": 0.95
+    },
+    {
+     "ticker": "034220.KS",
+     "name": "LG디스플레이",
+     "sector": "Information Technology",
+     "rank": 7,
+     "metric": -0.29227500640455795,
+     "theme_conf": 0.9
+    }
+   ],
+   "sector_counts": {
+    "Information Technology": 7
+   },
+   "infeasibility": null,
+   "warnings": [
+    "only 7 tickers have return_12m_1m; target 15 -> selecting 7",
+    "below num_holdings.min=12 -> validation stage should fail this run",
+    "selected 7 < n=12: not enough passed tickers"
+   ]
+  },
+  "construction": {
+   "n_rebalance_dates": 14,
+   "fallback_dates": 0,
+   "dates_with_disclosures": 14,
+   "dates_with_news": 14,
+   "n_views": 55,
+   "views_by_evidence": {
+    "news": 38,
+    "disclosure": 0,
+    "mixed": 17
+   },
+   "start_bl_portfolios": 5,
+   "templates": [
+    "equal_weight",
+    "market_cap",
+    "inverse_volatility",
+    "min_variance"
+   ],
+   "max_tilt": 0.05,
+   "forward_fallback": false,
+   "forward_reason": null
+  },
+  "backtest": {
+   "period": {
+    "start": "2025-09-16",
+    "end": "2026-10-08",
+    "as_of": "2025-09-16",
+    "trading_days": 274,
+    "window_days": 273,
+    "annualized_reliable": true
+   },
+   "engine": {
+    "commission_bps": 5,
+    "n_contributions": 12,
+    "contribution_usd": 216.6,
+    "risk_free_rate": 0.04,
+    "benchmarks": [
+     "069500.KS",
+     "QQQ"
+    ]
+   },
+   "benchmark": {
+    "id": "benchmark_069500.KS",
+    "cagr": 1.180293,
+    "mdd": -0.371588,
+    "final_value_usd": 171502.69,
+    "same_contributions": true
+   },
+   "metrics_present": {
+    "total_return": true,
+    "cagr": true,
+    "ann_vol": true,
+    "sharpe": true,
+    "max_drawdown": true,
+    "excess_cagr": true,
+    "final_value_usd": true,
+    "irr_annual": true
+   },
+   "portfolios": [
+    {
+     "id": "bl_01",
+     "cagr": 1.858813,
+     "cagr_check": 1.858813,
+     "cagr_match": true,
+     "mdd": -0.457758,
+     "mdd_check": -0.457758,
+     "mdd_match": true,
+     "sharpe": 2.965279,
+     "final_value_usd": 229571.19
+    },
+    {
+     "id": "bl_02",
+     "cagr": 2.01289,
+     "cagr_check": 2.01289,
+     "cagr_match": true,
+     "mdd": -0.460695,
+     "mdd_check": -0.460695,
+     "mdd_match": true,
+     "sharpe": 3.173783,
+     "final_value_usd": 242883.73
+    },
+    {
+     "id": "bl_03",
+     "cagr": 1.962357,
+     "cagr_check": 1.962357,
+     "cagr_match": true,
+     "mdd": -0.457811,
+     "mdd_check": -0.457811,
+     "mdd_match": true,
+     "sharpe": 3.096633,
+     "final_value_usd": 238523.92
+    },
+    {
+     "id": "bl_04",
+     "cagr": 1.825413,
+     "cagr_check": 1.825413,
+     "cagr_match": true,
+     "mdd": -0.445543,
+     "mdd_check": -0.445543,
+     "mdd_match": true,
+     "sharpe": 2.900823,
+     "final_value_usd": 226682.44
+    },
+    {
+     "id": "bl_05",
+     "cagr": 1.913117,
+     "cagr_check": 1.913117,
+     "cagr_match": true,
+     "mdd": -0.455784,
+     "mdd_check": -0.455784,
+     "mdd_match": true,
+     "sharpe": 3.045765,
+     "final_value_usd": 234253.18
+    },
+    {
+     "id": "equal_weight",
+     "cagr": 1.889165,
+     "cagr_check": 1.889165,
+     "cagr_match": true,
+     "mdd": -0.468605,
+     "mdd_check": -0.468605,
+     "mdd_match": true,
+     "sharpe": 3.003147,
+     "final_value_usd": 232207.29
+    },
+    {
+     "id": "market_cap",
+     "cagr": 1.891755,
+     "cagr_check": 1.891755,
+     "cagr_match": true,
+     "mdd": -0.4511,
+     "mdd_check": -0.4511,
+     "mdd_match": true,
+     "sharpe": 2.998616,
+     "final_value_usd": 232395.03
+    },
+    {
+     "id": "inverse_volatility",
+     "cagr": 1.939528,
+     "cagr_check": 1.939527,
+     "cagr_match": true,
+     "mdd": -0.472723,
+     "mdd_check": -0.472723,
+     "mdd_match": true,
+     "sharpe": 3.114709,
+     "final_value_usd": 236589.31
+    },
+    {
+     "id": "min_variance",
+     "cagr": 2.033647,
+     "cagr_check": 2.033648,
+     "cagr_match": true,
+     "mdd": -0.469846,
+     "mdd_check": -0.469846,
+     "mdd_match": true,
+     "sharpe": 3.247773,
+     "final_value_usd": 244743.57
+    },
+    {
+     "id": "wf_equal_weight",
+     "cagr": 1.857277,
+     "cagr_check": 1.857277,
+     "cagr_match": true,
+     "mdd": -0.46814,
+     "mdd_check": -0.46814,
+     "mdd_match": true,
+     "sharpe": 2.94111,
+     "final_value_usd": 229449.08
+    },
+    {
+     "id": "wf_market_cap",
+     "cagr": 1.986613,
+     "cagr_check": 1.986613,
+     "cagr_match": true,
+     "mdd": -0.468253,
+     "mdd_check": -0.468253,
+     "mdd_match": true,
+     "sharpe": 3.106296,
+     "final_value_usd": 240617.34
+    },
+    {
+     "id": "wf_inverse_volatility",
+     "cagr": 1.935413,
+     "cagr_check": 1.935413,
+     "cagr_match": true,
+     "mdd": -0.470799,
+     "mdd_check": -0.470799,
+     "mdd_match": true,
+     "sharpe": 3.100912,
+     "final_value_usd": 236247.17
+    },
+    {
+     "id": "wf_min_variance",
+     "cagr": 2.023187,
+     "cagr_check": 2.023187,
+     "cagr_match": true,
+     "mdd": -0.472072,
+     "mdd_check": -0.472072,
+     "mdd_match": true,
+     "sharpe": 3.225427,
+     "final_value_usd": 243832.91
+    },
+    {
+     "id": "wf_bl_news",
+     "cagr": 2.13497,
+     "cagr_check": 2.13497,
+     "cagr_match": true,
+     "mdd": -0.472082,
+     "mdd_check": -0.472082,
+     "mdd_match": true,
+     "sharpe": 3.365381,
+     "final_value_usd": 253520.92
+    }
+   ],
+   "all_recomputed_match": true,
+   "validation": {
+    "summary": {
+     "n_pass": 0,
+     "n_warn": 0,
+     "n_fail": 14,
+     "alternative_note": null
+    },
+    "recommended": null,
+    "reason_ko": null,
+    "chosen": "cash_blend_market_cap",
+    "alternatives": [
+     [
+      "cash_blend_market_cap",
+      "warn"
+     ]
+    ],
+    "criteria": {
+     "max_drawdown": 0.25,
+     "input_max_drawdown": 0.25,
+     "target_annual_return": 0.12,
+     "horizon_years": 5.0,
+     "volatility_preference": "medium"
+    },
+    "chosen_checks": [
+     [
+      "R1",
+      "pass",
+      "최대낙폭 23.8% ≤ 허용 25% (같은 기간 069500.KS 매수보유 (동일 적립) 37.2%)"
+     ],
+     [
+      "R1b",
+      "info",
+      "비교지수보다 낙폭이 작음 (23.8% vs 37.2%)"
+     ],
+     [
+      "R2",
+      "pass",
+      "CAGR 83.3% vs 목표 12% (백테스트 창이 투자기간 5년보다 짧아 전체 CAGR 로 판정)"
+     ],
+     [
+      "R3",
+      "warn",
+      "069500.KS 대비 초과 CAGR -34.8%"
+     ],
+     [
+      "R7",
+      "pass",
+      "연변동성 29.9% vs 비교지수 61.9%의 1.3배(중립 성향) = 80.5%"
+     ],
+     [
+      "R4b",
+      "info",
+      "리밸런싱 사이 종목 비중이 상한 안에 머묾"
+     ],
+     [
+      "R5b",
+      "info",
+      "리밸런싱 사이 섹터 비중이 상한 안에 머묾"
+     ]
+    ]
+   },
+   "data_quality": {
+    "expected_days": 274,
+    "usable": 9,
+    "excluded": {},
+    "filled": {}
+   }
+  },
+  "evidence": {
+   "as_of": "2026-10-08",
+   "index_by_kind": {
+    "news": 1027,
+    "disclosure": 150,
+    "financial": 14,
+    "calc": 119
+   },
+   "after_as_of": [],
+   "cited_unique": 24,
+   "cited_total": 55,
+   "missing_citations": [],
+   "window_records_after_end": 0,
+   "n_news_windows": 17,
+   "price_series_last": "2026-10-08",
+   "price_series_within_as_of": true,
+   "doc_evidence": 220,
+   "doc_bytes": 395286,
+   "company_rationale": {
+    "n": 7,
+    "min_paragraphs": 2,
+    "all_cite": true,
+    "detail": [
+     [
+      "009150.KS",
+      2,
+      2
+     ],
+     [
+      "000660.KS",
+      2,
+      2
+     ],
+     [
+      "042700.KS",
+      2,
+      2
+     ],
+     [
+      "034220.KS",
+      2,
+      2
+     ],
+     [
+      "007660.KS",
+      2,
+      2
+     ],
+     [
+      "011070.KS",
+      2,
+      2
+     ],
+     [
+      "000990.KS",
+      2,
+      1
+     ]
+    ]
+   }
+  },
+  "report": {
+   "present": true,
+   "doc_version": 2,
+   "sections": [
+    "verdict",
+    "market",
+    "companies",
+    "construction",
+    "performance",
+    "assumptions",
+    "references"
+   ],
+   "seven_ok": true,
+   "items_12": [
+    {
+     "item": "요약",
+     "where": "summary 대시보드(판단·KPI) 또는 종합 판단 문단",
+     "ok": true
+    },
+    {
+     "item": "투자조건",
+     "where": "요청 내용·지켜야 하는 조건 표",
+     "ok": true
+    },
+    {
+     "item": "구성",
+     "where": "비중 규칙별 구성·배분 금액",
+     "ok": true
+    },
+    {
+     "item": "전략 규칙",
+     "where": "선정 지표 안내·비중 규칙·리밸런싱(백테스트 가정)",
+     "ok": true
+    },
+    {
+     "item": "구성 근거",
+     "where": "기업별 근거 문단(companies) + 뉴스 뷰 카드",
+     "ok": true
+    },
+    {
+     "item": "기업·시장 정보",
+     "where": "산업과 시장 분석 문단 + 섹터 노출",
+     "ok": true
+    },
+    {
+     "item": "성과",
+     "where": "누적 수익률·평가금액 차트, 비교표, 연도·월별",
+     "ok": true
+    },
+    {
+     "item": "위험",
+     "where": "낙폭 차트, 최대낙폭 KPI, 검증 규칙 표",
+     "ok": true
+    },
+    {
+     "item": "해석",
+     "where": "성과 해석·검증 해석 문단(14a)",
+     "ok": true
+    },
+    {
+     "item": "계산 조건",
+     "where": "계산 조건 표",
+     "ok": true
+    },
+    {
+     "item": "한계",
+     "where": "확인한 한계 카드 + 전제·재검토 문단",
+     "ok": true
+    },
+    {
+     "item": "분석 과정",
+     "where": "선정 과정 깔때기 + 실행 기록 표",
+     "ok": true
+    }
+   ],
+   "items_12_ok": 12,
+   "gate_errors": [],
+   "number_notes": 0,
+   "dev_term_notes": 0,
+   "n_paragraphs": 32,
+   "headline_ko": "추천 없음: 현금 혼합안도 비교지수 수익률에 못 미쳤습니다.",
+   "verdict": "추천 없음 · 현금 혼합안 (현금 혼합안: 시가총액비중 × 50% + 현금 55%)",
+   "next_actions": 4,
+   "notices_user": [
+    "테마 후보가 10개로 목표 종목 수 15개보다 적습니다. 테마를 넓히거나 목표 종목 수를 줄여 보세요.",
+    "선정 지표(모멘텀) 자료가 있는 종목이 7개로 목표 15개보다 적어 7개만 선정했습니다. 최소 종목 수에 못 미치면 검증에서 미통과가 됩니다.",
+    "백테스트 시작일 2023-10-10 에는 선정 지표 자료가 있는 종목이 최소 종목 수(12)보다 적어 시작을 2025-09-16 로 옮김 (24개월 뒤, 선정 7종목)",
+    "뉴스 뷰 비중 최적화가 수렴하지 않아 해당 시점에는 뷰를 반영하지 않고 기준 비중을 사용했습니다.",
+    "모든 포트폴리오가 필수 검증 규칙을 통과하지 못했습니다. 미통과 규칙: 최대낙폭(R1) 14개. 허용 낙폭·목표를 조정하거나 현금 혼합안을 검토해 보세요."
+   ],
+   "title_ko": "반도체 외 1 · 모멘텀 전략",
+   "glossary": 10
+  },
+  "execution": {
+   "status": "partial",
+   "error": null,
+   "elapsed_s": 289,
+   "steps": [
+    [
+     "01_request",
+     "SUCCESS",
+     9.34
+    ],
+    [
+     "02_intent",
+     "SUCCESS",
+     0.0
+    ],
+    [
+     "03_candidates",
+     "PARTIAL",
+     0.16
+    ],
+    [
+     "04_tagging",
+     "SUCCESS",
+     14.36
+    ],
+    [
+     "05_selection",
+     "PARTIAL",
+     0.02
+    ],
+    [
+     "06_explain",
+     "SUCCESS",
+     22.95
+    ],
+    [
+     "07_backtest_spec",
+     "PARTIAL",
+     4.61
+    ],
+    [
+     "10f_current",
+     "SUCCESS",
+     51.05
+    ],
+    [
+     "10_targets",
+     "SUCCESS",
+     53.95
+    ],
+    [
+     "10w_paths",
+     "PARTIAL",
+     102.09
+    ],
+    [
+     "11_backtest",
+     "SUCCESS",
+     2.71
+    ],
+    [
+     "12_validation",
+     "PARTIAL",
+     0.25
+    ],
+    [
+     "13_results",
+     "SUCCESS",
+     0.02
+    ],
+    [
+     "14_report",
+     "SUCCESS",
+     109.29
+    ]
+   ],
+   "steps_fully_recorded": "14/14",
+   "llm_calls": 21,
+   "llm_cost_usd": 0.064963,
+   "llm_cache_hits": 0,
+   "llm_calls_by_stage": {
+    "04_classify": 1,
+    "06_explain": 1,
+    "09_views_news": 16,
+    "14c_market": 1,
+    "14a_interpret": 1,
+    "14b_narrate": 1
+   },
+   "truncated_calls": 0,
+   "notices_user": [
+    "테마 후보가 10개로 목표 종목 수 15개보다 적습니다. 테마를 넓히거나 목표 종목 수를 줄여 보세요.",
+    "선정 지표(모멘텀) 자료가 있는 종목이 7개로 목표 15개보다 적어 7개만 선정했습니다. 최소 종목 수에 못 미치면 검증에서 미통과가 됩니다.",
+    "백테스트 시작일 2023-10-10 에는 선정 지표 자료가 있는 종목이 최소 종목 수(12)보다 적어 시작을 2025-09-16 로 옮김 (24개월 뒤, 선정 7종목)",
+    "뉴스 뷰 비중 최적화가 수렴하지 않아 해당 시점에는 뷰를 반영하지 않고 기준 비중을 사용했습니다.",
+    "모든 포트폴리오가 필수 검증 규칙을 통과하지 못했습니다. 미통과 규칙: 최대낙폭(R1) 14개. 허용 낙폭·목표를 조정하거나 현금 혼합안을 검토해 보세요."
+   ],
+   "n_warnings_all": 16,
+   "sources": [
+    "src_prices",
+    "src_fx",
+    "src_valuation",
+    "src_universe",
+    "src_news",
+    "src_pipeline",
+    "src_llm",
+    "src_disclosures"
+   ]
+  }
+ },
+ "scenario_098": {
+  "run_id": "run_20261025_184759_13d4",
+  "scenario_file": "/Users/apple/dev/MyFinSight/backend/test_scenarios/scenario_098.json",
+  "idea": "국내 자동차와 부품 기업 중 실적 대비 주가가 싼 종목 위주로 2년 정도 투자하고 싶어요. 은퇴 자금으로 쓰려고 합니다. 크게 벌기보다 크게 잃지 않는 게 중요합니다. 현대차(005380)는 확신이 있어서 반드시 담고 싶어요. 삼성생명(032830), LG에너지솔루션(373220)은 지배구조가 마음에 안 들어서 담지 말아 주세요. 주류, 도박·카지노, 무기·방산 관련 회사는 원하지 않아요. 매달 조금씩 추가로 넣을 예정입니다.",
+  "conditions": {
+   "must_include": {
+    "requested": [
+     "005380.KS"
+    ],
+    "in_selection_now": [
+     "005380.KS"
+    ],
+    "in_backtest": [
+     "005380.KS"
+    ],
+    "ok": true
+   },
+   "exclude_tickers": {
+    "requested": [
+     "032830.KS",
+     "373220.KS"
+    ],
+    "leaked": [],
+    "ok": true
+   },
+   "exclude_themes": {
+    "requested": [
+     "alcohol",
+     "gambling",
+     "weapons"
+    ],
+    "rules_made": {
+     "alcohol": {
+      "gics": [
+       "30201020"
+      ],
+      "keywords": [
+       "alcohol",
+       "distillery",
+       "distiller",
+       "spirits",
+       "liquor"
+      ]
+     },
+     "gambling": {
+      "gics": [
+       "25301010"
+      ],
+      "keywords": [
+       "casino",
+       "gambling",
+       "gaming",
+       "sports betting",
+       "wagering"
+      ]
+     },
+     "weapons": {
+      "gics": [
+       "20101010"
+      ],
+      "keywords": [
+       "weapons",
+       "defense",
+       "military",
+       "missiles",
+       "ammunition"
+      ]
+     }
+    },
+    "ok": true,
+    "filtered_by_theme": {}
+   },
+   "universe": {
+    "requested": [
+     "KOSPI200"
+    ],
+    "selected_markets": [
+     "KR"
+    ],
+    "leaked_other_market": [],
+    "ok": true
+   },
+   "min_cash_ratio": {
+    "requested": 0.15,
+    "invested_by_template": {
+     "equal_weight": 0.4,
+     "market_cap": 0.4,
+     "inverse_volatility": 0.4,
+     "min_variance": 0.4
+    },
+    "ok": true
+   },
+   "caps": {
+    "stock": 0.1,
+    "sector": 0.85,
+    "integrity_all_pass": true
+   },
+   "rebalance": {
+    "rule": "분기마다 첫 거래일에 목표 비중으로 리밸런싱",
+    "n_rebalances": 5
+   },
+   "as_of": {
+    "requested": "2025-12-23",
+    "used": "2025-12-23",
+    "ok": true,
+    "derive_warnings": []
+   },
+   "backtest_window": {
+    "start": "2022-12-23",
+    "end": "2025-12-23",
+    "years_requested": null,
+    "trading_days": 274
+   },
+   "template": {
+    "requested": "low_per",
+    "metric_used": "pe_ttm"
+   },
+   "n_selected": {
+    "target": 15,
+    "min": 12,
+    "selected_now": 4,
+    "backtest": 4
+   }
+  },
+  "dialog": {
+   "n_questions": 1,
+   "max_questions": 5,
+   "questions": [
+    {
+     "seq": 1,
+     "field": "constraints.max_weight_per_sector",
+     "kind": "conflict",
+     "question_ko": "이 아이디어의 테마는 '경기소비재' 한 섹터에 몰려 있습니다. 지금 섹터당 상한이 50%라 투자금의 35%가 현금으로 남게 됩니다. 어떻게 할까요?",
+     "options": [
+      "이번 분석에서는 섹터 상한을 풀어 전액 투자 (85%)",
+      "프로필대로 50% 유지 (나머지 35%는 현금)"
+     ],
+     "answer": "이번 분석에서는 섹터 상한을 풀어 전액 투자 (85%)",
+     "skipped": false
+    }
+   ],
+   "overrides": {
+    "horizon.start_date": "2025-12-23",
+    "constraints.max_weight_per_sector": 0.85
+   },
+   "clarifications": [],
+   "conflicts": [],
+   "summary_ko": "KOSPI200에서 자동차 및 부품 기업 중 실적 대비 저평가된 종목을 중심으로 2년간 투자합니다. 은퇴 자금으로 큰 손실을 피하는 데 중점을 두며, 현대차를 반드시 포함하고 삼성생명과 LG에너지솔루션은 제외합니다. 섹터별 최대 비중은 85%로 설정하고 최소 현금 비율 15%는 유지합니다.",
+   "themes": [
+    {
+     "id": "automobiles_and_components",
+     "label_ko": "자동차 및 자동차 부품",
+     "gics": [
+      "2510",
+      "251010",
+      "25101010",
+      "25101020",
+      "251020",
+      "25102010"
+     ],
+     "keywords": [
+      "automotive",
+      "automobile",
+      "auto parts",
+      "automotive components",
+      "vehicle components",
+      "powertrain",
+      "engine parts",
+      "transmission"
+     ]
+    }
+   ],
+   "explanation_level": "intermediate",
+   "effective_max_drawdown": 0.15
+  },
+  "selection": {
+   "n_matched": 15,
+   "n_candidates": 4,
+   "by_rule": {
+    "gics_match": 11,
+    "keyword_match": 15,
+    "must_include": 1,
+    "example_match": 1
+   },
+   "n_tag_passed": 4,
+   "n_with_metric": 4,
+   "n_selected": 4,
+   "selected": [
+    {
+     "ticker": "005380.KS",
+     "name": "현대차",
+     "sector": "Consumer Discretionary",
+     "rank": 1,
+     "metric": 4.643486782428049,
+     "theme_conf": 0.95
+    },
+    {
+     "ticker": "000270.KS",
+     "name": "기아",
+     "sector": "Consumer Discretionary",
+     "rank": 2,
+     "metric": 5.286570436131623,
+     "theme_conf": 0.95
+    },
+    {
+     "ticker": "161390.KS",
+     "name": "한국타이어앤테크놀로지",
+     "sector": "Consumer Discretionary",
+     "rank": 3,
+     "metric": 6.512553584819133,
+     "theme_conf": 0.95
+    },
+    {
+     "ticker": "012330.KS",
+     "name": "현대모비스",
+     "sector": "Consumer Discretionary",
+     "rank": 4,
+     "metric": 7.964879172207986,
+     "theme_conf": 0.95
+    }
+   ],
+   "sector_counts": {
+    "Consumer Discretionary": 4
+   },
+   "infeasibility": {
+    "reason": "weight_capacity",
+    "target": 15,
+    "n_selected": 4,
+    "capacity": 0.4,
+    "required": 0.85,
+    "sector_cap": 0.85,
+    "stock_cap": 0.1,
+    "sector_counts": {
+     "Consumer Discretionary": 4
+    },
+    "cap_needed_for_target": null,
+    "max_feasible_n": 4,
+    "options_ko": [
+     "섹터 상한 완화로도 해결 불가",
+     "종목당 상한을 올리기",
+     "테마를 넓혀 다른 섹터 후보를 늘리기"
+    ]
+   },
+   "warnings": [
+    "only 4 tickers have pe_ttm; target 15 -> selecting 4",
+    "below num_holdings.min=12 -> validation stage should fail this run",
+    "weight capacity 0.40 < 0.85: caps cannot absorb the capital with these sectors (cap needed None)",
+    "selected 4 < n=12: not enough passed tickers"
+   ]
+  },
+  "construction": {
+   "n_rebalance_dates": 5,
+   "fallback_dates": 5,
+   "dates_with_disclosures": 0,
+   "dates_with_news": 0,
+   "n_views": 0,
+   "views_by_evidence": {
+    "news": 0,
+    "disclosure": 0,
+    "mixed": 0
+   },
+   "start_bl_portfolios": 0,
+   "templates": [
+    "equal_weight",
+    "market_cap",
+    "inverse_volatility",
+    "min_variance"
+   ],
+   "max_tilt": null,
+   "forward_fallback": true,
+   "forward_reason": "뉴스 반영(use_news_tilt)이 꺼져 있어 기준 비중을 사용"
+  },
+  "backtest": {
+   "period": {
+    "start": "2024-12-03",
+    "end": "2025-12-23",
+    "as_of": "2024-12-03",
+    "trading_days": 274,
+    "window_days": 273,
+    "annualized_reliable": true
+   },
+   "engine": {
+    "commission_bps": 5,
+    "n_contributions": 11,
+    "contribution_usd": 713.75,
+    "risk_free_rate": 0.04,
+    "benchmarks": [
+     "069500.KS",
+     "QQQ"
+    ]
+   },
+   "benchmark": {
+    "id": "benchmark_069500.KS",
+    "cagr": 0.644086,
+    "mdd": -0.155709,
+    "final_value_usd": 255472.08,
+    "same_contributions": true
+   },
+   "metrics_present": {
+    "total_return": true,
+    "cagr": true,
+    "ann_vol": true,
+    "sharpe": true,
+    "max_drawdown": true,
+    "excess_cagr": true,
+    "final_value_usd": true,
+    "irr_annual": true
+   },
+   "portfolios": [
+    {
+     "id": "equal_weight",
+     "cagr": 0.146126,
+     "cagr_check": 0.146126,
+     "cagr_match": true,
+     "mdd": -0.073871,
+     "mdd_check": -0.073872,
+     "mdd_match": true,
+     "sharpe": 0.847225,
+     "final_value_usd": 174196.73
+    },
+    {
+     "id": "market_cap",
+     "cagr": 0.146126,
+     "cagr_check": 0.146125,
+     "cagr_match": true,
+     "mdd": -0.073871,
+     "mdd_check": -0.073871,
+     "mdd_match": true,
+     "sharpe": 0.847223,
+     "final_value_usd": 174196.64
+    },
+    {
+     "id": "inverse_volatility",
+     "cagr": 0.146126,
+     "cagr_check": 0.146125,
+     "cagr_match": true,
+     "mdd": -0.073871,
+     "mdd_check": -0.073871,
+     "mdd_match": true,
+     "sharpe": 0.847223,
+     "final_value_usd": 174196.64
+    },
+    {
+     "id": "min_variance",
+     "cagr": 0.146126,
+     "cagr_check": 0.146126,
+     "cagr_match": true,
+     "mdd": -0.073871,
+     "mdd_check": -0.073871,
+     "mdd_match": true,
+     "sharpe": 0.847225,
+     "final_value_usd": 174196.69
+    },
+    {
+     "id": "wf_equal_weight",
+     "cagr": 0.146126,
+     "cagr_check": 0.146126,
+     "cagr_match": true,
+     "mdd": -0.073871,
+     "mdd_check": -0.073872,
+     "mdd_match": true,
+     "sharpe": 0.847225,
+     "final_value_usd": 174196.73
+    },
+    {
+     "id": "wf_market_cap",
+     "cagr": 0.146126,
+     "cagr_check": 0.146125,
+     "cagr_match": true,
+     "mdd": -0.073871,
+     "mdd_check": -0.073871,
+     "mdd_match": true,
+     "sharpe": 0.847223,
+     "final_value_usd": 174196.64
+    },
+    {
+     "id": "wf_inverse_volatility",
+     "cagr": 0.146126,
+     "cagr_check": 0.146125,
+     "cagr_match": true,
+     "mdd": -0.073871,
+     "mdd_check": -0.073871,
+     "mdd_match": true,
+     "sharpe": 0.847223,
+     "final_value_usd": 174196.64
+    },
+    {
+     "id": "wf_min_variance",
+     "cagr": 0.146126,
+     "cagr_check": 0.146126,
+     "cagr_match": true,
+     "mdd": -0.073871,
+     "mdd_check": -0.073871,
+     "mdd_match": true,
+     "sharpe": 0.847225,
+     "final_value_usd": 174196.69
+    },
+    {
+     "id": "wf_bl_news",
+     "cagr": 0.146126,
+     "cagr_check": 0.146126,
+     "cagr_match": true,
+     "mdd": -0.073871,
+     "mdd_check": -0.073871,
+     "mdd_match": true,
+     "sharpe": 0.847225,
+     "final_value_usd": 174196.69
+    }
+   ],
+   "all_recomputed_match": true,
+   "validation": {
+    "summary": {
+     "n_pass": 0,
+     "n_warn": 9,
+     "n_fail": 0,
+     "alternative_note": "chosen portfolio already within the drawdown tolerance"
+    },
+    "recommended": "equal_weight",
+    "reason_ko": "허용 낙폭을 지킨 포트폴리오 중 목표수익·변동성 조건을 만족하고 Sharpe 가 가장 높음(0.85). CAGR 14.6%, 최대낙폭 -7.4% (허용 15% 대비 여유 7.6%p), 최종 평가금액 174,197 USD.",
+    "chosen": "equal_weight",
+    "alternatives": [],
+    "criteria": {
+     "max_drawdown": 0.15,
+     "input_max_drawdown": 0.15,
+     "target_annual_return": 0.07,
+     "horizon_years": 2.0,
+     "volatility_preference": "low"
+    },
+    "chosen_checks": [
+     [
+      "R1",
+      "pass",
+      "최대낙폭 7.4% ≤ 허용 15% (같은 기간 069500.KS 매수보유 (동일 적립) 15.6%)"
+     ],
+     [
+      "R1b",
+      "info",
+      "비교지수보다 낙폭이 작음 (7.4% vs 15.6%)"
+     ],
+     [
+      "R2",
+      "pass",
+      "CAGR 14.6% vs 목표 7% (백테스트 창이 투자기간 2년보다 짧아 전체 CAGR 로 판정)"
+     ],
+     [
+      "R3",
+      "warn",
+      "069500.KS 대비 초과 CAGR -49.8%"
+     ],
+     [
+      "R7",
+      "pass",
+      "연변동성 12.5% vs 비교지수 26.2%의 1배(안정 성향) = 26.2%"
+     ],
+     [
+      "R4b",
+      "info",
+      "리밸런싱 사이에 종목 비중이 상한의 1.25배를 넘은 적 있음 (161390.KS) — 리밸런싱 주기를 줄이면 완화됩니다"
+     ],
+     [
+      "R5b",
+      "info",
+      "리밸런싱 사이 섹터 비중이 상한 안에 머묾"
+     ],
+     [
+      "R9",
+      "info",
+      "투자 40%, 현금 60% — 종목·섹터 상한 때문에 돈을 다 넣지 못했습니다. 상한을 풀거나 테마를 넓히면 투자 비율이 올라갑니다"
+     ]
+    ]
+   },
+   "data_quality": {
+    "expected_days": 274,
+    "usable": 6,
+    "excluded": {},
+    "filled": {}
+   }
+  },
+  "evidence": {
+   "as_of": "2025-12-23",
+   "index_by_kind": {
+    "news": 40,
+    "disclosure": 32,
+    "financial": 8,
+    "calc": 77
+   },
+   "after_as_of": [],
+   "cited_unique": 21,
+   "cited_total": 50,
+   "missing_citations": [],
+   "window_records_after_end": 0,
+   "n_news_windows": 1,
+   "price_series_last": "2025-12-23",
+   "price_series_within_as_of": true,
+   "doc_evidence": 21,
+   "doc_bytes": 185668,
+   "company_rationale": {
+    "n": 4,
+    "min_paragraphs": 2,
+    "all_cite": true,
+    "detail": [
+     [
+      "005380.KS",
+      2,
+      2
+     ],
+     [
+      "000270.KS",
+      2,
+      2
+     ],
+     [
+      "161390.KS",
+      2,
+      2
+     ],
+     [
+      "012330.KS",
+      2,
+      2
+     ]
+    ]
+   }
+  },
+  "report": {
+   "present": true,
+   "doc_version": 2,
+   "sections": [
+    "verdict",
+    "market",
+    "companies",
+    "construction",
+    "performance",
+    "assumptions",
+    "references"
+   ],
+   "seven_ok": true,
+   "items_12": [
+    {
+     "item": "요약",
+     "where": "summary 대시보드(판단·KPI) 또는 종합 판단 문단",
+     "ok": true
+    },
+    {
+     "item": "투자조건",
+     "where": "요청 내용·지켜야 하는 조건 표",
+     "ok": true
+    },
+    {
+     "item": "구성",
+     "where": "비중 규칙별 구성·배분 금액",
+     "ok": true
+    },
+    {
+     "item": "전략 규칙",
+     "where": "선정 지표 안내·비중 규칙·리밸런싱(백테스트 가정)",
+     "ok": true
+    },
+    {
+     "item": "구성 근거",
+     "where": "기업별 근거 문단(companies) + 뉴스 뷰 카드",
+     "ok": true
+    },
+    {
+     "item": "기업·시장 정보",
+     "where": "산업과 시장 분석 문단 + 섹터 노출",
+     "ok": true
+    },
+    {
+     "item": "성과",
+     "where": "누적 수익률·평가금액 차트, 비교표, 연도·월별",
+     "ok": true
+    },
+    {
+     "item": "위험",
+     "where": "낙폭 차트, 최대낙폭 KPI, 검증 규칙 표",
+     "ok": true
+    },
+    {
+     "item": "해석",
+     "where": "성과 해석·검증 해석 문단(14a)",
+     "ok": true
+    },
+    {
+     "item": "계산 조건",
+     "where": "계산 조건 표",
+     "ok": true
+    },
+    {
+     "item": "한계",
+     "where": "확인한 한계 카드 + 전제·재검토 문단",
+     "ok": true
+    },
+    {
+     "item": "분석 과정",
+     "where": "선정 과정 깔때기 + 실행 기록 표",
+     "ok": true
+    }
+   ],
+   "items_12_ok": 12,
+   "gate_errors": [],
+   "number_notes": 0,
+   "dev_term_notes": 0,
+   "n_paragraphs": 32,
+   "headline_ko": "동일비중은 조건부 추천: 낙폭은 낮았지만 비교지수에 뒤졌습니다.",
+   "verdict": "추천 (주의 있음): 동일비중",
+   "next_actions": 5,
+   "notices_user": [
+    "테마 후보가 4개로 목표 종목 수 15개보다 적습니다. 테마를 넓히거나 목표 종목 수를 줄여 보세요.",
+    "선정 지표(PER) 자료가 있는 종목이 4개로 목표 15개보다 적어 4개만 선정했습니다. 최소 종목 수에 못 미치면 검증에서 미통과가 됩니다.",
+    "선정 종목의 섹터 구성으로는 종목·섹터 상한 안에서 투자금 전체를 배분할 수 없어 일부(45%)를 현금으로 둡니다. 섹터 상한을 올리거나 테마를 넓히면 해소됩니다.",
+    "백테스트 시작일 2022-12-23 에는 선정 지표 자료가 있는 종목이 최소 종목 수(12)보다 적어 시작을 2024-12-03 로 옮김 (24개월 뒤, 선정 4종목)"
+   ],
+   "title_ko": "자동차 및 자동차 부품 · 저PER 전략",
+   "glossary": 10
+  },
+  "execution": {
+   "status": "partial",
+   "error": null,
+   "elapsed_s": 112,
+   "steps": [
+    [
+     "01_request",
+     "SUCCESS",
+     10.11
+    ],
+    [
+     "02_intent",
+     "SUCCESS",
+     0.0
+    ],
+    [
+     "03_candidates",
+     "PARTIAL",
+     0.14
+    ],
+    [
+     "04_tagging",
+     "SUCCESS",
+     3.53
+    ],
+    [
+     "05_selection",
+     "PARTIAL",
+     0.08
+    ],
+    [
+     "06_explain",
+     "SUCCESS",
+     21.99
+    ],
+    [
+     "07_backtest_spec",
+     "PARTIAL",
+     5.74
+    ],
+    [
+     "10f_current",
+     "PARTIAL",
+     0.06
+    ],
+    [
+     "10_targets",
+     "PARTIAL",
+     0.06
+    ],
+    [
+     "10w_paths",
+     "PARTIAL",
+     0.21
+    ],
+    [
+     "11_backtest",
+     "SUCCESS",
+     0.92
+    ],
+    [
+     "12_validation",
+     "SUCCESS",
+     0.0
+    ],
+    [
+     "13_results",
+     "SUCCESS",
+     0.0
+    ],
+    [
+     "14_report",
+     "SUCCESS",
+     75.16
+    ]
+   ],
+   "steps_fully_recorded": "14/14",
+   "llm_calls": 5,
+   "llm_cost_usd": 0.012522,
+   "llm_cache_hits": 0,
+   "llm_calls_by_stage": {
+    "04_classify": 1,
+    "06_explain": 1,
+    "14c_market": 1,
+    "14a_interpret": 1,
+    "14b_narrate": 1
+   },
+   "truncated_calls": 0,
+   "notices_user": [
+    "테마 후보가 4개로 목표 종목 수 15개보다 적습니다. 테마를 넓히거나 목표 종목 수를 줄여 보세요.",
+    "선정 지표(PER) 자료가 있는 종목이 4개로 목표 15개보다 적어 4개만 선정했습니다. 최소 종목 수에 못 미치면 검증에서 미통과가 됩니다.",
+    "선정 종목의 섹터 구성으로는 종목·섹터 상한 안에서 투자금 전체를 배분할 수 없어 일부(45%)를 현금으로 둡니다. 섹터 상한을 올리거나 테마를 넓히면 해소됩니다.",
+    "백테스트 시작일 2022-12-23 에는 선정 지표 자료가 있는 종목이 최소 종목 수(12)보다 적어 시작을 2024-12-03 로 옮김 (24개월 뒤, 선정 4종목)"
+   ],
+   "n_warnings_all": 20,
+   "sources": [
+    "src_prices",
+    "src_fx",
+    "src_valuation",
+    "src_universe",
+    "src_news",
+    "src_pipeline",
+    "src_llm",
+    "src_disclosures"
+   ]
+  }
+ }
+}

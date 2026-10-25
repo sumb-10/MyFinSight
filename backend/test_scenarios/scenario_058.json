@@ -1,0 +1,74 @@
+{
+  "request_id": "req_2026-10-10_u58",
+  "created_at": "2026-10-10T17:15:00+09:00",
+  "profile": {
+    "user_id": "user_58",
+    "age_band": "30s",
+    "investment_experience": "advanced",
+    "financial_knowledge": "expert",
+    "investable_ratio_of_assets": 0.1
+  },
+  "capital": {
+    "initial_amount": 50000000,
+    "currency": "KRW",
+    "trading_currency": "KRW",
+    "monthly_contribution": 100000,
+    "contribution_day": 20
+  },
+  "horizon": {
+    "start_date": "2026-10-08",
+    "target_years": 3,
+    "purpose": "wealth_growth"
+  },
+  "risk": {
+    "risk_tolerance": "aggressive",
+    "max_drawdown_tolerance": 0.4,
+    "loss_reaction": "buy_more",
+    "target_annual_return": 0.12,
+    "benchmark": "069500.KS"
+  },
+  "constraints": {
+    "universe": [
+      "KOSPI200"
+    ],
+    "asset_types": [
+      "stock"
+    ],
+    "num_holdings": {
+      "target": 12,
+      "min": 7,
+      "max": 14
+    },
+    "max_weight_per_stock": 0.25,
+    "max_weight_per_sector": 0.6,
+    "min_cash_ratio": 0.0,
+    "exclude_tickers": [
+      "032830.KS",
+      "066570.KS"
+    ],
+    "exclude_sectors": [],
+    "exclude_themes": [],
+    "must_include_tickers": [
+      "009540.KS",
+      "010140.KS",
+      "329180.KS"
+    ],
+    "rebalance": {
+      "count": 1,
+      "unit": "1m"
+    },
+    "allow_leverage": false,
+    "allow_short": true,
+    "min_market_cap_usd": 2000000000,
+    "min_avg_daily_volume_usd": 5000000
+  },
+  "strategy_preference": {
+    "template": "low_per",
+    "baseline_weighting": "market_cap",
+    "use_news_tilt": true
+  },
+  "natural_language": {
+    "idea": "국내 조선·해운 기업 중 실적 대비 주가가 싼 종목 위주로 3년 정도 투자하고 싶어요. 자산을 불리는 게 목표예요. 떨어지면 오히려 더 살 생각이라 공격적으로 가도 됩니다. HD한국조선해양(009540), 삼성중공업(010140), HD현대중공업(329180)은 꼭 넣어 주세요. 삼성생명(032830), LG전자(066570)는 지배구조가 마음에 안 들어서 담지 말아 주세요. 매달 조금씩 추가로 넣을 예정입니다.",
+    "language": "ko"
+  }
+}

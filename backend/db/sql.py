@@ -35,11 +35,12 @@ import hashlib
 import logging
 import math
 import re
+import threading
 import time
 import zlib
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -62,6 +63,7 @@ from sqlalchemy import (
 from sqlalchemy.exc import DBAPIError, OperationalError, SQLAlchemyError
 
 from backend.db import tables as T
+from backend.db.analysis_readers import AnalysisReadersMixin
 from backend.pipeline import news_labels
 from backend.pipeline.normalizer import (
     constituent_ticker,
@@ -488,7 +490,7 @@ def is_v1_schema(conn: Any) -> bool:
     return "source_count" in {c["name"] for c in insp.get_columns("price_daily")}
 
 
-class SqlRepository:
+class SqlRepository(AnalysisReadersMixin):
     """PostgreSQL·SQLite 저장소. 보통 `open_repository()` 로 만든다.
 
     cache_max_age_days: needs_fetch 가 요구하는 마지막 저장일 = 오늘 기준 n 번째 이전 평일
@@ -509,6 +511,9 @@ class SqlRepository:
         close_priority: dict[str, Sequence[str]] | None = None,
     ) -> None:
         self.engine = engine
+        # SQLite 는 연결 하나를 여러 스레드가 함께 쓰면(메모리 DB 의 StaticPool) 행이 섞인다 → 접근을 한 번에 하나로.
+        # PostgreSQL 은 연결 풀이 있어 잠그지 않는다 (분석 러너가 단계·리밸런싱일을 병렬로 돈다, 라운드 4).
+        self._io_lock: Any = threading.RLock() if engine.dialect.name == "sqlite" else nullcontext()
         self.cache_max_age_days = max(1, cache_max_age_days)
         self.price_priority = {
             cur: tuple(source_key(x) for x in names)
@@ -566,7 +571,7 @@ class SqlRepository:
     def _write(self, what: str, fn: Callable[[Any], Any]) -> Any:
         for attempt in range(len(RECONNECT_WAITS) + 1):
             try:
-                with self.engine.begin() as conn:
+                with self._io_lock, self.engine.begin() as conn:
                     return fn(conn)
             except RepositoryError:
                 raise
@@ -582,7 +587,7 @@ class SqlRepository:
     def _read(self, what: str, fn: Callable[[Any], Any]) -> Any:
         for attempt in range(len(RECONNECT_WAITS) + 1):
             try:
-                with self.engine.connect() as conn:
+                with self._io_lock, self.engine.connect() as conn:
                     return fn(conn)
             except RepositoryError:
                 raise
