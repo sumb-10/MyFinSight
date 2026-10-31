@@ -615,7 +615,7 @@ running 항목의 워커 PID가 살아 있지 않으면 WORKER_DIED 실패로 �
 def pid_alive(pid: int | None) -> bool: ...
 ```
 
-os.kill(pid,0)으로 PID 존재를 검사하고 오류·빈 PID면 False입니다. 권한 오류도 False로 취급하는 간단한 판정입니다.
+PID 가 살아 있는지 봅니다. 빈 PID 면 False. 맥·리눅스는 os.kill(pid, 0)으로 존재만 검사하고 오류(권한 오류 포함)면 False 입니다. Windows 는 신호 0 이 CTRL_C_EVENT 라 os.kill 을 쓸 수 없어, _pid_alive_nt 가 OpenProcess + GetExitCodeProcess 로 STILL_ACTIVE 인지 확인하고 열 권한이 없는 프로세스는 살아 있는 것으로 봅니다.
 
 호출하는 코드: [health](api_구현보고서.md#api-routers-meta-py-health-18), [Queue.recover_stale](#executor-queue-py-Queue-recover_stale-110).
 
