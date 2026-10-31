@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import fcntl
 import json
 import os
 import secrets
@@ -19,6 +18,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from backend.analysis.common import filelock
 from backend.analysis.common.jsonio import load_json, now_iso
 from backend.analysis.errors import NotFound
 from backend.analysis.paths import STORE_SCHEMAS, store_dir
@@ -83,15 +83,15 @@ class JsonStore:
 
     @contextmanager
     def locked(self, name: str) -> Iterator[None]:
-        """프로세스 간 배타 잠금 (fcntl.flock). 같은 이름은 한 번에 하나만."""
+        """프로세스 간 배타 잠금 (common.filelock: POSIX 는 flock, Windows 는 msvcrt). 같은 이름은 한 번에 하나만."""
         d = self.root / ".locks"
         d.mkdir(parents=True, exist_ok=True)
         with open(d / f"{name}.lock", "w") as fh:
-            fcntl.flock(fh, fcntl.LOCK_EX)
+            filelock.lock(fh)
             try:
                 yield
             finally:
-                fcntl.flock(fh, fcntl.LOCK_UN)
+                filelock.unlock(fh)
 
 
 # ───────────────────────── ID ─────────────────────────

@@ -230,7 +230,7 @@ def test_write_and_select_versions(repo: SqlRepository, tmp_path: Path) -> None:
     # 같은 내용이면 다시 쓰지 않음 (generated_at 유지)
     again = write_descriptors(build_descriptors(_inputs(repo), "SP500"), tmp_path, "SP500")
     assert not any(c for _p, c in again)
-    assert json.loads((tmp_path / f"sp500_descriptor_{D2}.json").read_text())["generated_at"] == gen
+    assert json.loads((tmp_path / f"sp500_descriptor_{D2}.json").read_text(encoding="utf-8"))["generated_at"] == gen
     # 버전 고르기
     assert select_version(tmp_path, "SP500", date(2026, 1, 1)) == (
         tmp_path / f"sp500_descriptor_{D1}.json",

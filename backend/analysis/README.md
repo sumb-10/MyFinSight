@@ -11,7 +11,7 @@ m5_backtest_report/ Module5 bt 백테스트·지표·R1~R8 검증·현금 혼합
 m6_tracking/     Module6 모의투자: 미리보기→등록, 거래일마다 평가·적립·리밸런싱(construct mode=paper), 중지·재개, 지연 표시
 executor/        M0-05 단계 레지스트리(Stage.deps)·러너(의존이 끝난 단계 묶음을 동시에, run_step)·parallel.py(순서 지키는 병렬 도우미)·FIFO 큐(runs.json)·워커(한가할 때 모의투자 갱신)·개발 CLI
 api/             M0-06 FastAPI 서비스 (/api/v1, gzip): 프로필, 요청·질문·확정, 실행 상태, 리포트(+근거 색인 페이지·한 건, 체크포인트 상세, 전체 시계열), 수정 요청·비교, 모의투자
-common/          설정 스냅샷, LLM 호출기(캐시·지터 백오프·동시 호출 상한·stub), 경고 카탈로그(warnings: user/info/debug), 인용 정규식(citations), 로컬 JSON 저장소(잠금), 프롬프트, DB 연결(dbconn: 읽기 팀 DB / 쓰기 로컬 SQLite)
+common/          설정 스냅샷, LLM 호출기(캐시·지터 백오프·동시 호출 상한·stub), 경고 카탈로그(warnings: user/info/debug), 인용 정규식(citations), 로컬 JSON 저장소(잠금), 파일 잠금(filelock: 맥·리눅스 fcntl / Windows msvcrt), 프롬프트, DB 연결(dbconn: 읽기 팀 DB / 쓰기 로컬 SQLite)
 eval/            E1·E2 도구: run_scenarios(시나리오를 실제 서비스 경로로 실행·요약표), requirements(요구사항 자동 점검표)
 examples/        요청 예시 JSON (미국 AI 반도체, 미국+한국 반도체)
 prompts/ stubs/  LLM 프롬프트와 stub 응답 (02_intent 에 questions 계약, 09_views_news, 06_explain, 14a/14b/14c, 15_revision)
