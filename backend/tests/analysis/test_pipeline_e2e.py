@@ -192,7 +192,7 @@ def test_validation_and_bundle(e2e):
     assert all(x["krw"] > 0 for x in fwd["templates"][0]["allocation"])
     wf = ctx.outputs["10w_target_paths"]
     assert len(wf["dates"]) >= 4 and set(wf["portfolios"][-1]["weights_by_date"]) == set(wf["dates"])
-    meta = json.loads((ctx.run_dir / "run_meta.json").read_text())
+    meta = json.loads((ctx.run_dir / "run_meta.json").read_text(encoding="utf-8"))
     assert meta["status"] in ("success", "partial") and meta["llm_usage"]["calls"] >= 3
     assert np.isfinite(bt["portfolios"][0]["headline"]["cagr"])
 
