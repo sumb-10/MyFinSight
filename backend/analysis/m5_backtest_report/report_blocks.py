@@ -327,7 +327,8 @@ def view_table(R, chosen):
     p = find(R, chosen)
     if not p.get("view_diagnostics"):
         return None
-    rows = [{"view": v["summary_ko"].split(" — ")[0], "exp": v["expected_return_annual"], "real": v["realized"], "hit": "적중" if v["hit"] else "빗나감",
+    rows = [{"view": v["summary_ko"].split(" — ")[0], "exp": v["expected_return_annual"], "real": v["realized"],
+             "hit": "판정 보류(12개월 전)" if v.get("hit") is None else ("적중" if v["hit"] else "빗나감"),
              "ev": ", ".join(v.get("evidence_ids", []))} for v in p["view_diagnostics"]]  # fmt: skip
     return table("뉴스 뷰와 실제 결과 (구성 후 12개월)", [("view", "뷰", "text"), ("exp", "기대", "pct"), ("real", "실제", "pct"), ("hit", "방향", "text"), ("ev", "근거", "text")], rows)
 
@@ -476,8 +477,14 @@ def parameters_table(R):
     bfx = R["money_krw"].get("backtest_fx") or {}
     dsrc = mm.get("delta_source", "fixed")
     ddm = f" × 낙폭 배수 {mm['delta_dd_multiplier']} (허용 낙폭 {mm.get('delta_tolerance', 0):.0%} 기준 20% 대비)" if mm.get("delta_dd_multiplier") is not None else ""
-    dtxt = (f"시장 내재 δ {mm.get('delta_market')} ({mm.get('delta_window', {}).get('start')}~{mm.get('delta_window', {}).get('end')}) × 성향 배수 {mm.get('delta_multiplier')}{ddm} = {mm['delta']} (하한 {pp['delta_floor']})"
-            if dsrc == "market_implied" else f"성향별 상수{ddm} = {mm['delta']}")  # fmt: skip
+    win = mm.get("delta_window", {}) or {}
+    if dsrc == "market_implied":
+        dm, db = mm.get("delta_market"), mm.get("delta_base")
+        base_txt = (f"시장 내재 δ {dm} ({win.get('start')}~{win.get('end')})" if db is None or dm is None or float(dm) >= float(db)
+                    else f"시장 내재 δ {dm} ({win.get('start')}~{win.get('end')}) → 하한 {pp['delta_floor']} 적용")  # fmt: skip
+        dtxt = f"{base_txt} × 성향 배수 {mm.get('delta_multiplier')}{ddm} = {mm['delta']}"
+    else:
+        dtxt = f"성향별 상수{ddm} = {mm['delta']}"
     ex = R["parameters"].get("execution_rule") or {}
     desc = R["parameters"].get("descriptor") or {}
     rows = [{"k": "분석 기준일", "v": str(d["as_of"])},

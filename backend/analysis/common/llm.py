@@ -366,7 +366,9 @@ def make_llm(
     run_dir: Path | None = None,
     run_id: str | None = None,
     stub_answers: dict[str, Any] | None = None,
+    usage_log: Path | None = None,
 ) -> LlmClient:
+    """usage_log: 실행 폴더가 없는 호출(대화 단계)의 사용량·비용 기록 파일. 비우면 run_dir/llm_usage.jsonl."""
     if settings.mode == "api":
-        return OpenAiLlm(settings, run_dir=run_dir, run_id=run_id)
+        return OpenAiLlm(settings, run_dir=run_dir, run_id=run_id, usage_log=usage_log)
     return StubLlm(stub_answers, run_dir=run_dir)

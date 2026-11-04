@@ -148,7 +148,7 @@ def st_targets(ctx: RunContext) -> str:
     spec = ctx.out("07_backtest_spec")
     as_of = dt.date.fromisoformat(str(spec["period"]["as_of"]))
     res = construct(ctx.md.view(as_of), list(spec["selection"]["tickers"]), ctx.request, ctx.out("02_intent"), ctx.settings, ctx.llm, ctx.desc,
-                    mode="start", stage_tag=f"09_views_news_{as_of}")  # fmt: skip
+                    mode="start", stage_tag=f"09_views_news_{as_of}_start")  # fmt: skip  (10w 첫날과 단계명이 겹치면 프롬프트·응답 기록이 서로 덮어쓴다)
     ctx.outputs["08_market_model"] = res.market_model
     ctx.outputs["08_baseline_portfolios"] = res.baselines
     views = Views(request_id=ctx.request_id, as_of=as_of, window=res.evidence.summary() if res.evidence else None,
@@ -157,18 +157,21 @@ def st_targets(ctx: RunContext) -> str:
     ctx.outputs["09_views"] = views.model_dump(mode="json")
     if res.evidence:
         ctx.add_news_window("10_targets", res.evidence.to_dict())
+    bl_ok = res.applied_bl  # 최적화가 실패해 기준 비중과 같은 세트는 후보에서 뺀다 (동점이면 '뉴스 뷰' 이름으로 먼저 추천되던 문제)
+    if len(bl_ok) < len(res.bl_portfolios):
+        res.warnings.append(f"BL sets without applied views excluded: {[p['id'] for p in res.bl_portfolios if not p.get('views_applied')]}")
     notes = ["BL prior = 기준 비중의 역최적화 수익률; 뷰 신뢰도가 0 에 가까우면 기준 비중으로 수렴.",
              "구성일 d 의 추정은 d 이전 자료만 쓰고(정보 마감 t−1), 체결은 d 종가 (D4).",
              (f"종목별 비중 이동 한도 |w − w_baseline| ≤ {res.params['max_tilt_per_stock']}" if res.params else "뉴스 뷰 없음: BL 타겟 없이 템플릿만 백테스트")]  # fmt: skip
     targets = TargetPortfolios(request_id=ctx.request_id, as_of=as_of,
                                backtest_spec={k: spec[k] for k in ["period", "capital", "rebalance_rule", "benchmark", "extra_benchmarks", "selection", "execution_rule"]},
                                parameters=res.params or {}, baseline={"id": res.baselines["chosen_baseline"], "weights": res.baseline_weights},
-                               portfolios=[Portfolio(**p) for p in res.bl_portfolios], templates=[Portfolio(**p) for p in res.baselines["portfolios"]],
+                               portfolios=[Portfolio(**p) for p in bl_ok], templates=[Portfolio(**p) for p in res.baselines["portfolios"]],
                                notes_ko=notes, warnings=res.warnings)  # fmt: skip
     ctx.outputs["10_target_portfolios"] = targets.model_dump(mode="json")
     ctx.warn_all("10_targets", list(res.warnings))
     _warn_optimizer(ctx, "10_targets", res.bl_portfolios)
-    return f"비중 규칙 {len(res.baselines['portfolios'])}개 + 뉴스 반영 구성 {len(res.bl_portfolios)}개 ({'뉴스 뷰 적용' if not res.fallback else '기준 비중 유지'})"
+    return f"비중 규칙 {len(res.baselines['portfolios'])}개 + 뉴스 반영 구성 {len(bl_ok)}개 ({'뉴스 뷰 적용' if bl_ok else '기준 비중 유지'})"
 
 
 def st_walkforward(ctx: RunContext) -> str:
@@ -191,7 +194,7 @@ def st_walkforward(ctx: RunContext) -> str:
     models, news_summary, warnings = {}, {}, []
 
     def per_date(d: dt.date):  # 순수 함수: 날짜 하나의 구성 (공유 상태를 건드리지 않음 → 병렬 가능)
-        return construct(ctx.md.view(d), tickers, ctx.request, intent, ctx.settings, ctx.llm, ctx.desc, mode="rebalance", stage_tag=f"09_views_news_{d}",
+        return construct(ctx.md.view(d), tickers, ctx.request, intent, ctx.settings, ctx.llm, ctx.desc, mode="rebalance", stage_tag=f"09_views_news_{d}_wf",
                          id_prefix=f"wf_bl_{d}", name_prefix="뉴스 뷰 BL")  # fmt: skip
 
     workers = ctx.settings.executor.walkforward_workers or ctx.settings.llm.max_concurrency
@@ -207,14 +210,19 @@ def st_walkforward(ctx: RunContext) -> str:
         warnings += [f"{key}: {w}" for w in res.warnings]
         ctx.warn_all("10w_paths", list(res.warnings), dates=[key])
         _warn_optimizer(ctx, "10w_paths", res.bl_portfolios, dates=[key])
-        if res.bl_portfolios:
-            p0 = res.bl_portfolios[0]
+        applied = res.applied_bl
+        if applied:
+            p0 = applied[0]
             bl["weights_by_date"][key] = p0["weights"]
             bl["views_by_date"][key] = p0["views_applied"]
-            bl["narrative_by_date"][key] = res.view_sets[0].get("narrative_ko", "")
+            i0 = res.bl_portfolios.index(p0)
+            bl["narrative_by_date"][key] = res.view_sets[i0].get("narrative_ko", "") if i0 < len(res.view_sets) else ""
         else:
             bl["weights_by_date"][key] = res.baseline_weights
             bl["views_by_date"][key] = []
+        failed = [a for p in res.bl_portfolios for a in p.get("active_constraints", []) if str(a).startswith("optimizer_failed")]
+        if failed:  # 감사용: 그날 최적화가 왜 실패했는지 (10w 에 남기지 않으면 기준 비중으로 돌아간 이유를 알 수 없다)
+            bl.setdefault("optimizer_notes", {})[key] = failed[0]
         if res.fallback:
             bl["fallback_dates"].append(key)
     out = {"request_id": ctx.request_id, "stage": "10w_target_paths", "dates": [str(d) for d in dates], "tickers": tickers,
@@ -237,7 +245,7 @@ def st_forward(ctx: RunContext) -> str:
     if res.evidence:
         ctx.add_news_window("10f_current", res.evidence.to_dict())
     init, fx = ctx.request["derived"]["initial_amount_usd"], ctx.request["derived"]["fx_rate"]
-    ports = [dict(p) for p in res.bl_portfolios]
+    ports = [dict(p) for p in res.applied_bl]  # 최적화 실패 세트(= 기준 비중)는 '현재 구성 BL' 로 보이지 않게 뺀다
     templates = [dict(p) for p in res.baselines["portfolios"]]
     for p in [*templates, *ports]:
         p["allocation"] = [{"ticker": t, "weight": w_, "usd": round(init * w_, 2), "krw": round(init * w_ * fx)}

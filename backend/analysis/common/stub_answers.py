@@ -50,14 +50,14 @@ def stub_views(messages: Sequence[Message]) -> dict[str, Any]:
     views: list[dict[str, Any]] = []
     if with_news:
         t0 = with_news[0]
-        views.append({"type": "absolute", "long": [t0], "short": [], "expected_return_annual": 0.15, "confidence": 0.3, "horizon_months": 12,
+        views.append({"type": "absolute", "long": [t0], "short": [], "direction": "up", "strength": "medium", "confidence": 0.3, "horizon_months": 12,
                       "rationale_ko": f"stub: {t0} 헤드라인({ev_by_ticker[t0]}) 근거", "evidence_type": "news", "evidence_ids": [ev_by_ticker[t0]]})  # fmt: skip
         others = [t for t in tickers if t != t0]
         if len(with_news) >= 2 and others:
             t1 = with_news[1]
             short = next((t for t in others if t != t1), None)
             if short:
-                views.append({"type": "relative", "long": [t1], "short": [short], "expected_return_annual": 0.05, "confidence": 0.25, "horizon_months": 12,
+                views.append({"type": "relative", "long": [t1], "short": [short], "strength": "weak", "confidence": 0.25, "horizon_months": 12,
                               "rationale_ko": f"stub: {t1} 가 {short} 대비 우위 ({ev_by_ticker[t1]})", "evidence_type": "news", "evidence_ids": [ev_by_ticker[t1]]})  # fmt: skip
     return {"sets": [{"scenario_id": "stub_news", "title_ko": "뉴스 근거 (stub)", "narrative_ko": "stub 모드: 헤드라인이 있는 종목에 작은 뷰를 둔다.", "views": views}]}
 

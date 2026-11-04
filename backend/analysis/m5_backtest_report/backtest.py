@@ -117,7 +117,7 @@ def build_checkpoints(raw, bench_raw, panel, targets, sectors, cp_dates, rb_set,
                                         baseline_idx=cfg["baseline_idx"][:d] if cfg["baseline_idx"] is not None else None)  # fmt: skip
             to_date["reliable"] = n_days >= bs.trading_days
             if views and bs.checkpoint_view_diagnostics:
-                vd = M.view_diagnostics(views, panel[:d], as_of, d, implied or {}, bs.view_horizon_days)
+                vd = M.view_diagnostics(views, panel[:d], as_of, d, implied or {}, bs.view_horizon_days, require_full=False)
         out.append({"seq": seq, "date": str(d.date()), "kind": kind, "n_trading_days_to_date": int(n_days),
                     "weights": {"target": {c: _f(tgt[c]) for c in cols}, "before": {c: _f(before[c]) for c in cols} if before is not None else None,
                                 "after": {c: _f(after[c]) for c in cols}, "cash_before": _f(1 - before.sum()) if before is not None else None,
@@ -237,7 +237,7 @@ def evaluate(ctx, p, raw, kind, bench_raw, baseline_idx, *, implied_by_date=None
     cps = build_checkpoints(raw, bench_raw, ctx["panel"], weights, ctx["sectors"], ctx["cp_dates"], ctx["rb_set"], ctx["last"], cfg, views, implied,
                             ctx["as_of"], ctx["end"], s, targets_by_date=p.get("weights_by_date"))  # fmt: skip
     m = res["metrics"]
-    hits = [v["hit"] for v in res["view_diagnostics"]]
+    hits = [v["hit"] for v in res["view_diagnostics"] if v.get("hit") is not None]  # 12개월이 끝나지 않은 뷰(판정 보류)는 적중률에서 뺀다
     headline = {"final_value_usd": res["money"]["final_value_usd"], "cagr": m["return"]["cagr"], "period_return": m["return"]["total_return"],
                 "excess_cagr": m["vs_benchmark"]["excess_cagr"], "max_drawdown": m["risk"]["max_drawdown"], "sharpe": m["risk_adjusted"]["sharpe"],
                 "view_hit_ratio": _f(np.mean(hits)) if hits else None, "view_hit_ratio_next_rb": _f(np.mean([v["hit"] for v in nxt])) if nxt else None,

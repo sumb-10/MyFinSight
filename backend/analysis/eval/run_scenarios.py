@@ -159,6 +159,83 @@ def normalize_request(req: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     return req, notes
 
 
+def dialog_cost(t0: dt.datetime, t1: dt.datetime) -> float:
+    """대화 단계 LLM 비용: API 서버가 output/llm_usage_dialog.jsonl 에 남긴 기록 중 [t0, t1] 구간 합 (시나리오 QA 비용 상한 관리)."""
+    from backend.analysis.paths import output_root
+
+    path = output_root() / "llm_usage_dialog.jsonl"
+    if not path.exists():
+        return 0.0
+    lo, hi = t0 - dt.timedelta(seconds=1), t1 + dt.timedelta(seconds=1)
+    tot = 0.0
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            rec = json.loads(line)
+            ts = dt.datetime.fromisoformat(rec["ts"])
+        except (ValueError, KeyError):
+            continue
+        if lo <= ts <= hi:
+            tot += float(rec.get("cost_usd") or 0)
+    return round(tot, 6)
+
+
+def finish_run(api: Api, env: dict[str, str], run_id: str, wait_s: float, out: dict[str, Any]) -> dict[str, Any]:
+    """확정된 실행 하나를 일꾼으로 끝내고 상태·리포트 요약을 out 에 채운다 (새 실행과 --replay 가 같이 쓴다)."""
+    t1 = time.time()
+    w = subprocess.run([sys.executable, "-m", "backend.analysis.executor.worker", "--once"], cwd=ROOT, env=env, capture_output=True, text=True, timeout=3600)
+    run = api.ok("GET", f"/runs/{run_id}")
+    if run.get("status") not in TERMINAL and wait_s > 0:  # 다른 일꾼이 돌고 있으면 (rc 2) 그 일꾼이 끝내 줄 때까지 기다린다
+        run = wait_for_run(api, run_id, wait_s)
+    out.update({"run_id": run_id, "run_seconds": round(time.time() - t1, 1), "status": run.get("status"), "error": run.get("error"), "worker_rc": w.returncode,
+                "buckets": [(b["id"], b["status"]) for b in run.get("buckets", [])],
+                "steps": [{k: st.get(k) for k in ("step", "status", "started_at", "ended_at", "summary", "error_message")} for st in run.get("steps", [])]})  # fmt: skip
+    st, doc = api.call("GET", f"/reports/{run_id}")
+    if st == 200:
+        kp = {k["id"]: k.get("value") for k in doc.get("kpis", []) if isinstance(k, dict) and "id" in k}
+        hdr = doc.get("header", {})
+        out.update({"report": True, "report_error": None, "chosen_label_ko": hdr.get("chosen_label_ko"), "verdict_ko": hdr.get("verdict_ko") or hdr.get("subtitle_ko"),
+                    "kpis": kp, "as_of": hdr.get("as_of"), "n_evidence": len(doc.get("evidence", {})), "warnings": len(doc.get("warnings", []))})  # fmt: skip
+        st2, res = api.call("GET", f"/reports/{run_id}/results")
+        if st2 == 200:
+            v = res.get("validation", {})
+            out["validation"] = v.get("summary")
+            out["recommended"] = (v.get("recommended") or {}).get("id")
+            out["chosen_id"] = v.get("chosen_id")
+            out["llm_usage"] = res.get("llm_usage") or (res.get("params") or {}).get("llm_usage")
+    else:
+        out.update({"report": False, "report_error": doc})
+    if not out.get("llm_usage"):  # 리포트가 없으면 실행 폴더의 사용량 기록으로
+        from backend.analysis.paths import run_dir
+
+        ul = run_dir(run_id) / "llm_usage.jsonl"
+        recs = [json.loads(x) for x in ul.read_text(encoding="utf-8").splitlines() if x.strip()] if ul.exists() else []
+        out["llm_usage"] = {"calls": len(recs), "cost_usd": round(sum(float(r.get("cost_usd") or 0) for r in recs), 6)}
+    out["cost_total_usd"] = round(float((out.get("llm_usage") or {}).get("cost_usd") or 0) + float(out.get("dialog_cost_usd") or 0), 6)
+    return out
+
+
+def replay_scenario(name: str, api: Api, env: dict[str, str], wait_s: float, out_dir: Path) -> dict[str, Any]:
+    """저장된 확정 요청을 그대로 새 실행으로 큐에 넣는다 (대화 없음). 같은 intent·덮어쓰기라 프롬프트가 같으면 LLM 캐시를 쓴다."""
+    from backend.analysis.common.store import JsonStore, RequestStore, new_run_id
+    from backend.analysis.executor.queue import Queue
+
+    prev = json.loads((out_dir / f"{name}.json").read_text(encoding="utf-8"))
+    rid = prev["request_id"]
+    store = JsonStore()
+    reqs = RequestStore(store)
+    with reqs.locked(rid):
+        doc = reqs.load(rid)
+        if doc.status != "confirmed" or not doc.effective_request:
+            raise RuntimeError(f"{name}: 요청 {rid} 이 확정 상태가 아니라 다시 돌릴 수 없습니다 ({doc.status})")
+        new_id = new_run_id(dt.datetime.now())
+        doc.run_id = new_id
+        reqs.save(doc)
+    Queue(store).enqueue(new_id, rid, llm_mode=env.get("MYFINSIGHT_LLM"))
+    out = {k: prev.get(k) for k in ("name", "title_ko", "scenario_file", "normalized", "overrides", "request_id", "qa", "dialog_seconds")}
+    out.update({"replay_of": prev.get("run_id"), "dialog_cost_usd": 0.0})
+    return finish_run(api, env, new_id, wait_s, out)
+
+
 def run_scenario(name: str, api: Api, env: dict[str, str], policy: str, wait_s: float) -> dict[str, Any]:
     sc = SCENARIOS[name]
     req, normalized = normalize_request(load_request(sc["file"]))
@@ -171,54 +248,31 @@ def run_scenario(name: str, api: Api, env: dict[str, str], policy: str, wait_s: 
     start_date = (req.get("horizon") or {}).get("start_date")
     if start_date:  # 프로필은 기준일을 지우므로(요청마다 정함) 시나리오의 기준일은 이번 요청의 덮어쓰기로 넣는다
         overrides["horizon.start_date"] = str(start_date)[:10]
-    t0 = time.time()
+    t0, t0_dt = time.time(), dt.datetime.now()
     state = api.ok("POST", "/requests", {"idea": req["natural_language"]["idea"], "overrides": overrides})
     rid = state["request_id"]
     qa: list[dict[str, Any]] = []
     state = answer_questions(api, rid, state, policy, qa)
     if state.get("state") != "ready":
         return {"name": name, "title_ko": sc["title_ko"], "scenario_file": str(sc["file"]), "normalized": normalized, "overrides": overrides, "request_id": rid,
-                "dialog_state": state.get("state"), "qa": qa, "blocked_reason_ko": state.get("blocked_reason_ko"), "hard_errors": state.get("hard_errors"), "status": "not_confirmed"}  # fmt: skip
+                "dialog_state": state.get("state"), "qa": qa, "blocked_reason_ko": state.get("blocked_reason_ko"), "hard_errors": state.get("hard_errors"), "status": "not_confirmed",
+                "dialog_cost_usd": dialog_cost(t0_dt, dt.datetime.now())}  # fmt: skip
     conf = api.ok("POST", f"/requests/{rid}/confirm")
     run_id = conf["run_id"]
     dialog_s = round(time.time() - t0, 1)
-    t1 = time.time()
-    w = subprocess.run([sys.executable, "-m", "backend.analysis.executor.worker", "--once"], cwd=ROOT, env=env, capture_output=True, text=True, timeout=3600)
-    run = api.ok("GET", f"/runs/{run_id}")
-    if run.get("status") not in TERMINAL and wait_s > 0:  # 다른 일꾼이 돌고 있으면 (rc 2) 그 일꾼이 끝내 줄 때까지 기다린다
-        run = wait_for_run(api, run_id, wait_s)
-    run_s = round(time.time() - t1, 1)
     out: dict[str, Any] = {"name": name, "title_ko": sc["title_ko"], "scenario_file": str(sc["file"]), "normalized": normalized, "overrides": overrides,
-                           "request_id": rid, "run_id": run_id, "qa": qa, "dialog_seconds": dialog_s,
-                           "run_seconds": run_s, "status": run.get("status"), "error": run.get("error"), "worker_rc": w.returncode,
-                           "buckets": [(b["id"], b["status"]) for b in run.get("buckets", [])],
-                           "steps": [{k: st.get(k) for k in ("step", "status", "started_at", "ended_at", "summary", "error_message")} for st in run.get("steps", [])]}  # fmt: skip
-    st, doc = api.call("GET", f"/reports/{run_id}")
-    if st == 200:
-        kp = {k["id"]: k.get("value") for k in doc.get("kpis", []) if isinstance(k, dict) and "id" in k}
-        hdr = doc.get("header", {})
-        out.update({"report": True, "chosen_label_ko": hdr.get("chosen_label_ko"), "verdict_ko": hdr.get("verdict_ko") or hdr.get("subtitle_ko"), "kpis": kp,
-                    "as_of": hdr.get("as_of"), "n_evidence": len(doc.get("evidence", {})), "warnings": len(doc.get("warnings", []))})  # fmt: skip
-        st2, res = api.call("GET", f"/reports/{run_id}/results")
-        if st2 == 200:
-            v = res.get("validation", {})
-            out["validation"] = v.get("summary")
-            out["recommended"] = (v.get("recommended") or {}).get("id")
-            out["chosen_id"] = v.get("chosen_id")
-            out["llm_usage"] = res.get("llm_usage") or (res.get("params") or {}).get("llm_usage")
-    else:
-        out.update({"report": False, "report_error": doc})
-    return out
+                           "request_id": rid, "qa": qa, "dialog_seconds": dialog_s, "dialog_cost_usd": dialog_cost(t0_dt, dt.datetime.now())}  # fmt: skip
+    return finish_run(api, env, run_id, wait_s, out)
 
 
 def to_markdown(rows: list[dict[str, Any]], llm: str) -> str:
     lines = [f"# 시나리오 실행 결과 ({dt.date.today()}, LLM {llm})", "",
-             "| 시나리오 | 상태 | 보충 질문 | 추천 | 선택안 | 통과/주의/미통과 | 근거 수 | 대화 s | 실행 s | run_id |", "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]  # fmt: skip
+             "| 시나리오 | 상태 | 보충 질문 | 추천 | 선택안 | 통과/주의/미통과 | 근거 수 | 대화 s | 실행 s | 비용 $ | run_id |", "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]  # fmt: skip
     for r in rows:
         v = r.get("validation") or {}
         vs = f"{v.get('n_pass', '-')}/{v.get('n_warn', '-')}/{v.get('n_fail', '-')}" if v else "-"
         qa = "; ".join(f"Q{q['seq']} {q['field'].split('.')[-1]} → {q['answer']}" for q in r.get("qa", [])) or "없음"
-        lines.append(f"| {r['title_ko']} | {r.get('status')} | {qa} | {r.get('recommended') or '없음'} | {r.get('chosen_id') or '-'} | {vs} | {r.get('n_evidence', '-')} | {r.get('dialog_seconds', '-')} | {r.get('run_seconds', '-')} | `{r.get('run_id', '-')}` |")  # fmt: skip
+        lines.append(f"| {r['title_ko']} | {r.get('status')} | {qa} | {r.get('recommended') or '없음'} | {r.get('chosen_id') or '-'} | {vs} | {r.get('n_evidence', '-')} | {r.get('dialog_seconds', '-')} | {r.get('run_seconds', '-')} | {r.get('cost_total_usd', '-')} | `{r.get('run_id', '-')}` |")  # fmt: skip
     lines.append("")
     for r in rows:
         if r.get("error") or r.get("report_error") or r.get("blocked_reason_ko"):
@@ -237,6 +291,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--collect", action="store_true", help="새로 돌리지 않고 저장된 JSON 의 run_id 로 상태·리포트만 다시 모아 표를 만든다")
     ap.add_argument("--wait-sec", type=float, default=3600, help="다른 일꾼이 돌고 있을 때 실행 완료를 기다리는 최대 시간")
+    ap.add_argument("--replay", action="store_true", help="대화 없이, --out 에 저장된 시나리오 결과의 확정 요청을 새 실행으로 다시 돌린다 (고친 뒤 재확인)")
     a = ap.parse_args(argv)
     if a.files:
         names = []
@@ -261,7 +316,7 @@ def main(argv: list[str] | None = None) -> int:
     proc = ensure_server(api, a.port, env, out_dir / "uvicorn.log")
     rows: list[dict[str, Any]] = []
     saved_profile: dict[str, Any] | None = None  # 시나리오는 프로필을 덮어쓰므로(PUT /profile) 끝나면 사용자의 프로필을 되돌린다
-    if not a.collect:
+    if not (a.collect or a.replay):
         try:
             cur = api.ok("GET", "/profile")["profile"]
             saved_profile = {k: cur[k] for k in (*PROFILE_KEYS, "diagnosis", "risk_type_computed", "risk_type_overridden") if k in cur and cur[k] is not None}
@@ -271,7 +326,9 @@ def main(argv: list[str] | None = None) -> int:
         for name in [s.strip() for s in a.scenarios.split(",") if s.strip()]:
             print(f"── {name} ({SCENARIOS[name]['title_ko']})", flush=True)
             try:
-                if a.collect:
+                if a.replay:
+                    r = replay_scenario(name, api, env, a.wait_sec, out_dir)
+                elif a.collect:
                     prev_p = out_dir / f"{name}.json"
                     r = collect(name, api, json.loads(prev_p.read_text(encoding="utf-8"))) if prev_p.exists() else {"name": name, "title_ko": SCENARIOS[name]["title_ko"], "status": "missing"}
                 else:

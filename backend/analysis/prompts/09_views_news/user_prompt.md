@@ -7,7 +7,7 @@
 테마:
 {{themes_block}}
 
-## 종목 (ticker | name | sector | 한 줄 소개 | 직전 12개월 수익률 | 연변동성 | 시총비중 | 베이스라인 비중 | implied_return)
+## 종목 (ticker | name | sector | 한 줄 소개 | 직전 12개월 수익률 | 연변동성 | 시총비중 | 베이스라인 비중)
 
 ```
 {{stocks_block}}
@@ -31,8 +31,8 @@
 ## 조건
 
 - 세트 수: {{n_sets}}, 세트당 뷰 수: {{views_per_set}} (absolute ≥ 1, relative ≥ 1)
-- confidence 범위: 0.1 ~ {{max_conf}} (공시만 인용한 뷰는 {{dc_only_max_conf}} 이하)
-- 절대 뷰 수익률 범위 {{abs_range}}, 상대 뷰 아웃퍼폼 범위 {{rel_range}} (연율)
+- confidence 범위: 0.1 ~ {{max_conf}} (공시만 인용한 뷰는 {{dc_only_max_conf}} 이하, 근거 1건뿐인 뷰는 {{single_max_conf}} 이하)
+- 숫자 대신 `direction`(절대 뷰: up/down)과 `strength`(weak/medium/strong)를 씁니다
 - 모든 뷰는 `evidence_ids` 를 1개 이상 인용
 
 스키마를 따르는 JSON 객체 하나만 출력하세요.

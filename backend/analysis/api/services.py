@@ -13,6 +13,7 @@ from backend.analysis.executor.queue import Queue
 from backend.analysis.m1_request.dialog import DialogService
 from backend.analysis.m2_data.market_data import MarketData
 from backend.analysis.m6_tracking.paper import PaperService
+from backend.analysis.paths import output_root
 from backend.analysis.settings import AnalysisSettings
 
 
@@ -43,7 +44,8 @@ class Services:
         return Queue(self.store)
 
     def llm(self) -> LlmClient:
-        return self.llm_factory() if self.llm_factory else make_llm(self.settings.llm)
+        # 대화 단계 호출도 비용을 남긴다 (실행 폴더가 없어 예전에는 기록이 없었다 → 시나리오 QA 비용 상한 관리)
+        return self.llm_factory() if self.llm_factory else make_llm(self.settings.llm, usage_log=output_root() / "llm_usage_dialog.jsonl")
 
     def market_data(self) -> MarketData:
         """프로세스 안에서 재사용. 새 거래일 자료가 들어오면 다시 만든다."""

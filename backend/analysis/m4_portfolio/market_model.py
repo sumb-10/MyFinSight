@@ -69,13 +69,17 @@ def build_market_model(
         bpx = view.adj_close([bench], start)[bench]
         d_mkt, d_win = P.market_implied_delta(bpx, lookback_days=ps.lookback_days, rf=settings.backtest.risk_free_rate)
         mult = ps.risk_aversion_mult[tol]
-        delta = round(max(ps.delta_floor, min(d_mkt * mult * dd_mult, 8.0)), 4)
-        delta_meta = {"delta_source": "market_implied", "delta_market": round(d_mkt, 4), "delta_multiplier": mult, "delta_window": d_win,
-                      "delta_dd_multiplier": dd_mult, "delta_tolerance": dd_tol}  # fmt: skip
-        notes.append(f"delta = market-implied {d_mkt:.2f} ({bench}, {d_win['start']}~{d_win['end']}) × {mult} ({tol}) × {dd_mult} (drawdown tolerance {dd_tol:.0%}) = {delta} (floor {ps.delta_floor}, cap 8)")
+        # 하한은 시장 추정치에 먼저 적용하고 성향·낙폭 배수는 그 뒤에 곱한다. 곱한 뒤에 하한을 걸면 시장 δ 가 작거나 음수인 날
+        # (급락이 추정 창에 든 날)에는 모든 성향이 1.5 로 같아져 성향·허용 낙폭이 무시된다 (2026-11 시나리오 QA).
+        d_base = max(ps.delta_floor, d_mkt)
+        delta = round(min(d_base * mult * dd_mult, 8.0), 4)
+        delta_meta = {"delta_source": "market_implied", "delta_market": round(d_mkt, 4), "delta_base": round(d_base, 4), "delta_multiplier": mult,
+                      "delta_window": d_win, "delta_dd_multiplier": dd_mult, "delta_tolerance": dd_tol}  # fmt: skip
+        notes.append(f"delta = max(market-implied {d_mkt:.2f} ({bench}, {d_win['start']}~{d_win['end']}), floor {ps.delta_floor}) × {mult} ({tol}) × {dd_mult} (drawdown tolerance {dd_tol:.0%}) = {delta} (cap 8)")
     else:
-        delta = round(max(ps.delta_floor, min(ps.risk_aversion[tol] * dd_mult, 8.0)), 4)
-        delta_meta = {"delta_source": "fixed", "delta_dd_multiplier": dd_mult, "delta_tolerance": dd_tol}
+        d_base = max(ps.delta_floor, ps.risk_aversion[tol])
+        delta = round(min(d_base * dd_mult, 8.0), 4)
+        delta_meta = {"delta_source": "fixed", "delta_base": round(d_base, 4), "delta_dd_multiplier": dd_mult, "delta_tolerance": dd_tol}
     total = 1.0 - cons.get("min_cash_ratio", 0)
     max_stock, max_sector = cons["max_weight_per_stock"], cons["max_weight_per_sector"]
     capacity = P.weight_capacity(sec_code, max_stock, max_sector)

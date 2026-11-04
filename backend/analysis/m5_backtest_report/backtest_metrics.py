@@ -191,29 +191,58 @@ def rolling_metrics(idx, rf, td: int):
 
 
 # ───────────────────────── views ─────────────────────────
-def view_diagnostics(views, asset_px: pd.DataFrame, as_of, end, implied: dict, horizon_days: int):
-    """[as_of, min(as_of+horizon, end)] 실현 수익률 vs 각 뷰. hit = 방향 일치."""
+def _view_prior(v, implied: dict) -> float:
+    """뷰의 사전 기대수익: 뷰에 적힌 prior_return(새 뷰) 또는 그날 시장모형의 implied (옛 뷰)."""
+    if v.get("prior_return") is not None:
+        return float(v["prior_return"])
+    if v["type"] == "absolute":
+        return float(implied.get(v["long"][0], 0.0))
+    return 0.0
+
+
+def _view_hit(v, realized: float, prior_scaled: float, prior_annual: float) -> bool:
+    """방향 적중. 절대 뷰: 실현 수익이 사전 기대(기간 비례)보다 뷰 방향으로 움직였나. 상대 뷰: long 이 short 를 이겼나.
+
+    방향이 없는 옛 뷰는 예전 정의(숫자가 사전 기대보다 높았나 낮았나)를 쓴다.
+    """
+    if v["type"] != "absolute":
+        return realized > 0
+    d = v.get("direction")
+    if d in ("up", "down"):
+        return (realized - prior_scaled) * (1 if d == "up" else -1) > 0
+    return (realized - prior_scaled) * (float(v["expected_return_annual"]) - prior_annual) > 0
+
+
+def view_diagnostics(views, asset_px: pd.DataFrame, as_of, end, implied: dict, horizon_days: int, *, require_full: bool = True):
+    """[as_of, min(as_of+horizon, end)] 실현 수익률 vs 각 뷰. hit = 방향 일치 (_view_hit).
+
+    require_full: 지평(보통 12개월)이 끝나지 않은 창은 판정하지 않는다(hit=None, pending=True) — 몇십 일짜리 창을 '12개월 기준'
+    적중률에 섞지 않기 위해. 체크포인트의 '지금까지' 진단은 False 로 부르고, 사전 기대를 기간에 비례해 비교한다(partial=True).
+    """
     if not views:
         return []
-    stop = min(pd.Timestamp(as_of) + pd.Timedelta(days=horizon_days), pd.Timestamp(end))
+    full_stop = pd.Timestamp(as_of) + pd.Timedelta(days=horizon_days)
+    stop = min(full_stop, pd.Timestamp(end))
     px = asset_px.loc[pd.Timestamp(as_of) : stop]
     if len(px) < 2:
         return []  # 구성일이 창의 끝이면 실현 수익률이 없다 (walk-forward 마지막 리밸런싱일)
+    incomplete = full_stop > pd.Timestamp(end)
     real = px.iloc[-1] / px.iloc[0] - 1
+    days = max(1, (px.index[-1] - px.index[0]).days)
     out = []
     for v in views:
         if any(t not in real.index for t in [*v.get("long", []), *v.get("short", [])]):
             continue  # 자료 품질로 패널에서 빠진 종목의 뷰
         if v["type"] == "absolute":
-            t = v["long"][0]
-            realized = float(real[t])
-            prior = implied.get(t, 0.0)
-            hit = (realized - prior) * (v["expected_return_annual"] - prior) > 0
+            realized = float(real[v["long"][0]])
         else:
             realized = float(real[v["long"]].mean() - real[v["short"]].mean())
-            hit = realized > 0
-        out.append({"summary_ko": v.get("summary_ko", ""), "type": v["type"], "expected_return_annual": v["expected_return_annual"],
-                    "realized": _r(realized), "error": _r(realized - v["expected_return_annual"]), "hit": bool(hit),
+        prior = _view_prior(v, implied)
+        scale = min(1.0, days / 365.0)
+        hit = None if (incomplete and require_full) else bool(_view_hit(v, realized, prior * scale, prior))
+        out.append({"summary_ko": v.get("summary_ko", ""), "type": v["type"], "direction": v.get("direction"), "prior_return": _r(prior),
+                    "expected_return_annual": v["expected_return_annual"], "realized": _r(realized), "error": _r(realized - v["expected_return_annual"]),
+                    "hit": hit, "pending": bool(incomplete and require_full), "partial": bool(incomplete and not require_full),
                     "window_end": str(px.index[-1].date()), "evidence_ids": v.get("evidence_ids", [])})  # fmt: skip
     return out
 
@@ -243,14 +272,12 @@ def view_diagnostics_next_window(views_by_date, asset_px: pd.DataFrame, rb_dates
         for v in vs:
             if any(t not in real.index for t in [*v.get("long", []), *v.get("short", [])]):
                 continue
+            prior_annual = _view_prior(v, implied)
             if v["type"] == "absolute":
-                t = v["long"][0]
-                prior_annual = float(implied.get(t, 0.0))
-                realized = float(real[t])
-                hit = (realized - prior_annual * days / 365.0) * (float(v["expected_return_annual"]) - prior_annual) > 0
+                realized = float(real[v["long"][0]])
             else:
                 realized = float(real[v["long"]].mean() - real[v["short"]].mean())
-                hit = realized > 0
+            hit = _view_hit(v, realized, prior_annual * days / 365.0, prior_annual)
             out.append({"as_of": str(d0.date()), "window_end": str(px.index[-1].date()), "horizon": "next_rebalance", "type": v["type"],
                         "summary_ko": v.get("summary_ko", ""), "expected_return_annual": v["expected_return_annual"], "realized": _r(realized), "hit": bool(hit),
                         "evidence_ids": v.get("evidence_ids", [])})  # fmt: skip

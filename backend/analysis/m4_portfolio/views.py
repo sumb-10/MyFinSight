@@ -1,11 +1,14 @@
 """M4-03 뉴스 근거 뷰 생성기 (LLM #4). 구성일 직전 뉴스 창의 헤드라인만 근거로 BL 뷰를 만든다 (K6: 플레이스홀더 뷰 없음).
 
-코드 검사: 종목은 입력만, evidence_ids 는 창 안의 것만, 근거 없는 절대 뷰 제거, 신뢰도·수익률 범위 클리핑.
+LLM 은 뷰의 방향(up/down)과 강도(weak/medium/strong)만 낸다. 수치 Q 는 코드가 사전 기대수익 π 대비로 만든다
+(2026-11 시나리오 QA, 논의사항 C1: LLM 이 "좋은 소식 +3%" 처럼 π 보다 낮은 숫자를 써서 긍정 뷰가 비중 축소로 뒤집히던 문제).
+코드 검사: 종목은 입력만, evidence_ids 는 창 안의 것만, 근거 없는 절대 뷰 제거, 같은 종목 양쪽 다리 금지, 신뢰도 상한.
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import math
 from typing import Any
 
 from backend.analysis.common.llm import LlmClient, messages_from_prompts
@@ -58,11 +61,9 @@ def generate_views(
         g = D.gics_model(e) if e else None
         rows.append(
             f"{t} | {e.get('name', t)} | {g.sector.name if g else ''} | {str(e.get('intro', ''))[:120]} | "
-            f"{r12.get(t, float('nan')):+.1%} | {mm['ann_vol'][t]:.1%} | {mm['cap_weights'][t]:.1%} | {base_weights[t]:.1%} | {mm['implied_returns'][t]:+.1%}"
+            f"{r12.get(t, float('nan')):+.1%} | {mm['ann_vol'][t]:.1%} | {mm['cap_weights'][t]:.1%} | {base_weights[t]:.1%}"
         )
     themes_block = "\n".join(f"- {th['id']}: {th['label_ko']} — {th['description_ko']}" for th in intent["interpretation"]["themes"])
-    abs_r = f"{ps.abs_return_range[0]:+.0%} ~ {ps.abs_return_range[1]:+.0%}"
-    rel_r = f"{ps.rel_return_range[0]:+.0%} ~ {ps.rel_return_range[1]:+.0%}"
     ev_lines, no_news, no_evidence = [], [], []
     for t in tickers:
         if not (evidence.by_ticker.get(t) or []):
@@ -76,7 +77,7 @@ def generate_views(
     ds = getattr(settings, "disclosures", None)
     dc_only_max = float(getattr(ds, "disclosure_only_max_confidence", 0.25) or 0.25)
     vars_ = dict(as_of=view.as_of, summary_ko=intent["interpretation"]["summary_ko"], themes_block=themes_block, stocks_block="\n".join(rows),
-                 n_sets=n_sets, views_per_set=views_per_set, max_conf=max_conf, abs_range=abs_r, rel_range=rel_r,
+                 n_sets=n_sets, views_per_set=views_per_set, max_conf=max_conf, single_max_conf=ps.single_evidence_max_confidence,
                  news_window_days=(evidence.end - evidence.start).days, evidence_block="\n".join(ev_lines) or "(없음)",
                  dc_window_days=((evidence.end - evidence.dc_start).days if evidence.dc_start else 0), disclosure_block="\n".join(dc_lines) or "(없음)",
                  dc_only_max_conf=dc_only_max, no_news_tickers=", ".join(no_news) or "없음", no_evidence_tickers=", ".join(no_evidence) or "없음")  # fmt: skip
@@ -105,15 +106,17 @@ def generate_views(
                 warnings.append(f"{sid}: duplicate view {key} dropped")
                 continue
             seen.add(key)
+            if set(v["long"]) & set(v.get("short", [])):
+                warnings.append(f"{sid}: view dropped, same ticker on both legs {key}")
+                continue
+            if v["type"] == "absolute" and len(v["long"]) != 1:
+                warnings.append(f"{sid}: absolute view dropped, needs exactly one ticker (got {v['long']})")
+                continue
             c = float(v.get("confidence", 0))
             if not (ps.confidence_floor <= c <= max_conf):
                 warnings.append(f"{sid}: confidence {c} clipped to [{ps.confidence_floor}, {max_conf}]")
                 v["confidence"] = min(max(c, ps.confidence_floor), max_conf)
-            lo, hi = ps.abs_return_range if v["type"] == "absolute" else ps.rel_return_range
-            r = float(v.get("expected_return_annual", 0))
-            if not (lo <= r <= hi):
-                warnings.append(f"{sid}: return {r} clipped to [{lo}, {hi}]")
-                v["expected_return_annual"] = min(max(r, lo), hi)
+            _quantify(v, mm, tickers, ps, warnings, sid)
             v.setdefault("horizon_months", 12)
             v.setdefault("rationale_ko", "")
             ids, missing = [], []
@@ -137,6 +140,9 @@ def generate_views(
                 warnings.append(f"{sid}: absolute view on {v['long'][0]} without news/disclosure evidence dropped")
                 continue
             v["evidence_ids"] = ids
+            if len(ids) == 1 and float(v["confidence"]) > ps.single_evidence_max_confidence:
+                warnings.append(f"{sid}: single-evidence view confidence {v['confidence']} clipped to {ps.single_evidence_max_confidence}")
+                v["confidence"] = ps.single_evidence_max_confidence
             kinds = {"disclosure" if i.startswith("dc") else "news" for i in ids}
             v["evidence_type"] = "mixed" if len(kinds) > 1 else next(iter(kinds))  # 코드가 인용 ID 로 다시 계산 (LLM 값 무시)
             if kinds == {"disclosure"} and float(v["confidence"]) > dc_only_max:
@@ -151,3 +157,56 @@ def generate_views(
     if len(sets) != n_sets:
         warnings.append(f"{len(sets)} sets returned, expected {n_sets}")
     return sets, warnings
+
+
+def _quantify(v: dict[str, Any], mm: dict[str, Any], tickers: list[str], ps, warnings: list[str], sid: Any) -> None:
+    """LLM 의 방향·강도를 사전 기대수익 대비 연 기대수익 Q(`expected_return_annual`)로 바꾼다.
+
+    절대 뷰: Q = π_i + 방향 × k × σ_i. 상대 뷰: Q = max(π_long − π_short, 0) + k × σ(long − short), long 이 short 를 이긴다는 뜻.
+    방향이 없으면(옛 캐시 응답·옛 stub) 숫자의 부호로 추정하고 경고를 남긴다. 상대 뷰의 down 은 다리를 바꿔 up 으로 둔다.
+    """
+    pi, vol = mm["implied_returns"], mm["ann_vol"]
+    direction = str(v.get("direction") or "").lower()
+    if v["type"] == "relative" and direction not in ("up", "down"):
+        direction = "up"  # 상대 뷰는 방향을 안 써도 된다: long 이 short 를 이긴다는 뜻
+    elif direction not in ("up", "down"):
+        r = float(v.get("expected_return_annual", 0) or 0)
+        direction = "down" if r < 0 else "up"
+        warnings.append(f"{sid}: view {v['long']} has no direction; inferred '{direction}' from the sign of its number")
+    if v["type"] == "relative" and direction == "down":
+        v["long"], v["short"] = list(v["short"]), list(v["long"])
+        direction = "up"
+        warnings.append(f"{sid}: relative 'down' view rewritten as long {v['long']} over short {v['short']}")
+    strength = str(v.get("strength") or "").lower()
+    if strength not in ps.view_strength_k:
+        warnings.append(f"{sid}: view {v['long']} strength {v.get('strength')!r} unknown; using 'medium'")
+        strength = "medium"
+    k = float(ps.view_strength_k[strength])
+    if v["type"] == "absolute":
+        t = v["long"][0]
+        prior = float(pi[t])
+        q = prior + (1 if direction == "up" else -1) * k * float(vol[t])
+        lo, hi = ps.abs_return_range
+    else:
+        prior = sum(float(pi[t]) for t in v["long"]) / len(v["long"]) - sum(float(pi[t]) for t in v["short"]) / len(v["short"])
+        q = max(prior, 0.0) + k * _spread_vol(v, mm, tickers)
+        lo, hi = ps.rel_return_range
+    if not (lo <= q <= hi):
+        warnings.append(f"{sid}: view {v['long']} return {q:.4f} clipped to [{lo}, {hi}]")
+        q = min(max(q, lo), hi)
+    v["direction"], v["strength"] = direction, strength
+    v["prior_return"], v["expected_return_annual"] = round(prior, 6), round(q, 6)
+
+
+def _spread_vol(v: dict[str, Any], mm: dict[str, Any], tickers: list[str]) -> float:
+    """long 바스켓 − short 바스켓 수익률 차이의 연변동성 σ(P) = √(p'Σp). 공분산이 없으면 상관 0 으로 근사."""
+    w = {t: 1 / len(v["long"]) for t in v["long"]}
+    for t in v["short"]:
+        w[t] = w.get(t, 0.0) - 1 / len(v["short"])
+    cov, tk = mm.get("cov"), mm.get("tickers") or tickers
+    if cov is not None and all(t in tk for t in w):
+        idx = {t: i for i, t in enumerate(tk)}
+        var = sum(w[a] * w[b] * float(cov[idx[a]][idx[b]]) for a in w for b in w)
+    else:
+        var = sum((w[t] * float(mm["ann_vol"][t])) ** 2 for t in w)
+    return math.sqrt(max(var, 0.0))

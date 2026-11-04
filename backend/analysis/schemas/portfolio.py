@@ -21,6 +21,7 @@ class MarketModel(BaseModel):
     delta: float
     delta_source: str = "fixed"
     delta_market: float | None = None
+    delta_base: float | None = None  # max(시장 δ, 하한) — 성향·낙폭 배수를 곱하기 전 값
     delta_multiplier: float | None = None
     delta_window: dict | None = None
     delta_dd_multiplier: float | None = None  # 허용 낙폭 배수 (라운드 5)
@@ -80,7 +81,10 @@ class View(BaseModel):
     type: Literal["absolute", "relative"]
     long: list[str] = Field(min_length=1)
     short: list[str] = []
-    expected_return_annual: float
+    expected_return_annual: float  # Q: 코드가 direction·strength 와 사전 기대수익으로 계산한 연 기대수익(상대 뷰는 차이)
+    direction: Literal["up", "down"] | None = None  # LLM 이 정한 방향 (상대 뷰는 늘 up = long 이 short 를 이김)
+    strength: Literal["weak", "medium", "strong"] | None = None
+    prior_return: float | None = None  # 같은 다리의 사전 기대수익 π (상대 뷰는 π_long − π_short)
     confidence: float = Field(gt=0, le=1)
     horizon_months: int = Field(ge=1, le=60, default=12)
     rationale_ko: str

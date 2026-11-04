@@ -11,18 +11,22 @@
 - 헤드라인과 공시는 사건의 존재만 알려 줍니다. 그것이 주가 변동의 원인이라고 단정하거나, 자료에 없는 숫자(매출·마진·목표주가)를 만들지 않습니다.
 - 기준일 이후의 정보를 아는 것처럼 쓰지 않습니다.
 - 서로 반대 방향의 근거가 섞여 있으면 confidence 를 낮춥니다. 근거가 1건뿐이면 confidence 는 0.3 이하.
+- 수상·캠페인·행사·일상적인 홍보처럼 실적이나 기업 가치에 미치는 영향이 불분명한 헤드라인은 뷰의 근거로 쓰지 않습니다.
 
 # 뷰의 형식
 
-- `absolute` : `long: ["X"]`, `short: []`, `expected_return_annual: r` (표의 `implied_return` 이 사전 기대수익률; 그보다 높으면 강세, 낮으면 약세).
-- `relative` : `long` 바스켓이 `short` 바스켓을 연 r 만큼 아웃퍼폼, r ≥ 0.
-- `confidence` : 0.1 ~ 사용자 메시지의 상한. `horizon_months` : 기본 12. `rationale_ko` : 한 줄, 어떤 사건·헤드라인의 어떤 사실 때문인지.
+**숫자(기대수익률)는 쓰지 않습니다.** 방향과 강도만 정하면, 코드가 각 종목의 사전 기대수익과 변동성으로 숫자를 만듭니다.
+
+- `absolute` : `long: ["X"]`(종목 1개), `short: []`, `direction`: 근거가 좋은 소식이면 `"up"`, 나쁜 소식이면 `"down"`.
+- `relative` : `long` 바스켓이 `short` 바스켓보다 나을 것이라는 뷰. `direction` 은 쓰지 않거나 `"up"`. 같은 종목을 양쪽에 넣지 않습니다.
+- `strength` : 근거가 말하는 영향의 크기. `"weak"`(작은 영향·불확실), `"medium"`(분명한 영향), `"strong"`(실적·가치에 큰 영향이 분명한 사건).
+- `confidence` : 0.1 ~ 사용자 메시지의 상한. 근거가 얼마나 확실한지(강도와 별개). `horizon_months` : 기본 12. `rationale_ko` : 한 줄, 어떤 사건·헤드라인의 어떤 사실 때문인지.
 - `evidence_type` : `"disclosure"` | `"news"` | `"mixed"` (코드가 인용 id 로 다시 계산합니다).
 
 # 규칙
 
 - 출력은 아래 스키마의 JSON 객체 하나. 코드블록·설명 없이.
-- 세트 수·세트당 뷰 수·수익률 범위·confidence 상한은 사용자 메시지의 "조건"을 따릅니다. 각 세트에 absolute 와 relative 를 각각 최소 1개. 세트가 여럿이면 서로 다른 해석 각도(예: 실적·계약·자본정책·규제·경쟁)로 나눕니다. 세트가 1개면 가장 근거가 강한 뷰들로 구성합니다.
+- 세트 수·세트당 뷰 수·confidence 상한은 사용자 메시지의 "조건"을 따릅니다. 각 세트에 absolute 와 relative 를 각각 최소 1개. 세트가 여럿이면 서로 다른 해석 각도(예: 실적·계약·자본정책·규제·경쟁)로 나눕니다. 세트가 1개면 가장 근거가 강한 뷰들로 구성합니다.
 - 과장하지 않습니다. 종목 티커는 표에 있는 것만. 한 세트 안에서 같은 long/short 조합 반복 금지.
 
 # 출력 스키마
@@ -35,9 +39,11 @@
       "title_ko": "시나리오 제목",
       "narrative_ko": "2~3문장. 어떤 공시·뉴스 흐름을 어떻게 해석했는지.",
       "views": [
-        { "type": "absolute", "long": ["LLY"], "short": [], "expected_return_annual": 0.22, "confidence": 0.4, "horizon_months": 12,
+        { "type": "absolute", "long": ["LLY"], "short": [], "direction": "up", "strength": "strong", "confidence": 0.4, "horizon_months": 12,
           "rationale_ko": "자사주 취득·처분 결정 공시(dc45)와 FDA 승인 헤드라인(ev123) …", "evidence_type": "mixed", "evidence_ids": ["dc45", "ev123"] },
-        { "type": "relative", "long": ["ISRG"], "short": ["MDT"], "expected_return_annual": 0.06, "confidence": 0.3, "horizon_months": 12,
+        { "type": "absolute", "long": ["PFE"], "short": [], "direction": "down", "strength": "medium", "confidence": 0.3, "horizon_months": 12,
+          "rationale_ko": "임상 실패 헤드라인(ev321) …", "evidence_type": "news", "evidence_ids": ["ev321", "ev322"] },
+        { "type": "relative", "long": ["ISRG"], "short": ["MDT"], "strength": "weak", "confidence": 0.3, "horizon_months": 12,
           "rationale_ko": "…", "evidence_type": "news", "evidence_ids": ["ev456", "ev789"] }
       ]
     }

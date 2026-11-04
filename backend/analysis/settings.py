@@ -55,6 +55,10 @@ class PortfolioSettings:
     confidence_floor: float = 0.1
     abs_return_range: tuple[float, float] = (-0.5, 1.0)
     rel_return_range: tuple[float, float] = (0.0, 0.5)
+    # 뷰 수치 변환 (2026-11 시나리오 QA, 논의사항 C1): LLM 은 방향·강도만 내고, 코드가 사전 기대수익(π) 대비로 Q 를 만든다.
+    # 절대 뷰 Q = π_i + 방향 × k × σ_i, 상대 뷰 Q = max(π_long − π_short, 0) + k × σ(long − short). k = 강도별 연변동성 배수
+    view_strength_k: dict[str, float] = field(default_factory=lambda: {"weak": 0.10, "medium": 0.20, "strong": 0.35})
+    single_evidence_max_confidence: float = 0.3  # 근거가 1건뿐인 뷰의 신뢰도 상한 (09 프롬프트 규칙을 코드로 강제)
     templates: tuple[str, ...] = ("equal_weight", "market_cap", "inverse_volatility", "min_variance")
     template_names_ko: dict[str, tuple[str, str]] = field(
         default_factory=lambda: {

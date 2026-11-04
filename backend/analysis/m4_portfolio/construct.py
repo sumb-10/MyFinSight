@@ -48,9 +48,15 @@ class ConstructResult:
         return dict(self.baseline["weights"])
 
     @property
+    def applied_bl(self) -> list[dict[str, Any]]:
+        """뷰가 실제로 반영된 BL 세트 (최적화가 실패해 기준 비중을 유지한 세트는 뺀다)."""
+        return [p for p in self.bl_portfolios if p.get("views_applied")]
+
+    @property
     def chosen_weights(self) -> dict[str, float]:
-        """리밸런싱·모의투자가 적용할 비중: BL 첫 세트가 있으면 그것, 없으면 기준 비중."""
-        return dict(self.bl_portfolios[0]["weights"]) if self.bl_portfolios else self.baseline_weights
+        """리밸런싱·모의투자가 적용할 비중: 뷰가 반영된 첫 BL 세트가 있으면 그것, 없으면 기준 비중."""
+        ap = self.applied_bl
+        return dict(ap[0]["weights"]) if ap else self.baseline_weights
 
     def evidence_summary(self) -> dict[str, Any] | None:
         return self.evidence.summary() if self.evidence else None
@@ -100,7 +106,7 @@ def construct(
     ports, w2, params = build_bl(model, base, sets, req, intent, desc, settings, id_prefix=id_prefix, name_prefix=name_prefix)
     res.bl_portfolios, res.view_sets, res.params = ports, sets, params
     res.warnings += w2
-    if ports and any(a.startswith("optimizer_failed") for a in ports[0]["active_constraints"]):
+    if ports and not res.applied_bl:  # 모든 세트가 실패했을 때만 기준 비중 유지 (세트 하나 실패로 전체를 fallback 이라 부르지 않는다)
         res.fallback = True
         res.fallback_reason_ko = "뉴스 뷰 비중 최적화가 수렴하지 않아 기준 비중을 사용"
     return res
