@@ -84,7 +84,7 @@ def build_market_model(
     max_stock, max_sector = cons["max_weight_per_stock"], cons["max_weight_per_sector"]
     capacity = P.weight_capacity(sec_code, max_stock, max_sector)
     if capacity < total - 1e-9:
-        warnings.append(f"caps allow at most {capacity:.0%} invested (stock {max_stock:.0%}, sector {max_sector:.0%}, {len(tk)} names): "
+        warnings.append(f"caps allow at most {capacity:.0%} invested (stock {max_stock:.0%}, sector {max_sector:.0%}, {len(tk)} names, investable {total:.0%}): "
                         f"{total - capacity:.0%} kept as cash; relax the caps or widen the theme to invest fully")  # fmt: skip
         total = round(capacity - 1e-6, 6)
     baseline_id = req["strategy_preference"]["baseline_weighting"]

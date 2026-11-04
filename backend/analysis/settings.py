@@ -127,6 +127,7 @@ class BacktestSettings:
     min_annualize_days: int = 378  # 라운드 5: 1.5년 미만 창은 연환산 KPI 대신 기간 수익률, R2/R7 은 참고
     min_invested_for_recommendation: float = 0.5  # 기준 구성의 투자 비율이 이보다 낮으면 결론 라벨 '구성 불충분'
     dd_excess_bucket: float = 0.05  # 추천 순위: 허용 낙폭 초과분을 이 단위(5%p) 구간으로 감점
+    matched_min_invested: float = 0.30  # 낙폭 맞춤안의 주식 비중 하한 (2026-11 정책 결정 2). 이보다 줄여야 목표 낙폭을 맞추면 맞춤안을 만들지 않고 알린다
     checkpoint_view_diagnostics: bool = False  # 체크포인트마다 뷰 진단을 다시 계산 (화면 미사용 → 기본 끔. 켜면 11 단계가 느려진다)
 
 

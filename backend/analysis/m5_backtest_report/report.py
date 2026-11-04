@@ -14,6 +14,7 @@ import json
 from typing import Any
 
 from backend.analysis.common.jsonio import now_iso
+from backend.analysis.common.labels import sector_ko
 from backend.analysis.common.llm import LlmClient, messages_from_prompts
 from backend.analysis.common.prompts import load_prompts
 from backend.analysis.errors import ReportCheckError
@@ -68,6 +69,7 @@ def facts_for_interpret(R: dict[str, Any], chosen: str) -> dict[str, Any]:
                        "period_note_ko": B.period_note(R)},
             "walkforward": ({"dates": R["portfolio"]["walkforward"]["dates"], "news_summary": R["portfolio"]["walkforward"]["news_summary"],
                              "fallback_dates": next((p for p in R["portfolio"]["walkforward"]["portfolios"] if p["kind"] == "black_litterman"), {}).get("fallback_dates", []),
+                             "news_bl_omitted_ko": (R["portfolio"]["walkforward"].get("bl_omitted") or {}).get("reason_ko"),  # 뉴스 반영 구성을 만들지 않은 이유 (없으면 BL 후보 자체가 없다)
                              "top_delta_by_date": B.walkforward_top_deltas(R),
                              "results": [{"id": x["id"], "label": x["name_ko"], "headline": x["headline"]} for x in bt["portfolios"] if x.get("mode") == "walkforward"]}
                             if R["portfolio"].get("walkforward") else None),
@@ -88,14 +90,17 @@ def _matched_note(R: dict[str, Any]) -> str | None:
     mdds = [abs((x.get("headline") or {}).get("max_drawdown") or 0) for x in bt["portfolios"] if x["id"] in bases]
     if mdds and all(m <= target + 1e-9 for m in mdds):
         return f"기준 구성의 과거 최대낙폭이 이미 낙폭 맞춤 목표({target:.1%}) 안이라 현금을 섞은 낙폭 맞춤안을 만들 필요가 없었습니다"
-    return f"현금 비율을 바꿔도 과거 최대낙폭을 목표({target:.1%}) 안으로 맞추지 못해 낙폭 맞춤안을 만들지 못했습니다"
+    floor = float(((R.get("parameters") or {}).get("backtest") or {}).get("matched_min_invested", 0.30))  # 정책 결정 2
+    return f"주식 비중을 {floor:.0%} 이상 남기면서는 과거 최대낙폭을 목표({target:.1%}) 안으로 맞추지 못해 낙폭 맞춤안(주식 + 현금)을 만들지 않았습니다"
 
 
 def _chosen_note(R: dict[str, Any], p: dict[str, Any], is_rec: bool) -> str:
     vd = (R["validation"].get("recommended") or {}).get("verdict")
     if vd:
         if vd["status"] == "insufficient":
-            return "후보 종목이 모자라 투자 비율이 낮습니다. 순위 1위 구성을 중심으로 설명하지만 그대로 투자하기에는 부족합니다."
+            cause = vd.get("cause_ko") or "투자 비율이 낮습니다"
+            return (f"{cause}. 순위 1위 구성을 중심으로 설명하지만 그대로 투자하기에는 부족합니다."
+                    + (" 주의: " + " · ".join(vd["cautions_ko"]) + "." if vd.get("cautions_ko") else ""))
         if vd.get("cautions_ko"):
             return "후보 중 순위 1위 구성입니다. 주의: " + " · ".join(vd["cautions_ko"]) + "."
         return "후보 중 순위 1위로 추천된 구성입니다."
@@ -135,8 +140,9 @@ def facts_for_market(R: dict[str, Any]) -> dict[str, Any]:
                        "period_return": pct(h.get("period_return")), "max_drawdown": pct(abs(h.get("max_drawdown") or 0)), "excess_cagr_vs_benchmark_pp": (None if h.get("excess_cagr") is None else f"{h['excess_cagr'] * 100:+.1f}%p")},
             "as_of": R["request"]["derived"]["as_of"], "summary_ko": R["intent"]["interpretation"]["summary_ko"],
             "themes": [{"id": t["id"], "label": t["label_ko"], "description": t["description_ko"]} for t in R["intent"]["interpretation"]["themes"]],
-            "universe": R["request"]["constraints"]["universe"], "holdings": [{"ticker": t["ticker"], "name": t["name"], "sector": t["sector"], "market": t.get("market")} for t in R["selection"]["table"] if t["in_selection_now"]],
-            "sector_exposure_pct": {k: pct(v) for k, v in sorted((p["metrics"]["composition"]["sector_weights_avg"] or {}).items(), key=lambda x: -(x[1] or 0))},
+            # 섹터는 한국어 이름으로 (영어 GICS 이름을 넘기면 'Communication Services 업종' 처럼 그대로 옮겨 적었다)
+            "universe": R["request"]["constraints"]["universe"], "holdings": [{"ticker": t["ticker"], "name": t["name"], "sector": sector_ko(t["sector"]), "market": t.get("market")} for t in R["selection"]["table"] if t["in_selection_now"]],
+            "sector_exposure_pct": {sector_ko(k): pct(v) for k, v in sorted((p["metrics"]["composition"]["sector_weights_avg"] or {}).items(), key=lambda x: -(x[1] or 0))},
             "sector_exposure_note": "백테스트 기간 선택안의 평균 섹터 비중 (현금 제외 전 총자산 대비)",
             "benchmark": {"label": bench["name_ko"], "cagr": pct(bh.get("cagr")), "period_return": pct(bh.get("period_return")), "max_drawdown": pct(abs(bh.get("max_drawdown") or 0))},
             "news": news[:60], "disclosures": discl[:40], "event_summary_90d": event_summary, "news_window": f.get("news_window"),
@@ -149,14 +155,16 @@ def facts_for_narrate(R: dict[str, Any], chosen: str, interp: dict[str, Any]) ->
     base = next(x for x in bl["portfolios"] if x["id"] == bl["chosen_baseline"])
     f = R["portfolio"].get("forward")
     return {"citation_rule": "선정·구성 설명에서 지표 값을 말할 때는 [fin:...] 근거 ID(선정 표의 fact id), 성과 숫자는 [calc:...] 를 인용한다. 목록에 없는 id 는 쓰지 않는다.",
-            "fact_ids": [t.get("metric_fact_id") for t in R["selection"]["table"] if t.get("metric_fact_id")],
+            # 기준일 값 = metric_fact_id, 시작일 값 = metric_backtest_fact_id (예전에는 기준일 ID 만 있어 시작일 PER 에 기준일 ID 를 붙였다, 003)
+            "fact_ids": list(dict.fromkeys(i for t in R["selection"]["table"] for i in (t.get("metric_fact_id"), t.get("metric_backtest_fact_id")) if i)),
             "calc_ids": sorted(k for k in R["evidence_index"] if k.startswith("calc:") and k.endswith(":" + chosen)),
             "request": {r["k"]: r["v"] for r in B.request_table(R)["rows"]},
             "rebalance_ko": R["portfolio"]["backtest_spec"]["rebalance_rule"].get("description_ko"),
             "intent": {"summary": R["intent"]["interpretation"]["summary_ko"], "themes": [{"label": t["label_ko"], "description": t["description_ko"]} for t in R["intent"]["interpretation"]["themes"]],
                        "conflicts": R["intent"]["interpretation"].get("conflicts", []), "risk_params": R["intent"]["risk_params"], "constraints": {r["k"]: r["v"] for r in B.constraints_table(R)["rows"]}},
             "selection": {"metric": R["selection"]["metric"], "metric_ko": M.METRIC_KO.get(R["selection"]["metric"], R["selection"]["metric"]), "funnel": R["selection"]["funnel"],
-                          "table": [{**t, "metric_now_display": (M.display_metric(R["selection"]["metric"], t.get("metric_now")) if t.get("in_selection_now") else "분석 기준일 목록에 없음"),
+                          "table": [{**t, "sector": sector_ko(t.get("sector")),
+                                     "metric_now_display": (M.display_metric(R["selection"]["metric"], t.get("metric_now")) if t.get("in_selection_now") else "분석 기준일 목록에 없음"),
                                      "metric_backtest_display": (M.display_metric(R["selection"]["metric"], t.get("metric_backtest")) if t.get("in_backtest") else "백테스트 시작일 목록에 없음")}
                                     for t in R["selection"]["table"]],
                           "theme_filter_applied": R["selection"].get("tagging_summary", {}).get("theme_filter_applied", True),
@@ -164,7 +172,11 @@ def facts_for_narrate(R: dict[str, Any], chosen: str, interp: dict[str, Any]) ->
                           "diff": R["selection"]["backtest_as_of"]["diff_vs_original"], "warnings": [n["message_ko"] for n in (R.get("notices") or []) if n.get("stage") in ("05_selection", "07_backtest_spec")], "explained": R["selection"].get("explained")},
             "construction": {"baseline": {"id": base["id"], "rule": base["rule_ko"], "n": len(base["weights"]), "weights": base["weights"], "cash_weight": base.get("cash_weight", 0),
                                           "constraints_applied": base["constraints_applied"], "sector_weights": base["sector_weights"]},
-                             "templates": B.templates_table(R)["rows"], "max_tilt": R["portfolio"]["targets"]["parameters"].get("max_tilt_per_stock"),
+                             # 소수 그대로 넘기면 LLM 이 '36.7611%' 처럼 옮겨 적는다 → 표시 문자열로 (표 블록은 그대로 숫자)
+                             "templates": [{**r, "vol": f"{r['vol']:.1%}", "top": f"{r['top']:.1%}", "cash": f"{r['cash']:.1%}", "neff": round(float(r["neff"]), 1)}
+                                           for r in B.templates_table(R)["rows"]],
+                             # 시작일에 뉴스 뷰가 없으면 BL 파라미터가 비어 'max_tilt 가 정해져 있지 않다' 고 썼다 → 해당 없음을 밝힌다
+                             "max_tilt": R["portfolio"]["targets"]["parameters"].get("max_tilt_per_stock") or "해당 없음 (백테스트 시작일에 뉴스 뷰가 없어 BL 구성을 만들지 않음)",
                              "news_tilt_enabled": R["intent"]["news_tilt"]["enabled"], "start_views": R["portfolio"]["views"],
                              "scenarios": [{"title": s.get("title_ko"), "narrative": (s.get("portfolio_view") or "").split("\n")[0], "views": [v["summary_ko"] for v in s["views_applied"]],
                                             "top_delta": sorted(s["delta_vs_baseline"].items(), key=lambda x: -abs(x[1]))[:3]} for s in R["portfolio"]["targets"]["portfolios"]],

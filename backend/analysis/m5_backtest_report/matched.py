@@ -44,18 +44,22 @@ def _mdd(raw: dict[str, Any]) -> float:
 
 
 def solve_cash_ratio(run_fn: Callable[[float], dict[str, Any]], seed: float, target: float, *, iters: int = 6, bump: float = 0.01,
-                     max_bumps: int = 3) -> tuple[float | None, dict[str, Any] | None, int]:  # fmt: skip
+                     max_bumps: int = 3, max_cash: float = MAX_CASH) -> tuple[float | None, dict[str, Any] | None, int]:  # fmt: skip
     """실제 일정으로 돌린 MDD 가 목표 안에 들어오는 현금 비율. (c, raw, 실행 횟수). 못 찾으면 (None, None, n).
 
     씨앗 주변 [seed−0.10, seed+0.15] 에서 이분 탐색 → 0.5%p 올림 → 검증, 목표를 넘으면 +bump 씩 최대 max_bumps 회.
     적립이 있으면 MDD 가 c 에 완전히 단조가 아닐 수 있어 마지막 검증을 반드시 거친다.
+    max_cash: 현금 비율 상한 (주식 비중 하한에서 계산, 정책 결정 2). 이 안에서 못 맞추면 None.
     """
     n = 0
-    lo, hi = max(0.0, seed - 0.10), min(MAX_CASH, seed + 0.15)
+    cap = min(MAX_CASH, max_cash)
+    if cap < 0:
+        return None, None, n
+    lo, hi = min(max(0.0, seed - 0.10), cap), min(cap, seed + 0.15)
     raw_hi = run_fn(hi)
     n += 1
-    while _mdd(raw_hi) < -target and hi < MAX_CASH - 1e-9:
-        hi = min(MAX_CASH, hi + 0.10)
+    while _mdd(raw_hi) < -target and hi < cap - 1e-9:
+        hi = min(cap, hi + 0.10)
         raw_hi = run_fn(hi)
         n += 1
     if _mdd(raw_hi) < -target:
@@ -79,7 +83,7 @@ def solve_cash_ratio(run_fn: Callable[[float], dict[str, Any]], seed: float, tar
         c = round(c + bump, 4)
         raw = run_fn(c)
         n += 1
-    if _mdd(raw) < -target or c > MAX_CASH + 1e-9:
+    if _mdd(raw) < -target or c > cap + 1e-9:
         return None, None, n
     return round(c, 4), raw, n
 

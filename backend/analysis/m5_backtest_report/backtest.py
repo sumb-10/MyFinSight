@@ -287,10 +287,19 @@ def build_matched_blocks(ctx, targets, wf, runs, blocks, primary_raw, baseline_i
         else:
             def run_fn(c, _wbd=base["weights_by_date"], _pid=pid):
                 return run_raw_dynamic(ctx, _pid, {d: MX.scale_weights(w, c) for d, w in _wbd.items()})
+        # 주식 비중 하한 (정책 결정 2): 모든 날짜에서 기준 투자 비율 × (1−c) ≥ 하한 → c ≤ 1 − 하한 / 최소 투자 비율
+        floor = float(ctx["settings"].backtest.matched_min_invested)
+        invs = [float(sum(w.values())) for w in (base["weights_by_date"].values() if mode == "dynamic" else [base["weights"]])]
+        base_inv = min(invs) if invs else 0.0
+        max_cash = 1.0 - floor / base_inv if base_inv > 1e-9 else -1.0
         seed = MX.seed_cash_ratio(braw["index"], target)
-        c, raw, n = MX.solve_cash_ratio(run_fn, seed, target)
+        c, raw, n = MX.solve_cash_ratio(run_fn, seed, target, max_cash=max_cash)
         if c is None:
-            warns.append(f"matched variant skipped for {bid}: no cash ratio up to {MX.MAX_CASH:.0%} brings max drawdown within {target:.1%} ({n} runs)")
+            if max_cash < MX.MAX_CASH - 1e-9:
+                warns.append(f"matched variant skipped for {bid}: stocks below floor {floor:.0%} would be needed to bring max drawdown within {target:.1%} "
+                             f"(base invested {base_inv:.0%}, cash cap {max(0.0, max_cash):.0%}, {n} runs)")  # fmt: skip
+            else:
+                warns.append(f"matched variant skipped for {bid}: no cash ratio up to {MX.MAX_CASH:.0%} brings max drawdown within {target:.1%} ({n} runs)")
             continue
         weights = MX.scale_weights(base["weights"], c)
         inv = float(sum(weights.values()))

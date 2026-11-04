@@ -21,9 +21,27 @@ def total_return(idx):
     return idx.iloc[-1] / idx.iloc[0] - 1
 
 
+def _years(idx) -> float | None:
+    """지수의 실제 경과 기간(년). 날짜 색인이 아니면 None."""
+    if isinstance(getattr(idx, "index", None), pd.DatetimeIndex) and len(idx) > 1:
+        days = (idx.index[-1] - idx.index[0]).days
+        return days / 365.25 if days > 0 else None
+    return None
+
+
+def td_eff(idx, td: int) -> float:
+    """1년에 해당하는 행 수. 한국 종목 + 미국 보조 비교지수처럼 시장 합집합 달력이면 1년 ≈ 259행이라 252 로 연환산하면 틀어진다 (2026-11 QA)."""
+    y = _years(idx)
+    return (len(idx) - 1) / y if y else float(td)
+
+
 def cagr(idx, td: int):
+    """연환산 = 실제 경과 기간 기준 (행 수 / 252 가 아니라). 날짜 색인이 없으면 예전처럼 행 수 기준."""
     n = len(idx) - 1
-    return (idx.iloc[-1] / idx.iloc[0]) ** (td / n) - 1 if n > 0 else float("nan")
+    if n <= 0:
+        return float("nan")
+    y = _years(idx)
+    return (idx.iloc[-1] / idx.iloc[0]) ** (1 / y) - 1 if y else (idx.iloc[-1] / idx.iloc[0]) ** (td / n) - 1
 
 
 def monthly_returns(idx: pd.Series) -> pd.Series:
@@ -110,6 +128,7 @@ def relative_to(idx, bench_idx, rf, td: int):
     if len(rp) < 5:
         return dict.fromkeys(keys)
     bi = bench_idx.reindex(idx.index).ffill()
+    td = td_eff(idx, td)  # 합집합 달력이면 1년 행 수가 252 가 아니다
     beta = np.cov(rp, rb, ddof=1)[0, 1] / rb.var(ddof=1)
     alpha = ((rp - rf / td).mean() - beta * (rb - rf / td).mean()) * td
     te = (rp - rb).std(ddof=1) * np.sqrt(td)
@@ -294,8 +313,9 @@ def compute_all(raw, bench_idx, asset_px, targets, sectors, rebal_dates, rf, tar
     idx, values, flows = raw["index"], raw["values"], raw["flows"]
     r = daily_returns(idx)
     mr = monthly_returns(idx)
-    cg, vol, mdd = cagr(idx, td), ann_vol(r, td), drawdown_series(idx).min()
-    dd_ = downside_deviation(r, rf, td)
+    te_ = td_eff(idx, td)
+    cg, vol, mdd = cagr(idx, td), ann_vol(r, te_), drawdown_series(idx).min()
+    dd_ = downside_deviation(r, rf, te_)
     var, cvar = var_cvar(mr)
     comp = composition_metrics(raw["security_weights"], asset_px, targets, sectors, max_stock, max_sector, settings.drift_tolerance)
     m = {
@@ -330,8 +350,9 @@ def compute_to_date(idx: pd.Series, values: pd.Series, flows: pd.Series, bench_i
     td = settings.trading_days
     r = daily_returns(idx)
     mr = monthly_returns(idx)
-    cg, vol, mdd = cagr(idx, td), ann_vol(r, td), drawdown_series(idx).min()
-    dd_ = downside_deviation(r, rf, td)
+    te_ = td_eff(idx, td)
+    cg, vol, mdd = cagr(idx, td), ann_vol(r, te_), drawdown_series(idx).min()
+    dd_ = downside_deviation(r, rf, te_)
     rel = relative_to(idx, bench_idx, rf, td)
     base = relative_to(idx, baseline_idx, rf, td) if baseline_idx is not None else None
     n_days = len(idx) - 1

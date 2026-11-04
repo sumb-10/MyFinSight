@@ -11,6 +11,7 @@ import math
 from collections import Counter
 from typing import Any
 
+from backend.analysis.common.labels import sector_ko
 from backend.analysis.m2_data import descriptor as D
 from backend.analysis.m2_data import metrics as M
 from backend.analysis.m2_data.market_data import MarketDataView
@@ -147,15 +148,18 @@ def screen(
             "required": investable, "sector_cap": max_sector, "stock_cap": max_stock,
             "sector_counts": {sec_names.get(c, c): k for c, k in sec_count.items()}, "cap_needed_for_target": needed,
             "max_feasible_n": len(selected),
-            "options_ko": [f"섹터 상한을 {needed:.0%} 로 올리기" if needed else "섹터 상한 완화로도 해결 불가", "종목당 상한을 올리기",
-                           "테마를 넓혀 다른 섹터 후보를 늘리기"],
+            # 섹터 상한을 100% 로 올려도 모자라면(종목 수 × 종목당 상한이 묶임) 그 보기는 빼고 이유를 따로 적는다 (예전에는 '섹터 상한 완화로도 해결 불가' 가 보기로 나왔다)
+            "options_ko": ([f"섹터 상한을 {needed:.0%}로 올리기", "종목당 상한을 올리기", "테마를 넓혀 다른 섹터 후보를 늘리기"] if needed
+                           else ["종목당 상한을 올리기", "테마를 넓혀 종목 수를 늘리기"]),
+            "note_ko": None if needed else f"종목이 {len(selected)}개라 종목당 상한 {max_stock:.0%}로는 섹터 상한을 올려도 다 배분할 수 없습니다",
         }  # fmt: skip
-        warnings.append(f"weight capacity {cap_now:.2f} < {investable:.2f}: caps cannot absorb the capital with these sectors (cap needed {needed})")
+        warnings.append(f"weight capacity {cap_now:.2f} < {investable:.2f}: caps cannot absorb the capital with these sectors (cap needed {needed}; "
+                        f"stock {max_stock:.0%}, sector {max_sector:.0%}, {len(selected)} names)")  # fmt: skip
     if overflow:
         top_sec = Counter(sector_of(t)[1] for t in overflow).most_common(1)[0][0]
         k = sum(1 for s_ in selected if s_.sector == top_sec)
         sector_overflow = {"count_preference": sector_pref, "tickers": overflow, "sector": top_sec, "n_in_sector": k,
-                           "note_ko": f"{top_sec} 종목이 {k}개로 섹터 상한 {max_sector:.0%}를 나눠 갖습니다(동일비중 기준 약 {max_sector / k:.1%}씩). "
+                           "note_ko": f"{sector_ko(top_sec)} 종목이 {k}개로 섹터 상한 {max_sector:.0%}를 나눠 갖습니다(동일비중 기준 약 {max_sector / k:.1%}씩). "
                                       "상위 순위 종목을 빼지 않기 위해 종목 수 대신 비중으로 상한을 지킵니다."}  # fmt: skip
         warnings.append(f"sector name preference ({sector_pref}/sector) exceeded for {len(overflow)} tickers {overflow}; sector cap is enforced by weights")
     if len(selected) < n:

@@ -12,6 +12,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
+import pandas as pd
+
 from backend.analysis.schemas.results import Validation
 from backend.analysis.settings import AnalysisSettings
 
@@ -29,11 +31,21 @@ def check(rule, name, level, ok, value, threshold, msg):
     return {"rule": rule, "name_ko": name, "level": level, "status": status, "ok": bool(ok), "value": value, "threshold": threshold, "message_ko": msg}
 
 
+def _rows_per_year(res, td: int) -> float:
+    """백테스트 달력의 1년 행 수 (series_dates 의 실제 경과 기간으로). 없으면 설정값."""
+    d = res.get("series_dates") or []
+    try:
+        days = (pd.Timestamp(d[-1]) - pd.Timestamp(d[0])).days
+    except (IndexError, ValueError, TypeError):
+        return float(td)
+    return (len(d) - 1) / (days / 365.25) if days > 0 and len(d) > 1 else float(td)
+
+
 def target_window_ratio(index, target_years: float, target: float, td: int):
     """투자기간 길이의 모든 과거 구간(하루씩 이동)에서 연환산 수익률이 목표 이상인 비율. 창이 투자기간보다 짧으면 None."""
     import numpy as np
 
-    w = int(round(target_years * td))
+    w = int(round(target_years * float(td)))
     idx = np.asarray(index, dtype=float)
     if w < 5 or len(idx) - 1 < w:
         return None
@@ -67,7 +79,7 @@ def evaluate_checks(p, crit, n_days, expected_rb, sector_of, drift_tol, short_wi
                          f"비교지수보다 낙폭이 {'작음' if mdd <= bench_mdd else '큼'} ({mdd:.1%} vs {bench_mdd:.1%})" + (" — 허용 낙폭은 넘었지만 시장 전체가 그만큼 빠진 구간입니다" if (not ok1 and mdd <= bench_mdd) else "")))  # fmt: skip
     # R2 목표수익 (권장) — 투자기간 길이의 과거 구간 중 목표 달성 비율
     cg = m["return"]["cagr"] or 0.0
-    td = settings.backtest.trading_days if settings else 252
+    td = float(crit.get("rows_per_year") or (settings.backtest.trading_days if settings else 252))  # 실제 달력의 1년 행 수 (합집합 달력이면 ≈259)
     tw = target_window_ratio(p["series"]["index"], float(crit.get("horizon_years") or 0), crit["target_annual_return"], td) if crit.get("horizon_years") else None
     min_ratio = settings.backtest.target_window_min_ratio if settings else 0.5
     short_note = " (창이 짧아 참고만)" if short_window else ""
@@ -151,16 +163,22 @@ def dd_bucket(mdd: float, tol: float, size: float) -> int:
     return int(math.ceil(max(0.0, abs(mdd) - tol) / size - 1e-9)) if size > 0 else int(abs(mdd) > tol)
 
 
-def rank_key(row: dict[str, Any], st: dict[str, str], *, integrity_failed: bool, tol: float, bucket_size: float, cautious: bool) -> tuple:
-    """추천 순위 키 (작을수록 좋음): 무결성 실패 → 목표수익 미달 → 비교지수 열위 → 허용 낙폭 초과 구간 → (보수 성향) 낙폭 맞춤안 우선 → Sharpe 높음 → 낙폭 작음.
-    R2/R3 는 'pass' 만 충족으로 본다 (정보로 바뀐 짧은 창은 모두 같은 등급)."""
+def rank_key(row: dict[str, Any], st: dict[str, str], *, integrity_failed: bool, tol: float, bucket_size: float, cautious: bool,
+             baseline_id: str | None = None) -> tuple:  # fmt: skip
+    """추천 순위 키 (작을수록 좋음): 무결성 실패 → 목표수익 미달 → 비교지수 열위 → 허용 낙폭 초과 구간 → (보수 성향) 낙폭 맞춤안 우선 → Sharpe 높음 → 낙폭 작음
+    → (동점) 사용자가 고른 기준 비중 쪽.
+    R2/R3 는 'pass' 만 충족으로 본다 (정보로 바뀐 짧은 창은 모두 같은 등급).
+    Sharpe·낙폭은 소수 4자리로 반올림해 비교한다: 종목이 1~2개라 규칙끼리 비중이 똑같으면 성과도 같은데, 예전에는 1e-6 수준의 계산 잡음이
+    순위를 정해 사용자가 고르지 않은 규칙이 추천됐다 (2026-11 시나리오 002: 역변동성비중을 골랐는데 같은 성과의 동일비중이 앞)."""
     mdd = abs(row.get("max_drawdown") or 0.0)
     sharpe = row.get("sharpe")
+    mine = bool(baseline_id) and (row.get("id") in (baseline_id, f"wf_{baseline_id}") or row.get("base_id") in (baseline_id, f"wf_{baseline_id}"))
     return (bool(integrity_failed), st.get("R2") != "pass", st.get("R3") != "pass", dd_bucket(mdd, tol, bucket_size),
-            not (cautious and row.get("kind") == "matched"), -(sharpe if sharpe is not None else -9.0), mdd)  # fmt: skip
+            not (cautious and row.get("kind") == "matched"), -round(sharpe if sharpe is not None else -9.0, 4), round(mdd, 4), not mine)  # fmt: skip
 
 
-def verdict_for(*, mdd: float, tol: float, st: dict[str, str], base_invested: float, min_invested: float, name_ko: str) -> dict[str, Any]:
+def verdict_for(*, mdd: float, tol: float, st: dict[str, str], base_invested: float, min_invested: float, name_ko: str,
+                n_holdings: int | None = None, min_holdings: int | None = None, cause_ko: str | None = None) -> dict[str, Any]:  # fmt: skip
     cautions = []
     if mdd > tol + 1e-9:
         cautions.append(f"허용 낙폭 초과 ({mdd - tol:.1%}p)")
@@ -168,13 +186,33 @@ def verdict_for(*, mdd: float, tol: float, st: dict[str, str], base_invested: fl
         cautions.append("목표수익 미달")
     if st.get("R3") == "warn":
         cautions.append("비교지수 하회")
-    if base_invested < min_invested - 1e-9:
-        status, head = "insufficient", "구성 불충분"
+    if n_holdings is not None and min_holdings and n_holdings < min_holdings:  # R6: 최소 종목 수 미달은 숨기지 않는다 (Module3)
+        cautions.append(f"종목 수 부족 ({n_holdings}/{min_holdings}개)")
+    if base_invested < min_invested - 1e-4:  # 반올림 잡음으로 경계(50%)에서 라벨이 뒤집히지 않게 1e-4
+        # '구성 불충분' 이어도 다른 주의를 지우지 않는다 (F18: 낙폭 초과·비교지수 하회가 라벨에서 사라졌다)
+        status, head = "insufficient", "구성 불충분" + (f"(주의: {' · '.join(cautions)})" if cautions else "")
     elif cautions:
         status, head = "recommended_warn", f"추천(주의: {' · '.join(cautions)})"
     else:
         status, head = "recommended", "추천"
-    return {"status": status, "label_ko": f"{head}: {name_ko}", "head_ko": head, "cautions_ko": cautions, "base_invested": round(base_invested, 6)}
+    return {"status": status, "label_ko": f"{head}: {name_ko}", "head_ko": head, "cautions_ko": cautions, "base_invested": round(base_invested, 6),
+            "cause_ko": cause_ko}  # fmt: skip
+
+
+def insufficient_cause(p: dict[str, Any], crit: dict[str, Any], counts: dict[str, int]) -> str:
+    """투자 비율이 낮은 이유를 사실대로 (예전 고정 문구 '후보 종목이 모자라' 는 섹터 상한·최소 현금 때문인 경우에도 나왔다, N-B1-8)."""
+    w = p.get("target_weights") or {}
+    inv, n = float(sum(w.values())), sum(1 for x in w.values() if x > 1e-9)
+    mc = float(crit.get("min_cash_ratio") or 0.0)
+    stock_cap, sector_cap = float(crit["max_weight_per_stock"]), float(crit["max_weight_per_sector"])
+    if n * stock_cap < (1 - mc) - 1e-9 and (not counts or n * stock_cap <= sum(min(k * stock_cap, sector_cap) for k in counts.values()) + 1e-9):
+        return f"선정 종목이 {n}개뿐이라 종목당 상한 {stock_cap:.0%}로는 {min(1.0, n * stock_cap):.0%}까지만 투자됩니다"
+    if counts and sum(min(k * stock_cap, sector_cap) for k in counts.values()) < (1 - mc) - 1e-9:
+        top = max(counts.items(), key=lambda x: x[1])
+        return f"선정 종목이 {top[0]} 등 적은 섹터에 몰려 섹터당 상한 {sector_cap:.0%} 때문에 {inv:.0%}만 투자됩니다"
+    if mc >= 0.5:
+        return f"요청한 최소 현금 비율이 {mc:.0%}입니다"
+    return f"투자 비율이 {inv:.0%}입니다"
 
 
 def validate(res: dict[str, Any], targets: dict[str, Any], intent: dict[str, Any], req: dict[str, Any], ctx: dict[str, Any], sector_of,
@@ -191,6 +229,7 @@ def validate(res: dict[str, Any], targets: dict[str, Any], intent: dict[str, Any
             "vol_band": bs.vol_bands[intent["risk_params"]["volatility_preference"]], "max_weight_per_stock": cons["max_weight_per_stock"],
             "max_weight_per_sector": cons["max_weight_per_sector"], "min_holdings": cons["num_holdings"]["min"], "drift_tolerance": bs.drift_tolerance,
             "min_cash_ratio": float(cons.get("min_cash_ratio", 0) or 0),
+            "rows_per_year": _rows_per_year(res, bs.trading_days),
             "min_invested_for_recommendation": bs.min_invested_for_recommendation, "dd_excess_bucket": bs.dd_excess_bucket}  # fmt: skip
     n_days = res["period"]["trading_days"]
     expected_rb = res["portfolios"][0]["metrics"]["trading"]["n_rebalances"]
@@ -220,7 +259,8 @@ def validate(res: dict[str, Any], targets: dict[str, Any], intent: dict[str, Any
     base = next(t for t in table if t["id"] == targets["baseline"]["id"])
 
     def key(t):
-        return rank_key(t, by_id.get(t["id"], {}), integrity_failed=t["id"] in failed_ids, tol=tol_user, bucket_size=bs.dd_excess_bucket, cautious=cautious)
+        return rank_key(t, by_id.get(t["id"], {}), integrity_failed=t["id"] in failed_ids, tol=tol_user, bucket_size=bs.dd_excess_bucket, cautious=cautious,
+                        baseline_id=targets["baseline"]["id"])  # fmt: skip
 
     ranked = sorted(cands, key=key)
     best = ranked[0]
@@ -228,8 +268,16 @@ def validate(res: dict[str, Any], targets: dict[str, Any], intent: dict[str, Any
     pb = ports[best["id"]]
     mdd_b = abs(best["max_drawdown"] or 0.0)
     base_id = pb.get("base_id") or best["id"]
-    base_invested = float(sum((ports.get(base_id) or pb)["target_weights"].values()))
-    verdict = verdict_for(mdd=mdd_b, tol=tol_user, st=st, base_invested=base_invested, min_invested=bs.min_invested_for_recommendation, name_ko=best["name_ko"])
+    base_p = ports.get(base_id) or pb
+    base_invested = float(sum(base_p["target_weights"].values()))
+    n_hold = sum(1 for x in base_p["target_weights"].values() if x > 1e-9)
+    counts: dict[str, int] = {}
+    for t, x in base_p["target_weights"].items():
+        if x > 1e-9:
+            counts[sector_of(t)] = counts.get(sector_of(t), 0) + 1
+    cause = insufficient_cause(base_p, crit, counts) if base_invested < bs.min_invested_for_recommendation - 1e-4 else None
+    verdict = verdict_for(mdd=mdd_b, tol=tol_user, st=st, base_invested=base_invested, min_invested=bs.min_invested_for_recommendation, name_ko=best["name_ko"],
+                          n_holdings=n_hold, min_holdings=int(crit.get("min_holdings") or 0), cause_ko=cause)  # fmt: skip
     # 사유: 사실만 (정보 규칙은 '만족'으로 세지 않고, 음수 Sharpe 에 '가장 높음'이라 쓰지 않는다)
     parts = [f"후보 {len(cands)}개 중 1위"]  # ' · ' 로 이어 붙이므로 마침표를 찍지 않는다 ('1위. ·' 문장부호 중복)
     tgt = crit["target_annual_return"]

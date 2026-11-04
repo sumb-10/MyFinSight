@@ -87,9 +87,10 @@ def test_optimizer_failure_is_counted_as_fallback(monkeypatch, tmp_path):
     }}
     mm.update(delta_source="fixed", lookback={})
     summary = stages.st_walkforward(ctx)
-    wf = ctx.out("10w_target_paths")["portfolios"][-1]
-    assert wf["fallback_dates"] == [str(date)]
-    assert wf["views_by_date"][str(date)] == [] and "뉴스 뷰 적용 0회" in summary
+    out = ctx.out("10w_target_paths")
+    # 뷰가 반영된 날이 하나도 없으면 기준 비중과 똑같은 'wf_bl_news' 를 후보로 두지 않고 이유를 남긴다 (2026-11 QA F15·002)
+    assert not any(p["kind"] == "black_litterman" for p in out["portfolios"])
+    assert out["bl_omitted"]["reason"] == "no_views" and "뉴스 뷰 적용 0회" in summary and "뉴스 반영 구성 없음" in summary
     assert any(w.code == "optimizer_failed_no_tilt" for w in ctx.warnings)
     paper = import_module("backend.analysis.m6_tracking.paper")
     service = paper.PaperService(JsonStore(tmp_path), None, md, None, settings)

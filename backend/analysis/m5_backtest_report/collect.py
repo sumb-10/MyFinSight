@@ -91,7 +91,8 @@ def build_results(
                       "themes": r.get("themes", []), "theme_confidence": r.get("confidence"), "theme_reason_ko": r.get("reason_ko"),
                       "in_selection_now": t in rank_now, "rank_now": rank_now.get(t, {}).get("rank"), "metric_now": rank_now.get(t, {}).get("metric_value"),
                       "metric_fact_id": rank_now.get(t, {}).get("metric_fact_id"),
-                      "in_backtest": t in rank_bt, "rank_backtest": rank_bt.get(t, {}).get("rank"), "metric_backtest": rank_bt.get(t, {}).get("metric_value")})  # fmt: skip
+                      "in_backtest": t in rank_bt, "rank_backtest": rank_bt.get(t, {}).get("rank"), "metric_backtest": rank_bt.get(t, {}).get("metric_value"),
+                      "metric_backtest_fact_id": rank_bt.get(t, {}).get("metric_fact_id")})  # fmt: skip
     reason_ko = {"sector_preference": "섹터 선호(순위가 더 낮은 다른 섹터 종목에 자리를 내줌)", "rank_beyond_n": "순위 밖", "metric_missing": "지표 자료 없음",
                  "metric_missing (eps<=0 or no financials)": "지표 자료 없음(적자 또는 재무 자료 없음)"}  # fmt: skip
     order = {"sector_preference": 0, "metric_out_of_range": 1, "rank_beyond_n": 2}

@@ -14,6 +14,7 @@ import re
 from typing import Any
 
 from backend.analysis.common.jsonio import canonical_json, now_iso, sha256_hex
+from backend.analysis.common.labels import sector_counts_ko
 from backend.analysis.common.llm import LlmClient
 from backend.analysis.common.store import JsonStore, ProfileStore, RequestStore, new_request_id, new_run_id
 from backend.analysis.errors import Conflict, DialogBlocked, DialogNotReady, NotFound, RequestInvalid
@@ -231,6 +232,8 @@ class DialogService:
             if q.answered_at:
                 raise Conflict("이미 답한 질문입니다")
             q.skipped, q.answer, q.answered_at = True, "(답하지 않음 — 기본값 사용)", now_iso()
+            if q.kind == "feasibility" and q.field == "horizon.backtest_years":  # 질문 문구대로 '답하지 않으면 시작일을 옮긴다' = 이동 동의 (정책 결정 4)
+                doc.overrides["_start_shift_ok"] = True
             doc.messages.append(DialogMessage(role="user", content=f"Q{q.seq} ({q.field}) 답: 답하지 않음. 기본값/현재 값을 그대로 쓰고 이 항목은 다시 묻지 마세요."))
             doc = self._turn(doc)
             self.requests.save(doc)
@@ -304,7 +307,9 @@ class DialogService:
         doc.messages.append(DialogMessage(role="assistant", content=json.dumps({**intent, "questions": [p.model_dump() for p in proposals]}, ensure_ascii=False)))
         doc.warnings = list(warns)
         try:  # 실행 전 점검 (LLM 없음): 후보 수·지표 보유 수를 기준일·백테스트 시작일에서 센다 (서명이 같으면 재사용)
-            doc.precheck = run_precheck(normalized, intent, desc, self.md, self.s, previous=doc.precheck)
+            btr = (doc.overrides.get("_backtest_request") or {}).get("backtest") or {}
+            doc.precheck = run_precheck(normalized, intent, desc, self.md, self.s, previous=doc.precheck, llm=self.llm,
+                                        reselect=btr.get("reselect_at_start", True) is not False)  # fmt: skip  (재선정을 껐으면 시작일 부족을 묻지 않는다, F24)
         except Exception as e:  # noqa: BLE001 — 점검은 보조 정보
             doc.precheck = None
             doc.warnings.append(f"precheck skipped: {e}")
@@ -365,24 +370,34 @@ class DialogService:
         cash = float(cons.get("min_cash_ratio", 0) or 0)
         stock_cap, sector_cap = float(cons["max_weight_per_stock"]), float(cons["max_weight_per_sector"])
 
-        def shrink_patch(n: int) -> dict[str, Any]:
-            cap = max(stock_cap, min(1.0, math.ceil((1.0 - cash) / n * 100) / 100))
-            return {"constraints.num_holdings": {"target": n, "min": n, "max": n}, "constraints.max_weight_per_stock": cap,
-                    "constraints.max_weight_per_sector": max(sector_cap, cap)}  # fmt: skip
-
         now = precheck.get("as_of") or {}
+
+        def shrink_patch(n: int, counts: dict[str, int] | None = None) -> dict[str, Any]:
+            cap = max(stock_cap, min(1.0, math.ceil((1.0 - cash) / n * 100) / 100))
+            # '전액 투자' 가 참이 되게 섹터 상한도: 예상 선정 종목의 섹터 구성(점검)으로 투자 비율을 다 담는 가장 작은 섹터 상한 (F26: 한 섹터 테마면
+            # 종목당 상한만 올려서는 섹터 상한에 걸려 현금이 남고, 같은 문제를 섹터 상한 질문으로 다시 물었다)
+            sec_cap = max(sector_cap, cap)
+            ks = list((counts or {}).values())
+            if ks and sum(ks) == n:
+                need = next((c / 100 for c in range(int(sec_cap * 100), 101) if sum(min(k * cap, c / 100) for k in ks) >= (1.0 - cash) - 1e-9), 1.0)
+                sec_cap = max(sec_cap, need)
+            return {"constraints.num_holdings": {"target": n, "min": n, "max": n}, "constraints.max_weight_per_stock": cap,
+                    "constraints.max_weight_per_sector": round(sec_cap, 2)}  # fmt: skip
+
         n_now = int(min(now.get("n_with_metric", 0), now.get("n_candidates", 0)))
         if precheck.get("short_now") and "_ack_few_candidates" not in overrides:
             opts = []
             if n_now >= 2:
-                cap = shrink_patch(n_now)["constraints.max_weight_per_stock"]
-                opts.append({"value": f"shrink_{n_now}", "label_ko": f"종목 수를 {n_now}개로 줄이고 종목당 상한을 {cap:.0%}로 올려 전액 투자", "patch": shrink_patch(n_now)})
+                sp = shrink_patch(n_now, now.get("sector_counts"))
+                cap, scap = sp["constraints.max_weight_per_stock"], sp["constraints.max_weight_per_sector"]
+                lab = f"종목 수를 {n_now}개로 줄이고 종목당 상한을 {cap:.0%}로 올려" + (f"(섹터당 상한 {scap:.0%})" if scap > sector_cap + 1e-9 else "") + f" 투자 비율 {1 - cash:.0%}를 모두 배분"
+                opts.append({"value": f"shrink_{n_now}", "label_ko": lab, "patch": sp})
             opts.append({"value": "widen_theme", "label_ko": "테마를 넓혀 다시 해석 (인접 산업 포함)",
                          "clarification": f"[테마 넓히기] 테마에 맞는 후보가 {n_now}개뿐이라 인접 산업·관련 업종까지 넓혀 해석해 주세요"})
             opts.append({"value": "proceed", "label_ko": "그대로 진행 (현금이 남을 수 있음)", "patch": {"_ack_few_candidates": True}})
             out.append(QuestionProposal(
                 field="constraints.num_holdings", kind="feasibility", priority=1,
-                question_ko=(f"테마에 맞는 종목이 분석 기준일 기준 {n_now}개로, 최소 종목 수 {nh_min}개(목표 {nh['target']}개)에 못 미칩니다. 어떻게 할까요?"),
+                question_ko=(f"분석 기준일에 선정할 수 있는 종목(테마·선정 기준 통과)이 {n_now}개로, 최소 종목 수 {nh_min}개(목표 {nh['target']}개)에 못 미칩니다. 어떻게 할까요?"),
                 options=opts, allow_free_text=False,
                 why_ko=f"후보가 모자라면 종목당 상한({stock_cap:.0%}) 때문에 현금이 남습니다 (예: {max(n_now, 1)}종목 × {stock_cap:.0%} = {min(1.0, max(n_now, 1) * stock_cap):.0%} 투자).",
             ))  # fmt: skip
@@ -398,13 +413,18 @@ class DialogService:
                 opts.append({"value": f"shorten_{fs['years']}", "label_ko": f"백테스트 기간을 {fs['years']:g}년으로 줄임 ({fs['date']}부터는 {fs['n_with_metric']}종목)",
                              "patch": {"horizon.backtest_years": float(fs["years"])}})
             if n_start >= 2:
-                cap = shrink_patch(n_start)["constraints.max_weight_per_stock"]
-                opts.append({"value": f"shrink_{n_start}", "label_ko": f"종목 수를 {n_start}개로 줄여 처음부터 끝까지 같은 종목 수로 (상한 {cap:.0%})", "patch": shrink_patch(n_start)})
+                sp = shrink_patch(n_start, (st.get("sector_counts") or None))
+                opts.append({"value": f"shrink_{n_start}", "label_ko": f"종목 수를 {n_start}개로 줄여 처음부터 끝까지 같은 종목 수로 (상한 {sp['constraints.max_weight_per_stock']:.0%})", "patch": sp})
+            if fs:
+                tail = f"답하지 않으면 시작일을 {fs['date']}로 옮겨 평가 기간이 {fs['years']:g}년으로 짧아집니다."
+            elif n_start <= 1:
+                tail = "답하지 않아도 시작 종목이 1개 이하라 2종목 이상이 되는 날로 시작일을 자동으로 옮깁니다."
+            else:
+                tail = f"시작일을 옮겨도 최소 종목 수를 채울 수 없어, 답하지 않으면 {n_start}종목으로 시작합니다."
             if len(opts) >= 2:
                 out.append(QuestionProposal(
                     field="horizon.backtest_years", kind="feasibility", priority=1,
-                    question_ko=(f"백테스트 시작일({st.get('date')})에는 테마에 맞는 종목이 {n_start}개로 최소 {nh_min}개에 못 미칩니다. "
-                                 "그대로 두면 시작일을 뒤로 옮겨 평가 기간이 짧아집니다. 어떻게 할까요?"),
+                    question_ko=(f"백테스트 시작일({st.get('date')})에 선정할 수 있는 종목이 {n_start}개로 최소 {nh_min}개에 못 미칩니다. {tail} 어떻게 할까요?"),
                     options=opts, allow_free_text=False,
                     why_ko="과거에는 상장 전이거나 재무 지표가 없던 종목이 있어 시작일에 뽑을 수 있는 종목이 적을 수 있습니다.",
                 ))  # fmt: skip
@@ -425,6 +445,26 @@ class DialogService:
         cons = req["constraints"]
         cap = float(cons.get("max_weight_per_sector", 1.0))
         invest = 1.0 - float(cons.get("min_cash_ratio", 0.0) or 0.0)
+        now = (precheck or {}).get("as_of") or {}
+        if now.get("capacity") is not None and (precheck or {}).get("basis") == "after_classification":
+            # 점검의 예상 선정 종목으로 배분 가능 비율을 계산 (예전: 테마 GICS 섹터가 정확히 1개일 때만 물어 002 처럼 두 테마가 모두
+            # 산업재로 몰려 현금이 65% 남아도 묻지 않았다, F25). 종목 수 부족 질문이 먼저면(그 보기가 섹터 상한까지 다룸) 미룬다.
+            if (precheck or {}).get("short_now") or float(now["capacity"]) >= invest - 0.005 or cap >= invest - 1e-9:
+                return out
+            counts = {k: int(v) for k, v in (now.get("sector_counts") or {}).items()}
+            need = now.get("cap_needed") or round(invest, 2)
+            mix = sector_counts_ko(counts)  # 한국어 질문에 GICS 영어 이름(Industrials)을 쓰지 않는다
+            cash_left = 1 - float(now["capacity"])
+            out.append(QuestionProposal(
+                field="constraints.max_weight_per_sector", kind="conflict", priority=1,
+                question_ko=(f"예상 선정 종목 {now.get('n_selected')}개가 {mix}로 몰려 있어 섹터당 상한 {cap:.0%}로는 {float(now['capacity']):.0%}만 투자되고 "
+                             f"현금이 {cash_left:.0%} 남습니다" + (f"(최소 현금 {1 - invest:.0%} 포함)" if invest < 1 - 1e-9 else "") + ". 어떻게 할까요?"),
+                options=[{"value": float(need), "label_ko": f"이번 분석에서는 섹터 상한을 {float(need):.0%}로 올려 투자 비율 {invest:.0%}를 모두 배분"},
+                         {"value": cap, "label_ko": f"섹터 상한 {cap:.0%} 유지 (현금 {cash_left:.0%})"}],
+                allow_free_text=False,
+                why_ko="섹터 상한은 여러 업종에 나눌 때 쓰는 보호 장치라, 한 업종에 몰린 테마에서는 뜻한 것보다 현금이 많이 남습니다.",
+            ))  # fmt: skip
+            return out
         themes = (intent.get("interpretation") or {}).get("themes") or []
         sectors = {str(c)[:2] for th in themes for c in th.get("gics_codes", []) if str(c).strip()}
         if len(sectors) != 1 or cap >= invest - 1e-9:

@@ -12,6 +12,8 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
+from backend.analysis.common.labels import sector_ko
+
 Level = Literal["user", "info", "debug"]
 
 
@@ -35,8 +37,10 @@ CATALOG: dict[str, tuple[Level, str]] = {
     "must_include_not_in_universe": ("user", "필수 포함 종목 {tickers}은(는) 선택한 유니버스에 없어 반영하지 못했습니다."),
     "exclude_sector_unknown": ("user", "제외 섹터 '{names}'은(는) GICS 섹터 이름과 맞지 않아 적용하지 못했습니다."),
     "too_few_candidates": ("user", "테마 후보가 {n}개로 목표 종목 수 {target}개보다 적습니다. 테마를 넓히거나 목표 종목 수를 줄여 보세요."),
-    "too_few_with_metric": ("user", "선정 지표({metric}) 자료가 있는 종목이 {n}개로 목표 {target}개보다 적어 {selected}개만 선정했습니다. 최소 종목 수에 못 미치면 결론 라벨과 리포트에 그 사실을 표시합니다."),
-    "weight_capacity": ("user", "선정 종목의 섹터 구성으로는 종목·섹터 상한 안에서 투자금 전체를 배분할 수 없어 일부({cash})를 현금으로 둡니다. 섹터 상한을 올리거나 테마를 넓히면 해소됩니다."),
+    "too_few_with_metric": ("user", "테마 판정을 통과하고 선정 지표({metric}) 자료가 있는 종목이 {n}개로 목표 {target}개보다 적어 {selected}개만 선정했습니다. 최소 종목 수에 못 미치면 결론 라벨에 '종목 수 부족' 으로 표시합니다."),
+    # 원인·해결을 사실대로 (2026-11 QA 002: 2종목 × 종목당 25% 라 섹터 상한과 무관한데 '섹터 상한을 올리면 해소' 라고 했다).
+    # 현금은 최소 현금까지 더한 전체 비율 (F19: 예전에는 상한 때문에 남는 몫만 적어 최소 현금 15% 를 빼고 말했다)
+    "weight_capacity": ("user", "{who}로는 투자금의 {cap}까지만 배분할 수 있어 현금이 {cash} 남습니다{mc_note}. {fix}"),
     "must_include_forced": ("user", "필수 포함 종목 {tickers}은(는) 테마 판정 또는 선정 지표 기준에 맞지 않지만 요청에 따라 포함했습니다."),
     "sector_preference_skipped": ("user", "섹터 상한({cap}) 안에서 투자금을 다 배분하려고 한 섹터에서는 {pref}종목까지만 먼저 골라, 선정 지표 순위가 더 높은 {tickers}(섹터별 {sector})은(는) 빼고 다른 섹터 종목으로 채웠습니다. 섹터 상한을 올리면 순위대로 고를 수 있습니다."),
     # 필수 포함 사유를 사실대로 (2026-11 QA: 지표 자료가 없을 뿐인데 '기준에 맞지 않지만' 이라고 써서 리포트가 '고배당 기준에 못 미친다' 고 오해)
@@ -57,6 +61,7 @@ CATALOG: dict[str, tuple[Level, str]] = {
     "excluded_by_data_quality": ("user", "가격 자료 품질 기준에 미달한 {tickers}을(를) 백테스트에서 제외하고 나머지 비중을 다시 맞췄습니다."),
     "no_portfolio_passed": ("user", "모든 포트폴리오가 필수 검증 규칙을 통과하지 못했습니다. 미통과 규칙: {rules}. 허용 낙폭·목표를 조정하거나 현금 혼합안을 검토해 보세요."),
     "alternative_skipped": ("user", "조건을 통과한 포트폴리오가 없고 현금 혼합안도 만들 수 없었습니다 ({reason})."),
+    "matched_floor": ("user", "과거 최대낙폭을 낙폭 맞춤 목표({target}) 안으로 맞추려면 주식 비중을 {floor}보다 더 줄여야 해서 낙폭 맞춤안(주식 + 현금)을 만들지 않았습니다. 주식이 너무 적은 구성은 후보로 두지 않습니다."),
     # 참고 (파일에만)
     "descriptor_version_fallback": ("info", "{text}"),
     "gics_draft": ("info", "{text}"),
@@ -83,8 +88,10 @@ _LEGACY: list[tuple[re.Pattern[str], str, tuple[str, ...]]] = [
     (re.compile(r"^only (\d+) candidates for target (\d+)"), "too_few_candidates", ("n", "target")),
     (re.compile(r"^only (\d+) tickers have (\S+); target (\d+) -> selecting (\d+)"), "too_few_with_metric", ("n", "metric", "target", "selected")),
     (re.compile(r"^only (\d+) tickers within eligibility for (\S+); target (\d+) \(excluded (\d+) out of range: (.*)\)$"), "too_few_eligible", ("n", "metric", "target", "n_out", "examples")),
-    (re.compile(r"^weight capacity ([\d.]+) < ([\d.]+)"), "weight_capacity", ("cap", "investable")),
-    (re.compile(r"^caps allow at most (\d+)% invested .*?(\d+)% kept as cash"), "weight_capacity", ("cap_pct", "cash_pct")),
+    (re.compile(r"^weight capacity ([\d.]+) < ([\d.]+): .*?\(cap needed ([\d.]+|None)(?:; stock (\d+)%, sector (\d+)%, (\d+) names)?\)"), "weight_capacity",
+     ("cap", "investable", "needed", "stock_pct", "sector_pct", "n")),
+    (re.compile(r"^caps allow at most (\d+)% invested \(stock (\d+)%, sector (\d+)%, (\d+) names(?:, investable (\d+)%)?\)"), "weight_capacity",
+     ("cap_pct", "stock_pct", "sector_pct", "n", "investable_pct")),
     (re.compile(r"^sector count preference \((\d+)/sector, sector cap (\d+%)\) skipped higher-ranked \[([^\]]*)\] \(([^)]*)\)"), "sector_preference_skipped", ("pref", "cap", "tickers", "sector")),
     (re.compile(r"^must_include (\S+): metric_out_of_range\(([^)]*)\)"), "must_include_out_of_range", ("tickers", "detail")),
     (re.compile(r"^must_include (\S+): metric_missing( \(eps<=0)?"), "must_include_no_metric", ("tickers", "why")),
@@ -99,6 +106,7 @@ _LEGACY: list[tuple[re.Pattern[str], str, tuple[str, ...]]] = [
     (re.compile(r"^excluded by data quality \(weights renormalized\): (.+)"), "excluded_by_data_quality", ("tickers",)),
     (re.compile(r"^no portfolio passed the hard rules \(fail counts by rule: (.+)\)"), "no_portfolio_passed", ("rules",)),
     (re.compile(r"^alternative skipped: (.+)"), "alternative_skipped", ("reason",)),
+    (re.compile(r"^matched variant skipped for \S+: stocks below floor (\S+) would be needed to bring max drawdown within (\S+) "), "matched_floor", ("floor", "target")),
     (re.compile(r"^fewer than target after matching; widened GICS codes one level up -> (\d+)"), "gics_widened", ("n",)),
     (re.compile(r"^market cap (?:unavailable|missing for) ?(.*)"), "market_cap_missing", ("tickers",)),
     (re.compile(r"^less than (\d+) trading days of history before (\S+)"), "lookback_short", ("days", "date")),
@@ -107,14 +115,14 @@ _LEGACY: list[tuple[re.Pattern[str], str, tuple[str, ...]]] = [
     (re.compile(r"^window of (\d+) trading days <"), "short_window", ("days",)),
     (re.compile(r"있는 종목 (\d+)개 < 최소 (\d+)개"), "news_thin_fallback", ("n", "min")),
     (re.compile(r"유효한 뷰가 하나도 남지 않아"), "views_none_valid", ()),
-    (re.compile(r"^백테스트 시작일 .* 로 옮김"), "backtest_start_shifted", ()),
+    (re.compile(r"^백테스트 시작일 .* 로 (?:자동으로 )?옮김"), "backtest_start_shifted", ()),  # 동의 이동 · 1종목 이하 자동 이동 (정책 결정 4)
     (re.compile(r"^백테스트 시작일 .* 그 종목으로 시작합니다"), "fewer_holdings_at_start", ()),
     (re.compile(r"^GICS 분류 검수 대기"), "gics_draft", ()),
     (re.compile(r"이전 사전 버전이 없어"), "descriptor_version_fallback", ()),
     (re.compile(r".*재무 지표 자료가 .* 로 옮김"), "backtest_start_clamped", ()),
     (re.compile(r"^(기준일 .* 로 옮김|백테스트 시작일 .* 로 줄임)"), "derived_note", ()),
 ]
-_SCREEN_AT = re.compile(r"^screen@(" + _DATE + r"): (.+)$")
+_SCREEN_AT = re.compile(r"^(?:screen|start)@(" + _DATE + r"): (.+)$")  # screen@ = 07 시작일 재선정, start@ = 10 시작일 구성
 _DATE_PREFIX = re.compile(r"^(" + _DATE + r"): (.+)$")
 RULE_KO = {"R1": "최대낙폭", "R2": "목표수익", "R3": "비교지수 대비", "R4": "종목 상한", "R4b": "종목 상한(드리프트)", "R5": "섹터 상한", "R5b": "섹터 상한(드리프트)", "R6": "종목 수", "R7": "변동성 적합", "R8": "기타"}
 
@@ -149,6 +157,9 @@ def from_text(stage: str, text: str, *, dates: list[str] | None = None) -> Warni
         # 사용자에게 보이는 공지는 모두 시점을 붙인다 (예전에는 too_few_* 만 → 필수 포함 공지가 기준일 선정 얘기로 읽혔다, 098 현대차)
         if w.level == "user" and not w.message_ko.startswith("백테스트 시작일"):
             w.message_ko = f"백테스트 시작일({m.group(1)}) 기준: {w.message_ko}"
+        k = (w.details or {}).get("key")
+        if w.details is not None and (k is None or str(k).startswith("@now")):  # 같은 날 같은 사실(07 선정·10 구성의 배분 가능 비율)은 하나로 합친다
+            w.details["key"] = f"@{m.group(1)}" + (str(k)[len("@now"):] if k else "")
         return w
     m = _DATE_PREFIX.match(text)
     if m and not text.startswith("백테스트 시작일"):
@@ -159,19 +170,16 @@ def from_text(stage: str, text: str, *, dates: list[str] | None = None) -> Warni
             continue
         kw: dict[str, Any] = {k: m.group(i + 1) for i, k in enumerate(keys) if i + 1 <= rx.groups}
         if code == "weight_capacity":
-            if "cash_pct" in kw:
-                kw["cash"] = f"{kw['cash_pct']}%"
-            else:
-                try:
-                    kw["cash"] = f"{(float(kw['investable']) - float(kw['cap'])) * 100:.0f}%"
-                except (ValueError, KeyError):
-                    kw["cash"] = "일부"
+            kw.update(_capacity_words(kw))
         if code == "no_portfolio_passed":
             found = re.findall(r"'(R\d+b?)': (\d+)", kw.get("rules", ""))
             kw["rules"] = ", ".join(f"{RULE_KO.get(r, r)}({r}) {n}개" for r, n in found) or kw.get("rules", "")
         if code == "sector_preference_skipped":  # 시작일 재선정은 20개 넘게 빠지기도 한다 → 앞 5개 + '외 N개'
             names = [x.strip().strip("'\"") for x in kw.get("tickers", "").split(",") if x.strip()]
             kw["tickers"] = ", ".join(names[:5]) + (f" 외 {len(names) - 5}개" if len(names) > 5 else "")
+            pairs = [x.rsplit(":", 1) for x in kw.get("sector", "").split(";") if ":" in x]
+            if pairs:  # 'Industrials: 2; Utilities: 1' → '산업재 2개, 유틸리티 1개'
+                kw["sector"] = ", ".join(f"{sector_ko(a.strip())} {b.strip()}개" for a, b in pairs)
         if code == "must_include_no_metric":  # 적자 여부는 PER 에서만 안다 (배당·ROE·모멘텀은 그냥 자료 없음)
             kw["why"] = "(적자이거나 재무 자료 없음)" if kw.get("why") else ""
         if code == "must_include_out_of_range":
@@ -181,9 +189,40 @@ def from_text(stage: str, text: str, *, dates: list[str] | None = None) -> Warni
         if code in ("backtest_start_shifted", "backtest_start_clamped", "fewer_holdings_at_start", "gics_draft", "descriptor_version_fallback", "derived_note", "window_clamped"):
             kw["text"] = text
         w = make(stage, code, dates=dates, **kw)
-        w.details = {"text": text, "key": kw.get("tickers") or kw.get("names")}
+        # 기준일 배분 가능 비율은 05 선정·10f 구성이 같은 사실을 따로 낸다 → 하나로 (먼저 나온 05 문장이 해결 방법이 더 구체적)
+        w.details = {"text": text, "key": kw.get("tickers") or kw.get("names") or (f"@now:{kw.get('cap')}" if code == "weight_capacity" else None)}
         return w
     return Warning(stage=stage, code="legacy_note", level="debug", message_ko=text, dates=dates, details={"text": text})
+
+
+def _pct(x: float) -> str:
+    return f"{x * 100:.0f}%"
+
+
+def _capacity_words(kw: dict[str, Any]) -> dict[str, str]:
+    """배분 가능 비율 경고의 숫자 → 문장 조각 (n, stock, sector, cap, cash, mc_note, fix)."""
+    try:
+        if kw.get("cap_pct") is not None:  # 시장모형(10 단계): 퍼센트 정수
+            cap = float(kw["cap_pct"]) / 100
+            inv = float(kw["investable_pct"]) / 100 if kw.get("investable_pct") else None
+        else:  # 정량 선정(05·07 단계): 소수
+            cap, inv = float(kw["cap"]), float(kw["investable"])
+    except (TypeError, ValueError, KeyError):
+        return {"who": "선정 종목의 섹터 구성", "cap": "일부", "cash": "일부", "mc_note": "", "fix": "상한을 올리거나 테마를 넓히면 해소됩니다."}
+    stock = float(kw["stock_pct"]) / 100 if kw.get("stock_pct") else None
+    sector = float(kw["sector_pct"]) / 100 if kw.get("sector_pct") else None
+    n = int(kw["n"]) if kw.get("n") else None
+    needed = kw.get("needed")
+    min_cash = max(0.0, 1.0 - inv) if inv is not None else 0.0
+    if needed not in (None, "None"):
+        fix = f"섹터 상한을 {_pct(float(needed))}로 올리거나 테마를 넓혀 다른 섹터 종목을 늘리면 해소됩니다."
+    elif needed == "None" or (n is not None and stock is not None and inv is not None and n * stock < inv - 1e-9):
+        fix = "종목 수가 적어 섹터 상한만 올려서는 해소되지 않습니다. 종목당 상한을 올리거나 테마를 넓혀 종목 수를 늘려 보세요."
+    else:
+        fix = "섹터 상한을 올리거나 테마를 넓혀 다른 섹터 종목을 늘리면 해소됩니다."
+    who = (f"선정 종목 {n}개(종목당 상한 {_pct(stock)}, 섹터당 상한 {_pct(sector)})" if n is not None and stock is not None and sector is not None
+           else "선정 종목의 섹터 구성")  # 예전 형식 원문(숫자 없음)
+    return {"who": who, "cap": _pct(cap), "cash": _pct(1.0 - cap), "mc_note": f" (최소 현금 {_pct(min_cash)} 포함)" if min_cash > 0.004 else "", "fix": fix}  # fmt: skip
 
 
 def merge(ws: list[Warning]) -> list[Warning]:
@@ -197,7 +236,8 @@ def merge(ws: list[Warning]) -> list[Warning]:
         key = (w.code, w.message_ko if (w.code == "legacy_note" or k2 is None) else (k2, w.message_ko.startswith("백테스트 시작일")))
         if key in idx:
             g = out[idx[key]]
-            g.count += w.count
+            if not str(k2 or "").startswith("@"):  # '@날짜' 키 = 다른 단계가 같은 날의 같은 사실을 다시 낸 것 → 횟수로 세지 않는다
+                g.count += w.count
             g.dates = sorted(set(g.dates) | set(w.dates))
             continue
         idx[key] = len(out)

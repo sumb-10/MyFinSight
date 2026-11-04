@@ -77,10 +77,12 @@ def test_hard_error_gives_fix_not_question(svc_factory):
     svc, store, llm = svc_factory([_intent([])])
     st = svc.start("반도체 분산 투자", overrides={"constraints.num_holdings": {"target": 20, "min": 20, "max": 25}})  # 0.3 × 20 >= 1 OK → 다른 오류 유도
     assert st.state == "asking" and st.question is not None and st.question.kind == "feasibility"  # 라운드 5: 후보(7) < 최소(20) → 실행 전 점검 질문
+    n_calls = len(llm.calls)  # 첫 턴: 의도 해석(02) + 실행 전 점검의 테마 분류(04)
+    assert [c["stage"] for c in llm.calls] == ["02_intent", "04_classify"]
     st2 = svc.start("반도체 분산 투자", overrides={"constraints.max_weight_per_sector": 0.1})  # 섹터 상한 < 종목 상한
     assert st2.state == "asking" and st2.question is None and st2.hard_errors
     assert any("섹터당 상한" in e.message_ko for e in st2.hard_errors)
-    assert llm.calls and len(llm.calls) == 1  # HARD 오류 턴에는 LLM 호출 없음
+    assert len(llm.calls) == n_calls  # HARD 오류 턴에는 LLM 호출 없음
     with pytest.raises(DialogNotReady):
         svc.confirm(st2.request_id)
 

@@ -171,7 +171,8 @@ def st_targets(ctx: RunContext) -> str:
                                portfolios=[Portfolio(**p) for p in bl_ok], templates=[Portfolio(**p) for p in res.baselines["portfolios"]],
                                notes_ko=notes, warnings=res.warnings)  # fmt: skip
     ctx.outputs["10_target_portfolios"] = targets.model_dump(mode="json")
-    ctx.warn_all("10_targets", list(res.warnings))
+    # 10 단계 구성은 백테스트 시작일의 것 → 사용자 공지에 시점을 붙인다 (예전에는 '현금 50%' 공지가 날짜 없이 나와 지금 구성 얘기로 읽혔다, 002)
+    ctx.warn_all("10_targets", [f"start@{as_of}: {w}" for w in res.warnings])
     _warn_optimizer(ctx, "10_targets", res.bl_portfolios)
     return f"비중 규칙 {len(res.baselines['portfolios'])}개 + 뉴스 반영 구성 {len(bl_ok)}개 ({'뉴스 뷰 적용' if bl_ok else '기준 비중 유지'})"
 
@@ -193,7 +194,7 @@ def st_walkforward(ctx: RunContext) -> str:
     bl: dict[str, Any] = {"id": "wf_bl_news", "kind": "black_litterman", "name_ko": "뉴스 뷰 Black-Litterman (walk-forward)", "title_ko": "뉴스 근거 뷰",
                           "rule_ko": "리밸런싱마다 직전 뉴스 헤드라인으로 뷰를 새로 만들어 기준 비중을 조정", "weights_by_date": {}, "views_by_date": {},
                           "fallback_dates": [], "narrative_by_date": {}}  # fmt: skip
-    models, news_summary, warnings = {}, {}, []
+    models, news_summary, warnings, fallback_reasons = {}, {}, [], {}
 
     def per_date(d: dt.date):  # 순수 함수: 날짜 하나의 구성 (공유 상태를 건드리지 않음 → 병렬 가능)
         return construct(ctx.md.view(d), tickers, ctx.request, intent, ctx.settings, ctx.llm, ctx.desc, mode="rebalance", stage_tag=f"09_views_news_{d}_wf",
@@ -210,7 +211,8 @@ def st_walkforward(ctx: RunContext) -> str:
         if res.evidence:
             ctx.add_news_window("10w_paths", res.evidence.to_dict())
         warnings += [f"{key}: {w}" for w in res.warnings]
-        ctx.warn_all("10w_paths", list(res.warnings), dates=[key])
+        # 종목·상한이 고정이라 배분 가능 비율 경고는 날짜마다 시작일 공지(10 단계)와 같은 내용 → 파일에만 남기고 공지는 한 번만
+        ctx.warn_all("10w_paths", [w for w in res.warnings if not str(w).startswith("caps allow at most")], dates=[key])
         _warn_optimizer(ctx, "10w_paths", res.bl_portfolios, dates=[key])
         applied = res.applied_bl
         if applied:
@@ -227,14 +229,26 @@ def st_walkforward(ctx: RunContext) -> str:
             bl.setdefault("optimizer_notes", {})[key] = failed[0]
         if res.fallback:
             bl["fallback_dates"].append(key)
+            fallback_reasons[key] = res.fallback_reason_ko or ""
+    # 뉴스 반영 구성은 뉴스를 켰고 실제로 뷰가 반영된 날이 하나라도 있을 때만 후보로 둔다 (F15: 뉴스를 꺼도 'wf_bl_news' 가 생겼다).
+    # 모든 날짜가 기준 비중이면 기준 비중 구성과 똑같은 후보가 '뉴스 뷰' 이름으로 순위에 들어가 소수점 잡음으로 추천될 수 있다 (라운드 2: 002·003).
+    news_on = bool((intent.get("news_tilt") or {}).get("enabled"))
+    keep_bl = news_on and any(bl["views_by_date"].get(k) for k in bl["views_by_date"])
+    omitted = None
+    if not keep_bl:
+        reasons = sorted({r for r in fallback_reasons.values() if r})
+        omitted = {"reason": "news_off" if not news_on else "no_views", "n_dates": len(dates),
+                   "reason_ko": ("뉴스 반영을 끈 분석입니다" if not news_on
+                                 else f"리밸런싱 {len(dates)}회 모두 뉴스 뷰를 만들지 못해 뉴스 반영 구성을 따로 만들지 않았습니다"
+                                 + (f" ({reasons[0]})" if len(reasons) == 1 else ""))}  # fmt: skip
     out = {"request_id": ctx.request_id, "stage": "10w_target_paths", "dates": [str(d) for d in dates], "tickers": tickers,
-           "portfolios": [*tmpl.values(), bl], "market_models_by_date": models, "news_summary": news_summary,
+           "portfolios": [*tmpl.values(), *([bl] if keep_bl else [])], "bl_omitted": omitted, "market_models_by_date": models, "news_summary": news_summary,
            "parameters": {"view_sets": ctx.settings.news.view_sets_at_rebalance, "views_per_set": ctx.settings.news.views_per_set,
                           "news_window_days": ctx.settings.news.window_days, "min_news_tickers": ctx.settings.news.min_tickers,
                           "disclosure_window_days": (ctx.settings.disclosures.window_days if ctx.settings.disclosures.enabled else 0)},
            "warnings": warnings}  # fmt: skip
     ctx.outputs["10w_target_paths"] = out
-    return f"리밸런싱 {len(dates)}회, 뉴스 뷰 적용 {len(dates) - len(bl['fallback_dates'])}회"
+    return f"리밸런싱 {len(dates)}회, 뉴스 뷰 적용 {len(dates) - len(bl['fallback_dates'])}회" + ("" if keep_bl else " (뉴스 반영 구성 없음)")
 
 
 def st_forward(ctx: RunContext) -> str:

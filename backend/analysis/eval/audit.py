@@ -169,9 +169,12 @@ class Audit:
             k = str(f.get("reason", "")).split("(")[0]
             reasons[k] = reasons.get(k, 0) + 1
         self.w(f"- 03 후보 {len(c3.get('candidates') or [])}개, 제외 {len(fo)}개 {reasons}")
-        kw_excl = [f"{f.get('ticker')}({f.get('reason')})" for f in fo if "keyword" in str(f.get("reason", ""))]
+        kw_excl = [f"{f.get('ticker')}({f.get('reason')})" for f in fo if "keyword" in str(f.get("reason", "")) and "keyword_weak" not in str(f.get("reason", ""))]
+        kw_weak = [f"{f.get('ticker')}({f.get('reason')})" for f in fo if "keyword_weak" in str(f.get("reason", ""))]
         if kw_excl:
-            self.w(f"  - 키워드로 제외: {', '.join(kw_excl[:30])}")
+            self.w(f"  - 제외 테마 키워드로 제외: {', '.join(kw_excl[:30])}")
+        if kw_weak:
+            self.w(f"  - 테마 키워드 약한 일치로 후보에서 뺌: {', '.join(kw_weak[:30])}")
         t4 = o.get("04_tagging") or {}
         self.w(f"- 04 테마 통과 {len(t4.get('passed_tickers') or [])}개")
         sel = o.get("05_selection") or {}
@@ -213,7 +216,10 @@ class Audit:
         n = len(rows)
         self.chk("종목 수 최소~최대(기준일)", nh.get("min", 0) <= n <= nh.get("max", 10**6), f"{n} vs {nh.get('min')}~{nh.get('max')}")
         n_bt = len(ss.get("tickers") or [])
-        self.chk("종목 수 최소 이상(시작일)", n_bt >= nh.get("min", 0), f"{n_bt} vs 최소 {nh.get('min')}")
+        kept = bool(((self.req_doc or {}).get("overrides") or {}).get("_allow_fewer_at_start"))  # 사용자가 '기간 유지' 를 고름 → 미달은 정책대로 (라벨에 '종목 수 부족')
+        lab = str((((o.get("12_validation") or {}).get("recommended") or {}).get("verdict") or {}).get("label_ko") or "")
+        self.chk("종목 수 최소 이상(시작일)" + (" — 사용자가 기간 유지를 골라 라벨 표시로 대신" if kept and n_bt < nh.get("min", 0) else ""),
+                 n_bt >= nh.get("min", 0) or (kept and n_bt >= 2 and "종목 수 부족" in lab), f"{n_bt} vs 최소 {nh.get('min')}")  # fmt: skip
         rng = ELIGIBLE.get(str(sc.get("metric")))
         if rng:
             lo, hi = rng
@@ -399,6 +405,9 @@ class Audit:
         tmpl_ko = {"equal_weight": "동일비중", "market_cap": "시가총액비중", "inverse_volatility": "역변동성비중", "min_variance": "최소분산"}
         ok = (tmpl_ko.get(core, "@@") in basis) or (str(rec_label) in basis) or ("BL" in basis and core.startswith("bl"))
         self.chk("추천안 = 대시보드 배분 규칙", ok, f"추천 {rec_label} vs 배분 '{basis}'")
+        m1, m2 = re.search(r"주식 (\d+)%", str(rec_label)), re.search(r"주식 (\d+)%", basis)
+        if m1 and m2:  # 낙폭 맞춤안: 백테스트로 확인한 주식 비중 = 대시보드 주식 비중 (기준일 구성이 더 적게 담는 경우만 예외)
+            self.chk("맞춤안 주식 비중 = 대시보드 주식 비중", int(m2.group(1)) <= int(m1.group(1)) + 1, f"추천 주식 {m1.group(1)}% vs 대시보드 주식 {m2.group(1)}%")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -413,7 +422,13 @@ def main(argv: list[str] | None = None) -> int:
         res = _load(src / f"{name}.json") or {"status": "missing"}
         au = Audit(name, res)
         md = au.run()
-        (out / f"{name}.md").write_text(md, encoding="utf-8")
+        dst = out / f"{name}.md"
+        if dst.exists():  # 다른 실행의 점검이면 history/ 로 보관 (재실행이 첫 실행 점검을 덮어쓰지 않게)
+            m_old, m_new = re.search(r"run `([^`]+)`", dst.read_text(encoding="utf-8")), re.search(r"run `([^`]+)`", md)
+            if m_old and (not m_new or m_old.group(1) != m_new.group(1)):
+                (out / "history").mkdir(exist_ok=True)
+                dst.replace(out / "history" / f"{name}__{m_old.group(1)}.md")
+        dst.write_text(md, encoding="utf-8")
         bad = [c for c in au.checks if not c[1]]
         print(f"{name}: {res.get('status')} · 규칙 실패 {len(bad)}/{len(au.checks)} → {out / (name + '.md')}")
         for cid, _, det in bad:

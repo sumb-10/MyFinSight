@@ -163,7 +163,9 @@ def test_backtest_invariants(e2e):
                     diff = max(abs(c["weights"]["after"][t] - c["weights"]["target"][t]) for t in c["weights"]["target"])
                     assert diff < 0.02, (p["id"], c["date"], diff)
     ids = {p["id"] for p in bt["portfolios"]}
-    assert {"wf_bl_news", "wf_equal_weight", "equal_weight", "market_cap", "inverse_volatility", "min_variance"} <= ids
+    assert {"wf_equal_weight", "equal_weight", "market_cap", "inverse_volatility", "min_variance"} <= ids
+    # 합성 뉴스는 2025-12 에만 있어 walk-forward 리밸런싱일에는 뷰가 없다 → 기준 비중과 같은 뉴스 반영 후보를 만들지 않는다
+    assert "wf_bl_news" not in ids and ctx.outputs["10w_target_paths"]["bl_omitted"]["reason"] == "no_views"
     assert any(p["mode"] == "walkforward" for p in bt["portfolios"])
     assert {b["id"] for b in bt["benchmarks"]} >= {"benchmark_SPY", "benchmark_069500.KS"}  # 한국 종목 포함 → 한국 지수 자동 추가
 

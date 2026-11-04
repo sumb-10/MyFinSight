@@ -232,10 +232,13 @@ def build_backtest_spec(
     bench, extra_b = benchmarks_for(req, tickers, md, settings)
     if bw.benchmark:
         bench = bw.benchmark
+    # 거래일 수는 백테스트(prepare)와 같은 달력으로: 종목 시장 ∪ 비교지수 시장 (예전: 종목 시장만 → 한국 포트폴리오는 07 732 vs 11 778, F21)
+    benches = [bench] + [b for b in extra_b if b != bench and b in md.assets]
+    cal_bt = end_view.trading_days(as_of, bw.end_date, markets=sorted({md.market_of(t) for t in tickers} | {md.market_of(b) for b in benches}))
     sel_src = sel_bt_obj if sel_bt_obj is not None else selection
     spec = BacktestSpec(
         request_id=req["request_id"],
-        period={"start": bw.start_date, "end": bw.end_date, "as_of": as_of, "trading_days": int(len(cal))},
+        period={"start": bw.start_date, "end": bw.end_date, "as_of": as_of, "trading_days": int(len(cal_bt))},
         capital={"initial_amount_usd": init_usd, "monthly_contribution_usd": monthly_usd if bw.include_contributions else 0.0,
                  "contribution_day": c.get("contribution_day", 25), "include_contributions": bw.include_contributions,
                  "currency": c["currency"], "initial_amount_krw": c["initial_amount"] if c["currency"] == "KRW" else None,
@@ -243,7 +246,8 @@ def build_backtest_spec(
                  "fx_rate": rate, "fx_date": fx_date, "fx_source": fx_src},
         rebalance_rule=d["rebalance_rule"], benchmark=bench, extra_benchmarks=extra_b,
         selection={"source": source, "metric": selection.summary["metric"], "tickers": tickers,
-                   "table": [{"ticker": r["ticker"], "name": r["name"], "sector": r["sector"], "rank": r["rank"], "metric_value": r["metric_value"]} for r in rows],
+                   "table": [{"ticker": r["ticker"], "name": r["name"], "sector": r["sector"], "rank": r["rank"], "metric_value": r["metric_value"],
+                              "metric_fact_id": r.get("metric_fact_id")} for r in rows],  # 시작일 지표의 인용 ID (예전에는 없어 리포트가 기준일 ID 를 붙였다, 003)
                    "diff_vs_original": {"added": sorted(set(tickers) - set(orig)), "removed": sorted(set(orig) - set(tickers))},
                    "infeasibility": sel_src.infeasibility, "sector_overflow": sel_src.summary.get("sector_overflow")},
         warnings=warnings,
