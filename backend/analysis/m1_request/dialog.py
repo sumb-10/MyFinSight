@@ -519,8 +519,13 @@ class DialogService:
             if p.options and not ok_opts and not p.allow_free_text:
                 doc.warnings.append(f"question on {p.field} dropped: no valid option")
                 continue
-            if len(ok_opts) < 2 and not p.allow_free_text:  # 라운드 5: 보기가 하나뿐인 질문은 묻지 않는다 (고를 것이 없다)
+            # 라운드 5: 보기가 하나뿐인 질문은 묻지 않는다 (고를 것이 없다). 자유 입력이 열려 있어도, 원래 보기가 2개 이상이었는데
+            # 규칙 검사로 하나만 남았다면 버린다 — 예: '배당 성장 우선' 처럼 지원하지 않는 값이 빠지고 '프로필 기준 유지' 하나만 남은 질문(000)
+            if len(ok_opts) < 2 and (not p.allow_free_text or len(p.options) >= 2):
                 doc.warnings.append(f"question on {p.field} dropped: fewer than 2 valid options")
+                continue
+            if len(ok_opts) == 1 and p.field != "natural_language.idea":  # LLM 이 처음부터 보기 1개를 낸 경우도 고를 것이 없다
+                doc.warnings.append(f"question on {p.field} dropped: a single option")
                 continue
             valid.append(p.model_copy(update={"options": ok_opts}))
         if not valid:

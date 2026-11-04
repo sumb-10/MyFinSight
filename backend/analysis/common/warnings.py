@@ -38,6 +38,14 @@ CATALOG: dict[str, tuple[Level, str]] = {
     "too_few_with_metric": ("user", "선정 지표({metric}) 자료가 있는 종목이 {n}개로 목표 {target}개보다 적어 {selected}개만 선정했습니다. 최소 종목 수에 못 미치면 결론 라벨과 리포트에 그 사실을 표시합니다."),
     "weight_capacity": ("user", "선정 종목의 섹터 구성으로는 종목·섹터 상한 안에서 투자금 전체를 배분할 수 없어 일부({cash})를 현금으로 둡니다. 섹터 상한을 올리거나 테마를 넓히면 해소됩니다."),
     "must_include_forced": ("user", "필수 포함 종목 {tickers}은(는) 테마 판정 또는 선정 지표 기준에 맞지 않지만 요청에 따라 포함했습니다."),
+    "sector_preference_skipped": ("user", "섹터 상한({cap}) 안에서 투자금을 다 배분하려고 한 섹터에서는 {pref}종목까지만 먼저 골라, 선정 지표 순위가 더 높은 {tickers}(섹터별 {sector})은(는) 빼고 다른 섹터 종목으로 채웠습니다. 섹터 상한을 올리면 순위대로 고를 수 있습니다."),
+    # 필수 포함 사유를 사실대로 (2026-11 QA: 지표 자료가 없을 뿐인데 '기준에 맞지 않지만' 이라고 써서 리포트가 '고배당 기준에 못 미친다' 고 오해)
+    "must_include_out_of_range": ("user", "필수 포함 종목 {tickers}은(는) 선정 지표가 자격선 밖({detail})이지만 요청에 따라 포함했습니다."),
+    "too_few_eligible": ("user", "선정 지표가 자격선 안에 드는 종목이 {n}개라 목표 {target}개를 다 채우지 못했습니다 (자격선 밖 {n_out}개 제외: {examples}). 남는 비중은 현금으로 둡니다."),
+    "must_include_no_metric": ("user", "필수 포함 종목 {tickers}은(는) 선정 지표 자료가 없어{why} 순위를 매기지 못했지만 요청에 따라 포함했습니다."),
+    "must_include_off_theme": ("user", "필수 포함 종목 {tickers}은(는) 테마 판정을 통과하지 못했지만 요청에 따라 포함했습니다."),
+    "must_include_excluded_theme": ("user", "필수 포함 종목 {tickers}은(는) 제외 테마({theme})에 해당하지만 요청에 따라 포함했습니다."),
+    "must_include_short_history": ("user", "필수 포함 종목 {tickers}은(는) 기준일 이전 가격 이력이 1년이 안 되지만 요청에 따라 포함했습니다 (이력이 모자라면 비중을 줄 수 없을 수 있습니다)."),
     "backtest_start_shifted": ("user", "{text}"),
     "fewer_holdings_at_start": ("user", "{text}"),
     "backtest_start_clamped": ("user", "{text}"),  # 요청한 백테스트 시작이 재무 지표 자료 시작 전이라 뒤로 옮김 (사용자가 기간을 다시 정할 수 있음)
@@ -74,10 +82,16 @@ _LEGACY: list[tuple[re.Pattern[str], str, tuple[str, ...]]] = [
     (re.compile(r"^exclude_sectors: unknown sector name '?([^']+)'?"), "exclude_sector_unknown", ("names",)),
     (re.compile(r"^only (\d+) candidates for target (\d+)"), "too_few_candidates", ("n", "target")),
     (re.compile(r"^only (\d+) tickers have (\S+); target (\d+) -> selecting (\d+)"), "too_few_with_metric", ("n", "metric", "target", "selected")),
+    (re.compile(r"^only (\d+) tickers within eligibility for (\S+); target (\d+) \(excluded (\d+) out of range: (.*)\)$"), "too_few_eligible", ("n", "metric", "target", "n_out", "examples")),
     (re.compile(r"^weight capacity ([\d.]+) < ([\d.]+)"), "weight_capacity", ("cap", "investable")),
     (re.compile(r"^caps allow at most (\d+)% invested .*?(\d+)% kept as cash"), "weight_capacity", ("cap_pct", "cash_pct")),
+    (re.compile(r"^sector count preference \((\d+)/sector, sector cap (\d+%)\) skipped higher-ranked \[([^\]]*)\] \(([^)]*)\)"), "sector_preference_skipped", ("pref", "cap", "tickers", "sector")),
+    (re.compile(r"^must_include (\S+): metric_out_of_range\(([^)]*)\)"), "must_include_out_of_range", ("tickers", "detail")),
+    (re.compile(r"^must_include (\S+): metric_missing( \(eps<=0)?"), "must_include_no_metric", ("tickers", "why")),
+    (re.compile(r"^must_include (\S+): insufficient price history"), "must_include_short_history", ("tickers",)),
+    (re.compile(r"^(\S+): must_include matches excluded theme (.+?) -> "), "must_include_excluded_theme", ("tickers", "theme")),
     (re.compile(r"^must_include (\S+): "), "must_include_forced", ("tickers",)),
-    (re.compile(r"^(\S+): must_include but not in theme"), "must_include_forced", ("tickers",)),
+    (re.compile(r"^(\S+): must_include but not in theme"), "must_include_off_theme", ("tickers",)),
     (re.compile(r"^original selection used at an earlier date"), "selection_lookahead", ()),
     (re.compile(r"^(\S+) dropped: insufficient history before"), "ticker_dropped_history", ("tickers",)),
     (re.compile(r"^added_tickers not in universe ignored: (.+)"), "added_tickers_ignored", ("tickers",)),
@@ -132,7 +146,8 @@ def from_text(stage: str, text: str, *, dates: list[str] | None = None) -> Warni
     m = _SCREEN_AT.match(text)
     if m:  # 07 단계(백테스트 시작일 재선정)의 선정 경고: 기준일 선정과 헷갈리지 않게 시점을 앞에 적는다 (라운드 5)
         w = from_text(stage, m.group(2), dates=[*dates, m.group(1)])
-        if w.code in ("too_few_with_metric", "too_few_candidates") and not w.message_ko.startswith("백테스트 시작일"):
+        # 사용자에게 보이는 공지는 모두 시점을 붙인다 (예전에는 too_few_* 만 → 필수 포함 공지가 기준일 선정 얘기로 읽혔다, 098 현대차)
+        if w.level == "user" and not w.message_ko.startswith("백테스트 시작일"):
             w.message_ko = f"백테스트 시작일({m.group(1)}) 기준: {w.message_ko}"
         return w
     m = _DATE_PREFIX.match(text)
@@ -154,6 +169,13 @@ def from_text(stage: str, text: str, *, dates: list[str] | None = None) -> Warni
         if code == "no_portfolio_passed":
             found = re.findall(r"'(R\d+b?)': (\d+)", kw.get("rules", ""))
             kw["rules"] = ", ".join(f"{RULE_KO.get(r, r)}({r}) {n}개" for r, n in found) or kw.get("rules", "")
+        if code == "sector_preference_skipped":  # 시작일 재선정은 20개 넘게 빠지기도 한다 → 앞 5개 + '외 N개'
+            names = [x.strip().strip("'\"") for x in kw.get("tickers", "").split(",") if x.strip()]
+            kw["tickers"] = ", ".join(names[:5]) + (f" 외 {len(names) - 5}개" if len(names) > 5 else "")
+        if code == "must_include_no_metric":  # 적자 여부는 PER 에서만 안다 (배당·ROE·모멘텀은 그냥 자료 없음)
+            kw["why"] = "(적자이거나 재무 자료 없음)" if kw.get("why") else ""
+        if code == "must_include_out_of_range":
+            kw["detail"] = re.sub(r"^(\w+)=", lambda mm: {"pe_ttm": "PER ", "roe_ttm": "ROE ", "dividend_yield_ttm": "배당수익률 "}.get(mm.group(1), mm.group(1) + " "), kw.get("detail", ""))
         if code == "too_few_with_metric":
             kw["metric"] = {"return_12m_1m": "모멘텀", "pe_ttm": "PER", "roe_ttm": "ROE", "vol_60d": "변동성", "dividend_yield_ttm": "배당수익률"}.get(kw["metric"], kw["metric"])
         if code in ("backtest_start_shifted", "backtest_start_clamped", "fewer_holdings_at_start", "gics_draft", "descriptor_version_fallback", "derived_note", "window_clamped"):
@@ -169,7 +191,10 @@ def merge(ws: list[Warning]) -> list[Warning]:
     out: list[Warning] = []
     idx: dict[tuple[str, Any], int] = {}
     for w in ws:
-        key = (w.code, (w.details or {}).get("key") if w.code != "legacy_note" else w.message_ko)
+        k2 = (w.details or {}).get("key")
+        # 종목 키가 없는 코드(weight_capacity·too_few_*)는 문장까지 같아야 합친다 — 날짜·숫자가 다른 공지를 첫 문장 하나로 덮지 않게.
+        # 시작일 재선정 공지('백테스트 시작일(…) 기준:')는 기준일 공지와 따로 둔다.
+        key = (w.code, w.message_ko if (w.code == "legacy_note" or k2 is None) else (k2, w.message_ko.startswith("백테스트 시작일")))
         if key in idx:
             g = out[idx[key]]
             g.count += w.count

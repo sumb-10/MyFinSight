@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 NAMES = {"equal_weight": "동일비중", "market_cap": "시가총액비중", "inverse_volatility": "역변동성비중", "min_variance": "최소분산"}
@@ -262,9 +263,10 @@ def assumptions_callout(R):
     ex = (e.get("execution_rule") or {}).get("description_ko", "")
     txt = (f"기간 {s['period']['start']} ~ {s['period']['end']} ({R['backtest']['period']['trading_days']}거래일). 초기 투자금 {s['capital']['initial_amount_usd']:,.0f} USD, "
            f"매월 {e['contribution_usd']:,.0f} USD 적립 {e['n_contributions']}회. {s['rebalance_rule']['description_ko']}. {ex} 거래비용 거래대금의 {e['commission_bps'] / 100:.2f}%, "
-           f"배당 재투자, 소수 주식 허용, 무위험수익률 연 {e['risk_free_rate']:.0%}. 한국 종목은 거래일 환율로 USD 환산. 과거 성과는 미래 성과를 보장하지 않습니다.")  # fmt: skip
-    if _has_kr(R):
-        txt += " 모든 성과·지표(수익률·변동성·낙폭·모멘텀)는 미국 달러 환산 가격 기준이라, 원화 종목에는 환율 변동이 섞여 있습니다. 원화로 보는 수익과 다를 수 있습니다."
+           f"배당 재투자, 소수 주식 허용, 무위험수익률 연 {e['risk_free_rate']:.0%}. 과거 성과는 미래 성과를 보장하지 않습니다.")  # fmt: skip
+    if _has_kr(R):  # 한국 종목이 있을 때만 (예전에는 미국 종목뿐인 리포트에도 '한국 종목은 거래일 환율로 환산' 이 붙었다)
+        txt += (" 한국 종목은 거래일 환율로 USD 환산했습니다. 모든 성과·지표(수익률·변동성·낙폭·모멘텀)는 미국 달러 환산 가격 기준이라, "
+                "원화 종목에는 환율 변동이 섞여 있습니다. 원화로 보는 수익과 다를 수 있습니다.")
     return {"type": "callout", "tone": "info", "title_ko": "백테스트 가정", "text_ko": txt}
 
 
@@ -408,6 +410,22 @@ def news_used_ids(R) -> list[str]:
     return sorted(out)
 
 
+def walkforward_top_deltas(R, k: int = 3) -> dict[str, list[str]]:
+    """walk-forward 뉴스 반영 구성의 날짜별 '기준 비중 대비 큰 변화' (14b 입력: 예전에는 없어서 '비중 변화가 결과에 없다' 고 썼다)."""
+    wf = R["portfolio"].get("walkforward") or {}
+    ports = {p["id"]: p for p in wf.get("portfolios") or []}
+    bl = next((p for p in ports.values() if p.get("kind") == "black_litterman"), None)
+    base = ports.get(f"wf_{R['portfolio']['targets']['baseline']['id']}")
+    if not bl or not base:
+        return {}
+    out = {}
+    for d, w in (bl.get("weights_by_date") or {}).items():
+        b = (base.get("weights_by_date") or {}).get(d) or {}
+        top = sorted(((t, w[t] - b.get(t, 0.0)) for t in w), key=lambda x: -abs(x[1]))[:k]
+        out[d] = [f"{t} {x * 100:+.1f}%p" for t, x in top if abs(x) >= 0.0005] or ["변화 없음(기준 비중)"]
+    return out
+
+
 def walkforward_blocks(R):
     wf = R["portfolio"].get("walkforward")
     if not wf:
@@ -443,7 +461,52 @@ def walkforward_blocks(R):
     return blocks
 
 
-def forward_blocks(R):
+def current_composition(R, chosen: str) -> tuple[dict[str, float], float, str] | None:
+    """추천(선택)안의 규칙으로 고른 분석 기준일 구성 (weights, cash, 이름) — 모의투자 시작 비중(paper._report_weights)과 같은 규칙.
+
+    템플릿 → 10f 의 같은 템플릿, 뉴스 반영(BL) → 10f 의 chosen_weights(뷰가 반영된 첫 세트, 없으면 기준 비중),
+    낙폭 맞춤안 → 기준 구성 × (1 − 현금 비율), 옛 현금 혼합안(cash_blend_*) → 템플릿 × (1 − 현금 비율).
+    예전에는 추천과 상관없이 '첫 BL 또는 기준 템플릿' 을 보여 줘서 '낙폭 맞춤안(주식 52%)' 추천인데 대시보드는 현금 5% 로 보였다 (F13 / 논의사항 E1).
+    (시작일 BL 세트 k 와 분석 기준일 세트 k 는 서로 다른 LLM 시나리오라 번호로 잇지 않는다.)
+    """
+    f = R["portfolio"].get("forward") or {}
+    if not f or not (f.get("templates") or f.get("portfolios")):
+        return None
+    tmpl = {t["id"]: t for t in f.get("templates") or []}
+    cash_ratio, label = 0.0, None
+    if chosen.startswith("cash_blend_"):
+        alt = next((a for a in R["validation"].get("alternatives", []) if a.get("id") == chosen), None)
+        core, cash_ratio = chosen[len("cash_blend_"):], float((alt or {}).get("cash_ratio") or 0.0)
+    else:
+        try:
+            p = find(R, chosen)
+        except StopIteration:
+            return None
+        matched = p.get("kind") == "matched"
+        cash_ratio = float(p.get("cash_ratio") or 0.0) if matched else 0.0
+        base = str(p.get("base_id") or chosen) if matched else chosen
+        core = base[3:] if base.startswith("wf_") else base
+        label = "낙폭 맞춤안" if matched else None
+    if core in tmpl:
+        w, name = dict(tmpl[core]["weights"]), tmpl[core].get("name_ko") or core
+    elif core.startswith("bl"):
+        if f.get("portfolios"):
+            w = dict(f.get("chosen_weights") or f["portfolios"][0]["weights"])
+            name = next((q.get("name_ko") for q in f["portfolios"] if q.get("weights") == w), "현재 구성 뉴스 반영")
+        else:
+            b = tmpl.get((f.get("baseline") or {}).get("id")) or next(iter(tmpl.values()))
+            w, name = dict(b["weights"]), f"{b.get('name_ko') or b['id']} (분석 기준일에는 뉴스 뷰가 없어 기준 비중)"
+    else:
+        return None
+    if cash_ratio > 0:
+        w = {t: x * (1 - cash_ratio) for t, x in w.items()}
+    cash = max(0.0, 1 - sum(w.values()))
+    if cash_ratio > 0:  # 이름은 이 구성의 실제 비중으로 (백테스트 이름의 '주식 52%' 와 기준일 템플릿 현금이 다를 수 있다)
+        name = f"{label or '현금 혼합안'} ({name} 기준, 주식 {sum(w.values()):.0%} + 현금 {cash:.0%})"
+    return w, cash, name
+
+
+def forward_blocks(R, chosen: str | None = None):
     f = R["portfolio"].get("forward")
     if not f:
         return []
@@ -459,10 +522,20 @@ def forward_blocks(R):
             {"label_ko": "기준 비중 대비 주요 변화", "value": ", ".join(f"{t} {x:+.1%}" for t, x in sorted(p["delta_vs_baseline"].items(), key=lambda x: -abs(x[1]))[:4])},
             {"label_ko": "예상 수익·변동성", "value": f"{p['ex_ante']['exp_return']:.1%} / {p['ex_ante']['vol']:.1%}"},
             {"label_ko": "근거", "value": ", ".join(sorted({i for v in p["views_applied"] for i in v.get("evidence_ids", [])})) or "-"}]}]})  # fmt: skip
-    chosen = f["portfolios"][0] if f["portfolios"] else next((t for t in f["templates"] if t["id"] == f["baseline"]["id"]), f["templates"][0])
-    blocks.append(donut(f"{chosen.get('name_ko', chosen['id'])} 배분 비중 (현재 구성)", chosen["weights"]))
-    rows = [{"ticker": x["ticker"], "w": x["weight"], "usd": x["usd"], "krw": x["krw"]} for x in chosen["allocation"]]
-    blocks.append(table(f"배분 금액 ({chosen.get('name_ko', chosen['id'])}, 투자금 {f['capital']['initial_amount_usd']:,.0f} USD, 환율 1 USD = {f['capital']['fx_rate']:,.2f} KRW)",
+    cc = current_composition(R, chosen) if chosen else None
+    if cc is None:  # 선택안을 해석할 수 없을 때만 예전 규칙 (첫 BL 또는 기준 템플릿)
+        c0 = f["portfolios"][0] if f["portfolios"] else next((t for t in f["templates"] if t["id"] == f["baseline"]["id"]), f["templates"][0])
+        cc = (dict(c0["weights"]), max(0.0, 1 - sum(c0["weights"].values())), c0.get("name_ko", c0["id"]))
+    w, cash, name = cc
+    init, fx = f["capital"]["initial_amount_usd"], f["capital"]["fx_rate"]
+    items = dict(sorted(w.items(), key=lambda x: -x[1]))
+    if cash > 1e-6:  # 현금 행: 빠지면 표 합계가 투자금보다 작다
+        items["현금"] = cash
+    top8 = sorted(w.values(), reverse=True)[:8]
+    donut_items = items if (cash > 1e-6 and (len(top8) < 8 or cash >= top8[-1])) else dict(sorted(w.items(), key=lambda x: -x[1]))
+    blocks.append(donut(f"{name} 배분 비중 (현재 구성)", donut_items))  # 화면 도넛은 상위 8개 + '기타 N종목' 이라 작은 현금은 표에만
+    rows = [{"ticker": t, "w": x, "usd": round(init * x, 2), "krw": round(init * x * fx)} for t, x in items.items() if x > 1e-6]
+    blocks.append(table(f"배분 금액 ({name}, 투자금 {init:,.0f} USD, 환율 1 USD = {fx:,.2f} KRW)",
                         [("ticker", "티커", "text"), ("w", "비중", "pct1"), ("usd", "USD", "usd"), ("krw", "원화", "krw")], rows))  # fmt: skip
     return blocks
 
@@ -535,10 +608,11 @@ def limitations(R):
     out = [f"구성종목 사전은 {desc.get('snapshot_date', '최근')} 스냅샷 하나를 모든 과거 기준일에 적용했습니다. 당시 지수에 없던 종목이나 이후 상장폐지된 종목을 반영하지 못하는 생존 편향이 있습니다.",
            "뉴스 뷰는 팀 데이터베이스의 공시 목록(사건 종류·제목·이용 가능일만, 본문 없음)과 뉴스 헤드라인(본문 없음)만 근거로 하며, 근거가 없는 날짜·종목은 기준 비중을 유지합니다. 공시는 사건의 존재만 알려 주고, 뉴스·공시가 성과의 원인이라고 단정하지 않습니다.",
            "시가총액비중은 valuation_daily 의 유통주식수 × 종가를 쓰며, 가치평가 항목이 비어 있는 종목은 0 으로 처리됩니다.",
-           "세금, 환전 수수료, 호가 차이(슬리피지)는 반영하지 않았습니다. 한국 종목의 거래세·소수 주식 불가는 반영하지 않았습니다.",
+           "세금, 환전 수수료, 호가 차이(슬리피지)는 반영하지 않았습니다.",
            "리밸런싱일 t 의 비중은 t−1 까지 자료로 계산하고 t 종가로 체결했다고 가정합니다. 실제 체결 가격·시점은 다를 수 있습니다.",
            "회사 소개는 데이터베이스의 사업 설명 첫 문장이며, 이 리포트는 기업의 재무 상태나 경쟁력을 평가하지 않습니다."]  # fmt: skip
-    if _has_kr(R):
+    if _has_kr(R):  # 미국 종목뿐인 리포트에는 붙이지 않는다
+        out.append("한국 종목의 거래세·소수 주식 불가는 반영하지 않았습니다.")
         out.append("한국 종목의 가격·지표는 미국 달러로 환산해 계산했습니다. 환율이 오르내린 만큼 원화 기준 수익·변동성과 다를 수 있습니다.")
     for l in desc.get("limitations", []) or []:
         out.append(str(l))
@@ -697,9 +771,9 @@ def build_summary(R, chosen: str, interp: dict[str, Any], narr: dict[str, Any]) 
     names = {t["ticker"]: t["name"] for t in R["selection"]["table"]}
     sec = {t["ticker"]: t["sector"] for t in R["selection"]["table"]}
     f = R["portfolio"].get("forward")
-    if f and (f.get("portfolios") or f.get("templates")):
-        cur = f["portfolios"][0] if f["portfolios"] else next((t for t in f["templates"] if t["id"] == f["baseline"]["id"]), f["templates"][0])
-        alloc_w, basis, basis_ko, a_init, fx = cur["weights"], "forward", f"분석 기준일 {f['as_of']} 구성 ({cur.get('name_ko', cur['id'])})", f["capital"]["initial_amount_usd"], f["capital"]["fx_rate"]
+    cc = current_composition(R, chosen)
+    if f and cc is not None:  # 추천안의 규칙으로 고른 분석 기준일 구성 (F13)
+        alloc_w, basis, basis_ko, a_init, fx = cc[0], "forward", f"분석 기준일 {f['as_of']} 구성 ({cc[2]})", f["capital"]["initial_amount_usd"], f["capital"]["fx_rate"]
     else:
         alloc_w, basis, basis_ko, a_init, fx = p.get("target_weights") or {}, "backtest", f"백테스트 선택안 ({pf_label(p)})", init, R["money_krw"]["fx_rate"]
     items = [{"ticker": t, "name": names.get(t, t), "sector": sec.get(t, ""), "weight": w, "usd": round(a_init * w, 2), "krw": round(a_init * w * fx)} for t, w in sorted(alloc_w.items(), key=lambda x: -x[1]) if w > 1e-6]

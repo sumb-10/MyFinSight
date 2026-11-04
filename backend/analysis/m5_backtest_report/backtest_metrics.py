@@ -162,7 +162,9 @@ def composition_metrics(sec_w: pd.DataFrame, asset_px: pd.DataFrame, targets: di
     sec_tgt = pd.Series({s: tgt[[c for c in cols if sectors[c] == s]].sum() for s in sec_w_t.columns})
     sdrift = (sec_w_t - sec_tgt).abs().max().max()
     ac = contrib.abs().sort_values(ascending=False)
-    return {"effective_n": _r(1 / (avg**2).sum(), 3), "hhi": _r((avg**2).sum()),
+    tot = float(avg.sum())
+    avg_n = avg / tot if tot > 0 else avg  # 현금 제외 투자 비중으로 정규화 (F20: 현금 15% 면 4종목이 5.5종목으로 보였다)
+    return {"effective_n": _r(1 / (avg_n**2).sum(), 3) if tot > 0 else None, "hhi": _r((avg_n**2).sum()),
             "top3_contribution_share": _r(ac.head(3).sum() / ac.sum()) if ac.sum() > 0 else None,
             "sector_weights_avg": {s: _r(v) for s, v in sec_w_t.mean().items()},
             "max_weight_drift": _r(drift), "max_sector_drift": _r(sdrift),
@@ -201,12 +203,13 @@ def _view_prior(v, implied: dict) -> float:
 
 
 def _view_hit(v, realized: float, prior_scaled: float, prior_annual: float) -> bool:
-    """방향 적중. 절대 뷰: 실현 수익이 사전 기대(기간 비례)보다 뷰 방향으로 움직였나. 상대 뷰: long 이 short 를 이겼나.
+    """방향 적중. 절대 뷰: 실현 수익이 사전 기대(기간 비례)보다 뷰 방향으로 움직였나. 상대 뷰: long−short 실현 차이가 사전 기대 차이보다 컸나
+    (상대 뷰 Q = 사전 차이 + k·σ 라서 '사전보다 long 쪽' 이 뜻이다). 사전 차이가 없는 옛 상대 뷰는 0 → 'long 이 이겼나'.
 
-    방향이 없는 옛 뷰는 예전 정의(숫자가 사전 기대보다 높았나 낮았나)를 쓴다.
+    방향이 없는 옛 절대 뷰는 예전 정의(숫자가 사전 기대보다 높았나 낮았나)를 쓴다.
     """
     if v["type"] != "absolute":
-        return realized > 0
+        return realized - prior_scaled > 0
     d = v.get("direction")
     if d in ("up", "down"):
         return (realized - prior_scaled) * (1 if d == "up" else -1) > 0
@@ -252,7 +255,7 @@ def view_diagnostics_next_window(views_by_date, asset_px: pd.DataFrame, rb_dates
     """뷰를 세운 리밸런싱일 d 부터 다음 리밸런싱일(없으면 종료일)까지의 실현 수익 vs 뷰 방향 (라운드 5).
 
     365일 지평(`view_diagnostics`)과 달리 '그 뷰로 비중을 바꾼 기간' 안에서 맞았는지를 본다.
-    absolute 뷰는 기간에 비례한 내재 수익 대비, relative 뷰는 long−short > 0.
+    absolute 뷰는 기간에 비례한 내재 수익 대비, relative 뷰는 long−short 가 기간에 비례한 사전 차이보다 컸나.
     """
     out = []
     rbs = sorted(pd.Timestamp(d) for d in (rb_dates or []))

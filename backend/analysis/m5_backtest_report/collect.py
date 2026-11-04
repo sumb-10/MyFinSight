@@ -11,6 +11,7 @@ from backend.analysis.common.jsonio import now_iso
 from backend.analysis.m2_data import descriptor as D
 from backend.analysis.schemas.results import ResultsBundle
 from backend.analysis.settings import AnalysisSettings
+from backend.analysis.m2_data.metrics import METRIC_KO as M_KO
 from backend.pipeline.descriptor import Descriptor
 
 DB_SOURCES = [
@@ -91,18 +92,25 @@ def build_results(
                       "in_selection_now": t in rank_now, "rank_now": rank_now.get(t, {}).get("rank"), "metric_now": rank_now.get(t, {}).get("metric_value"),
                       "metric_fact_id": rank_now.get(t, {}).get("metric_fact_id"),
                       "in_backtest": t in rank_bt, "rank_backtest": rank_bt.get(t, {}).get("rank"), "metric_backtest": rank_bt.get(t, {}).get("metric_value")})  # fmt: skip
-    excluded = [{"ticker": r["ticker"], "name": (desc.by_ticker(r["ticker"]) or {}).get("name", r["ticker"]), "reason": r["reason"], "metric_value": r.get("metric_value")}
-                for r in sel["rejected"][:8]]  # fmt: skip
+    reason_ko = {"sector_preference": "섹터 선호(순위가 더 낮은 다른 섹터 종목에 자리를 내줌)", "rank_beyond_n": "순위 밖", "metric_missing": "지표 자료 없음",
+                 "metric_missing (eps<=0 or no financials)": "지표 자료 없음(적자 또는 재무 자료 없음)"}  # fmt: skip
+    order = {"sector_preference": 0, "metric_out_of_range": 1, "rank_beyond_n": 2}
+    rej = sorted(sel["rejected"], key=lambda r: order.get(str(r["reason"]).split("(")[0], 3))
+    excluded = [{"ticker": r["ticker"], "name": (desc.by_ticker(r["ticker"]) or {}).get("name", r["ticker"]),
+                 "reason": reason_ko.get(r["reason"], "자격선 밖 " + r["reason"].split("(", 1)[1].rstrip(")") if r["reason"].startswith("metric_out_of_range(") else r["reason"]),
+                 "metric_value": r.get("metric_value")} for r in rej[:8]]  # fmt: skip
     funnel = [
         {"stage": "universe", "label_ko": "투자 가능 종목 (" + " ∪ ".join(req["constraints"]["universe"]) + ")", "count": descriptor_info.get("n_stocks", len(D.tickers(desc)))},
         {"stage": "candidates", "label_ko": "테마 관련 후보 (GICS·키워드·예시 종목 검색)", "count": cand["stats"]["n_candidates"]},
-        {"stage": "theme_passed", "label_ko": f"테마 해당 판정 (분석 모델, 신뢰도 ≥ {tag['min_confidence']})", "count": len(tag["passed_tickers"])},
-        {"stage": "with_metric", "label_ko": f"선정 지표({sel['summary']['metric']}) 계산 가능", "count": sel["summary"]["n_with_metric"]},
+        {"stage": "theme_passed", "label_ko": (f"테마 해당 판정 (분석 모델, 신뢰도 ≥ {tag['min_confidence']})" if tag.get("theme_filter_applied", True)
+                                               else "제외 테마 판정 (넓은 테마라 테마 해당 여부로는 거르지 않음)"), "count": len(tag["passed_tickers"])},
+        {"stage": "with_metric", "label_ko": f"선정 지표({M_KO.get(sel['summary']['metric'], sel['summary']['metric'])}) 계산 가능·자격선 안", "count": sel["summary"]["n_with_metric"]},
         {"stage": "selected_now", "label_ko": f"최종 선정 ({sel['summary']['as_of']}, 섹터 분산 적용)", "count": sel["summary"]["n_selected"]},
         {"stage": "selected_backtest", "label_ko": f"백테스트용 재선정 ({spec['period']['as_of']})", "count": len(spec["selection"]["tickers"])},
     ]  # fmt: skip
     selection = {"funnel": funnel, "metric": sel["summary"]["metric"], "direction": sel["summary"]["direction"], "candidates_summary": cand["stats"],
                  "tagging_summary": {"n_tagged": len(tag["tagged"]), "n_passed": len(tag["passed_tickers"]), "n_excluded_by_theme": len(tag["excluded_by_theme"]),
+                                     "theme_filter_applied": tag.get("theme_filter_applied", True),
                                      "min_confidence": tag["min_confidence"]},
                  "as_of_now": {"as_of": sel["summary"]["as_of"], "selected": sel["selected"], "rejected_examples": excluded, "summary": sel["summary"],
                                "warnings": sel["warnings"], "infeasibility": sel.get("infeasibility"), "sector_overflow": sel["summary"].get("sector_overflow")},

@@ -55,6 +55,28 @@ _CLASS_RE = re.compile(r"\b(?:class|cl|series)\s+[abc]\b|\b(?:common|ordinary)\s
 _SUFFIX_RE = re.compile(r"\b(?:inc|incorporated|corp|corporation|co|company|ltd|limited|plc|holdings?|group)\b")
 
 
+_NEGATION = re.compile(r"(?:\bnon[- ]?|비|무)$")  # 'non-alcoholic', '비알코올', '무알코올' 의 부정 앞말
+
+
+def _exclude_keyword_hits(desc: Descriptor, words: list[str]) -> dict[str, set[str]]:
+    """제외 테마 키워드가 이름·소개문(GICS 이름 토큰 제외)에서 맞는 종목 → 맞은 키워드 집합. 앞에 부정어가 붙은 것은 세지 않는다."""
+    from backend.pipeline.descriptor import _word_pattern
+
+    pats = [(w, _word_pattern(w)) for w in dict.fromkeys(x for x in words if str(x).strip())]
+    out: dict[str, set[str]] = {}
+    if not pats:
+        return out
+    for e in desc.stocks:
+        text = f"{e.get('name', '')} | {e.get('intro', '')}".lower()
+        spans = {w: [(m.start(), m.end()) for m in pat.finditer(text) if not _NEGATION.search(text[max(0, m.start() - 4) : m.start()])] for w, pat in pats}
+        # 더 긴 키워드 안에 들어간 일치('tobacco products' 안의 'tobacco')는 따로 세지 않는다 — 한 구절이 2개로 세지면 '2개 이상' 규칙이 무력해진다
+        hit = {w for w, sp in spans.items()
+               if any(not any(a2 <= a and b <= b2 and (b2 - a2) > (b - a) for w2, sp2 in spans.items() if w2 != w for a2, b2 in sp2) for a, b in sp)}
+        if hit:
+            out[e["yfinance_symbol"]] = hit
+    return out
+
+
 def _share_class_key(entry: dict[str, Any]) -> str:
     """같은 회사의 주식 클래스를 묶는 키: 회사명에서 괄호·'Class A/C'·'Inc' 등을 뗀 소문자.
 
@@ -123,8 +145,11 @@ def retrieve(
     for r in it.get("exclude_theme_rules", []):
         for e in desc.filter_by_gics(r.get("gics_codes", [])):
             excl_by_rule[e["yfinance_symbol"]] = f"exclude_theme:{r['theme']}(gics)"
-        for m in desc.search_keywords(r.get("keywords", []), min_distinct=1):
-            excl_by_rule.setdefault(m.entry["yfinance_symbol"], f"exclude_theme:{r['theme']}(keyword)")
+        # 키워드 제외는 이름·소개문에서 서로 다른 키워드 2개 이상일 때만 (예전: 1개, GICS 이름 토큰까지 검색 → Caterpillar 를 '화석연료',
+        # 콜라 회사를 '주류'('non-alcoholic' 안의 alcoholic)로 뺐다). 1개만 맞는 종목은 04 분류(excluded_theme)가 판단한다.
+        for sym, hit in _exclude_keyword_hits(desc, r.get("keywords", [])).items():
+            if len(hit) >= MIN_KEYWORD_HITS:
+                excl_by_rule.setdefault(sym, f"exclude_theme:{r['theme']}(keyword)")
 
     def drop(t: str, reason: str) -> None:
         filtered.append(FilteredOut(ticker=t, reason=reason))
@@ -222,7 +247,7 @@ def retrieve(
 
             def mkey(c: Candidate):
                 v = vals.get(c.ticker)
-                ok = v is not None and not pd.isna(v)
+                ok = v is not None and not pd.isna(v) and M.eligible(metric, v)  # 자격선 밖 값(자료 오류 포함)은 상한 순위에서 결측처럼
                 return (c.forced, ok, sign * float(v) if ok else 0.0, c.adv_usd or 0)
 
             cands.sort(key=mkey, reverse=True)

@@ -72,10 +72,15 @@ def derive(req: UserRequest | dict[str, Any], md: MarketData, settings: Analysis
     # 백테스트 시작일 환율: 과거 시점의 투자금은 그날 환율로 환산한다 (07 단계가 실제로 쓰는 값과 같은 규칙)
     bt_rate, bt_fx_date = 1.0, bt_start
     if r.capital.currency != "USD":
+        # 07 과 같은 날: 창의 첫 거래일(bt_start 이후). 예전에는 bt_start 가 주말·휴장일이면 '직전 거래일 시점' 에서 bt_start 환율을
+        # 찾다가 선견 금지 오류가 나고, 조용히 기준일 환율로 떨어져 조건 확인 화면·01_request 의 USD 환산액이 실제 백테스트와 달랐다.
         try:
-            bfx = md.view(md.common_trading_day_on_or_before(bt_start, markets)).fx_on_or_before(bt_start)
+            cal = view.trading_days(bt_start, as_of, markets=markets)
+            d0 = cal[0].date() if len(cal) else bt_start
+            bfx = md.view(d0).fx_on_or_before(d0)
             bt_rate, bt_fx_date = float(bfx.rate), bfx.date
-        except Exception:  # noqa: BLE001 — 환율이 없으면 기준일 환율로 (07 단계가 다시 경고한다)
+        except Exception:  # noqa: BLE001 — 환율 자료가 없으면 화면 환산만 기준일 환율로 (07 단계가 시작일 환율로 다시 환산하거나 멈춘다)
+            warnings.append(f"백테스트 시작일({bt_start}) 환율 자료가 없어 화면의 USD 환산은 기준일 환율로 보여 줍니다. 이 기간은 백테스트를 할 수 없을 수 있습니다")
             bt_rate, bt_fx_date = rate, fx_date
     derived = Derived(
         as_of=as_of, fx_rate=rate, fx_date=fx_date, fx_source=fx_src,

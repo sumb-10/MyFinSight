@@ -162,7 +162,8 @@ def generate_views(
 def _quantify(v: dict[str, Any], mm: dict[str, Any], tickers: list[str], ps, warnings: list[str], sid: Any) -> None:
     """LLM 의 방향·강도를 사전 기대수익 대비 연 기대수익 Q(`expected_return_annual`)로 바꾼다.
 
-    절대 뷰: Q = π_i + 방향 × k × σ_i. 상대 뷰: Q = max(π_long − π_short, 0) + k × σ(long − short), long 이 short 를 이긴다는 뜻.
+    절대 뷰: Q = π_i + 방향 × k × σ_i. 상대 뷰: Q = (π_long − π_short) + k × σ(long − short) — 사전 기대 차이를 long 쪽으로 강도만큼 옮긴다.
+    (처음에는 max(차이, 0) 을 썼는데, 사전 차이가 −10% 인 '약한' 뷰가 15%p 넘게 움직이는 강한 뷰가 됐다 — 000 CCI > SPG.)
     방향이 없으면(옛 캐시 응답·옛 stub) 숫자의 부호로 추정하고 경고를 남긴다. 상대 뷰의 down 은 다리를 바꿔 up 으로 둔다.
     """
     pi, vol = mm["implied_returns"], mm["ann_vol"]
@@ -189,8 +190,8 @@ def _quantify(v: dict[str, Any], mm: dict[str, Any], tickers: list[str], ps, war
         lo, hi = ps.abs_return_range
     else:
         prior = sum(float(pi[t]) for t in v["long"]) / len(v["long"]) - sum(float(pi[t]) for t in v["short"]) / len(v["short"])
-        q = max(prior, 0.0) + k * _spread_vol(v, mm, tickers)
-        lo, hi = ps.rel_return_range
+        q = prior + k * _spread_vol(v, mm, tickers)
+        lo, hi = ps.abs_return_range  # 상대 뷰도 사전 차이가 음수일 수 있어 절대 뷰 범위로 자른다 (부호가 아니라 이동 방향이 뜻)
     if not (lo <= q <= hi):
         warnings.append(f"{sid}: view {v['long']} return {q:.4f} clipped to [{lo}, {hi}]")
         q = min(max(q, lo), hi)

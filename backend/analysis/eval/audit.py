@@ -110,6 +110,10 @@ class Audit:
         sc, rq = self.scenario or {}, self.req
         self.w("\n## 조건 (시나리오 → 확정 요청)\n")
         self.w(f"아이디어: {((sc.get('natural_language') or {}).get('idea') or '')}")
+        for n in self.res.get("normalized") or []:
+            self.w(f"- 시험용 정규화: {n}")
+        if self.res.get("replay_of"):
+            self.w(f"- 재실행: {self.res['replay_of']} 의 확정 요청을 대화 없이 다시 돌림")
         self.w()
         keys = [("constraints", "num_holdings"), ("constraints", "max_weight_per_stock"), ("constraints", "max_weight_per_sector"), ("constraints", "min_cash_ratio"),
                 ("constraints", "universe"), ("constraints", "exclude_tickers"), ("constraints", "exclude_sectors"), ("constraints", "exclude_themes"),
@@ -142,7 +146,12 @@ class Audit:
             self.w(f"- 실행 전 점검: 기준일 후보 {now.get('n_candidates')}·지표 {now.get('n_with_metric')} / 시작일 후보 {st.get('n_candidates')}·지표 {st.get('n_with_metric')}"
                    f" · short_now={pc.get('short_now')} short_at_start={pc.get('short_at_start')}")  # fmt: skip
         topics = [q.get("field") for q in qa]
-        self.chk("같은 항목 반복 질문 없음", len(topics) == len(set(topics)), ", ".join(t for t in topics if topics.count(t) > 1))
+        replay = bool(self.res.get("replay_of"))
+        note = " (재실행: 대화는 처음 실행 것이라 판정 생략)" if replay else ""
+        dup = ", ".join(t for t in topics if topics.count(t) > 1)
+        self.chk("같은 항목 반복 질문 없음" + note, replay or len(topics) == len(set(topics)), dup)
+        single = [f"Q{q.get('seq')} {q.get('field')}" for q in qa if len(q.get("options") or []) == 1]
+        self.chk("보기가 하나뿐인 질문 없음" + note, replay or not single, ", ".join(single))
 
     def selection(self) -> None:
         o, rq = self.o, self.req
@@ -170,6 +179,9 @@ class Audit:
         self.w(f"- 05 선정 {len(rows)}개 (요약 {json.dumps({k: (sel.get('summary') or {}).get(k) for k in ('metric', 'n_candidates', 'n_tagged', 'n_with_metric', 'n_target', 'weight_capacity')}, ensure_ascii=False)})")
         for s in rows:
             self.w(f"  - {s['ticker']} {s.get('name', '')} · {s.get('sector', '')} · {s.get('metric_name')} {s.get('metric_value')}" + (" · 필수" if s.get("forced") else ""))
+        pref = [f"{x['ticker']}({x.get('metric_value')})" for x in sel.get("rejected") or [] if x.get("reason") == "sector_preference"]
+        if pref:
+            self.w(f"  - 섹터 선호로 빠진 상위 순위: {', '.join(pref)}")
         for wn in (sel.get("warnings") or [])[:8]:
             self.w(f"  - ⚠ {wn}")
         spec = o.get("07_backtest_spec") or {}
@@ -298,9 +310,11 @@ class Audit:
         self.w("\n| id | 종류 | 기준 | 투자비중 | CAGR | 기간수익 | MDD | Sharpe |")
         self.w("| --- | --- | --- | --- | --- | --- | --- | --- |")
         bad_floor = []
+        seen_ids: set[str] = set()
         for p in [bt.get("benchmark") or {}, *(bt.get("benchmarks") or []), *(bt.get("portfolios") or [])]:
-            if not p:
+            if not p or p.get("id") in seen_ids:
                 continue
+            seen_ids.add(p.get("id"))
             h = p.get("headline") or {}
             inv = sum((p.get("target_weights") or {}).values()) if p.get("target_weights") else None
             self.w(f"| {p.get('id')} | {p.get('kind')} | {p.get('base_id') or ''} | {_pct(inv) if inv is not None else '-'} | {_pct(h.get('cagr'))} | {_pct(h.get('period_return'))} | {_pct(h.get('max_drawdown'))} | {h.get('sharpe')} |")
@@ -360,7 +374,7 @@ class Audit:
                 self.w(f"  - {k}: {vd.get(k)}")
         al = sm.get("allocation") or {}
         items = al.get("items") or []
-        cash = 1 - sum(float(i.get("weight") or 0) for i in items if i.get("ticker") not in ("현금", "CASH"))
+        cash = max(0.0, 1 - sum(float(i.get("weight") or 0) for i in items if i.get("ticker") not in ("현금", "CASH")))
         self.w(f"- 배분({al.get('basis_ko')}): " + ", ".join(f"{i.get('ticker')} {_pct(i.get('weight'))}" for i in items[:8]) + f" · 현금 {_pct(cash)}")
         ne = sm.get("news_effect") or {}
         self.w(f"- 뉴스 효과: {json.dumps({k: ne.get(k) for k in ('disabled', 'reason_ko', 'n_views', 'n_fallback')}, ensure_ascii=False)}")

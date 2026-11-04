@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import math
 from typing import Any
 
 import pandas as pd
@@ -44,7 +43,7 @@ def _count_at(day: dt.date, normalized: dict[str, Any], intent: dict[str, Any], 
     metric = intent["screen"]["metric"]
     if tickers:
         vals, _facts = M.METRICS[metric](view, tickers)
-        n_metric = int(sum(1 for t in tickers if t in vals.index and math.isfinite(float(vals[t]))))
+        n_metric = int(sum(1 for t in tickers if t in vals.index and M.eligible(metric, vals[t])))  # 자격선 안만 (실행의 선정과 같은 기준)
     else:
         n_metric = 0
     return {"date": str(day), "n_matched": int(c.stats.get("n_matched", 0)), "n_candidates": len(tickers), "n_with_metric": n_metric,

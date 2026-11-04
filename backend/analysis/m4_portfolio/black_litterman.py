@@ -24,7 +24,9 @@ def view_summary(v: dict[str, Any]) -> str:
         return f"[{kind}] {legs} {v['expected_return_annual']:+.0%}/년 (신뢰 {v['confidence']:.2f}) — {v.get('rationale_ko', '')}"
     st = STRENGTH_KO.get(v.get("strength") or "", "")
     if v["type"] == "relative":
-        head = f"[{kind}] {legs} ({st}) — 사전 기대 차이 {v['prior_return']:+.1%} → 뷰 {v['expected_return_annual']:+.1%}/년"
+        shift = (float(v["expected_return_annual"]) - float(v["prior_return"])) * 100
+        head = (f"[{kind}] {legs} ({st}) — 기대 차이를 {'+'.join(v['long'])} 쪽으로 {shift:+.1f}%p "
+                f"(사전 {v['prior_return']:+.1%} → 뷰 {v['expected_return_annual']:+.1%}/년)")
     else:
         arrow = "오름" if v["direction"] == "up" else "내림"
         head = f"[{kind}] {legs} {arrow}({st}) — 사전 기대 {v['prior_return']:+.1%} → 뷰 {v['expected_return_annual']:+.1%}/년"

@@ -69,6 +69,7 @@ class Tagging(BaseModel):
     passed_tickers: list[str]
     batches: int
     warnings: list[str] = []
+    theme_filter_applied: bool = True  # 넓은 테마면 False: 제외 테마만 보고 테마 해당 여부로는 거르지 않았다 (2026-11 QA)
 
 
 class Selected(BaseModel):

@@ -100,6 +100,7 @@ def test_free_text_and_unaskable_field(svc_factory):
 def test_limit_blocks_and_skip(svc_factory):
     many = [dict(Q_TEMPLATE, field=f, question_ko=f"{f}?") for f in
             ("strategy_preference.template", "strategy_preference.baseline_weighting", "constraints.num_holdings.target", "horizon.backtest_years", "risk.benchmark", "horizon.purpose")]
+    many[1]["options"] = [{"value": "equal_weight", "label_ko": "동일비중"}, {"value": "min_variance", "label_ko": "최소분산"}]
     for q in many[2:]:
         q["options"] = []
         q["allow_free_text"] = True
@@ -108,7 +109,7 @@ def test_limit_blocks_and_skip(svc_factory):
     assert st.turn == 1 and st.max_questions == 2
     st = svc.skip(st.request_id, 1)
     assert st.turn == 2 and st.question.field == "strategy_preference.baseline_weighting"
-    assert st.question.options == []  # momentum/quality 는 baseline_weighting 에 무효 → 선택지가 걸러짐 (자유 입력만)
+    assert [o.value for o in st.question.options] == ["equal_weight", "min_variance"]
     st = svc.answer(st.request_id, 2, option_value="equal_weight")
     # 라운드 5: 질문 상한에 닿아도 막지 않는다 — 남은 항목은 기본값으로 두고 ready, 사유는 blocked_reason_ko 로 보여 준다
     assert st.state == "ready" and "2회" in (st.blocked_reason_ko or "") and "2회" in (RequestStore(store).load(st.request_id).blocked_reason_ko or "")
@@ -273,4 +274,13 @@ def test_update_overrides_and_message_turns(svc_factory):
         svc.message(st.request_id, "   ")
     # derived 에 백테스트 시작일 환율이 들어 있다
     d = st.summary.derived
-    assert d["backtest_fx_rate"] and d["initial_amount_usd_at_backtest_start"] and d["backtest_fx_date"] <= d["backtest_start"]
+    assert d["backtest_fx_rate"] and d["initial_amount_usd_at_backtest_start"] and d["backtest_fx_date"] <= d["as_of"]  # 시작일 이후 첫 거래일 환율 (주말 시작이면 시작일보다 늦다)
+
+
+def test_question_with_invalid_options_is_dropped_even_with_free_text(svc_factory):
+    """2026-11 QA (000): LLM 이 보기 2개를 냈는데 하나가 지원하지 않는 값이라 '프로필 기준 유지' 하나만 남은 질문이 그대로 나갔다."""
+    bad = dict(Q_TEMPLATE, field="strategy_preference.baseline_weighting", options=[{"value": "momentum", "label_ko": "모멘텀"}, {"value": "equal_weight", "label_ko": "동일비중"}],
+               allow_free_text=True)  # fmt: skip
+    svc, _store, _llm = svc_factory([_intent([bad, Q_REB])] * 3)
+    st = svc.start("반도체 장기 투자")
+    assert st.question is not None and st.question.field == "constraints.rebalance"

@@ -156,6 +156,11 @@ def normalize_request(req: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     if tc and tc != "USD":
         notes.append(f"capital.trading_currency {tc} → USD (서비스는 USD 로 계산, 표시만 KRW)")
         req["capital"]["trading_currency"] = "USD"
+    cons = req.get("constraints") or {}
+    for k in ("allow_leverage", "allow_short"):  # 서비스는 레버리지·공매도를 지원하지 않아 프로필 저장이 거부된다 → 나머지 흐름을 시험하려고 끈다
+        if cons.get(k):
+            notes.append(f"constraints.{k} true → false (서비스 미지원: 프로필 저장이 거부되므로 시험을 위해 끔)")
+            cons[k] = False
     return req, notes
 
 
@@ -204,12 +209,19 @@ def finish_run(api: Api, env: dict[str, str], run_id: str, wait_s: float, out: d
             out["llm_usage"] = res.get("llm_usage") or (res.get("params") or {}).get("llm_usage")
     else:
         out.update({"report": False, "report_error": doc})
-    if not out.get("llm_usage"):  # 리포트가 없으면 실행 폴더의 사용량 기록으로
-        from backend.analysis.paths import run_dir
+    # 비용은 실행 폴더 기록으로: 결과 묶음(13)의 llm_usage 는 리포트(14a/14b/14c) 호출 전에 찍혀 리포트 비용이 빠진다 (비용 상한 관리)
+    from backend.analysis.paths import run_dir
 
-        ul = run_dir(run_id) / "llm_usage.jsonl"
-        recs = [json.loads(x) for x in ul.read_text(encoding="utf-8").splitlines() if x.strip()] if ul.exists() else []
-        out["llm_usage"] = {"calls": len(recs), "cost_usd": round(sum(float(r.get("cost_usd") or 0) for r in recs), 6)}
+    meta, ul = run_dir(run_id) / "run_meta.json", run_dir(run_id) / "llm_usage.jsonl"
+    try:
+        full = json.loads(meta.read_text(encoding="utf-8")).get("llm_usage") if meta.exists() else None
+    except ValueError:
+        full = None
+    if not full and ul.exists():
+        recs = [json.loads(x) for x in ul.read_text(encoding="utf-8").splitlines() if x.strip()]
+        full = {"calls": len(recs), "cost_usd": round(sum(float(r.get("cost_usd") or 0) for r in recs), 6)}
+    if full:
+        out["llm_usage"] = full
     out["cost_total_usd"] = round(float((out.get("llm_usage") or {}).get("cost_usd") or 0) + float(out.get("dialog_cost_usd") or 0), 6)
     return out
 
@@ -229,6 +241,8 @@ def replay_scenario(name: str, api: Api, env: dict[str, str], wait_s: float, out
             raise RuntimeError(f"{name}: 요청 {rid} 이 확정 상태가 아니라 다시 돌릴 수 없습니다 ({doc.status})")
         new_id = new_run_id(dt.datetime.now())
         doc.run_id = new_id
+        # 파생값(derived)은 지금 코드로 다시 계산하게 뺀다 — 대화 당시 값이 남으면 derive 수정(예: 시작일 환율)을 재확인할 수 없다
+        doc.effective_request = {k: v for k, v in (doc.effective_request or {}).items() if k != "derived"}
         reqs.save(doc)
     Queue(store).enqueue(new_id, rid, llm_mode=env.get("MYFINSIGHT_LLM"))
     out = {k: prev.get(k) for k in ("name", "title_ko", "scenario_file", "normalized", "overrides", "request_id", "qa", "dialog_seconds")}
@@ -256,7 +270,7 @@ def run_scenario(name: str, api: Api, env: dict[str, str], policy: str, wait_s: 
     if state.get("state") != "ready":
         return {"name": name, "title_ko": sc["title_ko"], "scenario_file": str(sc["file"]), "normalized": normalized, "overrides": overrides, "request_id": rid,
                 "dialog_state": state.get("state"), "qa": qa, "blocked_reason_ko": state.get("blocked_reason_ko"), "hard_errors": state.get("hard_errors"), "status": "not_confirmed",
-                "dialog_cost_usd": dialog_cost(t0_dt, dt.datetime.now())}  # fmt: skip
+                "dialog_cost_usd": (dc := dialog_cost(t0_dt, dt.datetime.now())), "cost_total_usd": dc}  # fmt: skip
     conf = api.ok("POST", f"/requests/{rid}/confirm")
     run_id = conf["run_id"]
     dialog_s = round(time.time() - t0, 1)
@@ -337,7 +351,18 @@ def main(argv: list[str] | None = None) -> int:
                 r = {"name": name, "title_ko": SCENARIOS[name]["title_ko"], "status": "error", "error": f"{type(e).__name__}: {e}"[:400]}
             rows.append(r)
             print(json.dumps({k: r.get(k) for k in ("status", "run_id", "recommended", "chosen_id", "validation", "dialog_seconds", "run_seconds", "error")}, ensure_ascii=False), flush=True)
-            (out_dir / f"{name}.json").write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding="utf-8")
+            dst = out_dir / f"{name}.json"
+            if dst.exists() and not a.collect:  # 다시 돌리면(--replay 포함) 이전 결과를 history 로 옮겨 둔다 (질문·비용 기록 보존)
+                try:
+                    old = json.loads(dst.read_text(encoding="utf-8"))
+                    old_id = old.get("run_id") or old.get("request_id") or f"none_{int(dst.stat().st_mtime)}"
+                    (out_dir / "history").mkdir(exist_ok=True)
+                    hist = out_dir / "history" / f"{name}__{old_id}.json"
+                    if not hist.exists():
+                        hist.write_text(dst.read_text(encoding="utf-8"), encoding="utf-8")
+                except (OSError, ValueError):
+                    pass
+            dst.write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding="utf-8")
     finally:
         if saved_profile is not None:
             try:

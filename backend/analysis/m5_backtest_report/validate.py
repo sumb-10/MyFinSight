@@ -106,8 +106,16 @@ def evaluate_checks(p, crit, n_days, expected_rb, sector_of, drift_tol, short_wi
     invested = float(sum(p["target_weights"].values()))
     min_inv = settings.backtest.min_invested_ratio if settings else 0.9
     if p.get("kind") not in ("alternative", "matched"):
-        cks.append(check("R9", "투자 비율", "info", invested >= min_inv - 1e-6, invested, min_inv,
-                         f"투자 {invested:.0%}, 현금 {1 - invested:.0%}" + ("" if invested >= min_inv - 1e-6 else " — 종목·섹터 상한 때문에 돈을 다 넣지 못했습니다. 상한을 풀거나 테마를 넓히면 투자 비율이 올라갑니다")))  # fmt: skip
+        # 사용자가 정한 최소 현금은 상한 탓이 아니다 (예전: 최소 현금 15% 인 요청마다 '상한 때문에 돈을 다 넣지 못했다' 고 써서
+        # 리포트·다음 행동이 '상한을 풀라' 고 권했다). 투자 가능 비율(1 − 최소 현금) 대비 부족분만 상한 탓으로 본다.
+        min_cash = float(crit.get("min_cash_ratio") or 0.0)
+        expected = 1.0 - min_cash
+        gap = max(0.0, expected - invested)
+        ok = gap <= (1 - min_inv) + 1e-6
+        msg = f"투자 {invested:.0%}, 현금 {1 - invested:.0%}" + (f" (요청한 최소 현금 {min_cash:.0%} 포함)" if min_cash > 1e-6 else "")
+        if not ok:
+            msg += f" — 종목·섹터 상한 때문에 {gap:.0%}를 더 넣지 못했습니다. 상한을 풀거나 테마를 넓히면 투자 비율이 올라갑니다"
+        cks.append(check("R9", "투자 비율", "info", ok, invested, round(expected - (1 - min_inv), 6), msg))  # fmt: skip
     # 코드 자체 점검 (사용자 표 밖)
     integ = []
     rb_cps = [cp for cp in p["checkpoints"] if cp["kind"] == "rebalance"] or p["checkpoints"][:1]
@@ -182,6 +190,7 @@ def validate(res: dict[str, Any], targets: dict[str, Any], intent: dict[str, Any
             "target_annual_return": vc["target_annual_return"], "benchmark": vc["benchmark"], "volatility_preference": intent["risk_params"]["volatility_preference"],
             "vol_band": bs.vol_bands[intent["risk_params"]["volatility_preference"]], "max_weight_per_stock": cons["max_weight_per_stock"],
             "max_weight_per_sector": cons["max_weight_per_sector"], "min_holdings": cons["num_holdings"]["min"], "drift_tolerance": bs.drift_tolerance,
+            "min_cash_ratio": float(cons.get("min_cash_ratio", 0) or 0),
             "min_invested_for_recommendation": bs.min_invested_for_recommendation, "dd_excess_bucket": bs.dd_excess_bucket}  # fmt: skip
     n_days = res["period"]["trading_days"]
     expected_rb = res["portfolios"][0]["metrics"]["trading"]["n_rebalances"]
@@ -222,7 +231,7 @@ def validate(res: dict[str, Any], targets: dict[str, Any], intent: dict[str, Any
     base_invested = float(sum((ports.get(base_id) or pb)["target_weights"].values()))
     verdict = verdict_for(mdd=mdd_b, tol=tol_user, st=st, base_invested=base_invested, min_invested=bs.min_invested_for_recommendation, name_ko=best["name_ko"])
     # 사유: 사실만 (정보 규칙은 '만족'으로 세지 않고, 음수 Sharpe 에 '가장 높음'이라 쓰지 않는다)
-    parts = [f"후보 {len(cands)}개 중 1위."]
+    parts = [f"후보 {len(cands)}개 중 1위"]  # ' · ' 로 이어 붙이므로 마침표를 찍지 않는다 ('1위. ·' 문장부호 중복)
     tgt = crit["target_annual_return"]
     if st.get("R2") == "pass":
         parts.append(f"목표수익(연 {tgt:.1%}) 충족")

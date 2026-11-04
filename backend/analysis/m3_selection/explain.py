@@ -16,6 +16,7 @@ from backend.analysis.schemas.selection import Selection, Tagging
 
 STAGE = "06_explain"
 from backend.analysis.common.citations import CITE_RE  # 인용 ID 정규식은 한 곳에서
+from backend.analysis.m2_data import metrics as M
 
 
 def explain(
@@ -35,7 +36,7 @@ def explain(
     news_ids = news.ids if news else set()
     lines = []
     for s in sel.selected:
-        fl = " ".join(f"[{f['id']}] {f['metric']}={f['value']:.4f}" for f in by_ticker_facts.get(s.ticker, []))
+        fl = " ".join(f"[{f['id']}] {M.METRIC_KO.get(f['metric'], f['metric'])} {M.display_metric(f['metric'], f['value'])}" for f in by_ticker_facts.get(s.ticker, []))
         nl = ""
         if news and news.by_ticker.get(s.ticker):
             recs = [r for r in news.records if r["evidence_id"] in set(news.by_ticker[s.ticker][:5])]
@@ -46,11 +47,11 @@ def explain(
             recs = [r for r in news.disclosures if r["evidence_id"] in set(news.by_ticker_dc[s.ticker][:5])]
             dl = (f" / 공시({(news.end - news.dc_start).days if news.dc_start else 0}일): " + ", ".join(f"{k} {n}건" for k, n in counts.items()) + "; "
                   + "; ".join(f"[{r['evidence_id']}] {r['available_on']} {r['event_label_ko']} ({r['title'][:50]})" for r in recs))
-        mv = f"{s.metric_value:.3f}" if s.metric_value == s.metric_value else "nan"
+        mv = M.display_metric(s.metric_name, s.metric_value)
         lines.append(f"{s.rank} | {s.ticker} | {s.name} | {s.sector} | {mv} | {s.theme_confidence} | {reason.get(s.ticker, '')} | 근거: {fl}{nl}{dl}")
     system, user = load_prompts(
         STAGE, summary_ko=it["interpretation"]["summary_ko"], explanation_level=it["report_settings"]["explanation_level"],
-        metric=sel.summary["metric"], direction=sel.summary["direction"], as_of=sel.summary["as_of"], selected_block="\n".join(lines),
+        metric=M.METRIC_KO.get(sel.summary["metric"], sel.summary["metric"]), direction=sel.summary["direction"], as_of=sel.summary["as_of"], selected_block="\n".join(lines),
         warnings_block="\n".join(f"- {w}" for w in (warnings_ko if warnings_ko is not None else [])) or "- 없음",  # 한국어 공지만 (영어 개발 문구는 LLM 에 주지 않음)
     )  # fmt: skip
     allowed = fact_ids | news_ids

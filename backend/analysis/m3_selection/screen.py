@@ -44,9 +44,19 @@ def screen(
     values, facts = M.METRICS[metric](view, tickers) if tickers else (M.pd.Series(dtype=float), [])
     fact_by_ticker = {f.ticker: f for f in facts}
     pool: list[tuple[str, float]] = []
+    lo, hi = M.ELIGIBLE_RANGE.get(metric, (None, None))
     for t in tickers:
         if t in values.index and math.isfinite(float(values[t])):
-            pool.append((t, float(values[t])))
+            v = float(values[t])
+            if not M.eligible(metric, v):  # 자격선 밖: 후보가 모자라도 채우지 않는다 (예: 저PER 에 PER 734, 퀄리티에 ROE 음수)
+                reason = f"metric_out_of_range({metric}={v:.4g}, 범위 {'' if lo is None else '>' + format(lo, 'g')}{'' if hi is None else ' ≤' + format(hi, 'g')})"
+                if t.upper() in forced:
+                    warnings.append(f"must_include {t}: {reason}, kept")
+                    pool.append((t, v))
+                else:
+                    rejected.append(Rejected(ticker=t, reason=reason, metric_value=v))
+                continue
+            pool.append((t, v))
         else:
             reason = "metric_missing" + (" (eps<=0 or no financials)" if metric == "pe_ttm" else "")
             if t.upper() in forced:
@@ -57,7 +67,11 @@ def screen(
 
     n_pass = len(pool)
     n = nh["target"] if n_pass >= nh["target"] else max(nh["min"], n_pass)
-    if n_pass < nh["target"]:
+    out_of_range = [r for r in rejected if r.reason.startswith("metric_out_of_range")]
+    if n_pass < nh["target"] and out_of_range:
+        ex = ", ".join(f"{r.ticker} {M.display_metric(metric, r.metric_value)}" for r in out_of_range[:4])
+        warnings.append(f"only {n_pass} tickers within eligibility for {metric}; target {nh['target']} (excluded {len(out_of_range)} out of range: {ex})")
+    elif n_pass < nh["target"]:
         warnings.append(f"only {n_pass} tickers have {metric}; target {nh['target']} -> selecting {min(n, n_pass)}")
     if n_pass < nh["min"]:
         warnings.append(f"below num_holdings.min={nh['min']} -> fewer holdings than requested (cash may remain; the report labels this)")
@@ -102,12 +116,24 @@ def screen(
             deferred.append((t, v))
             continue
         add(t, v)
+    skipped_pref: list[str] = []
+    pos = {t: i for i, (t, _) in enumerate(pool)}
     for t, v in deferred:
         if len(selected) >= n:
-            rejected.append(Rejected(ticker=t, reason="rank_beyond_n", metric_value=v if math.isfinite(v) else None))
+            # 같은 섹터 종목 수 선호 때문에 순위가 더 낮은 다른 섹터 종목에 자리를 내준 경우만 sector_preference (그 밖은 그냥 순위 밖)
+            displaced = any(pos.get(x.ticker, -1) > pos[t] for x in selected)
+            rejected.append(Rejected(ticker=t, reason="sector_preference" if displaced else "rank_beyond_n", metric_value=v if math.isfinite(v) else None))
+            if displaced:
+                skipped_pref.append(t)
             continue
         overflow.append(t)
         add(t, v)
+    if skipped_pref:
+        by_sec: dict[str, list[str]] = {}
+        for t in skipped_pref:
+            by_sec.setdefault(sector_of(t)[1] or "?", []).append(t)
+        sec_txt = "; ".join(f"{k}: {len(v)}" for k, v in by_sec.items())
+        warnings.append(f"sector count preference ({sector_pref}/sector, sector cap {max_sector:.0%}) skipped higher-ranked {skipped_pref} ({sec_txt}) for lower-ranked names in other sectors")
 
     cap_now = capacity(sec_count)
     infeasibility = None

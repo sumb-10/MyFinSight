@@ -16,7 +16,7 @@ from backend.analysis.executor.context import RunContext
 from backend.analysis.executor.parallel import run_ordered
 from backend.analysis.m1_request.derive import derive
 from backend.analysis.m2_data import descriptor as D
-from backend.analysis.m3_selection.classify import classify
+from backend.analysis.m3_selection.classify import classify, is_broad_theme
 from backend.analysis.m3_selection.explain import explain
 from backend.analysis.m3_selection.intent import interpret
 from backend.analysis.m3_selection.retrieve import retrieve
@@ -93,8 +93,10 @@ def st_candidates(ctx: RunContext) -> str:
 
 
 def st_tagging(ctx: RunContext) -> str:
+    broad = is_broad_theme(ctx.out("02_intent")["interpretation"]["themes"], ctx.settings.selection.broad_theme_min_sectors)  # 넓은 테마: 지표 순위에 맡긴다
     tag = classify(Candidates.model_validate(ctx.out("03_candidates")), ctx.out("02_intent"), ctx.llm,
-                   max_workers=ctx.settings.executor.classify_workers or ctx.settings.llm.max_concurrency, cancel_check=ctx.cancel_check)  # fmt: skip
+                   max_workers=ctx.settings.executor.classify_workers or ctx.settings.llm.max_concurrency, cancel_check=ctx.cancel_check,
+                   broad=broad)  # fmt: skip
     ctx.outputs["04_tagging"] = tag.model_dump(mode="json")
     ctx.warn_all("04_tagging", list(tag.warnings))
     return f"테마 통과 {len(tag.passed_tickers)}개 / 배치 {tag.batches}"
@@ -132,7 +134,7 @@ def st_explain(ctx: RunContext) -> str:
 def st_backtest_spec(ctx: RunContext) -> str:
     spec, extras = build_backtest_spec(ctx.md, ctx.request, ctx.out("02_intent"), Tagging.model_validate(ctx.out("04_tagging")),
                                        Selection.model_validate(ctx.out("05_selection")), ctx.desc, ctx.settings, bt_req=ctx.bt_req,
-                                       allow_fewer_at_start=ctx.allow_fewer_at_start)  # fmt: skip
+                                       allow_fewer_at_start=ctx.allow_fewer_at_start, start_shift_ok=ctx.start_shift_ok)  # fmt: skip
     ctx.outputs["07_backtest_spec"] = spec
     for k, v in extras.items():
         if k == "facts_bt":

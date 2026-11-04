@@ -11,6 +11,8 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
+from backend.analysis.errors import DataMissing
+
 
 # ───────────────────────── market model ─────────────────────────
 def estimate_market_model(px: pd.DataFrame, tickers: list[str], *, lookback_days: int, min_history_days: int, shrinkage: str) -> dict[str, Any]:
@@ -20,8 +22,9 @@ def estimate_market_model(px: pd.DataFrame, tickers: list[str], *, lookback_days
     keep = [t for t in tickers if t in r.columns and r[t].notna().sum() >= min_history_days]
     dropped = [t for t in tickers if t not in keep]
     r = r[keep].dropna()
-    if len(keep) < 2 or len(r) < min_history_days:
-        raise ValueError(f"not enough return history: tickers={len(keep)} days={len(r)} (need >= {min_history_days})")
+    if len(keep) < 1 or len(r) < min_history_days:  # 1종목도 받는다 (F2: 시작일 선정이 1종목이면 10 단계 전체가 멈췄다)
+        raise DataMissing(f"시장모형을 만들 수 있는 종목이 없습니다 (추정 창 수익률이 {min_history_days}일 이상인 종목 {len(keep)}개, 공통 {len(r)}일)",
+                          details={"tickers": len(keep), "days": len(r), "need": min_history_days})
     X = r.to_numpy()
     if shrinkage == "ledoit_wolf":
         from sklearn.covariance import LedoitWolf
@@ -29,7 +32,7 @@ def estimate_market_model(px: pd.DataFrame, tickers: list[str], *, lookback_days
         lw = LedoitWolf().fit(X)
         cov_d, alpha = lw.covariance_, float(lw.shrinkage_)
     else:
-        cov_d, alpha = np.cov(X, rowvar=False), 0.0
+        cov_d, alpha = np.atleast_2d(np.cov(X, rowvar=False)), 0.0  # 1종목이면 np.cov 가 0차원 배열을 돌려준다
     cov = cov_d * 252
     vol = np.sqrt(np.diag(cov))
     corr = cov / np.outer(vol, vol)
@@ -203,7 +206,8 @@ def optimize_utility(mu, cov, delta, w_base, max_stock, max_sector, sectors, max
 def ex_ante_stats(w, mu, cov) -> dict[str, float]:
     er = float(w @ mu)
     vol = float(np.sqrt(w @ cov @ w))
-    ss = float(np.sum(w**2))
+    inv = float(np.sum(w))
+    ss = float(np.sum((w / inv) ** 2)) if inv > 0 else 0.0  # 실효 종목 수는 투자 비중 안에서: 현금이 있으면 1/Σw² 가 실제 종목 수보다 커졌다 (F20)
     return {"exp_return": round(er, 6), "vol": round(vol, 6), "sharpe": round(er / vol, 4) if vol > 0 else 0.0,
             "effective_n": round(1 / ss, 3) if ss > 0 else 0.0}  # fmt: skip
 

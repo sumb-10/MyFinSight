@@ -21,6 +21,7 @@ from backend.analysis.m5_backtest_report import report_blocks as B
 from backend.analysis.m5_backtest_report.report_check import check
 from backend.analysis.schemas.report import ReportDoc
 from backend.analysis.settings import AnalysisSettings
+from backend.analysis.m2_data import metrics as M
 
 
 def _need(ans: dict[str, Any], key: str, min_n: int = 1) -> None:
@@ -34,8 +35,8 @@ def facts_for_interpret(R: dict[str, Any], chosen: str) -> dict[str, Any]:
     p, b = B.find(R, chosen), bt["benchmark"]
     base = next(x for x in bt["portfolios"] if x["id"] == R["portfolio"]["targets"]["baseline"]["id"])
     val = R["validation"]
-    quarters = [{"date": c["date"], "return": c["since_last"]["return"], "benchmark_return": c["since_last"]["benchmark_return"], "best": c["since_last"]["best"], "worst": c["since_last"]["worst"]}
-                for c in p["checkpoints"] if c["since_last"]]  # fmt: skip
+    periods = [{"date": c["date"], "return": c["since_last"]["return"], "benchmark_return": c["since_last"]["benchmark_return"], "best": c["since_last"]["best"], "worst": c["since_last"]["worst"]}
+               for c in p["checkpoints"] if c["since_last"]]  # fmt: skip  (리밸런싱 구간별 — 주기가 분기가 아닐 수 있다)
     contrib = sorted(((t, v) for t, v in p["ticker_contribution"].items() if v is not None), key=lambda x: -x[1])
     calc_ids = {k: v["id"] for k, v in R["evidence_index"].items() if k.startswith("calc:") and k.endswith(":" + chosen)}
     return {"citation_rule": "숫자를 쓸 때 가능한 곳마다 [calc:<metric>:<portfolio_id>] 형식의 근거 ID 를 붙인다 (아래 calc_ids 에 있는 것만).",
@@ -45,11 +46,13 @@ def facts_for_interpret(R: dict[str, Any], chosen: str) -> dict[str, Any]:
                      "volatility_preference": R["intent"]["risk_params"]["volatility_preference"], "risk_tolerance": R["request"]["risk"]["risk_tolerance"],
                      "horizon_years": R["request"]["horizon"]["target_years"], "benchmark": R["portfolio"]["backtest_spec"]["benchmark"]},
             "assumptions": {**bt["engine"], "period": bt["period"]},
+            "rebalance_ko": R["portfolio"]["backtest_spec"]["rebalance_rule"].get("description_ko"),
+            "baseline_rule": {"id": base["id"], "label": B.pf_label(base), "rule_ko": next((x.get("rule_ko") for x in R["portfolio"]["baselines"]["portfolios"] if x["id"] == base["id"]), None)},
             "chosen": {"id": chosen, "label": B.pf_label(p), "kind": p["kind"], "is_recommended": bool(val.get("recommended")), "verdict": (val.get("recommended") or {}).get("verdict"),
                        "base_id": p.get("base_id"), "cash_ratio": p.get("cash_ratio"), "match_target": p.get("match_target"), "headline": p["headline"], "return": p["metrics"]["return"],
                        "risk": p["metrics"]["risk"], "risk_adjusted": p["metrics"]["risk_adjusted"], "vs_benchmark": p["metrics"]["vs_benchmark"], "vs_baseline": p["metrics"]["vs_baseline"],
                        "composition": {k: p["metrics"]["composition"][k] for k in ["effective_n", "top3_contribution_share", "sector_weights_avg"]}, "trading": p["metrics"]["trading"],
-                       "money": {**p["money"], **R["money_krw"]["by_portfolio"][chosen]}, "yearly_returns": p["yearly_returns"], "quarters": quarters,
+                       "money": {**p["money"], **R["money_krw"]["by_portfolio"][chosen]}, "yearly_returns": p["yearly_returns"], "rebalance_periods": periods,
                        "ticker_contribution_top": contrib[:3], "ticker_contribution_bottom": contrib[-3:], "view_diagnostics": p["view_diagnostics"],
                        "cash_weight": round(1 - sum(p["target_weights"].values()), 4)},
             "benchmark": {"label": b["name_ko"], "headline": b["headline"], "yearly_returns": b["yearly_returns"], "money": b["money"]},
@@ -57,12 +60,15 @@ def facts_for_interpret(R: dict[str, Any], chosen: str) -> dict[str, Any]:
             "matched": [{"id": x["id"], "label": x["name_ko"], "base_id": x.get("base_id"), "cash_ratio": x.get("cash_ratio"), "cash_ratio_total": x.get("cash_ratio_total"),
                          "match_target": x.get("match_target"), "headline": x["headline"], "status": next((r["status"] for r in val["results"] if r["id"] == x["id"]), None)}
                         for x in bt["portfolios"] if x.get("kind") == "matched"],
+            # 맞춤안이 없을 때 이유 — 백테스트와 같은 규칙(기준 구성의 MDD vs 낙폭 맞춤 목표)으로 (001: 이미 허용 낙폭 안인데 '맞춤안을 따로 확인하라' 고 했다)
+            "matched_note": _matched_note(R),
             "news_effect": B.news_effect(R),
             "window": {"trading_days": bt["period"]["trading_days"], "annualized_reliable": bt["period"].get("annualized_reliable", True),
                        "note": "창이 1.5년 미만이면(annualized_reliable=false) CAGR·Sharpe·XIRR 같은 연환산 값은 참고용이며 기간 수익률(total_return)로 말해야 함",
                        "period_note_ko": B.period_note(R)},
             "walkforward": ({"dates": R["portfolio"]["walkforward"]["dates"], "news_summary": R["portfolio"]["walkforward"]["news_summary"],
-                             "fallback_dates": next(p for p in R["portfolio"]["walkforward"]["portfolios"] if p["kind"] == "black_litterman")["fallback_dates"],
+                             "fallback_dates": next((p for p in R["portfolio"]["walkforward"]["portfolios"] if p["kind"] == "black_litterman"), {}).get("fallback_dates", []),
+                             "top_delta_by_date": B.walkforward_top_deltas(R),
                              "results": [{"id": x["id"], "label": x["name_ko"], "headline": x["headline"]} for x in bt["portfolios"] if x.get("mode") == "walkforward"]}
                             if R["portfolio"].get("walkforward") else None),
             "selection_infeasibility": R["selection"]["backtest_as_of"].get("infeasibility"), "sector_overflow": R["selection"]["backtest_as_of"].get("sector_overflow"),
@@ -71,6 +77,18 @@ def facts_for_interpret(R: dict[str, Any], chosen: str) -> dict[str, Any]:
                            "summary": val["summary"], "per_portfolio_status": {r["id"]: r["status"] for r in val["results"]}, "recommended": val.get("recommended"),
                            "chosen_id": val.get("chosen_id"), "warnings": [n["message_ko"] for n in (R.get("notices") or []) if n.get("stage") == "12_validation"]},
             "fx": R["money_krw"]["direction"]}  # fmt: skip
+
+
+def _matched_note(R: dict[str, Any]) -> str | None:
+    bt = R["backtest"]
+    if any(x.get("kind") == "matched" for x in bt["portfolios"]):
+        return None
+    target = float(R["intent"]["risk_params"].get("effective_max_drawdown") or R["request"]["risk"]["max_drawdown_tolerance"])
+    bases = [R["portfolio"]["targets"]["baseline"]["id"], "wf_bl_news"]
+    mdds = [abs((x.get("headline") or {}).get("max_drawdown") or 0) for x in bt["portfolios"] if x["id"] in bases]
+    if mdds and all(m <= target + 1e-9 for m in mdds):
+        return f"기준 구성의 과거 최대낙폭이 이미 낙폭 맞춤 목표({target:.1%}) 안이라 현금을 섞은 낙폭 맞춤안을 만들 필요가 없었습니다"
+    return f"현금 비율을 바꿔도 과거 최대낙폭을 목표({target:.1%}) 안으로 맞추지 못해 낙폭 맞춤안을 만들지 못했습니다"
 
 
 def _chosen_note(R: dict[str, Any], p: dict[str, Any], is_rec: bool) -> str:
@@ -104,12 +122,23 @@ def facts_for_market(R: dict[str, Any]) -> dict[str, Any]:
     p = B.find(R, chosen)
     bench = R["backtest"]["benchmark"]
     f = R["portfolio"].get("forward") or {}
-    return {"citation_rule": "모든 사실 문장은 [ev123](뉴스) 또는 [dc45](공시) 처럼 아래 목록의 id 를 인용한다. 목록에 없는 id·숫자·사건을 만들지 않는다. 헤드라인과 공시는 사건의 존재·종류·시점만 알려 준다 (실적 발표 공시 ≠ 좋은 실적).",
+    h, bh = p["headline"], bench["headline"]
+
+    def pct(x: Any, d: int = 1) -> str | None:
+        return None if x is None else f"{float(x) * 100:.{d}f}%"
+
+    reliable = bool(R["backtest"]["period"].get("annualized_reliable", True))
+    return {"annualized_reliable": reliable, "annualized_note": None if reliable else "창이 1.5년 미만이라 연환산 수익률(cagr)은 참고용 — 우열은 기간 수익률(period_return)로 말한다",
+            "citation_rule": "뉴스·공시에 관한 사실 문장은 [ev123](뉴스) 또는 [dc45](공시) 처럼 아래 목록의 id 를 인용한다. 성과·섹터 비중 숫자(chosen·benchmark·sector_exposure_pct)는 인용 없이 그대로 쓴다. 목록에 없는 id·숫자·사건을 만들지 않는다. 헤드라인과 공시는 사건의 존재·종류·시점만 알려 준다 (실적 발표 공시 ≠ 좋은 실적).",
+            # 선택안 성과 (예전에는 없어서 'SPY 대비 우열을 판단할 수 없다' 고 쓰고, 바로 위 KPI 와 모순됐다)
+            "chosen": {"label": B.pf_label(p), "period": f"{R['backtest']['period']['start']} ~ {R['backtest']['period']['end']}", "cagr": pct(h.get("cagr")),
+                       "period_return": pct(h.get("period_return")), "max_drawdown": pct(abs(h.get("max_drawdown") or 0)), "excess_cagr_vs_benchmark_pp": (None if h.get("excess_cagr") is None else f"{h['excess_cagr'] * 100:+.1f}%p")},
             "as_of": R["request"]["derived"]["as_of"], "summary_ko": R["intent"]["interpretation"]["summary_ko"],
             "themes": [{"id": t["id"], "label": t["label_ko"], "description": t["description_ko"]} for t in R["intent"]["interpretation"]["themes"]],
             "universe": R["request"]["constraints"]["universe"], "holdings": [{"ticker": t["ticker"], "name": t["name"], "sector": t["sector"], "market": t.get("market")} for t in R["selection"]["table"] if t["in_selection_now"]],
-            "sector_exposure": p["metrics"]["composition"]["sector_weights_avg"],
-            "benchmark": {"label": bench["name_ko"], "cagr": bench["headline"]["cagr"], "max_drawdown": bench["headline"]["max_drawdown"]},
+            "sector_exposure_pct": {k: pct(v) for k, v in sorted((p["metrics"]["composition"]["sector_weights_avg"] or {}).items(), key=lambda x: -(x[1] or 0))},
+            "sector_exposure_note": "백테스트 기간 선택안의 평균 섹터 비중 (현금 제외 전 총자산 대비)",
+            "benchmark": {"label": bench["name_ko"], "cagr": pct(bh.get("cagr")), "period_return": pct(bh.get("period_return")), "max_drawdown": pct(abs(bh.get("max_drawdown") or 0))},
             "news": news[:60], "disclosures": discl[:40], "event_summary_90d": event_summary, "news_window": f.get("news_window"),
             "forward_views": [v["summary_ko"] for pp in f.get("portfolios", []) for v in pp["views_applied"]]}  # fmt: skip
 
@@ -123,9 +152,15 @@ def facts_for_narrate(R: dict[str, Any], chosen: str, interp: dict[str, Any]) ->
             "fact_ids": [t.get("metric_fact_id") for t in R["selection"]["table"] if t.get("metric_fact_id")],
             "calc_ids": sorted(k for k in R["evidence_index"] if k.startswith("calc:") and k.endswith(":" + chosen)),
             "request": {r["k"]: r["v"] for r in B.request_table(R)["rows"]},
+            "rebalance_ko": R["portfolio"]["backtest_spec"]["rebalance_rule"].get("description_ko"),
             "intent": {"summary": R["intent"]["interpretation"]["summary_ko"], "themes": [{"label": t["label_ko"], "description": t["description_ko"]} for t in R["intent"]["interpretation"]["themes"]],
                        "conflicts": R["intent"]["interpretation"].get("conflicts", []), "risk_params": R["intent"]["risk_params"], "constraints": {r["k"]: r["v"] for r in B.constraints_table(R)["rows"]}},
-            "selection": {"metric": R["selection"]["metric"], "funnel": R["selection"]["funnel"], "table": R["selection"]["table"], "excluded_examples": R["selection"]["as_of_now"]["rejected_examples"],
+            "selection": {"metric": R["selection"]["metric"], "metric_ko": M.METRIC_KO.get(R["selection"]["metric"], R["selection"]["metric"]), "funnel": R["selection"]["funnel"],
+                          "table": [{**t, "metric_now_display": (M.display_metric(R["selection"]["metric"], t.get("metric_now")) if t.get("in_selection_now") else "분석 기준일 목록에 없음"),
+                                     "metric_backtest_display": (M.display_metric(R["selection"]["metric"], t.get("metric_backtest")) if t.get("in_backtest") else "백테스트 시작일 목록에 없음")}
+                                    for t in R["selection"]["table"]],
+                          "theme_filter_applied": R["selection"].get("tagging_summary", {}).get("theme_filter_applied", True),
+                          "excluded_examples": R["selection"]["as_of_now"]["rejected_examples"],
                           "diff": R["selection"]["backtest_as_of"]["diff_vs_original"], "warnings": [n["message_ko"] for n in (R.get("notices") or []) if n.get("stage") in ("05_selection", "07_backtest_spec")], "explained": R["selection"].get("explained")},
             "construction": {"baseline": {"id": base["id"], "rule": base["rule_ko"], "n": len(base["weights"]), "weights": base["weights"], "cash_weight": base.get("cash_weight", 0),
                                           "constraints_applied": base["constraints_applied"], "sector_weights": base["sector_weights"]},
@@ -134,7 +169,8 @@ def facts_for_narrate(R: dict[str, Any], chosen: str, interp: dict[str, Any]) ->
                              "scenarios": [{"title": s.get("title_ko"), "narrative": (s.get("portfolio_view") or "").split("\n")[0], "views": [v["summary_ko"] for v in s["views_applied"]],
                                             "top_delta": sorted(s["delta_vs_baseline"].items(), key=lambda x: -abs(x[1]))[:3]} for s in R["portfolio"]["targets"]["portfolios"]],
                              "chosen": {"id": chosen, "label": B.pf_label(p), "allocation": B.allocation_table(R, chosen)["rows"]},
-                             "walkforward": R["portfolio"].get("walkforward") and {"dates": R["portfolio"]["walkforward"]["dates"], "news_summary": R["portfolio"]["walkforward"]["news_summary"]}},
+                             "walkforward": R["portfolio"].get("walkforward") and {"dates": R["portfolio"]["walkforward"]["dates"], "news_summary": R["portfolio"]["walkforward"]["news_summary"],
+                                                                                   "top_delta_by_date": B.walkforward_top_deltas(R)}},
             "interpretation": {**interp, "window": R["backtest"]["period"]},
             "forward": ({"as_of": f["as_of"], "news_window": f.get("news_window"), "fallback_reason": f.get("fallback_reason_ko"),
                          "portfolios": [{"id": x["id"], "title": x.get("title_ko"), "narrative": (x.get("portfolio_view") or "").split("\n")[0], "views": [v["summary_ko"] for v in x["views_applied"]],
@@ -243,7 +279,7 @@ def build_doc(R: dict[str, Any], *, interp: dict[str, Any], narr: dict[str, Any]
     metric = R["selection"]["metric"]
     title_short = f"{themes[0]['label_ko']}" + (f" 외 {len(themes) - 1}" if len(themes) > 1 else "") + f" · {B.METRIC_SHORT_KO.get(metric, metric)} 전략"
     header = {"title_ko": title_short,
-              "title_detail_ko": f"{themes[0]['label_ko']}" + (f" 외 {len(themes) - 1}개 테마" if len(themes) > 1 else "") + f" · {metric} 선정 · {label}",
+              "title_detail_ko": f"{themes[0]['label_ko']}" + (f" 외 {len(themes) - 1}개 테마" if len(themes) > 1 else "") + f" · {B.METRIC_SHORT_KO.get(metric, metric)} 기준 선정 · {label}",
               "subtitle_ko": R["intent"]["interpretation"]["summary_ko"], "created_at": dt.date.today().isoformat(),
               "selection_as_of": R["selection"]["as_of_now"]["as_of"], "backtest_period": R["portfolio"]["backtest_spec"]["period"],
               "data_as_of": str(R["request"]["derived"]["as_of"]), "chosen_portfolio_id": chosen, "chosen_label_ko": label,
@@ -261,7 +297,7 @@ def build_doc(R: dict[str, Any], *, interp: dict[str, Any], narr: dict[str, Any]
     conf = B.conflicts_cards(R)
     wf_tl = B.timeline(R, chosen)
     wf_notes = [b for b in B.walkforward_blocks(R) if b["type"] == "callout"]  # walk-forward 요약 콜아웃만 (표·뷰 카드는 타임라인으로)
-    fwd = B.forward_blocks(R)
+    fwd = B.forward_blocks(R, chosen)
 
     def nz(*blocks):
         return [b for b in blocks if b]
@@ -366,11 +402,11 @@ def present_doc(doc: dict[str, Any], R: dict[str, Any] | None = None) -> dict[st
 
 
 def _metric_note(metric: str) -> str:
-    return {"return_12m_1m": "모멘텀(return_12m_1m)은 최근 12개월 주가 수익률에서 가장 최근 1개월을 뺀 값입니다. 단기 반전 효과를 피하려 최근 1개월을 빼며, 값이 높은 순서로 뽑습니다.",
-            "vol_60d": "저변동성(vol_60d)은 최근 60거래일 일수익률의 연환산 표준편차입니다. 값이 낮은 순서로 뽑습니다.",
-            "pe_ttm": "저PER(pe_ttm)은 기준일 종가를 그날까지 공시된 최근 4분기 주당순이익으로 나눈 값입니다. 적자 기업은 제외하고 낮은 순서로 뽑습니다.",
-            "roe_ttm": "퀄리티(roe_ttm)는 최근 4분기 순이익을 평균 자본으로 나눈 자기자본이익률입니다. 높은 순서로 뽑습니다.",
-            "dividend_yield_ttm": "고배당(dividend_yield_ttm)은 최근 1년 주당배당금을 기준일 종가로 나눈 값입니다. 높은 순서로 뽑습니다."}.get(metric, metric)  # fmt: skip
+    return {"return_12m_1m": "모멘텀은 최근 12개월 주가 수익률에서 가장 최근 1개월을 뺀 값입니다. 단기 반전 효과를 피하려 최근 1개월을 빼며, 값이 높은 순서로 뽑습니다.",
+            "vol_60d": "저변동성은 최근 60거래일 일수익률의 연환산 표준편차입니다. 값이 낮은 순서로 뽑습니다.",
+            "pe_ttm": "저PER은 기준일 종가를 그날까지 공시된 최근 4분기 주당순이익으로 나눈 값입니다. 적자 기업은 제외하고 낮은 순서로 뽑습니다.",
+            "roe_ttm": "퀄리티(ROE)는 최근 4분기 순이익을 평균 자본으로 나눈 자기자본이익률입니다. 높은 순서로 뽑습니다.",
+            "dividend_yield_ttm": "고배당은 최근 1년 주당배당금을 기준일 종가로 나눈 값입니다. 높은 순서로 뽑습니다."}.get(metric, metric)  # fmt: skip
 
 
 def _retry_feedback(errors: list[str]) -> dict[str, str]:
