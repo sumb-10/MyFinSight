@@ -198,7 +198,8 @@ def test_market_model_cap_weights_use_the_same_estimate(gap):
     note = next(n for n in model["notes"] if n.startswith("market cap missing for"))
     assert "XOM" in note and "AVGO" not in note
     w = from_text("08_market_model", note)
-    assert w.code == "market_cap_missing" and w.level == "info"  # 시장모형 참고는 새 후보 단계 공지에 가려지지 않는다
+    # 시장모형 공지는 후보 단계 공지에 가려지지 않는다. 시가총액비중에서 최소 비중만 받는다는 사실은 사용자 공지 (025: 필수 포함 XOM 1.4~1.7%)
+    assert w.code == "market_cap_missing" and w.level == "user" and "XOM" in w.message_ko
 
 
 # ───────────────────────── 경고 문구 ─────────────────────────

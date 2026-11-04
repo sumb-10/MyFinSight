@@ -49,6 +49,8 @@ def selectable_at(md: MarketData, day: dt.date, desc: Descriptor, intent: dict[s
     tag = Tagging(request_id=request_id, min_confidence=0.0, tagged=[], excluded_by_theme=[], passed_tickers=passed_bt, batches=0,
                   warnings=[f"re-selection at {day}: passed ∩ candidates_bt = {len(passed_bt)}"])  # fmt: skip
     sel, facts = screen(view_bt, desc, tag, intent, cons, request_id=request_id)
+    # 테마 판정을 다시 하지 않아(tagged=[]) screen 이 후보 수를 0 으로 적는다 → 그날 후보 수 (031: 07_selection_bt 의 n_candidates 가 늘 0)
+    sel.summary["n_candidates"] = len(cand.candidates)
     # 그날 후보 단계의 시가총액 경고(자료 없어 뺀 종목·추정한 종목)를 기준일 테마 통과 종목만으로 → 07 이 'screen@날짜:' 를 달아 시작일 공지가 된다
     sel.warnings += mcap_warnings(cand, cons, md.s.market.mcap_fallback_max_days, only=passed)
     return cand, tag, sel, facts

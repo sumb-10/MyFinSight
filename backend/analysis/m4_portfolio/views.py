@@ -195,6 +195,10 @@ def _quantify(v: dict[str, Any], mm: dict[str, Any], tickers: list[str], ps, war
     if not (lo <= q <= hi):
         warnings.append(f"{sid}: view {v['long']} return {q:.4f} clipped to [{lo}, {hi}]")
         q = min(max(q, lo), hi)
+        # 자른 값이 사전 기대를 넘어가면 방향이 뒤집힌다 (026 검토: 사전 기대가 이미 +100% 근처) → 사전 기대에 멈춰 뷰를 중립으로
+        if (q < prior if direction == "up" else q > prior):
+            warnings.append(f"{sid}: view {v['long']} clipped past its prior {prior:.4f}; kept at the prior (no tilt)")
+            q = prior
     v["direction"], v["strength"] = direction, strength
     v["prior_return"], v["expected_return_annual"] = round(prior, 6), round(q, 6)
 

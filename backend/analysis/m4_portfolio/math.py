@@ -25,6 +25,13 @@ def estimate_market_model(px: pd.DataFrame, tickers: list[str], *, lookback_days
     if len(keep) < 1 or len(r) < min_history_days:  # 1종목도 받는다 (F2: 시작일 선정이 1종목이면 10 단계 전체가 멈췄다)
         raise DataMissing(f"시장모형을 만들 수 있는 종목이 없습니다 (추정 창 수익률이 {min_history_days}일 이상인 종목 {len(keep)}개, 공통 {len(r)}일)",
                           details={"tickers": len(keep), "days": len(r), "need": min_history_days})
+    window = {"start": str(r.index.min().date()), "end": str(r.index.max().date()), "days": int(len(r))}
+    if len(r) < lookback_days:  # 공통 창을 줄인 늦게 상장한 종목 (023: 카카오뱅크 때문에 756일이 아니라 487일이었는데 표에는 756일로 나왔다)
+        ra = np.log(px).diff().iloc[1:][keep]
+        first = {t: ra[t].first_valid_index() for t in keep}
+        latest = max(first.values())
+        if latest > ra.index[0]:
+            window["limited_by"] = sorted(t for t, d0 in first.items() if d0 == latest)
     X = r.to_numpy()
     if shrinkage == "ledoit_wolf":
         from sklearn.covariance import LedoitWolf
@@ -42,7 +49,7 @@ def estimate_market_model(px: pd.DataFrame, tickers: list[str], *, lookback_days
         "cov": cov,
         "corr": corr,
         "ann_vol": vol,
-        "window": {"start": str(r.index.min().date()), "end": str(r.index.max().date()), "days": int(len(r))},
+        "window": window,
         "shrinkage": {"method": shrinkage, "alpha": alpha},
         "mean_daily": r.mean().to_numpy(),
     }
@@ -69,38 +76,65 @@ def market_implied_delta(bench_px: pd.Series, *, lookback_days: int, rf: float) 
 
 
 # ───────────────────────── constraints ─────────────────────────
+def _pl_root(knots, vals, target):
+    """오름차순 knots 위의 비감소 꺾은선 vals 가 target 이 되는 점. 꺾이는 점 사이는 일차식이라 직선 보간이 정확한 답이다."""
+    vals = np.maximum.accumulate(vals)  # 반올림으로 생긴 아주 작은 역전 제거
+    j = int(np.searchsorted(vals, target, side="left"))
+    if j == 0 or j == len(knots):
+        return float(knots[min(j, len(knots) - 1)])
+    t = (target - vals[j - 1]) / (vals[j] - vals[j - 1])
+    return float(knots[j - 1] + t * (knots[j] - knots[j - 1]))
+
+
+def _capped_fill(a, lo, hi, sec, cap, total):
+    """w_i = clip(f_s·a_i, lo, hi), f_s = min(λ, μ_s). μ_s: 섹터 s 합이 cap[s] 가 되는 수준 (바닥만으로 cap 이상이면 0, 끝까지 안 넘으면 ∞).
+    λ: 합계가 total 이 되는 수준 (바닥 합이 이미 넘으면 0, 상한 안에서 다 못 채우면 모든 꺾이는 점 너머 = 모두 최대치).
+    (w, 자르기 전 값 f·a, 섹터 상한이 누른 섹터)."""
+    pos = a > 0
+    mu = np.full(len(cap), np.inf)
+    for s in range(len(cap)):
+        aa = a[sec == s]
+        p = aa > 0
+        if len(aa) * lo >= cap[s]:
+            mu[s] = 0.0
+        elif np.where(p, hi, lo).sum() > cap[s]:
+            k = np.unique(np.concatenate([[0.0], lo / aa[p], hi / aa[p]]))
+            mu[s] = _pl_root(k, np.clip(k[:, None] * aa, lo, hi).sum(axis=1), cap[s])
+    k = np.unique(np.concatenate([[0.0], lo / a[pos], hi / a[pos], mu[np.isfinite(mu)]]))
+    F = np.clip(np.minimum(k[:, None], mu[sec]) * a, lo, hi).sum(axis=1)
+    # 딱 채울 수 있는 경우는 반올림 1ulp 차이로 '못 채움' 쪽에 빠지지 않게 (검토: 섹터 상한 100% · 전액 투자면 섹터 상한이 걸린 것처럼 라벨이 붙었다)
+    lam = 2 * k[-1] + 1 if total > F[-1] + 1e-12 else _pl_root(k, F, min(total, F[-1]))
+    x = np.minimum(lam, mu[sec]) * a
+    over = np.bincount(sec, weights=np.clip(lam * a, lo, hi), minlength=len(cap)) > cap + 1e-12
+    return np.clip(x, lo, hi), x, over
+
+
 def apply_constraints(w, max_stock, max_sector, sectors, total=1.0, *, max_iter=50, min_weight=0.01):
-    """w 를 total 로 맞추고 min_weight ≤ w_i ≤ max_stock, 섹터 ≤ max_sector 를 반복 적용. (w, 적용된 제약 라벨)."""
-    w = np.asarray(w, float).copy()
-    w = w / w.sum() * total
-    sectors = np.asarray(sectors)
-    applied: set[str] = set()
-    for _ in range(max_iter):
-        low = w < min_weight - 1e-12
-        if low.any():
-            applied.update(f"min_weight:{i}" for i in np.where(low)[0])
-            w[low] = min_weight
-        over = w > max_stock + 1e-12
-        if over.any():
-            applied.update(f"stock_cap:{i}" for i in np.where(over)[0])
-            w[over] = max_stock
-        for s in np.unique(sectors):
-            m = sectors == s
-            if w[m].sum() > max_sector + 1e-12:
-                applied.add(f"sector_cap:{s}")
-                w[m] = np.maximum(w[m] * max_sector / w[m].sum(), min_weight)
-        deficit = total - w.sum()
-        if abs(deficit) < 1e-10:
-            break
-        free = (w < max_stock - 1e-12) & (w > min_weight + 1e-12) if deficit < 0 else (w < max_stock - 1e-12)
-        for s in np.unique(sectors):
-            m = sectors == s
-            if deficit > 0 and w[m].sum() >= max_sector - 1e-12:
-                free &= ~m
-        if not free.any() or w[free].sum() <= 0:
-            break
-        w[free] += deficit * w[free] / w[free].sum()
-    return w, sorted(applied)
+    """w 에 비례하게 total 을 나누되 min_weight ≤ 비중 ≤ max_stock, 섹터 합 ≤ max_sector (상한에 걸린 몫은 나머지에 비례해 다시 나눔). (비중, 적용된 제약 라벨).
+
+    비중_i = clip(f_s × w_i, min_weight, max_stock). f_s 는 섹터 상한에 안 걸린 섹터면 모두 같은 λ, 걸린 섹터면 섹터 합이 딱 상한이 되는 μ_s ≤ λ.
+    예전 반복(바닥 → 종목 상한 → 넘친 섹터를 통째로 축소 → 남는 몫 비례 배분)은 종목 상한에 걸린 종목까지 섹터째 줄여 섹터 안 비례가
+    깨졌다 (030: 시가총액 AAPL 0.84 · PLTR 0.06 인데 15.4% · 15.3%, 시작일에는 AAPL 20.8% 인데 열 배 작은 ABBV 25%). 시가총액 0(자료 없음)
+    종목은 최소 비중만 받고, 다른 종목이 모두 최대치인데도 남는 몫이 있을 때만 그 몫을 똑같이 나눠 받는다. 상한 안에서 total 을 다 못
+    채우면 나머지는 현금, 바닥만으로 섹터 상한을 넘는 섹터는 바닥을 그대로 둔다. 라벨은 최종 비중을 실제로 누른 제약. max_iter 는 예전 호출과 맞추려고 받기만 한다."""
+    w = np.nan_to_num(np.asarray(w, float), nan=0.0, posinf=0.0, neginf=0.0)  # 자료 없음(NaN)은 시가총액 0 과 같게
+    w[w < w.max(initial=0.0) * 1e-12] = 0.0  # 아주 작은 값은 0 으로 (1e-310 같은 값에서 경계 계산이 넘쳤다 — 검토)
+    s = w.sum()
+    w = w / s * total if s > 0 else np.full(len(w), total / max(len(w), 1))  # 합이 0 이하(모두 0)면 동일비중으로
+    codes, sec = np.unique(np.asarray(sectors), return_inverse=True)
+    lo, hi = min(min_weight, max_stock), max_stock  # 바닥이 종목 상한보다 크면 상한이 이긴다
+    if (w >= lo - 1e-12).all() and (w <= hi + 1e-12).all() and (np.bincount(sec, weights=w, minlength=len(codes)) <= max_sector + 1e-12).all():
+        return w, []  # 어느 제약도 안 묶이면 비례 그대로
+    cap = np.full(len(codes), float(max_sector))
+    out, x, over = _capped_fill(w, lo, hi, sec, cap, total)
+    zero = ~(w > 0)
+    if total - out.sum() > 1e-12 and zero.any():  # 다른 종목이 모두 최대치인데도 남는 몫 → 시가총액 0 종목에 똑같이 (상한 안에서)
+        room = cap - np.bincount(sec[~zero], weights=out[~zero], minlength=len(codes))
+        w2, x2, over2 = _capped_fill(np.ones(int(zero.sum())), lo, hi, sec[zero], room, total - out[~zero].sum())
+        out[zero], x[zero], over = w2, np.where(w2 > lo + 1e-12, x2, 0.0), over | over2
+    applied = {f"min_weight:{i}" for i in np.where(x < lo - 1e-12)[0]} | {f"stock_cap:{i}" for i in np.where(x > hi + 1e-12)[0]}
+    applied |= {f"sector_cap:{codes[j]}" for j in np.where(over)[0]}
+    return out, sorted(applied)
 
 
 def _sector_constraints(sectors, max_sector, total):
@@ -176,26 +210,54 @@ def black_litterman(cov, pi, P, Q, conf, tau):
     return mu, cov + M
 
 
-def optimize_utility(mu, cov, delta, w_base, max_stock, max_sector, sectors, max_tilt, total=1.0, *, min_weight=0.01):
-    """max w'μ − δ/2 w'Σw  s.t. Σw = total, min_weight ≤ w ≤ max_stock, |w − w_base| ≤ max_tilt, 섹터 상한."""
+def view_directions(views, tickers) -> np.ndarray:
+    """종목별 뷰 방향: 그 종목에 걸린 뷰가 모두 '오름'(절대 up·상대 long)이면 +1, 모두 '내림'(절대 down·상대 short)이면 −1, 엇갈리거나 없으면 0."""
+    idx = {t: i for i, t in enumerate(tickers)}
+    up, dn = np.zeros(len(tickers), bool), np.zeros(len(tickers), bool)
+    for v in views:
+        if v["type"] == "absolute":
+            (dn if v.get("direction") == "down" else up)[idx[v["long"][0]]] = True
+        else:
+            up[[idx[t] for t in v["long"]]] = True
+            dn[[idx[t] for t in v.get("short", [])]] = True
+    return np.where(up & ~dn, 1, np.where(dn & ~up, -1, 0))
+
+
+def optimize_utility(mu, cov, delta, w_base, max_stock, max_sector, sectors, max_tilt, total=1.0, *, min_weight=0.01, view_dir=None):
+    """max w'μ − δ/2 w'Σw  s.t. Σw = total, min_weight ≤ w ≤ max_stock, |w − w_base| ≤ max_tilt, 섹터 상한.
+
+    view_dir(종목별 +1/−1/0, view_directions)를 주면 '오름' 뷰 종목은 기준 비중 아래로, '내림' 뷰 종목은 위로 가지 않게 한다.
+    예산(합계·섹터 상한)이 묶이면 한 종목의 오름 뷰가 (e_i − 최소분산 비중) 방향으로 퍼져, 최소분산 비중이 1 을 넘는 종목은 오히려 줄었다
+    (026: 정보기술 4종목이 섹터 상한 65% 를 나눠 갖는데 'AVGO 오름(약)' 날 AVGO 가 −11.5%p). 기준 비중은 이 경계를 늘 지키므로 풀 수 없게 되지 않는다;
+    그래도 실패하면 경계 없이 한 번 더 푼다."""
     n = len(mu)
     w_base = np.asarray(w_base, float)
     w_base = w_base / w_base.sum() * total
-    lo = np.maximum(min_weight, w_base - max_tilt)
-    hi = np.maximum(lo + 1e-9, np.minimum(max_stock, w_base + max_tilt))
+    lo0 = np.maximum(min_weight, w_base - max_tilt)
+    hi0 = np.maximum(lo0 + 1e-9, np.minimum(max_stock, w_base + max_tilt))
+    lo, hi, held = lo0, hi0, np.zeros(n, bool)
+    if view_dir is not None:
+        d = np.asarray(view_dir)
+        held = d != 0
+        lo = np.where(d > 0, np.maximum(lo0, w_base), lo0)
+        hi = np.maximum(lo + 1e-9, np.where(d < 0, np.minimum(hi0, w_base), hi0))
     cons = [{"type": "eq", "fun": lambda w: w.sum() - total}] + _sector_constraints(sectors, max_sector, total)
     res = minimize(lambda w: -(w @ mu - delta / 2 * w @ cov @ w), w_base, method="SLSQP", bounds=list(zip(lo, hi, strict=True)),
                    constraints=cons, options={"maxiter": 500, "ftol": 1e-12})  # fmt: skip
     active = []
     if not res.success or abs(res.x.sum() - total) > 1e-6:
+        if view_dir is not None:
+            return optimize_utility(mu, cov, delta, w_base, max_stock, max_sector, sectors, max_tilt, total, min_weight=min_weight)
         # 최적화 실패: 뷰를 반영하지 않고 기준 비중 유지 (값을 지어내지 않음)
         return w_base.copy(), [f"optimizer_failed_no_tilt({res.message})"]
     w = np.clip(res.x, lo, hi)
     for i in range(n):
-        if abs(w[i] - hi[i]) < 1e-6:
+        if abs(w[i] - hi0[i]) < 1e-6:
             active.append(f"upper:{i}")
-        elif abs(w[i] - lo[i]) < 1e-6 and lo[i] > 0:
+        elif abs(w[i] - lo0[i]) < 1e-6 and lo0[i] > 0:
             active.append(f"lower:{i}")
+        elif held[i] and abs(w[i] - w_base[i]) < 1e-6:
+            active.append(f"view_hold:{i}")  # 뷰 방향을 거스르지 않으려고 기준 비중에 머묾
     for s in np.unique(sectors):
         m = np.asarray(sectors) == s
         if abs(w[m].sum() - max_sector) < 1e-6:

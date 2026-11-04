@@ -208,7 +208,8 @@ def test_drift_rules_state_the_real_max_weight_against_cap_and_tolerance():
     w2.loc[idx[2], "A"] = 0.45
     _, ck2 = _comp_and_checks(w2, 0.35, 0.80)
     assert not ck2["R4b"]["ok"] and ck2["R4b"]["status"] == "info" and ck2["R4b"]["message_ko"] == (
-        "리밸런싱 사이 최대 종목 비중 45.0%(A) — 상한 35%를 넘은 날이 5거래일 중 5일이고 허용 폭(상한의 1.25배, 43.8%)도 넘음 (A). 리밸런싱 주기를 줄이면 완화됩니다")
+        # 031: 상한을 넘은 날과 허용 폭을 넘은 날을 따로 센다 (예전 문구 '…5일이고 허용 폭도 넘음' 을 서술이 '허용 폭을 넘은 날 5일' 로 읽었다)
+        "리밸런싱 사이 최대 종목 비중 45.0%(A) — 상한 35%를 넘은 날이 5거래일 중 5일, 허용 폭(상한의 1.25배, 43.8%)을 넘은 날은 1일 (A). 리밸런싱 주기를 줄이면 완화됩니다")
     assert ck2["R5b"]["message_ko"] == "리밸런싱 사이 최대 섹터 비중 75.0%(정보기술) — 상한 80% 안에 머묾"
     # 최대 비중이 없는 예전 결과는 예전 문구
     from backend.analysis.m5_backtest_report.validate import _drift_msg_ko

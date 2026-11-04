@@ -252,7 +252,8 @@ def evaluate(ctx, p, raw, kind, bench_raw, baseline_idx, *, implied_by_date=None
     tbd = {d: _usable_weights(ctx, w) for d, w in p["weights_by_date"].items()} if p.get("weights_by_date") else None
     res = M.compute_all(raw, bench_raw["index"], ctx["panel"], weights, ctx["sectors"], ctx["rb"], ctx["rf"], ctx["target_return"],
                         cfg["max_stock"], cfg["max_sector"], xirr, s.backtest, baseline_idx=baseline_idx, views=views, implied=implied,
-                        as_of=ctx["as_of"], end=ctx["end"], targets_by_date=tbd)  # fmt: skip
+                        as_of=ctx["as_of"], end=ctx["end"], targets_by_date=tbd,
+                        min_cash=float(ctx["cons"].get("min_cash_ratio") or 0))  # fmt: skip  (031: 리밸런싱 사이 현금이 최소 현금보다 낮았던 날)
     if wf_vd is not None:
         res["view_diagnostics"] = wf_vd
     nxt: list[dict[str, Any]] = []

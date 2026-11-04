@@ -26,6 +26,21 @@ def _dc_date(r: dict[str, Any]) -> str:
     return filed if filed == avail else f"{filed}(이용 가능일 {avail})"
 from backend.analysis.m2_data import metrics as M
 
+# '12개월 수익률' 은 모멘텀 지표의 이름(M.METRIC_KO)이다. 배당수익률 선정에서 LLM 이 '배당수익률(최근 12개월)' 을 이렇게 줄여 써 주가 수익률처럼 읽혔다
+# (027: 25개 카드 모두 '배당수익률 순위는 1위이며, 최근 12개월 수익률은 6.86%입니다 [fin:US-CCI:dividend_yield_ttm:2025-02-11]')
+_DIV_AS_RETURN = re.compile(r"(?:(?:최근|직전|지난|과거)\s*)?12\s*개월간?\s*수익률")
+
+
+def _dividend_wording(text: str) -> str:
+    """배당수익률 선정의 '(최근) 12개월 수익률' → '최근 12개월 배당수익률' ('…배당수익률' 은 이미 맞아 걸리지 않는다).
+    뉴스·공시만 인용한 문장은 기사 속 주가 수익률일 수 있어 그대로 둔다."""
+    out = []
+    for part in re.split(r"(?<=[.!?])(\s+)", text):  # 문장 단위 (구분 공백도 그대로 이어 붙인다)
+        ids = CITE_RE.findall(part)
+        news_only = bool(ids) and not any(i.startswith("fin:") for i in ids)
+        out.append(part if news_only else _DIV_AS_RETURN.sub("최근 12개월 배당수익률", part))
+    return "".join(out)
+
 
 def explain(
     sel: Selection,
@@ -92,5 +107,8 @@ def explain(
                 raise ValueError(f"{row['ticker']}: rationale must cite at least one given id like [fin:...] or [ev123]")
 
     ans = llm.complete_json(STAGE, messages_from_prompts(system, user), validator=_check)
+    if sel.summary.get("metric") == "dividend_yield_ttm" and isinstance(ans.get("per_ticker"), list):  # 모멘텀 선정(return_12m_1m)의 '12개월 수익률' 은 맞는 이름 (027)
+        ans = {**ans, "per_ticker": [{**r, "rationale_ko": _dividend_wording(r["rationale_ko"])} if isinstance(r.get("rationale_ko"), str) else r
+                                     for r in ans["per_ticker"]]}  # fmt: skip
     return {"request_id": sel.request_id, "stage": "06_selection_explained", **ans,
             "citations_available": sorted(allowed)}  # fmt: skip

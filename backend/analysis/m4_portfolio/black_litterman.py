@@ -70,6 +70,8 @@ def build_bl(
             return f"tilt_floor:{tk[int(val)]}"
         if kind == "sector_cap":
             return f"sector_cap:{sec_names.get(val, val)}"
+        if kind == "view_hold":
+            return f"view_direction_hold:{tk[int(val)]}"
         return x
 
     ports: list[dict[str, Any]] = []
@@ -79,7 +81,9 @@ def build_bl(
         mu, _cov_post = P.black_litterman(cov, pi, Pm, Q, C, tau)
         # 효용 최적화는 사전 공분산 Σ 로 (Module4 §BL: max μ_BL'w − δ/2 w'Σw). 사후 공분산(Σ+M)을 쓰면 뷰 신뢰도가 0 이어도
         # 기준 비중으로 돌아오지 않고 최소분산 쪽으로 쏠린다 (π 는 Σ 로 역최적화했으므로).
-        w, active = P.optimize_utility(mu, cov, delta, wb, max_stock, max_sector, sec_code, max_tilt, total, min_weight=ps.min_weight)
+        # 뷰 방향을 거스르는 비중 이동은 막는다 (026: 섹터 예산이 묶여 'AVGO 오름' 날 AVGO 비중이 크게 줄었다 — Q-001 과 같은 증상, 다른 원인)
+        w, active = P.optimize_utility(mu, cov, delta, wb, max_stock, max_sector, sec_code, max_tilt, total, min_weight=ps.min_weight,
+                                       view_dir=P.view_directions(s["views"], tk))  # fmt: skip
         failed = any(x.startswith("optimizer_failed") for x in active)
         if failed:  # 기준 비중 그대로: 뷰를 반영한 것처럼 보이는 설명·사후 수익을 남기지 않는다
             mu = pi.copy()

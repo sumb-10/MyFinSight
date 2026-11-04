@@ -9,7 +9,7 @@ import math
 from typing import Any
 
 from backend.analysis.common.jsonio import now_iso
-from backend.analysis.common.labels import usd_ko
+from backend.analysis.common.labels import FACT_SOURCE_KO, NEWS_SOURCE_KO, theme_ko, usd_ko
 from backend.analysis.m2_data import descriptor as D
 from backend.analysis.m2_data import metrics as M
 from backend.analysis.schemas.results import ResultsBundle
@@ -29,6 +29,11 @@ DB_SOURCES = [
 ]  # fmt: skip
 
 
+# 근거 제목의 지표 이름 (028: 출처 창에 'IBKR pe_ttm', '시가총액비중 cagr' 처럼 코드 값이 보였다)
+CALC_KO = {"cagr": "연환산 수익률(CAGR)", "period_return": "기간 수익률", "max_drawdown": "최대낙폭", "sharpe": "Sharpe", "excess_cagr": "비교지수 대비 초과 CAGR",
+           "final_value_usd": "최종 평가금액", "ann_vol": "연변동성"}  # fmt: skip
+
+
 def _calc_facts(bt: dict[str, Any], val: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """리포트 문단이 인용할 수 있는 계산값 ID: calc:<metric>:<portfolio_id>."""
     out: dict[str, dict[str, Any]] = {}
@@ -36,11 +41,30 @@ def _calc_facts(bt: dict[str, Any], val: dict[str, Any]) -> dict[str, dict[str, 
         h = p["headline"]
         for k in ("cagr", "period_return", "max_drawdown", "sharpe", "excess_cagr", "final_value_usd"):
             if h.get(k) is not None:
-                out[f"calc:{k}:{p['id']}"] = {"id": f"calc:{k}:{p['id']}", "kind": "calc", "title": f"{p.get('name_ko', p['id'])} {k}", "source": "backtest",
+                out[f"calc:{k}:{p['id']}"] = {"id": f"calc:{k}:{p['id']}", "kind": "calc", "title": f"{p.get('name_ko', p['id'])} {CALC_KO[k]}", "source": FACT_SOURCE_KO["backtest"],
                                               "value": h[k], "unit": "usd" if k == "final_value_usd" else "ratio", "tickers": [], "data_as_of": bt["period"]["end"]}  # fmt: skip
-        out[f"calc:ann_vol:{p['id']}"] = {"id": f"calc:ann_vol:{p['id']}", "kind": "calc", "title": f"{p.get('name_ko', p['id'])} ann_vol", "source": "backtest",
+        out[f"calc:ann_vol:{p['id']}"] = {"id": f"calc:ann_vol:{p['id']}", "kind": "calc", "title": f"{p.get('name_ko', p['id'])} {CALC_KO['ann_vol']}", "source": FACT_SOURCE_KO["backtest"],
                                           "value": p["metrics"]["risk"]["ann_vol"], "unit": "ratio", "tickers": [], "data_as_of": bt["period"]["end"]}  # fmt: skip
     return out
+
+
+def metric_rank(rows: dict[str, dict[str, Any]], asc: bool) -> dict[str, int]:
+    """화면의 '순위' = 선정 지표 순위 (선정 순서가 아니라). 필수 포함 종목은 선정 순서상 맨 앞이라 'ROE 순위 1' 로 보였다 (002 LS ELECTRIC, 실제 5위).
+    지표가 없는 종목(지표 없는 필수 포함)에는 순위를 주지 않는다 (025: CVX·XOM 이 값 없이 '순위 7·8' 로 보였다)."""
+    def k(t: str) -> float:
+        v = rows[t].get("metric_value")
+        return float("inf") if v is None or not math.isfinite(float(v)) else (float(v) if asc else -float(v))
+    return {t: i + 1 for i, t in enumerate(sorted(rows, key=k)) if math.isfinite(k(t))}
+
+
+def _ex_theme_ko(rows: list[dict[str, Any]], k: int = 5) -> str:
+    """깔때기 테마 단계 뒤에 붙이는 '제외 테마로 뺀 종목' (024: 13개를 뺐는데 테마 판정에서 떨어진 것처럼 보였다)."""
+    if not rows:
+        return ""
+    by: dict[str, list[str]] = {}
+    for r in rows:
+        by.setdefault(r["theme_ko"], []).append(r["name"])
+    return " · " + " · ".join(f"제외 테마({th})로 뺌 {len(v)}개: {', '.join(v[:k])}" + (f" 외 {len(v) - k}개" if len(v) > k else "") for th, v in by.items())
 
 
 def build_results(
@@ -84,14 +108,7 @@ def build_results(
     rank_bt = {s["ticker"]: s for s in spec["selection"]["table"]}
     asc = sel["summary"].get("direction") == "asc"
 
-    def metric_rank(rows: dict[str, dict[str, Any]]) -> dict[str, int]:
-        """화면의 '순위' = 선정 지표 순위 (선정 순서가 아니라). 필수 포함 종목은 선정 순서상 맨 앞이라 'ROE 순위 1' 로 보였다 (002 LS ELECTRIC, 실제 5위)."""
-        def k(t: str) -> float:
-            v = rows[t].get("metric_value")
-            return float("inf") if v is None or not math.isfinite(float(v)) else (float(v) if asc else -float(v))
-        return {t: i + 1 for i, t in enumerate(sorted(rows, key=k))}
-
-    mr_now, mr_bt = metric_rank(rank_now), metric_rank(rank_bt)
+    mr_now, mr_bt = metric_rank(rank_now, asc), metric_rank(rank_bt, asc)
     forced_now = {s["ticker"] for s in sel["selected"] if s.get("forced")}
     tickers = sorted(set(rank_now) | set(rank_bt), key=lambda t: (t not in rank_bt, rank_bt.get(t, rank_now.get(t, {})).get("rank", 99)))
     table = []
@@ -119,6 +136,10 @@ def build_results(
 
     excluded = [{"ticker": r["ticker"], "name": (desc.by_ticker(r["ticker"]) or {}).get("name", r["ticker"]), "reason": _reason(r),
                  "metric_value": r.get("metric_value")} for r in rej[:8]]  # fmt: skip
+    # 테마에는 해당하지만 제외 테마로 뺀 종목도 이름과 함께 (024: 유틸리티 13개를 '화석연료' 로 뺐는데 이름이 어디에도 없고 테마 판정 탈락처럼 보였다)
+    ex_theme = [{"ticker": r["ticker"], "name": (desc.by_ticker(r["ticker"]) or {}).get("name", r["ticker"]), "theme_ko": theme_ko(r.get("excluded_theme")),
+                 "reason_ko": r.get("reason_ko") or ""} for r in tag.get("excluded_by_theme") or []]  # fmt: skip
+    excluded += [{"ticker": r["ticker"], "name": r["name"], "reason": f"제외 테마({r['theme_ko']})에 해당 (분석 모델 판정)", "metric_value": None} for r in ex_theme[:6]]
     # 03 에서 빠진 종목을 사유별로 (003: 게임주 4개가 모두 거래대금 기준으로 빠졌는데 깔때기·서술에 그 단계가 없었다)
     cons = req["constraints"]
     filt_ko = {"min_avg_daily_volume_usd": f"일평균 거래대금 {usd_ko(cons.get('min_avg_daily_volume_usd'))} 미만",
@@ -144,8 +165,18 @@ def build_results(
     f_now = {f["ticker"]: f["reason"] for f in cand.get("filtered_out") or []}
     passed_now = set(tag.get("passed_tickers") or [])
     bt_only = [t for t in spec["selection"].get("tickers") or [] if t not in {x["ticker"] for x in sel["selected"]}]
+    rej_rows = {r["ticker"]: r for r in sel.get("rejected") or []}
+
+    def _now_reason(t: str) -> str:
+        """기준일 사유에 그날 지표 값을 붙인다 (028: 서술이 시작일 값과 기준일 사유를 짝지어 'FICO(34.8배, 자격선 밖)' — 실제는 기준일 79.3배)."""
+        r, m_ = rej_rows[t], sel["summary"]["metric"]
+        txt, v = _reason(r), r.get("metric_value")
+        if not str(r["reason"]).startswith("metric_out_of_range") and v is not None and math.isfinite(float(v)):
+            txt += f" ({M.METRIC_SHORT_KO.get(m_, m_)} {M.display_metric(m_, v)})"
+        return f"분석 기준일({sel['summary']['as_of']}) {txt}"
+
     bt_only_ko = [{"ticker": t, "name": (desc.by_ticker(t) or {}).get("name", t),
-                   "reason_ko": (_why_ko(rej_now[t]) if t in rej_now else _why_ko(f_now[t]) if t in f_now else
+                   "reason_ko": (_now_reason(t) if t in rej_now else _why_ko(f_now[t]) if t in f_now else
                                  "분석 기준일 테마 판정을 통과하지 못함" if t not in passed_now else "분석 기준일 목록에 없음")} for t in bt_only]  # fmt: skip
     by_reason: dict[str, list[str]] = {}
     for f in cand.get("filtered_out") or []:
@@ -162,15 +193,18 @@ def build_results(
         n_by[k] = n_by.get(k, 0) + 1
     cand_label = ("후보 조건 통과 (빠짐: " + ", ".join(f"{k} {n}개" for k, n in sorted(n_by.items(), key=lambda x: -x[1])) + ")" if n_by
                   else "후보 조건 통과 (시가총액·거래대금·제외 조건)")  # fmt: skip
+    met = sel["summary"]["metric"]
+    forced_off = [s["ticker"] for s in sel["selected"] if s.get("forced") and not M.eligible(met, s.get("metric_value"))]
     funnel = [
         {"stage": "universe", "label_ko": "투자 가능 종목 (" + " ∪ ".join(req["constraints"]["universe"]) + ")", "count": descriptor_info.get("n_stocks", len(D.tickers(desc)))},
         {"stage": "matched", "label_ko": "테마 관련 종목 (GICS·키워드·예시 종목 검색)", "count": cand["stats"].get("n_matched", cand["stats"]["n_candidates"])},
         {"stage": "candidates", "label_ko": cand_label, "count": cand["stats"]["n_candidates"]},
         {"stage": "theme_passed", "label_ko": (f"테마 해당 판정 (분석 모델, 신뢰도 ≥ {tag['min_confidence']})" if tag.get("theme_filter_applied", True)
-                                               else "제외 테마 판정 (넓은 테마라 테마 해당 여부로는 거르지 않음)"), "count": len(tag["passed_tickers"])},
-        # 필수 포함은 지표·자격선과 관계없이 담기므로 따로 적는다 (018: 지표 없는 필수 포함까지 '지표 계산 가능' 으로 셌다)
-        {"stage": "with_metric", "label_ko": f"선정 지표({M_KO.get(sel['summary']['metric'], sel['summary']['metric'])}) 계산 가능·자격선 안"
-                                             + (f" (필수 포함 {sel['summary']['n_forced']}개 포함)" if sel["summary"].get("n_forced") else ""),
+                                               else "제외 테마 판정 (넓은 테마라 테마 해당 여부로는 거르지 않음)") + _ex_theme_ko(ex_theme), "count": len(tag["passed_tickers"])},
+        # 필수 포함은 지표·자격선과 관계없이 담기므로 따로 적는다 (018: 지표 없는 필수 포함까지 '지표 계산 가능' 으로 셌다;
+        # 025: '(필수 포함 2개 포함)' 을 서술이 빠뜨려 '지표를 계산할 수 있는 17개' 라고 썼다 → 지표 없는 필수 포함은 개수를 나눠 적는다)
+        {"stage": "with_metric", "label_ko": f"선정 지표({M_KO.get(met, met)}) 계산 가능·자격선 안 {sel['summary']['n_with_metric'] - len(forced_off)}개"
+                                             + (f" + 지표 없음·자격선 밖이지만 필수 포함 {len(forced_off)}개({', '.join(forced_off)})" if forced_off else ""),
          "count": sel["summary"]["n_with_metric"]},  # fmt: skip
         # 섹터 분산은 실제로 순위를 바꿨을 때만 적는다 (015·017: 섹터 상한 100%·한 섹터 12종목인데 '섹터 분산 적용' 이라고 했다)
         {"stage": "selected_now", "label_ko": f"최종 선정 ({sel['summary']['as_of']}"
@@ -180,6 +214,7 @@ def build_results(
     ]  # fmt: skip
     selection = {"funnel": funnel, "metric": sel["summary"]["metric"], "direction": sel["summary"]["direction"], "candidates_summary": cand["stats"],
                  "candidates_filtered": filtered_summary,
+                 "excluded_by_theme": ex_theme,
                  "tagging_summary": {"n_tagged": len(tag["tagged"]), "n_passed": len(tag["passed_tickers"]), "n_excluded_by_theme": len(tag["excluded_by_theme"]),
                                      "theme_filter_applied": tag.get("theme_filter_applied", True),
                                      "min_confidence": tag["min_confidence"]},
@@ -224,7 +259,7 @@ def build_results(
 
     for w in news_windows:
         for r in w.get("records", []):
-            evidence_index[r["evidence_id"]] = {"id": r["evidence_id"], "kind": "news", "title": r["title"], "source": r.get("publisher") or r.get("source", ""),
+            evidence_index[r["evidence_id"]] = {"id": r["evidence_id"], "kind": "news", "title": r["title"], "source": r.get("publisher") or NEWS_SOURCE_KO.get(r.get("source") or "", r.get("source", "")),
                                                 "url": r.get("url"), "published_at": r.get("published_at"), "tickers": [r["ticker"]], "language": r.get("language"),
                                                 "window_as_of": _win(r["evidence_id"], w)}  # fmt: skip
     for w in news_windows:
@@ -235,7 +270,7 @@ def build_results(
                                                 "form": r.get("form"), "items": r.get("items"), "filed_at": r.get("filed_at"), "available_on": r.get("available_on"),
                                                 "window_as_of": _win(r["evidence_id"], w)}  # fmt: skip
     for f in facts:
-        evidence_index[f["id"]] = {"id": f["id"], "kind": "financial", "title": f"{f['ticker']} {f['metric']}", "source": f["source"], "value": f["value"],
+        evidence_index[f["id"]] = {"id": f["id"], "kind": "financial", "title": f"{f['ticker']} {M.METRIC_SHORT_KO.get(f['metric'], f['metric'])}", "source": FACT_SOURCE_KO.get(f["source"], f["source"]), "value": f["value"],
                                    "unit": f["unit"], "data_as_of": f["as_of"], "tickers": [f["ticker"]]}  # fmt: skip
     evidence_index.update(_calc_facts(bt, val))
 

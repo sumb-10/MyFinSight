@@ -57,6 +57,10 @@ CATALOG: dict[str, tuple[Level, str]] = {
     # 최소 시가총액은 하드 필터 (2026-11 사용자 정책): 확인할 수 없는 종목은 뺀다. 팀 DB 는 XOM·BLK 같은 대형주도 과거 시가총액이 비어 있어 과거 시점에 빠지므로 알린다
     "min_mcap_missing": ("user", "시가총액 자료가 없어 최소 시가총액({min})을 확인할 수 없는 {n}개 종목({tickers})은 후보에서 뺐습니다."),
     "mcap_estimated": ("user", "시가총액 자료가 빈 {n}개 종목({tickers})은 직전에 알려진 주식수(최대 {days} 전)에 그날 종가를 곱해 시가총액을 추정했습니다."),
+    # 시장모형의 시가총액비중: 자료가 없으면 0 → 최소 비중(+상한 때문에 남은 몫)만 받는다. 예전에는 참고(파일에만)라 알리지 않았다
+    # (025: 필수 포함 XOM 이 시가총액비중 1.4~1.7%, 더 작은 CVX 는 상한 25%)
+    "market_cap_missing": ("user", "시가총액 자료가 없는 {n}개 종목({tickers})은 시가총액비중 구성에서 시가총액을 0으로 계산했습니다. 그래서 회사 크기와 상관없이 "
+                                   "최소 비중(상한 때문에 남은 비중이 있으면 그 일부를 더함)만 받았고, 이 구성의 해당 종목 비중은 실제 회사 규모를 반영하지 않습니다."),
     "must_include_short_history": ("user", "필수 포함 종목 {tickers}은(는) 기준일 이전 가격 이력이 1년이 안 되지만 요청에 따라 포함했습니다 (이력이 모자라면 비중을 줄 수 없을 수 있습니다)."),
     "backtest_start_shifted": ("user", "{text}"),
     "fewer_holdings_at_start": ("user", "{text}"),
@@ -75,7 +79,6 @@ CATALOG: dict[str, tuple[Level, str]] = {
     "gics_draft": ("info", "{text}"),
     "derived_note": ("info", "{text}"),
     "gics_widened": ("info", "테마에 직접 일치하는 종목이 적어 GICS 분류를 한 단계 넓혀 검색했습니다 (후보 {n}개)."),
-    "market_cap_missing": ("info", "시가총액 자료가 없는 종목은 시가총액비중에서 0으로 처리했습니다 ({tickers})."),
     "lookback_short": ("info", "백테스트 시작일 {date} 이전 가격 이력이 공분산 추정 창({days}거래일)보다 짧아 추정 창이 줄어듭니다."),
     "window_clamped": ("info", "{text}"),
     "fx_reconverted": ("info", "백테스트 초기자본은 시작일 환율({date}, 1 USD = {rate} KRW)로 환산한 {usd} USD입니다 (기준일 환율 기준 {usd0} USD)."),
@@ -121,10 +124,12 @@ _LEGACY: list[tuple[re.Pattern[str], str, tuple[str, ...]]] = [
     (re.compile(r"^alternative skipped: (.+)"), "alternative_skipped", ("reason",)),
     (re.compile(r"^matched variant skipped for \S+: stocks below floor (\S+) would be needed to bring max drawdown within (\S+) "), "matched_floor", ("floor", "target")),
     (re.compile(r"^fewer than target after matching; widened GICS codes one level up -> (\d+)"), "gics_widened", ("n",)),
-    # 후보 단계 시가총액 하드 필터 (retrieve.mcap_warnings). 아래 시장모형 참고('market cap missing for …: treated as 0')와 앞말이 달라 서로 가리지 않는다
+    # 후보 단계 시가총액 하드 필터 (retrieve.mcap_warnings). 아래 시장모형 공지('market cap missing for …: treated as 0')와 앞말이 달라 서로 가리지 않는다
     (re.compile(r"^min market cap ([\d.]+) USD: dropped (\d+) candidates without market cap data \[([^\]]*)\]"), "min_mcap_missing", ("min", "n", "tickers")),
     (re.compile(r"^market cap estimated from last known shares \(within (\d+) days\) for \[([^\]]*)\]"), "mcap_estimated", ("days", "tickers")),
-    (re.compile(r"^market cap (?:unavailable|missing for) ?(.*)"), "market_cap_missing", ("tickers",)),
+    # 시장모형 원문 "market cap missing for ['XOM']: treated as 0 in market_cap weights" → 종목 목록만 (예전에는 뒤의 ': treated as 0 …' 까지 종목 칸에 들어갔다, 025)
+    (re.compile(r"^market cap missing for \[([^\]]*)\]"), "market_cap_missing", ("tickers",)),
+    (re.compile(r"^market cap unavailable"), "market_cap_missing", ()),  # 예전 후보 단계 원문 '… for all candidates' (지금은 내지 않음): 종목 목록이 없다
     (re.compile(r"^less than (\d+) trading days of history before (\S+)"), "lookback_short", ("days", "date")),
     (re.compile(r"^backtest (?:start|end)_date .* clamped"), "window_clamped", ()),
     (re.compile(r"^capital re-converted at (\S+) FX ([\d.]+): ([\d,]+) USD vs request-date ([\d,]+) USD"), "fx_reconverted", ("date", "rate", "usd", "usd0")),
@@ -214,15 +219,17 @@ def from_text(stage: str, text: str, *, dates: list[str] | None = None) -> Warni
                 kw["sector"] = ", ".join(f"{sector_ko(a.strip())} {b.strip()}개" for a, b in pairs)
             subs = [x.strip().strip("'\"") for x in (kw.get("subs") or "").split(",") if x.strip()]
             kw["subs"] = f"({', '.join(subs[:5])}" + (f" 외 {len(subs) - 5}개" if len(subs) > 5 else "") + ")" if subs else ""
-        if code in ("min_mcap_missing", "mcap_estimated"):  # 과거 시점에는 앞쪽이 빈 종목이 열 개 넘게 빠지기도 한다 → 앞 5개 + '외 N개'
+        if code in ("min_mcap_missing", "mcap_estimated", "market_cap_missing") and "tickers" in kw:  # 과거 시점에는 앞쪽이 빈 종목이 열 개 넘게 빠지기도 한다 → 앞 5개 + '외 N개'
             names = [x.strip().strip("'\"") for x in kw.get("tickers", "").split(",") if x.strip()]
             kw["tickers"] = ", ".join(names[:5]) + (f" 외 {len(names) - 5}개" if len(names) > 5 else "")
             kw["n"] = len(names)
             if code == "min_mcap_missing":
                 kw["min"] = usd_ko(float(kw["min"]))
-            else:  # 설정(mcap_fallback_max_days)을 바꿔도 문구가 맞게 원문의 일수로: 730 → '2년'
+            elif code == "mcap_estimated":  # 설정(mcap_fallback_max_days)을 바꿔도 문구가 맞게 원문의 일수로: 730 → '2년'
                 days = int(kw.get("days") or 0)
                 kw["days"] = f"{days // 365}년" if days and days % 365 == 0 else f"{days}일"
+        elif code == "market_cap_missing":  # 예전 원문(후보 전체에 시가총액 자료 없음)은 종목 목록이 없어 그 사실만 적는다 (make 가 채우지 못한 템플릿 대신 text 를 쓴다)
+            kw["text"] = "시가총액 자료가 있는 후보가 하나도 없었습니다."
         if code == "must_include_no_metric":  # 적자 여부는 PER 에서만 안다 (배당·ROE·모멘텀은 그냥 자료 없음)
             kw["why"] = "(적자이거나 재무 자료 없음)" if kw.get("why") else ""
         if code == "must_include_out_of_range":

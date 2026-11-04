@@ -27,6 +27,21 @@ THEME_KO = {"tobacco": "담배", "gambling": "도박", "fossil_fuels": "화석�
 VOL_PREF_KO = {"low": "낮음", "medium": "중간", "high": "높음"}
 
 
+# 근거 출처 코드 → 사람이 읽는 이름 (023: 'GOOGLE_RSS', 029: 'NAVER_NEWS' 가 출처 칸·문장에 그대로 보였다)
+NEWS_SOURCE_KO = {"GOOGLE_RSS": "구글 뉴스", "NAVER_NEWS": "네이버 뉴스", "NEWSAPI": "NewsAPI"}
+FACT_SOURCE_KO = {"valuation_daily": "팀 데이터베이스(가치평가)", "price_daily": "팀 데이터베이스(가격)", "backtest": "백테스트 계산"}
+
+
+def sub_industry_ko(name: str | None) -> str:
+    """GICS 세부산업 이름(영어·코드) → 한국어 (028: 리포트 기업 카드에 'Transaction & Payment Processing Services' 가 그대로 보였다). 모르면 그대로."""
+    if not name:
+        return name or ""
+    from backend.pipeline.gics import load_taxonomy
+
+    node = load_taxonomy().resolve(str(name), level=4)
+    return node.name_ko if node else str(name)
+
+
 def theme_ko(theme: str | None) -> str:
     """제외 테마 id(LLM·사용자가 정한 영어 이름) → 한국어. 모르면 밑줄만 띄어 쓴다."""
     t = str(theme or "")

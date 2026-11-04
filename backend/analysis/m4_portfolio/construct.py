@@ -84,7 +84,8 @@ def construct(
     model, base = build_market_model(view, tickers, req, desc, settings, request_id=req["request_id"])
     tk = model["tickers"]
     res = ConstructResult(as_of=str(view.as_of), mode=mode, market_model=model, baselines=base)
-    res.warnings += [n for n in model.get("notes", []) if n.startswith("dropped") or n.startswith("caps allow")]
+    res.warnings += [n for n in model.get("notes", []) if n.startswith("dropped") or n.startswith("caps allow")
+                     or (n.startswith("market cap missing for") and _cap_floored(model, base))]  # fmt: skip
     if not intent["news_tilt"]["enabled"]:
         res.fallback, res.fallback_reason_ko = True, "뉴스 반영을 꺼서 기준 비중을 사용"
         return res
@@ -110,3 +111,12 @@ def construct(
         res.fallback = True
         res.fallback_reason_ko = "뉴스 뷰 비중 최적화가 수렴하지 않아 기준 비중을 사용"
     return res
+
+
+def _cap_floored(model: dict[str, Any], base: dict[str, Any]) -> bool:
+    """시가총액 자료가 없어 시가총액비중이 0 인 종목이 시가총액비중 구성에서 다른 종목보다 적게 담겼나 → 사용자 공지 (025: 필수 포함 XOM 이
+    최소 비중 1% 에 남는 몫만 더한 1.4~1.7%, 더 작은 CVX 는 상한 25% 였는데 공지가 없었다). 모두 비면 동일비중으로 돌아가고(0 인 종목 없음),
+    모두 상한에 걸려 비중이 같으면 회사 크기와 무관하게 같은 비중이라 알릴 것이 없다."""
+    zero = [t for t, w in (model.get("cap_weights") or {}).items() if not w]
+    mc = next((p["weights"] for p in base.get("portfolios", []) if p.get("id") == "market_cap"), None)
+    return bool(zero and mc) and min(mc.get(t, 0.0) for t in zero) < max(mc.values()) - 1e-6

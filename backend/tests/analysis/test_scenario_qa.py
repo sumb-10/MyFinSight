@@ -1560,7 +1560,7 @@ def test_matched_note_advice_depends_on_why_no_plan_was_built():
 
     within = _matched_note(R(-0.08))
     # 목표가 기준 낙폭(8.0%)보다 작아져야 생기고, 그래도 하한에 막힐 수 있어 '만들 수 있습니다' (검토: '만들어집니다' 는 단정)
-    assert "만들 필요가 없었습니다" in within and "목표가 8.0%보다 작아지도록" in within and within.endswith("다시 분석하면 만들 수 있습니다")
+    assert "만들 필요가 없었습니다" in within and "목표가 8.0%보다 작아지도록" in within and within.endswith("다시 분석하면 만들 수 있습니다.")
     floor = _matched_note(R(-0.40))
     assert "만들지 않았습니다" in floor and "더 엄격해져 역시 만들 수 없으니" in floor and "다시 분석하면" not in floor
 
@@ -1740,7 +1740,7 @@ def test_rebalance_targets_tell_static_from_walkforward():
     from backend.analysis.m5_backtest_report.report_blocks import _mcap_limitation
 
     assert _rebalance_targets_ko({"mode": "static"}).startswith("정적 구성") and "다시 계산하지 않음" in _rebalance_targets_ko({"mode": "static"})
-    assert _rebalance_targets_ko({"mode": "walkforward"}).startswith("walk-forward")
+    assert _rebalance_targets_ko({"mode": "walkforward"}).startswith("walk-forward 방식이라") and ": " not in _rebalance_targets_ko({"mode": "walkforward"})
     assert "최대 2년 전 기준" in _mcap_limitation({"parameters": {"market": {"mcap_fallback_max_days": 730}}})
 
 
@@ -1873,3 +1873,142 @@ def test_round10_report_notes_and_facts(monkeypatch):
           "portfolio": {"targets": {"baseline": {"id": "inverse_volatility"}}}, "parameters": {"backtest": {}}}  # fmt: skip
     mn = RP._matched_note(mR)
     assert "역변동성비중 11.1%" in mn and "11.8%" in mn and "기준 구성의 과거 최대낙폭(11.8%)" not in mn
+
+
+def _budget_bound_case():
+    """세 종목이 한 예산(합계 100%)을 나눠 갖고 상관이 높아 최소분산 비중이 A 1.64 · B −0.11 · C −0.53 인 경우 (026 정보기술 4종목과 같은 구조)."""
+    vol = np.array([0.20, 0.30, 0.40])
+    corr = np.full((3, 3), 0.9)
+    np.fill_diagonal(corr, 1.0)
+    cov = np.outer(vol, vol) * corr
+    wb = np.full(3, 1 / 3)
+    pi = 2.5 * cov @ wb
+    return cov, wb, pi
+
+
+def test_up_view_never_lowers_weight_when_the_budget_binds():
+    """026: 정보기술 4종목이 섹터 상한 65% 를 나눠 갖는데 'AVGO 오름(약)' 날 AVGO 비중이 −11.5%p (최소분산 비중이 1 을 넘는 종목은
+    예산이 묶이면 오름 뷰에 오히려 준다). 뷰가 모두 오름인 종목은 기준 비중 아래로, 모두 내림인 종목은 위로 가지 않는다."""
+    cov, wb, pi = _budget_bound_case()
+    mu, _ = P.black_litterman(cov, pi, np.array([[1.0, 0, 0]]), np.array([pi[0] + 0.02]), np.array([0.5]), 0.05)
+    free, _ = P.optimize_utility(mu, cov, 2.5, wb, 0.9, 1.0, ["X"] * 3, 0.2, 1.0, min_weight=0.01)
+    assert free[0] - wb[0] < -0.03  # 경계가 없으면 오름 뷰 종목이 준다 (원인 재현)
+    up = P.view_directions([{"type": "absolute", "long": ["A"], "short": [], "direction": "up"}], ["A", "B", "C"])
+    w, act = P.optimize_utility(mu, cov, 2.5, wb, 0.9, 1.0, ["X"] * 3, 0.2, 1.0, min_weight=0.01, view_dir=up)
+    assert w[0] >= wb[0] - 1e-9 and "view_hold:0" in act and abs(w.sum() - 1) < 1e-6
+    rel = [{"type": "relative", "long": ["A"], "short": ["C"]}, {"type": "absolute", "long": ["C"], "short": [], "direction": "up"}]
+    assert P.view_directions(rel, ["A", "B", "C"]).tolist() == [1, 0, 0]  # C 는 엇갈림(상대 short + 절대 up) → 제약 없음
+    dn = P.view_directions([{"type": "absolute", "long": ["B"], "short": [], "direction": "down"}], ["A", "B", "C"])
+    assert dn.tolist() == [0, -1, 0]
+
+
+def test_build_bl_keeps_view_direction_and_labels_the_hold(monkeypatch):
+    cov, wb, pi = _budget_bound_case()
+    tk = ["A", "B", "C"]
+    mm = {"tickers": tk, "cov": cov.tolist(), "ann_vol": dict(zip(tk, np.sqrt(np.diag(cov)).tolist(), strict=True)),
+          "implied_returns": dict(zip(tk, pi.tolist(), strict=True)), "delta": 2.5, "tau": 0.05, "shrinkage": {}, "invested_total": 1.0}  # fmt: skip
+    base = {"chosen_baseline": "equal_weight", "portfolios": [{"id": "equal_weight", "weights": dict(zip(tk, wb.tolist(), strict=True)), "cash_weight": 0.0}]}
+    monkeypatch.setattr(BL, "sector_lists", lambda desc, t: (["45"] * 3, ["IT"] * 3))
+    v = {"type": "absolute", "long": ["A"], "short": [], "direction": "up", "strength": "weak", "confidence": 0.5, "evidence_ids": ["ev1", "ev2"], "rationale_ko": "r"}
+    _quantify(v, mm, tk, PS, [], "s")
+    req = {"request_id": "r", "constraints": {"max_weight_per_stock": 0.9, "max_weight_per_sector": 1.0}}
+    intent = {"news_tilt": {"enabled": True, "max_tilt_per_stock": 0.2}}
+    ports, _, _ = BL.build_bl(mm, base, [{"scenario_id": "s", "title_ko": "t", "narrative_ko": "n", "views": [v]}], req, intent, None, AnalysisSettings())
+    assert ports[0]["delta_vs_baseline"]["A"] >= -1e-6 and "view_direction_hold:A" in ports[0]["active_constraints"]
+
+
+def test_view_clip_never_reverses_direction():
+    """026 검토: 절대 뷰 범위(+100%)로 자를 때 사전 기대가 이미 그보다 크면 '오름' 뷰가 사전 기대보다 낮아져 내림 뷰가 된다 → 사전 기대에 멈춘다."""
+    mm, _ = _mm()
+    mm = {**mm, "implied_returns": {**mm["implied_returns"], "T3": 1.2}}
+    w: list[str] = []
+    v = {"type": "absolute", "long": ["T3"], "short": [], "direction": "up", "strength": "strong"}
+    _quantify(v, mm, mm["tickers"], PS, w, "s")
+    assert v["expected_return_annual"] == pytest.approx(1.2) and any("kept at the prior" in x for x in w)
+
+
+def test_market_model_window_names_the_late_listing_and_report_shows_actual_days():
+    """023: 카카오뱅크(2021-08 상장) 때문에 공분산 창이 487거래일이었는데 계산 조건 표는 설정값 '756거래일' 을 보였다."""
+    from backend.analysis.m5_backtest_report.report_blocks import SHRINK_KO, _lookback_ko
+
+    idx = pd.bdate_range("2020-01-01", periods=400)
+    rng = np.random.default_rng(0)
+    px = pd.DataFrame({"OLD": 100 * np.exp(np.cumsum(rng.normal(0, 0.01, 400))), "NEW": 100 * np.exp(np.cumsum(rng.normal(0, 0.01, 400)))}, index=idx)
+    px.loc[idx[:150], "NEW"] = np.nan
+    mm = P.estimate_market_model(px, ["OLD", "NEW"], lookback_days=300, min_history_days=100, shrinkage="ledoit_wolf")
+    assert mm["window"]["days"] < 300 and mm["window"]["limited_by"] == ["NEW"]
+    full = P.estimate_market_model(px.ffill().bfill(), ["OLD", "NEW"], lookback_days=300, min_history_days=100, shrinkage="ledoit_wolf")
+    assert "limited_by" not in full["window"]
+    R = {"selection": {"table": [{"ticker": "NEW", "name": "카카오뱅크"}]}}
+    txt = _lookback_ko(R, {**mm["window"], "requested_days": 300}, {"lookback_days": 300})
+    assert f"{mm['window']['days']}거래일 (설정 300거래일보다 짧음: 카카오뱅크(NEW)의 상장 뒤 가격만 있음)" in txt
+    assert SHRINK_KO["ledoit_wolf"] == "Ledoit-Wolf"
+
+
+def test_round11_report_blocks_notes():
+    """023: 수정주가 12건을 이어 붙였는데 자료 품질 표는 이상 없음처럼 보였다. 026: 섹터 상한 설명이 시작일(AMAT)만 나오고 지금 구성(WDC)은 없었다.
+    024: δ 가 시장 추정 × 낙폭 배수인데 '시장 자료로 추정' 이라고만 썼다."""
+    from backend.analysis.m5_backtest_report.report_blocks import _delta_src_ko, data_quality_table, infeasibility_callout
+
+    t = data_quality_table({"data_quality": {"expected_days": 775, "usable": 12, "warnings": ["배당 보정이 하루~며칠 빠진 수정주가 12건을 앞뒤 계수로 이어 붙였습니다.", "internal note"]}})
+    row = next(r for r in t["rows"] if r["k"] == "가격 보정")
+    assert "12건" in row["v"] and "internal" not in row["v"]
+    ov = lambda tk: {"tickers": [tk], "n_in_sector": 4, "note_ko": "정보기술 종목이 4개로 섹터 상한 65%를 나눠 갖습니다."}  # noqa: E731
+    c = infeasibility_callout({"selection": {"backtest_as_of": {"as_of": "2023-10-09", "sector_overflow": ov("AMAT")}, "as_of_now": {"as_of": "2026-10-09", "sector_overflow": ov("WDC")}}})
+    assert "백테스트 시작일(2023-10-09)" in c["text_ko"] and "분석 기준일(2026-10-09)" in c["text_ko"] and "WDC" in c["text_ko"]
+    src = _delta_src_ko({"delta_source": "market_implied", "delta_market": 7.5749, "delta_base": 1.5, "delta_multiplier": 1.0, "delta_dd_multiplier": 0.8})
+    assert src == "시장 추정치 7.575 × 낙폭 배수 0.8"
+    assert _delta_src_ko({"delta_source": "market_implied", "delta_market": 2.0, "delta_base": 1.5, "delta_multiplier": 1.0, "delta_dd_multiplier": 1.0}) == "시장 자료로 추정"
+
+
+def test_walkforward_changes_follow_the_chosen_plan():
+    """024: 추천은 시가총액비중 walk-forward 인데 리밸런싱 변화 문장은 기준(역변동성) 구성의 숫자(EIX −1.0%p)를 썼다."""
+    from backend.analysis.m5_backtest_report import report as RP
+    from backend.analysis.m5_backtest_report import report_blocks as RB
+
+    wf = {"portfolios": [{"id": "wf_inverse_volatility", "kind": "template", "weights_by_date": {"2026-07-01": {"EIX": 0.10}, "2026-10-01": {"EIX": 0.09}}},
+                         {"id": "wf_market_cap", "kind": "template", "weights_by_date": {"2026-07-01": {"EIX": 0.10}, "2026-10-01": {"EIX": 0.094}}}]}  # fmt: skip
+    R = {"portfolio": {"walkforward": wf, "targets": {"baseline": {"id": "inverse_volatility"}}},
+         "backtest": {"portfolios": [{"id": "wf_market_cap", "kind": "template"}, {"id": "market_cap", "kind": "template"}, {"id": "dd_match_wf_market_cap", "kind": "matched", "base_id": "wf_market_cap"}]}}  # fmt: skip
+    assert RB.walkforward_weight_changes(R, chosen="wf_market_cap") == {"2026-10-01": ["EIX -0.6%p"]}
+    assert RB.walkforward_weight_changes(R, chosen="dd_match_wf_market_cap") == {"2026-10-01": ["EIX -0.6%p"]}
+    assert RB.walkforward_weight_changes(R, chosen="market_cap") == {"2026-10-01": ["EIX -1.0%p"]}
+    assert RP._wf_changes_label(R, "wf_market_cap") == "시가총액비중 — 선택안"
+    assert RP._wf_changes_label(R, "market_cap") == "역변동성비중 — 기준 비중 구성, 선택안과 다름"
+
+
+def test_news_effect_explains_views_on_pinned_stocks():
+    """023: 금융 섹터 상한 70% + 전액 투자라 KT&G·KT 가 모든 날 15% 에 묶여, 두 종목 뷰가 그 종목 비중을 한 번도 못 바꿨는데 설명이 없었다."""
+    from backend.analysis.m5_backtest_report.report_blocks import news_effect
+
+    sw = {"2024-01-02": {"033780.KS": 0.15, "030200.KS": 0.15, "105560.KS": 0.35, "055550.KS": 0.35}}
+    bw = {"2024-01-02": {"033780.KS": 0.15, "030200.KS": 0.15, "105560.KS": 0.40, "055550.KS": 0.30}}
+    views = {"2024-01-02": [{"long": ["030200.KS"], "short": []}, {"long": ["033780.KS"], "short": ["030200.KS"]}, {"long": ["105560.KS"], "short": []}]}
+    head = {"cagr": 0.1, "excess_cagr": 0.0, "max_drawdown": -0.1}
+    R = {"backtest": {"portfolios": [{"id": "wf_bl_news", "kind": "black_litterman", "views_by_date": views, "weights_by_date": bw, "headline": head},
+                                     {"id": "wf_equal_weight", "kind": "template", "weights_by_date": sw, "headline": head}], "period": {}},
+         "portfolio": {"targets": {"baseline": {"id": "equal_weight"}}}, "request": {"constraints": {"max_weight_per_stock": 0.15}}, "intent": {"news_tilt": {"enabled": True}},
+         "selection": {"table": [{"ticker": "033780.KS", "name": "KT&G"}, {"ticker": "030200.KS", "name": "KT"}]}}  # fmt: skip
+    ne = news_effect(R)
+    assert ne["n_dates_capped"] == 0
+    assert ne["capped_note_ko"].startswith("뉴스 뷰 3개 중 2개는 뷰가 걸린 종목(KT·KT&G)이 종목당 상한(15%)에 묶여 있어")
+
+
+def test_round11_collect_and_report_texts(monkeypatch):
+    """025: 지표 없는 필수 포함 CVX·XOM 에 순위 7·8 을 줬고, 깔때기 '(필수 포함 2개 포함)' 을 서술이 빠뜨려 '지표를 계산할 수 있는 17개' 라고 썼다.
+    024: 제외 테마로 뺀 유틸리티 13개 이름이 어디에도 없었다. 023: 'GOOGLE_RSS' 가 문장에 나왔다. 027: 맞춤안(주식 44.6%) 옆 머리말이 '85%를 배분합니다'."""
+    from backend.analysis.m5_backtest_report import collect as C
+    from backend.analysis.m5_backtest_report import report as RP
+
+    rows = {"FANG": {"metric_value": 0.05}, "CVX": {"metric_value": float("nan")}, "XOM": {"metric_value": None}, "KMI": {"metric_value": 0.06}}
+    assert C.metric_rank(rows, asc=False) == {"KMI": 1, "FANG": 2}
+    ex = [{"ticker": t, "name": n, "theme_ko": "화석연료"} for t, n in [("AEE", "Ameren"), ("ATO", "Atmos"), ("CMS", "CMS"), ("CNP", "CenterPoint"), ("D", "Dominion"), ("DTE", "DTE")]]
+    assert C._ex_theme_ko(ex) == " · 제외 테마(화석연료)로 뺌 6개: Ameren, Atmos, CMS, CenterPoint, Dominion 외 1개" and C._ex_theme_ko([]) == ""
+    nw = RP._shown_news_window({"window": ["2023-07-17", "2023-07-31"], "by_source": {"GOOGLE_RSS": 62, "NAVER_NEWS": 3}, "by_event_type": {"buyback": 4}})
+    assert nw["by_source"] == {"구글 뉴스": 62, "네이버 뉴스": 3} and nw["by_event_type"] == {"자사주 취득·처분 결정": 4} and nw["window"] == ["2023-07-17", "2023-07-30"]
+    R = {"intent": {"interpretation": {"summary_ko": "투자 비율 85%를 배분합니다."}}, "request": {"constraints": {"min_cash_ratio": 0.15, "num_holdings": {"target": 10, "min": 7}}}}
+    monkeypatch.setattr(RP.B, "current_composition", lambda R_, c: ({"A": 0.446}, 0.554, "낙폭 맞춤안"))
+    assert RP._subtitle_ko(R, "dd_match_inverse_volatility") == "요청: 투자 비율 85%를 배분합니다."
+    monkeypatch.setattr(RP.B, "current_composition", lambda R_, c: ({f"T{i}": 0.085 for i in range(10)}, 0.15, "역변동성비중"))
+    assert RP._subtitle_ko(R, "inverse_volatility") == "투자 비율 85%를 배분합니다."
+    assert RP._holdings_vs_request(R, "inverse_volatility") == "지금 구성은 10종목으로 목표 10개와 같고, 최소 7개보다 3개 많습니다."

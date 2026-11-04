@@ -76,9 +76,17 @@ def _drift_msg_ko(kind: str, comp: dict[str, Any], cap: float, drift_tol: float,
     head = f"리밸런싱 사이 최대 {what} 비중 {top:.1%}" + (f"({who if kind == 'stock' else sector_ko(who)})" if who else "")
     days, n = int(comp.get(f"days_above_{kind}_cap") or 0), comp.get("n_days")
     when = f"{n}거래일 중 {days}일" if n else f"{days}일"
-    lim = f"상한의 {1 + drift_tol:g}배" + (f", {cap * (1 + drift_tol):.1%}" if cap * (1 + drift_tol) < 1 - 1e-9 else "")  # 100% 이상이면 숫자는 뜻이 없다 (021: '106.2%')
+    no_line = cap * (1 + drift_tol) >= 1 - 1e-9  # 허용 폭이 100% 이상이면 이 점검은 걸릴 수 없다
+    lim = f"상한의 {1 + drift_tol:g}배" + ("" if no_line else f", {cap * (1 + drift_tol):.1%}")  # 100% 이상이면 숫자는 뜻이 없다 (021: '106.2%')
     if over:
-        return f"{head} — 상한 {_cap_pct(cap)}를 넘은 날이 {when}이고 허용 폭({lim})도 넘음 ({', '.join(names)}). 리밸런싱 주기를 줄이면 완화됩니다"
+        tol_days = comp.get(f"days_above_{kind}_tol")
+        if tol_days is None:  # 허용 폭을 넘은 날 수가 없는 예전 결과: 예전 문구
+            return f"{head} — 상한 {_cap_pct(cap)}를 넘은 날이 {when}이고 허용 폭({lim})도 넘음 ({', '.join(names)}). 리밸런싱 주기를 줄이면 완화됩니다"
+        # 두 날 수를 따로 (031: '상한 10%를 넘은 날이 754거래일 중 747일이고 허용 폭(12.5%)도 넘음' 을 서술이 '12.5% 를 747일 넘었다' 로 옮겼다. 12.5% 를 넘은 날은 90일)
+        beyond = f"허용 폭({lim})을 넘은 날은 {int(tol_days)}일" if tol_days else f"허용 폭({lim})은 0.05%p 안쪽으로만 넘음"
+        return f"{head} — 상한 {_cap_pct(cap)}를 넘은 날이 {when}, {beyond} ({', '.join(names)}). 리밸런싱 주기를 줄이면 완화됩니다"
+    if days and no_line:  # 031: 섹터 상한 90% 면 허용 폭이 112.5% 라 늘 통과인데 '허용 폭 안' 이라 써서 서술이 '허용 폭 안이었습니다' 라고 했다
+        return f"{head} — 상한 {_cap_pct(cap)}를 넘은 날이 {when} (허용 폭이 100% 이상이라 이 점검으로는 거르지 않음)"
     if days:
         return f"{head} — 상한 {_cap_pct(cap)}를 넘은 날이 {when} 있었지만 허용 폭({lim}) 안"
     return f"{head} — 상한 {_cap_pct(cap)} 안에 머묾"
@@ -156,7 +164,8 @@ def evaluate_checks(p, crit, n_days, expected_rb, sector_of, drift_tol, short_wi
         expected = 1.0 - min_cash
         gap = max(0.0, expected - invested)
         ok = gap <= (1 - min_inv) + 1e-6
-        msg = f"투자 {invested:.0%}, 현금 {1 - invested:.0%}" + (f" (요청한 최소 현금 {min_cash:.0%} 포함)" if min_cash > 1e-6 else "")
+        # 보이는 값은 0~100% 로 (030: 투자 비율 1.000003 이 '투자 100%, 현금 -0%' 로 보였다)
+        msg = f"투자 {min(invested, 1.0):.0%}, 현금 {max(0.0, 1 - invested):.0%}" + (f" (요청한 최소 현금 {_cap_pct(min_cash)} 포함)" if min_cash > 1e-6 else "")
         if not ok:  # 원인을 사실대로(common/capacity), 백테스트 시작일 구성이라고 밝힌다 (011: 섹터 상한 100% 인데 '종목·섹터 상한 때문' 이라 썼고, 지금 구성의 현금처럼 읽혔다)
             cnt: dict[str, int] = {}
             for t, x in p["target_weights"].items():
@@ -167,6 +176,15 @@ def evaluate_checks(p, crit, n_days, expected_rb, sector_of, drift_tol, short_wi
             cause = cap_cause_ko(lim, stock_cap, sector_cap, clause=True)
             msg += (f" — 백테스트 시작일 구성은 {cause} {gap:.0%}를 더 넣지 못했습니다. {cap_fix_ko(lim)}" if cause
                     else f" — 백테스트 시작일 구성은 {gap:.0%}를 더 넣지 못했습니다 (종목·섹터 상한 때문은 아닙니다)")  # fmt: skip
+        # 리밸런싱 사이에 현금이 최소 현금 아래로 내려간 날 (031: 모두 에너지 종목이라 섹터 비중이 90% 를 넘은 565일은 현금이 10% 아래였는데
+        # 서술은 리밸런싱일 목표대로 '현금 10.0%' 라고만 했다)
+        low_days = int(comp.get("days_cash_below_min") or 0)
+        if min_cash > 1e-6 and low_days > 0:
+            lo, lo_d, nd = comp.get("min_cash_weight"), comp.get("min_cash_date"), comp.get("n_days")
+            rebal = int((m.get("trading") or {}).get("n_rebalances") or 0) > 1  # 시작일 1회뿐(매수 후 보유)이면 다시 맞추는 날이 없다
+            low = (f"최저 {max(0.0, float(lo)):.1%}" + (f"({lo_d})" if lo_d else "") + "까지 내려가 ") if lo is not None else ""
+            msg += (f" · {'리밸런싱 사이 ' if rebal else ''}현금은 {low}최소 현금 {_cap_pct(min_cash)}보다 낮았던 날이 " + (f"{nd}거래일 중 {low_days}일" if nd else f"{low_days}일")
+                    + (" (리밸런싱 때 다시 맞춤)" if rebal else " (시작 뒤 리밸런싱이 없어 다시 맞추지 않음)"))  # fmt: skip
         cks.append(check("R9", "투자 비율", "info", ok, invested, round(expected - (1 - min_inv), 6), msg))  # fmt: skip
     # 코드 자체 점검 (사용자 표 밖)
     integ = []

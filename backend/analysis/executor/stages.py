@@ -179,7 +179,7 @@ def st_targets(ctx: RunContext) -> str:
     # 10 단계 구성은 백테스트 시작일의 것 → 사용자 공지에 시점을 붙인다 (예전에는 '현금 50%' 공지가 날짜 없이 나와 지금 구성 얘기로 읽혔다, 002)
     ctx.warn_all("10_targets", [f"start@{as_of}: {w}" for w in res.warnings])
     _warn_optimizer(ctx, "10_targets", res.bl_portfolios)
-    return f"비중 규칙 {len(res.baselines['portfolios'])}개 + 뉴스 반영 구성 {len(bl_ok)}개 ({'뉴스 뷰 적용' if bl_ok else '기준 비중 유지'})"
+    return f"비중 규칙 {len(res.baselines['portfolios'])}개 + 뉴스 반영 구성 {len(bl_ok)}개 ({_news_effect_ko(bl_ok, res.baseline_weights)})"
 
 
 def st_walkforward(ctx: RunContext) -> str:
@@ -288,7 +288,8 @@ def st_forward(ctx: RunContext) -> str:
     ctx.outputs["10f_forward_portfolios"] = out
     ctx.warn_all("10f_current", list(res.warnings), dates=[str(as_of)])
     _warn_optimizer(ctx, "10f_current", res.bl_portfolios, dates=[str(as_of)])
-    return f"기준일 {as_of} 현재 구성: 템플릿 {len(templates)} + BL {len(ports)}"
+    # 10 단계와 같은 규칙: 뉴스 뷰가 비중을 실제로 바꿨는지까지 (029: 다섯 세트 모두 기준 비중과 같았는데 'BL 5' 만 적었다)
+    return f"기준일 {as_of} 현재 구성: 비중 규칙 {len(templates)}개 + 뉴스 반영 구성 {len(ports)}개 ({_news_effect_ko(ports, res.baseline_weights)})"
 
 
 # ───────────────────────── bucket 3·4: 백테스트·검증 ─────────────────────────
@@ -357,6 +358,23 @@ def _forced_filter_notes(cand: dict[str, Any], cons: dict[str, Any], keep: set[s
         if parts:
             out.append(f"must_include {c['ticker']}: below candidate filters ({'; '.join(parts)}), kept")
     return out
+
+
+def _news_effect_ko(ports: list[dict[str, Any]], base: dict[str, float]) -> str:
+    """구성 요약의 뉴스 뷰 효과. '뉴스 뷰 적용' 은 어느 세트든 기준 비중에서 1e-4 넘게 움직였을 때만
+    (029: 모든 종목이 상한 10% 라 다섯 세트 모두 기준 비중과 같았는데(차이 최대 1e-6) '뉴스 뷰 적용' 이라고 했다). 10w 의 '비중을 바꾼 날' 과 같은 기준."""
+    if not ports:
+        return "기준 비중 유지"
+
+    def moved(p: dict[str, Any]) -> bool:
+        w = p.get("weights") or {}
+        return max((abs(float(w.get(t, 0.0)) - float(base.get(t, 0.0))) for t in {*w, *base}), default=0.0) > 1e-4
+
+    if any(moved(p) for p in ports):
+        return "뉴스 뷰 적용"
+    # 상한에 묶였다는 말은 최적화가 상한에 걸렸다고 기록한 때만 (그 밖의 이유로 안 움직였으면 이유를 지어내지 않는다)
+    caps = any(str(a).startswith(("tilt_or_stock_cap:", "sector_cap:")) for p in ports for a in p.get("active_constraints") or [])
+    return "뉴스 뷰는 있었지만 " + ("상한에 묶여 " if caps else "") + "기준 비중과 같음"
 
 
 def _warn_optimizer(ctx: RunContext, stage: str, ports: list[dict[str, Any]], *, dates: list[str] | None = None) -> None:

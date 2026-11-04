@@ -34,6 +34,10 @@ from backend.analysis.schemas.request import UNIVERSE_MARKET
 from backend.analysis.settings import AnalysisSettings
 
 KIND_ORDER = {"feasibility": 0, "missing": 1, "conflict": 2, "ambiguous": 3, "preference": 4}
+# 답에 따라 고르는 종목 자체가 바뀌는 항목 (선정 기준·유니버스·테마·제외·필수 포함). 이 항목의 충돌(conflict)·빈 값(missing) 질문은
+# 점검 결과로 만든 질문(feasibility: 섹터 상한·종목 수·시작일)보다 먼저 묻는다 — 점검은 지금 조건의 예상 선정 종목으로 계산하기 때문 (024)
+SELECTION_FIELDS = frozenset({"strategy_preference.template", "constraints.universe", "natural_language.idea", "constraints.exclude_sectors",
+                              "constraints.exclude_themes", "constraints.exclude_tickers", "constraints.must_include_tickers"})  # fmt: skip
 
 
 def _dicts(messages: list[Any]) -> list[dict[str, str]]:
@@ -601,6 +605,10 @@ class DialogService:
         if not valid:
             return None
         valid.sort(key=lambda p: (p.priority, KIND_ORDER.get(p.kind, 9)))
+        # 점검 질문이 첫 순서여도 고르는 종목을 바꾸는 충돌이 남아 있으면 그것을 먼저 묻는다 (우선순위와 관계없이). 점검 질문은 다음 턴에 확정된 기준으로 다시 계산된다
+        # (024: 저변동성 기준 예상 종목 '유틸리티 7개, 부동산 3개' 로 섹터 상한을 물은 뒤 '아이디어대로: 고배당' 을 골라 부동산 8개·유틸리티 2개가 됐다. 029·032 도 같은 순서)
+        if valid[0].kind == "feasibility":
+            return next((p for p in valid if p.kind in ("conflict", "missing") and p.field in SELECTION_FIELDS), valid[0])
         return valid[0]
 
     # ───────────────────────── 보조 ─────────────────────────

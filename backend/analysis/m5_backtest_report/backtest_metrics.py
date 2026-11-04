@@ -191,8 +191,22 @@ def linked_contribution(w: pd.DataFrame, r: pd.DataFrame, idx: pd.Series, values
     return contrib, float(R - contrib.sum())
 
 
+def cash_floor(sec_w: pd.DataFrame, min_cash: float = 0.0, noise: float = 5e-4) -> dict:
+    """현금 비중(1 − Σ 종목 비중)의 최저값·그날과, 사용자가 정한 최소 현금보다 낮았던 날 수. min_cash 가 0 이면 날 수는 세지 않는다(None).
+
+    bt 의 security_weights 는 현금까지 합친 평가액 대비라 1 − Σ 가 그날 현금 몫이다 (적립일에도: 적립금 중 목표 밖 몫은 현금으로 남는다).
+    031: 모두 에너지 종목이라 섹터 비중이 90% 를 넘은 날은 현금이 최소 10% 아래였는데(754거래일 중 565일, 최저 7.56%) 리밸런싱일 목표만 보고 '현금 10%' 라고 썼다.
+    noise(0.05%p) 안은 리밸런싱일 체결·반올림 잡음이라 세지 않는다."""
+    cash = 1.0 - sec_w.fillna(0.0).sum(axis=1)
+    if not len(cash):
+        return {"min_cash_weight": None, "min_cash_date": None, "days_cash_below_min": None}
+    low, mc = cash.idxmin(), float(min_cash or 0.0)
+    return {"min_cash_weight": _r(cash.min()), "min_cash_date": str(low.date()) if isinstance(low, pd.Timestamp) else str(low),
+            "days_cash_below_min": int((cash < mc - noise).sum()) if mc > 1e-9 else None}  # fmt: skip
+
+
 def composition_metrics(sec_w: pd.DataFrame, asset_px: pd.DataFrame, targets: dict, sectors: dict, max_stock, max_sector, drift_tol: float, idx: pd.Series,
-                        values: pd.Series | None = None, flows: pd.Series | None = None, targets_by_date: dict | None = None):  # fmt: skip
+                        values: pd.Series | None = None, flows: pd.Series | None = None, targets_by_date: dict | None = None, min_cash: float = 0.0):  # fmt: skip
     names = list(targets) + [c for v in (targets_by_date or {}).values() for c in v if c not in targets]
     cols = [c for c in dict.fromkeys(names) if c in sec_w.columns]
     w = sec_w[cols].fillna(0.0)
@@ -223,7 +237,10 @@ def composition_metrics(sec_w: pd.DataFrame, asset_px: pd.DataFrame, targets: di
             "max_stock_weight": _r(st_max.max()) if len(st_max) else None, "max_stock_weight_ticker": str(st_max.idxmax()) if len(st_max) else None,
             "max_sector_weight": _r(sec_max.max()) if len(sec_max) else None, "max_sector_weight_sector": str(sec_max.idxmax()) if len(sec_max) else None,
             "days_above_stock_cap": int((w > max_stock + noise).any(axis=1).sum()), "days_above_sector_cap": int((sec_w_t > max_sector + noise).any(axis=1).sum()) if len(sec_max) else 0,
-            "n_days": int(len(w)),
+            # 허용 폭(상한 × (1 + drift_tol))을 넘은 날도 따로 (031: 상한 10% 를 넘은 747일과 허용 폭 12.5% 를 넘은 90일을 한 문장에 묶어 서술이 '12.5% 를 747일 넘었다' 고 읽었다)
+            "days_above_stock_tol": int((w > max_stock * (1 + drift_tol) + noise).any(axis=1).sum()),
+            "days_above_sector_tol": int((sec_w_t > max_sector * (1 + drift_tol) + noise).any(axis=1).sum()) if len(sec_max) else 0,
+            "n_days": int(len(w)), **cash_floor(sec_w, min_cash, noise),
             "ticker_contribution": {c: _r(contrib[c]) for c in cols}, "ticker_contribution_residual": _r(resid),
             "ticker_total_return": {c: _r(asset_px[c].iloc[-1] / asset_px[c].iloc[0] - 1) for c in cols},
             "breaches": sorted({f"stock_cap:{c}" for c in cols if (w[c] > max_stock * (1 + drift_tol)).any()}
@@ -357,7 +374,8 @@ def view_diagnostics_next_window(views_by_date, asset_px: pd.DataFrame, rb_dates
 
 # ───────────────────────── all ─────────────────────────
 def compute_all(raw, bench_idx, asset_px, targets, sectors, rebal_dates, rf, target_return, max_stock, max_sector, xirr_fn,
-                settings: BacktestSettings, baseline_idx=None, views=None, implied=None, as_of=None, end=None, targets_by_date=None):  # fmt: skip
+                settings: BacktestSettings, baseline_idx=None, views=None, implied=None, as_of=None, end=None, targets_by_date=None, min_cash: float = 0.0):  # fmt: skip
+    """min_cash = 요청한 최소 현금 비율 (0 이면 '최소 현금보다 낮았던 날' 을 세지 않는다)."""
     td = settings.trading_days
     idx, values, flows = raw["index"], raw["values"], raw["flows"]
     r = daily_returns(idx)
@@ -367,7 +385,7 @@ def compute_all(raw, bench_idx, asset_px, targets, sectors, rebal_dates, rf, tar
     dd_ = downside_deviation(r, rf, te_)
     var, cvar = var_cvar(mr)
     comp = composition_metrics(raw["security_weights"], asset_px, targets, sectors, max_stock, max_sector, settings.drift_tolerance, idx,
-                               values=raw.get("values"), flows=raw.get("flows"), targets_by_date=targets_by_date)  # fmt: skip
+                               values=raw.get("values"), flows=raw.get("flows"), targets_by_date=targets_by_date, min_cash=min_cash)  # fmt: skip
     m = {
         "return": {"total_return": _r(total_return(idx)), "cagr": _r(cg), "best_month": _r(mr.max()), "worst_month": _r(mr.min()),
                    "positive_months_ratio": _r((mr > 0).mean()), "rolling_12m": rolling_12m(idx, target_return, td)},
@@ -381,7 +399,8 @@ def compute_all(raw, bench_idx, asset_px, targets, sectors, rebal_dates, rf, tar
         # ticker_contribution_residual = 기간 수익률 − Σ 종목 기여 (수수료·적립일 처리). 종목→값 dict 에 가짜 종목으로 넣으면 보고서·해석이 종목으로 읽어서 여기 둔다
         "composition": {k: comp[k] for k in ["effective_n", "hhi", "top3_contribution_share", "sector_weights_avg", "max_weight_drift", "max_sector_drift", "breaches", "ticker_contribution_residual",
                                              "max_stock_weight", "max_stock_weight_ticker", "max_sector_weight", "max_sector_weight_sector", "days_above_stock_cap",
-                                             "days_above_sector_cap", "n_days"]},
+                                             "days_above_sector_cap", "days_above_stock_tol", "days_above_sector_tol", "n_days",
+                                             "min_cash_weight", "min_cash_date", "days_cash_below_min"]},
         "trading": trading_metrics(raw["transactions"], raw["turnover"], rebal_dates, values, settings.commission_bps),
         "stability": rolling_metrics(idx, rf, td),
     }  # fmt: skip
