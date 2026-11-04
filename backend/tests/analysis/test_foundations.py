@@ -148,7 +148,7 @@ def test_openai_llm_cache_and_retry(tmp_path):
     # 같은 메시지 -> 캐시 적중, 호출 없음
     assert llm.complete_json("02_intent", msgs) == {"ok": 1}
     assert client.n == 1 and llm.usage_summary()["cache_hits"] == 1
-    assert (tmp_path / "run" / "llm_usage.jsonl").read_text().count("\n") == 1
+    assert (tmp_path / "run" / "llm_usage.jsonl").read_text(encoding="utf-8").count("\n") == 1
     # 다른 대화(답 추가) -> 다른 키
     client.answers.append('{"ok": 2}')
     assert llm.complete_json("02_intent", [*msgs, {"role": "user", "content": "답: 모멘텀"}]) == {"ok": 2}

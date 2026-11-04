@@ -125,15 +125,41 @@ class Queue:
 
 
 def pid_alive(pid: int | None) -> bool:
+    """pid 의 프로세스가 살아 있는지. POSIX 는 신호 0 (보내지 않고 존재만 확인). Windows 는 신호 0 이 CTRL_C_EVENT 라
+    같은 콘솔의 프로세스에 Ctrl+C 를 보내 버리므로 OpenProcess + GetExitCodeProcess 로 확인한다."""
     if not pid:
         return False
     try:
+        if os.name == "nt":
+            return _pid_alive_nt(pid)
         os.kill(pid, 0)
         return True
     except OSError:
         return False
     except Exception:  # noqa: BLE001
         return False
+
+
+def _pid_alive_nt(pid: int) -> bool:
+    import ctypes
+    from ctypes import wintypes
+
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    STILL_ACTIVE = 259
+    ERROR_ACCESS_DENIED = 5
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.OpenProcess.restype = wintypes.HANDLE
+    k32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    k32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+    k32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    h = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not h:
+        return ctypes.get_last_error() == ERROR_ACCESS_DENIED  # 있지만 열 권한이 없는 프로세스 (POSIX 의 EPERM 과 같은 취급)
+    try:
+        code = wintypes.DWORD()
+        return bool(k32.GetExitCodeProcess(h, ctypes.byref(code))) and code.value == STILL_ACTIVE
+    finally:
+        k32.CloseHandle(h)
 
 
 def entry_to_dict(e: RunIndexEntry) -> dict[str, Any]:

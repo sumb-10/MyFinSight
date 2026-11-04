@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import fcntl
 import logging
 import os
 import sys
@@ -18,6 +17,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from backend.analysis.common import filelock
 from backend.analysis.common.llm import make_llm
 from backend.analysis.common.store import ComparisonStore, JsonStore, RequestStore
 from backend.analysis.executor.context import RunContext
@@ -125,7 +125,7 @@ def main(argv: list[str] | None = None) -> int:
     # /health 가 '일꾼 꺼짐'으로 잘못 보인다 (라운드 5 재실행에서 발견). 잠금을 얻은 뒤에만 pid 를 다시 쓴다.
     with open(lock_path, "a+") as fh:
         try:
-            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            filelock.lock(fh, blocking=False)
         except OSError:
             print("another worker holds the lock; exiting", file=sys.stderr)
             return 2

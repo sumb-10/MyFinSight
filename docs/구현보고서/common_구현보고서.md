@@ -1490,7 +1490,7 @@ JSONL의 비어 있지 않은 줄을 객체 목록으로 읽고 파일이 없으
 def locked(self, name: str) -> Iterator[None]: ...
 ```
 
-.locks 아래 이름별 파일을 열고 fcntl.flock 배타 잠금을 잡는 컨텍스트 관리자입니다. finally에서 잠금을 해제하며 사용자가 이 블록 안에서 읽기-수정-쓰기를 묶어야 합니다.
+.locks 아래 이름별 파일을 열고 배타 잠금을 잡는 컨텍스트 관리자입니다. 잠금은 common/filelock.py 가 OS 별로 처리합니다(맥·리눅스는 fcntl.flock, Windows 는 msvcrt.locking). finally에서 잠금을 해제하며 사용자가 이 블록 안에서 읽기-수정-쓰기를 묶어야 합니다.
 
 선언·진입 조건: `contextmanager`.
 
@@ -2393,7 +2393,7 @@ DB 구현은 [backend.db](../../backend/db/__init__.py), [읽기 확장](../../b
 <a id="verification"></a>
 ## 7. 오류·제약과 검증 근거
 
-파일 잠금은 fcntl 기반이므로 현재 실행 환경의 플랫폼 의존이 있습니다. JSON 원자 교체는 여러 파일·DB 쓰기를 한 번에 되돌리는 트랜잭션이 아닙니다. jsonschema가 없으면 JsonStore의 JSON Schema 검증은 생략됩니다.
+파일 잠금은 common/filelock.py 가 맥·리눅스(fcntl.flock)와 Windows(msvcrt.locking)를 나눠 처리합니다. Windows 는 잠근 바이트를 다른 프로세스가 읽지 못하므로 파일 내용(worker.lock 의 pid)과 겹치지 않는 파일 끝 너머 1바이트만 잠급니다. JSON 원자 교체는 여러 파일·DB 쓰기를 한 번에 되돌리는 트랜잭션이 아닙니다. jsonschema가 없으면 JsonStore의 JSON Schema 검증은 생략됩니다.
 
 LLM 캐시는 재현성을 돕지만 외부 모델의 영구 결정론을 보증하지 않습니다. 전송·내용·최종 문서 보정이 중첩되어 전체 호출 수가 '한 번 재시도'보다 많을 수 있습니다. 비용은 코드 단가표 기반 추정이고 호출 상한을 강제하는 예산 기능은 없습니다. stub 결과는 실제 분석 품질의 근거가 아닙니다.
 
