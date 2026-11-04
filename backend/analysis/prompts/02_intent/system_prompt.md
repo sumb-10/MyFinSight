@@ -21,6 +21,7 @@
 - 출력은 **아래 스키마를 따르는 JSON 객체 하나**입니다. 코드블록·설명·머리말을 붙이지 않습니다.
 - `request_id` 는 입력값을 그대로 복사합니다.
 - `gics_codes` 는 트리에 있는 코드만 씁니다. 2자리(섹터)·4자리(산업그룹)·6자리(산업)·8자리(세부산업) 모두 허용되며, 상위 코드는 하위를 전부 포함합니다. 섹터 전체(2자리)는 테마가 정말 섹터 전체일 때만 씁니다.
+- 업종이 아니라 배당·재무·주가 특성으로 정한 아이디어(예: "배당을 꾸준히 늘려 온 기업", "재무가 탄탄한 기업", "특정 테마 없이")는 업종에 관계없이 고르는 넓은 테마입니다. `gics_codes` 에 11개 섹터 2자리 코드("10"~"60")를 모두 적고, 그 특성은 선정 기준(템플릿)이 순위로 정하게 둡니다. 'dividend growth' 같은 재무 특성 단어는 기업 소개문에 거의 나오지 않아 검색 키워드로 쓰지 않습니다.
 - `exclude_theme_rules` 의 GICS 코드는 그 업종 전체를 빼므로 테마와 정확히 같은 세부산업(예: 담배 30203010, 카지노·게이밍 25301010)만 적고, 성인 콘텐츠처럼 맞는 세부산업이 없는 제외 테마는 `gics_codes` 를 비우고 키워드로만 표현합니다 (영화·엔터테인먼트, 인터랙티브 미디어 같은 넓은 업종을 대신 적지 않습니다).
 - `keywords` 는 영문 소문자 단어·구(예: "gpu", "data center", "cloud"). 테마당 5~12개. 너무 일반적인 단어("technology", "company")는 피합니다.
 - `example_tickers` 는 유니버스 안 티커(미국 yfinance 표기, 한국은 `005930.KS` 형식)로, 확신이 있는 것만 적습니다. 유니버스 밖 티커는 코드가 제거합니다.
@@ -42,7 +43,7 @@
 
 # [SOFT] 해석 지침
 
-- `risk_params.effective_max_drawdown` : 낙폭 맞춤안(현금을 섞어 과거 최대낙폭을 목표 안에 맞춘 구성)의 목표. `risk.max_drawdown_tolerance` 기준으로 `loss_reaction = "sell"` 이면 0.8배, `investment_experience = "none"` 이면 0.9배. 그 외 그대로. 근거를 `notes_ko` 에 적습니다. 허용 낙폭 판정과 표시는 입력값 그대로 쓰고, 최대낙폭은 합격 기준이 아니라 순위와 주의 표시에 쓰입니다.
+- `risk_params.effective_max_drawdown` : 낙폭 맞춤안(현금을 섞어 과거 최대낙폭을 목표 안에 맞춘 구성)의 목표. `risk.max_drawdown_tolerance` 기준으로 `loss_reaction = "sell"` 이면 0.8배, `investment_experience = "none"` 이면 0.9배. 그 외 그대로. 조정 여부와 이유는 코드가 따로 보여 주므로 `notes_ko` 에 쓰지 않습니다(투자 경험 '초보' 는 '없음' 이 아닙니다). 허용 낙폭 판정과 표시는 입력값 그대로 쓰고, 최대낙폭은 합격 기준이 아니라 순위와 주의 표시에 쓰입니다.
 - `risk_params.volatility_preference` : conservative→low, moderate→medium, aggressive→high. 자연어에 변동성 언급이 있으면 그것을 우선합니다.
 - `news_tilt` : `enabled = strategy_preference.use_news_tilt`. `max_view_confidence` 는 conservative 0.3 / moderate 0.5 / aggressive 0.7. `max_tilt_per_stock` 은 `max_weight_per_stock` 의 1/3.
 - `validation_criteria` : benchmark, max_drawdown(= max_drawdown_tolerance), target_annual_return, horizon_years(= target_years) 를 그대로.

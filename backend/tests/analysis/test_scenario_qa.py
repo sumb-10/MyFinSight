@@ -1973,8 +1973,9 @@ def test_walkforward_changes_follow_the_chosen_plan():
     assert RB.walkforward_weight_changes(R, chosen="wf_market_cap") == {"2026-10-01": ["EIX -0.6%p"]}
     assert RB.walkforward_weight_changes(R, chosen="dd_match_wf_market_cap") == {"2026-10-01": ["EIX -0.6%p"]}
     assert RB.walkforward_weight_changes(R, chosen="market_cap") == {"2026-10-01": ["EIX -1.0%p"]}
-    assert RP._wf_changes_label(R, "wf_market_cap") == "시가총액비중 — 선택안"
-    assert RP._wf_changes_label(R, "market_cap") == "역변동성비중 — 기준 비중 구성, 선택안과 다름"
+    assert RP._wf_changes_note(R, "wf_market_cap").startswith("선택안인 시가총액비중 walk-forward 구성")
+    note = RP._wf_changes_note(R, "market_cap")
+    assert note.startswith("역변동성비중 walk-forward 구성") and "선택안이 아니라 기준 비중 구성" in note and "‘" not in note and " — " not in note
 
 
 def test_news_effect_explains_views_on_pinned_stocks():
@@ -1983,7 +1984,8 @@ def test_news_effect_explains_views_on_pinned_stocks():
 
     sw = {"2024-01-02": {"033780.KS": 0.15, "030200.KS": 0.15, "105560.KS": 0.35, "055550.KS": 0.35}}
     bw = {"2024-01-02": {"033780.KS": 0.15, "030200.KS": 0.15, "105560.KS": 0.40, "055550.KS": 0.30}}
-    views = {"2024-01-02": [{"long": ["030200.KS"], "short": []}, {"long": ["033780.KS"], "short": ["030200.KS"]}, {"long": ["105560.KS"], "short": []}]}
+    views = {"2024-01-02": [{"type": "absolute", "direction": "up", "long": ["030200.KS"], "short": []}, {"type": "absolute", "direction": "up", "long": ["033780.KS"], "short": []},
+                            {"type": "absolute", "direction": "up", "long": ["105560.KS"], "short": []}]}  # fmt: skip
     head = {"cagr": 0.1, "excess_cagr": 0.0, "max_drawdown": -0.1}
     R = {"backtest": {"portfolios": [{"id": "wf_bl_news", "kind": "black_litterman", "views_by_date": views, "weights_by_date": bw, "headline": head},
                                      {"id": "wf_equal_weight", "kind": "template", "weights_by_date": sw, "headline": head}], "period": {}},
@@ -1992,6 +1994,11 @@ def test_news_effect_explains_views_on_pinned_stocks():
     ne = news_effect(R)
     assert ne["n_dates_capped"] == 0
     assert ne["capped_note_ko"].startswith("뉴스 뷰 3개 중 2개는 뷰가 걸린 종목(KT·KT&G)이 종목당 상한(15%)에 묶여 있어")
+    # '내림' 쪽(상대 뷰의 약한 쪽·절대 내림)은 종목당 상한이 막지 못한다 → 일반 이유 (036 MCD·SBUX, 037 JNJ)
+    views["2024-01-02"][1] = {"type": "relative", "long": ["033780.KS"], "short": ["030200.KS"]}
+    assert "상한·섹터 예산 같은 제약 때문에" in news_effect(R)["capped_note_ko"]
+    views["2024-01-02"][1] = {"type": "absolute", "direction": "down", "long": ["033780.KS"], "short": []}
+    assert "상한·섹터 예산 같은 제약 때문에" in news_effect(R)["capped_note_ko"]
 
 
 def test_round11_collect_and_report_texts(monkeypatch):

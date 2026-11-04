@@ -8,6 +8,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+import numpy as np
+
 from backend.analysis.common.labels import VOL_PREF_KO, enum_ko, field_ko, sector_counts_ko, sector_ko, sub_industry_ko, theme_ko, usd_ko
 from backend.analysis.m5_backtest_report.matched import stock_cash_ko
 
@@ -66,7 +68,9 @@ def kpis(R: dict[str, Any], chosen: str) -> list[dict[str, Any]]:
           if short else {"id": "excess", "label_ko": f"비교지수({bench}) 대비", "value": h["excess_cagr"], "format": "pp", "note_ko": "같은 기간 CAGR 차이"})  # fmt: skip
     return [
         {"id": "final_value", "label_ko": "최종 평가금액", "value": h["final_value_usd"], "format": "usd",
-         "note_ko": (f"약 {krw['final_value_krw']:,.0f}원 · " if R["request"]["capital"].get("currency", "KRW") == "KRW" else "") + f"투입 원금 {p['money']['net_invested_usd']:,.0f} USD"},
+         # 원화는 평가금액·원금을 같은 환율로 (034: '약 53,509,000원 · 투입 원금 39,296 USD' — 원화 평가액만 보여 5천만 원보다 이익처럼 읽혔는데 달러 기준 −6.3%)
+         "note_ko": (f"약 {krw['final_value_krw']:,.0f}원 · 투입 원금 {p['money']['net_invested_usd']:,.0f} USD(약 {p['money']['net_invested_usd'] * R['money_krw']['fx_rate']:,.0f}원) — 둘 다 분석 기준일 환율"
+                     if R["request"]["capital"].get("currency", "KRW") == "KRW" and R["money_krw"].get("fx_rate") else f"투입 원금 {p['money']['net_invested_usd']:,.0f} USD")},
         ret, ex,
         {"id": "mdd", "label_ko": "최대낙폭 (MDD)", "value": h["max_drawdown"], "format": "pct", "note_ko": _tolerance_note(R)},
         {"id": "sharpe", "label_ko": "Sharpe 비율", "value": h["sharpe"], "format": "ratio", "note_ko": f"무위험수익률 {R['parameters']['backtest']['risk_free_rate']:.0%} 가정"},
@@ -137,10 +141,18 @@ def _delta_ko(pairs) -> str:
     return ", ".join(shown) or "변화 없음 (종목·섹터 상한에 묶임)"
 
 
+def _notes_ko(text: str) -> str:
+    """분석 모델의 성향 해석 메모. 일본어가 섞이면 숨기고(018), 낙폭 맞춤 목표의 조정 이유는 바로 위 줄이 코드로 적으므로 그 문장은 뺀다
+    (033: 투자 경험이 '초보' 인데 '초보 투자 경험에 해당하지 않는 입력을 반영해 … 조정하지 않았습니다' — 실제 이유는 '경험 없음' 이 아니라서)."""
+    if re.search(r"[\u3040-\u30ff]", text):
+        return ""
+    return " ".join(x for x in re.split(r"(?<=[.!?다])\s+", text.strip()) if x and "낙폭 맞춤" not in x)
+
+
 def soft_table(R):
     rp, nt = R["intent"]["risk_params"], R["intent"]["news_tilt"]
     rows = [{"k": "변동성 선호", "v": VOL_PREF_KO.get(rp["volatility_preference"], rp["volatility_preference"])}, {"k": "허용 최대낙폭·낙폭 맞춤안 목표", "v": _tolerance_note(R).replace("손실 감내 수준 ", "")},
-            {"k": "해석 메모", "v": "" if re.search(r"[\u3040-\u30ff]", rp.get("notes_ko") or "") else rp.get("notes_ko", "")},  # 018: 일본어가 섞인 메모가 그대로 보였다
+            {"k": "해석 메모", "v": _notes_ko(rp.get("notes_ko") or "")},
             {"k": "뉴스 뷰 반영", "v": (f"켜짐 · 종목당 최대 {_pp(nt['max_tilt_per_stock'])}, 뷰 신뢰도 상한 {nt['max_view_confidence']}" if nt["enabled"] else "꺼짐 (기준 비중만)")}]  # fmt: skip
     return table("성향 해석 (소프트 조건)", [("k", "항목", "text"), ("v", "해석", "text")], rows)
 
@@ -187,7 +199,7 @@ def selection_table(R):
                  [("ticker", "티커", "text"), ("name", "회사", "text"), ("market", "시장", "text"), ("sector", "섹터", "text"), ("summary", "한 줄 소개", "text"),
                   ("reason", "테마 판정 사유", "text"), ("conf", "신뢰도", "num"), ("rank_bt", f"순위({bt_as_of})", "int"), ("metric_bt", m, "pct"),
                   ("rank_now", f"순위({now_as_of})", "int"), ("metric_now", m, "pct"), ("fact", "지표 근거 ID", "text")],
-                 rows, note="순위가 비어 있으면 그 기준일에는 선정되지 않은 종목입니다. 지표 근거 ID 는 출처 패널에서 값·기준일을 확인할 수 있습니다.")  # fmt: skip
+                 rows, note="순위가 비어 있으면 그 기준일에 선정되지 않았거나 지표 자료가 없는 필수 포함 종목입니다. 지표 근거 ID 는 출처 패널에서 값·기준일을 확인할 수 있습니다.")  # fmt: skip
 
 
 def excluded_table(R):
@@ -576,7 +588,8 @@ def walkforward_blocks(R):
         if p:
             h = p["headline"]
             blocks.append({"type": "callout", "tone": "info", "title_ko": p["name_ko"],
-                           "text_ko": f"기간 수익률 {h['period_return']:+.2%}, 최대낙폭 {h['max_drawdown']:.2%}, 최종 평가금액 {h['final_value_usd']:,.0f} USD"
+                           # 다른 곳과 같은 표기로 (035: '기간 수익률 -0.10%, 최대낙폭 -14.50%' — 둘째 자리라 첫 매수 수수료 차이가 보였고 낙폭에 부호가 붙었다)
+                           "text_ko": f"기간 수익률 {h['period_return']:+.1%}, 최대낙폭 {abs(h['max_drawdown']):.1%}, 최종 평가금액 {h['final_value_usd']:,.0f} USD"
                                       + (f" · 기준 비중을 쓴 날짜: {', '.join(bl['fallback_dates'])}" if bl and pid == bl["id"] and bl["fallback_dates"] else "")
                                       + (f" · {cn}" if bl and pid == bl["id"] and (cn := (news_effect(R) or {}).get("capped_note_ko")) else "")})  # fmt: skip
     if bl is None and (wf.get("bl_omitted") or {}).get("reason_ko"):
@@ -680,15 +693,19 @@ def sources_table(R):
 
 def _delta_src_ko(mm: dict[str, Any]) -> str:
     src = "시장 자료로 추정" if mm.get("delta_source") == "market_implied" else "성향별 고정값"
-    if mm.get("delta_capped"):
-        return f"{src}한 값이 상한 8을 넘어 상한 적용"
     dm, db = mm.get("delta_market"), mm.get("delta_base")
+    mult = [(k, float(x)) for k, x in (("성향 배수", mm.get("delta_multiplier")), ("낙폭 배수", mm.get("delta_dd_multiplier"))) if x is not None and abs(float(x) - 1) > 1e-9]
+    if mm.get("delta_capped"):
+        # 상한을 넘은 것이 배수를 곱한 값이면 그렇게 (035·036·037: 시장 추정치 7.02 는 8 보다 작은데 '추정한 값이 상한 8을 넘어' 라고 썼다)
+        if src.startswith("시장") and dm is not None and mult:
+            prod = float(dm) * float(np.prod([x for _, x in mult]))
+            return f"시장 추정치 {float(dm):.4g} × {' × '.join(f'{k} {x:g}' for k, x in mult)} = {prod:.3g} → 상한 8 적용"
+        return f"{src}한 값이 상한 8을 넘어 상한 적용"
     if src.startswith("시장") and dm is not None and db is not None and float(dm) < float(db) - 1e-9:  # 020: 시장 추정치가 음수라 하한 × 배수였는데 '시장 자료로 추정' 이라고만 썼다
         return f"시장 추정치({float(dm):.2f})가 하한 {float(db):g}보다 낮아 하한에 성향·낙폭 배수를 곱한 값"
     # 배수를 곱했으면 밝힌다 (024: 시장 추정 7.5749 × 낙폭 배수 0.8 = 6.0599 인데 '시장 자료로 추정' 이라고만 썼다)
-    mult = [f"{k} {float(x):g}" for k, x in (("성향 배수", mm.get("delta_multiplier")), ("낙폭 배수", mm.get("delta_dd_multiplier"))) if x is not None and abs(float(x) - 1) > 1e-9]
     if src.startswith("시장") and dm is not None and mult:
-        return f"시장 추정치 {float(dm):.4g} × {' × '.join(mult)}"
+        return f"시장 추정치 {float(dm):.4g} × {' × '.join(f'{k} {x:g}' for k, x in mult)}"
     return src
 
 
@@ -873,7 +890,9 @@ def timeline(R, chosen) -> dict[str, Any] | None:
         items.append(it)
     note = "시점을 고르면 그날의 보유 종목·거래·뷰를 자세히 볼 수 있습니다. 종목은 백테스트 시작일의 선정 종목을 유지하며, 평가금액은 적립을 포함합니다."
     if p.get("mode") == "static":
-        note += " 이 구성의 목표 비중은 기간 중 고정이며, 리밸런싱 시 매매로 해당 비중을 되맞춥니다."
+        rb_on = (R["portfolio"]["backtest_spec"].get("rebalance_rule") or {}).get("enabled", True)
+        note += (" 이 구성의 목표 비중은 기간 중 고정이며, 리밸런싱 시 매매로 해당 비중을 되맞춥니다." if rb_on
+                 else " 리밸런싱 없이 시작일에 산 비중 그대로 보유합니다 (적립금만 목표 비중대로 투자).")  # fmt: skip  (037)
     return {"type": "timeline", "title_ko": f"리밸런싱 타임라인 ({pf_label(p)})", "portfolio_id": chosen, "walkforward": bl is not None, "items": items,
             "note_ko": note}  # fmt: skip
 
@@ -917,7 +936,8 @@ def companies(R, chosen) -> dict[str, Any]:
     m = R["selection"]["metric"]
     return {"type": "companies", "title_ko": "선정 종목과 기업별 근거", "metric": m, "metric_ko": METRIC_SHORT_KO.get(m, m), "direction": R["selection"]["direction"],
             "as_of_now": R["selection"]["as_of_now"]["as_of"], "as_of_bt": R["selection"]["backtest_as_of"]["as_of"], "portfolio_id": chosen, "items": items,
-            "note_ko": f"{w_note} 순위는 그 기준일 선정 종목 안의 선정 지표 순위이고, 비어 있으면 그 기준일에는 선정되지 않은 종목입니다. 인용 ID 를 누르면 출처를 볼 수 있습니다."}  # fmt: skip
+            # 지표 없는 필수 포함 종목도 순위가 비어 있다 (036: COST 가 시작일에 담겼는데 '선정되지 않은 종목' 으로 읽혔다 — Q-120 부작용)
+            "note_ko": f"{w_note} 순위는 그 기준일 선정 종목 안의 선정 지표 순위이고, 비어 있으면 그 기준일에 선정되지 않았거나 지표 자료가 없는 필수 포함 종목입니다. 인용 ID 를 누르면 출처를 볼 수 있습니다."}  # fmt: skip
 
 
 _DASH_RANK = {"must_include_not_in_universe": 0, "exclude_sector_unknown": 0, "added_tickers_ignored": 0, "must_include_below_filters": 0, "backtest_start_shifted": 1, "backtest_start_clamped": 1,
@@ -1026,7 +1046,10 @@ def news_effect(R) -> dict[str, Any] | None:
             legs = [*v.get("long", []), *v.get("short", [])]
             if legs and all(abs(bw[d].get(t, 0.0) - sw[d].get(t, 0.0)) <= 1e-4 for t in legs):
                 n_stuck += 1
-                all_at_cap &= all(abs(sw[d].get(t, 0.0) - cap) < 1e-4 for t in legs)
+                # 종목당 상한은 비중을 올리는 쪽만 막는다: '내림' 뷰(절대 내림·상대 뷰의 약한 쪽)는 상한 탓이 아니라 섹터 예산 탓이다
+                # (036: MCD·SBUX '내림' 뷰, 037: JNJ '내림' 뷰를 '종목당 상한에 묶여' 라고 썼다)
+                ups = list(v.get("long", [])) if v.get("type") == "relative" or v.get("direction") != "down" else []
+                all_at_cap &= len(ups) == len(legs) and all(abs(sw[d].get(t, 0.0) - cap) < 1e-4 for t in ups)
                 for t in legs:
                     stuck[t] = stuck.get(t, 0) + 1
     if n_stuck:

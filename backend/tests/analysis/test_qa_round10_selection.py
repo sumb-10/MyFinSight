@@ -183,7 +183,7 @@ def _comp_and_checks(w: pd.DataFrame, stock_cap: float, sector_cap: float):
     comp = composition_metrics(w, pd.DataFrame(1.0, index=idx, columns=w.columns), tgt, sectors, stock_cap, sector_cap, 0.25, pd.Series(1.0, index=idx))
     p = {"id": "x", "kind": "template", "target_weights": tgt,
          "metrics": {"risk": {"max_drawdown": -0.1, "ann_vol": 0.1}, "return": {"cagr": 0.1, "total_return": 0.2}, "vs_benchmark": {"excess_cagr": 0.01},
-                     "composition": comp, "trading": {"n_rebalances": 1}},
+                     "composition": comp, "trading": {"n_rebalances": 2}},  # 시작일 매수 + 리밸런싱 1회 (1 이면 매수 후 보유 문구, 037)
          "series": {"index": [100.0] * len(idx)}, "checkpoints": [{"kind": "rebalance", "weights": {"after": tgt}}]}  # fmt: skip
     crit = {"max_drawdown": 0.2, "benchmark": "SPY", "target_annual_return": 0.05, "volatility_preference": "high", "vol_band": 9.99,
             "max_weight_per_stock": stock_cap, "max_weight_per_sector": sector_cap}  # fmt: skip
@@ -201,15 +201,15 @@ def test_drift_rules_state_the_real_max_weight_against_cap_and_tolerance():
     assert comp["max_stock_weight"] == pytest.approx(0.40) and comp["max_stock_weight_ticker"] == "C" and comp["days_above_stock_cap"] == 5 and comp["n_days"] == 5
     r5b, r4b = ck["R5b"], ck["R4b"]
     assert r5b["status"] == "info" and r5b["ok"] and r5b["value"] == pytest.approx(0.66) and r5b["threshold"] == pytest.approx(0.75)
-    assert r5b["message_ko"] == "리밸런싱 사이 최대 섹터 비중 66.0%(정보기술) — 상한 60%를 넘은 날이 5거래일 중 3일 있었지만 허용 폭(상한의 1.25배, 75.0%) 안"
-    assert r4b["message_ko"] == "리밸런싱 사이 최대 종목 비중 40.0%(C) — 상한 35%를 넘은 날이 5거래일 중 5일 있었지만 허용 폭(상한의 1.25배, 43.8%) 안"
+    assert r5b["message_ko"] == "리밸런싱 사이 최대 섹터 비중 66.0%(정보기술) — 상한 60%를 넘은 섹터가 있던 날이 5거래일 중 3일 있었지만 허용 폭(상한의 1.25배, 75.0%) 안"
+    assert r4b["message_ko"] == "리밸런싱 사이 최대 종목 비중 40.0%(C) — 상한 35%를 넘은 종목이 있던 날이 5거래일 중 5일 있었지만 허용 폭(상한의 1.25배, 43.8%) 안"
     # 허용 폭을 넘으면 예전처럼 ok=False (정보 규칙) + 넘은 종목
     w2 = w.copy()
     w2.loc[idx[2], "A"] = 0.45
     _, ck2 = _comp_and_checks(w2, 0.35, 0.80)
     assert not ck2["R4b"]["ok"] and ck2["R4b"]["status"] == "info" and ck2["R4b"]["message_ko"] == (
         # 031: 상한을 넘은 날과 허용 폭을 넘은 날을 따로 센다 (예전 문구 '…5일이고 허용 폭도 넘음' 을 서술이 '허용 폭을 넘은 날 5일' 로 읽었다)
-        "리밸런싱 사이 최대 종목 비중 45.0%(A) — 상한 35%를 넘은 날이 5거래일 중 5일, 허용 폭(상한의 1.25배, 43.8%)을 넘은 날은 1일 (A). 리밸런싱 주기를 줄이면 완화됩니다")
+        "리밸런싱 사이 최대 종목 비중 45.0%(A) — 상한 35%를 넘은 종목이 있던 날이 5거래일 중 5일, 허용 폭(상한의 1.25배, 43.8%)을 넘은 종목이 있던 날은 1일 (A). 리밸런싱 주기를 줄이면 완화됩니다")
     assert ck2["R5b"]["message_ko"] == "리밸런싱 사이 최대 섹터 비중 75.0%(정보기술) — 상한 80% 안에 머묾"
     # 최대 비중이 없는 예전 결과는 예전 문구
     from backend.analysis.m5_backtest_report.validate import _drift_msg_ko

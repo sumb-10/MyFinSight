@@ -87,7 +87,8 @@ def construct(
     res.warnings += [n for n in model.get("notes", []) if n.startswith("dropped") or n.startswith("caps allow")
                      or (n.startswith("market cap missing for") and _cap_floored(model, base))]  # fmt: skip
     if not intent["news_tilt"]["enabled"]:
-        res.fallback, res.fallback_reason_ko = True, "뉴스 반영을 꺼서 기준 비중을 사용"
+        # '기준 비중을 사용' 이라 쓰면 추천이 다른 규칙일 때도 기준 비중을 산 것처럼 읽혔다 (033: 추천 시가총액비중인데 기준(역변동성) 구성처럼 서술)
+        res.fallback, res.fallback_reason_ko = True, "뉴스 반영을 꺼서 뉴스 뷰 구성을 만들지 않음"
         return res
     ev = view.news_window(tk)
     res.evidence = ev

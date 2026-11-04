@@ -68,20 +68,20 @@ def test_drift_rule_counts_days_above_tolerance_separately():
     assert comp["breaches"] == ["sector_cap:Energy", "stock_cap:A"]  # 판정(넘었나)은 예전대로 잡음 폭 없이
     ck = _checks(comp, dict(w.iloc[0]), 0.40, 0.60)
     assert not ck["R4b"]["ok"] and ck["R4b"]["message_ko"] == (
-        "리밸런싱 사이 최대 종목 비중 55.0%(A) — 상한 40%를 넘은 날이 6거래일 중 4일, 허용 폭(상한의 1.25배, 50.0%)을 넘은 날은 2일 (A). 리밸런싱 주기를 줄이면 완화됩니다")
+        "리밸런싱 사이 최대 종목 비중 55.0%(A) — 상한 40%를 넘은 종목이 있던 날이 6거래일 중 4일, 허용 폭(상한의 1.25배, 50.0%)을 넘은 종목이 있던 날은 2일 (A). 리밸런싱 주기를 줄이면 완화됩니다")
     assert not ck["R5b"]["ok"] and ck["R5b"]["message_ko"] == (
-        "리밸런싱 사이 최대 섹터 비중 79.0%(에너지) — 상한 60%를 넘은 날이 6거래일 중 6일, 허용 폭(상한의 1.25배, 75.0%)을 넘은 날은 2일 (에너지). "
+        "리밸런싱 사이 최대 섹터 비중 79.0%(에너지) — 상한 60%를 넘은 섹터가 있던 날이 6거래일 중 6일, 허용 폭(상한의 1.25배, 75.0%)을 넘은 섹터가 있던 날은 2일 (에너지). "
         "리밸런싱 주기를 줄이면 완화됩니다")
 
 
 def test_drift_rule_keeps_old_wording_for_old_results_and_handles_noise_only_breach():
     old = {"max_stock_weight": 0.55, "max_stock_weight_ticker": "A", "days_above_stock_cap": 4, "n_days": 6}  # 허용 폭 날 수가 없는 예전 결과
     assert _drift_msg_ko("stock", old, 0.40, 0.25, ["A"]) == (
-        "리밸런싱 사이 최대 종목 비중 55.0%(A) — 상한 40%를 넘은 날이 6거래일 중 4일이고 허용 폭(상한의 1.25배, 50.0%)도 넘음 (A). 리밸런싱 주기를 줄이면 완화됩니다")
+        "리밸런싱 사이 최대 종목 비중 55.0%(A) — 상한 40%를 넘은 종목이 있던 날이 6거래일 중 4일이고 허용 폭(상한의 1.25배, 50.0%)도 넘음 (A). 리밸런싱 주기를 줄이면 완화됩니다")
     # 판정은 허용 폭을 넘었는데 넘은 폭이 잡음(0.05%p) 안이라 날 수가 0 이면 '0일' 이라 쓰지 않는다
     tiny = {**old, "max_stock_weight": 0.5003, "days_above_stock_cap": 1, "days_above_stock_tol": 0}
     assert _drift_msg_ko("stock", tiny, 0.40, 0.25, ["A"]) == (
-        "리밸런싱 사이 최대 종목 비중 50.0%(A) — 상한 40%를 넘은 날이 6거래일 중 1일, 허용 폭(상한의 1.25배, 50.0%)은 0.05%p 안쪽으로만 넘음 (A). 리밸런싱 주기를 줄이면 완화됩니다")
+        "리밸런싱 사이 최대 종목 비중 50.0%(A) — 상한 40%를 넘은 종목이 있던 날이 6거래일 중 1일, 허용 폭(상한의 1.25배, 50.0%)은 0.05%p 안쪽으로만 넘음 (A). 리밸런싱 주기를 줄이면 완화됩니다")
 
 
 # ───────────────────────── 031: 허용 폭이 100% 이상 ─────────────────────────
@@ -93,11 +93,11 @@ def test_drift_rule_does_not_claim_within_tolerance_when_tolerance_is_100_percen
     comp = _comp(w, 0.50, 0.90)
     ck = _checks(comp, dict(w.iloc[0]), 0.50, 0.90)
     assert ck["R5b"]["ok"] and ck["R5b"]["message_ko"] == (
-        "리밸런싱 사이 최대 섹터 비중 95.0%(에너지) — 상한 90%를 넘은 날이 4거래일 중 2일 (허용 폭이 100% 이상이라 이 점검으로는 거르지 않음)")
+        "리밸런싱 사이 최대 섹터 비중 95.0%(에너지) — 상한 90%를 넘은 섹터가 있던 날이 4거래일 중 2일 (허용 폭이 100% 이상이라 이 점검으로는 거르지 않음)")
     assert ck["R4b"]["message_ko"] == "리밸런싱 사이 최대 종목 비중 48.0%(A) — 상한 50% 안에 머묾"  # 허용 폭 62.5% 는 그대로
     stock = {"max_stock_weight": 0.85, "max_stock_weight_ticker": "A", "days_above_stock_cap": 3, "n_days": 10, "days_above_stock_tol": 0}
     assert _drift_msg_ko("stock", stock, 0.80, 0.25, []) == (
-        "리밸런싱 사이 최대 종목 비중 85.0%(A) — 상한 80%를 넘은 날이 10거래일 중 3일 (허용 폭이 100% 이상이라 이 점검으로는 거르지 않음)")
+        "리밸런싱 사이 최대 종목 비중 85.0%(A) — 상한 80%를 넘은 종목이 있던 날이 10거래일 중 3일 (허용 폭이 100% 이상이라 이 점검으로는 거르지 않음)")
     # 상한을 넘은 날이 없으면 예전처럼 '상한 안'
     assert _drift_msg_ko("sector", {**comp, "max_sector_weight": 0.9, "days_above_sector_cap": 0}, 0.90, 0.25, []).endswith("상한 90% 안에 머묾")
 

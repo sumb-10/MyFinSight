@@ -24,6 +24,14 @@ PREF_KO = {"low": "안정 성향", "medium": "중립 성향", "high": "적극 �
 NAMES_KO = {"equal_weight": "동일비중", "market_cap": "시가총액비중", "inverse_volatility": "역변동성비중", "min_variance": "최소분산"}
 
 
+def excess_pp_ko(cagr: float | None, bench_cagr: float | None, ex: float | None) -> str:
+    """비교지수 대비 초과 CAGR 을 보이는 자리수끼리 뺀 값으로 (034: 서술은 33.7 − (−2.1) = 35.8%p, 검증·추천 사유는 원값 35.9%p 라 한 리포트에 두 숫자).
+    두 CAGR 이 없으면 원값."""
+    if cagr is not None and bench_cagr is not None:
+        return f"{round(float(cagr) * 100, 1) - round(float(bench_cagr) * 100, 1):+.1f}%p"
+    return f"{float(ex or 0.0) * 100:+.1f}%p"
+
+
 def check(rule, name, level, ok, value, threshold, msg):
     if level == "info":
         status = "info"
@@ -61,34 +69,40 @@ def _cap_pct(x: float) -> str:
     return f"{round(float(x) * 100, 1):g}%"
 
 
-def _drift_msg_ko(kind: str, comp: dict[str, Any], cap: float, drift_tol: float, over: list[str]) -> str:
+def _drift_msg_ko(kind: str, comp: dict[str, Any], cap: float, drift_tol: float, over: list[str], rebal: bool = True) -> str:
     """R4b/R5b 문구: 리밸런싱 사이 실제 최대 비중을 상한·허용 폭(상한 × (1 + drift_tol))과 함께 사실대로.
     019·020·021·022: 섹터 비중이 상한을 넘었는데(019 정보기술 63.1% vs 55%, 020 금융 778거래일 중 501일 73% 초과) 허용 폭 안이라
-    '상한 안에 머묾' 이라고 썼다. 값도 비중이 아니라 목표와의 차이(드리프트)였다."""
+    '상한 안에 머묾' 이라고 썼다. 값도 비중이 아니라 목표와의 차이(드리프트)였다.
+    날 수는 어느 한 종목(섹터)이라도 넘은 날이다 (037: '최대 35.0%(JNJ) — 상한 27%를 넘은 날 752일' 을 JNJ 의 날 수로 옮겼다; JNJ 는 299일).
+    rebal=False(매수 후 보유)면 '리밸런싱 사이'·'리밸런싱 주기를 줄이면' 대신 맞는 말로 (037)."""
     what = "종목" if kind == "stock" else "섹터"
+    subj = f"{what}{'이' if kind == 'stock' else '가'}"
     names = over if kind == "stock" else [sector_ko(s) for s in over]
+    span = "리밸런싱 사이" if rebal else "보유 기간 중"
+    fix = "리밸런싱 주기를 줄이면 완화됩니다" if rebal else "리밸런싱을 하면 완화됩니다"
     top = comp.get(f"max_{kind}_weight")
     if top is None:  # 최대 비중이 없는 예전 결과: 예전 문구
         if not over:
-            return f"리밸런싱 사이 {what} 비중이 상한 안에 머묾"
-        return f"리밸런싱 사이에 {what} 비중이 상한의 {1 + drift_tol:g}배를 넘은 적 있음" + (f" ({', '.join(names)})" if kind == "stock" else "") + " — 리밸런싱 주기를 줄이면 완화됩니다"
+            return f"{span} {what} 비중이 상한 안에 머묾"
+        return f"{span}에 {what} 비중이 상한의 {1 + drift_tol:g}배를 넘은 적 있음" + (f" ({', '.join(names)})" if kind == "stock" else "") + f" — {fix}"
     who = comp.get("max_stock_weight_ticker" if kind == "stock" else "max_sector_weight_sector")
-    head = f"리밸런싱 사이 최대 {what} 비중 {top:.1%}" + (f"({who if kind == 'stock' else sector_ko(who)})" if who else "")
+    head = f"{span} 최대 {what} 비중 {top:.1%}" + (f"({who if kind == 'stock' else sector_ko(who)})" if who else "")
     days, n = int(comp.get(f"days_above_{kind}_cap") or 0), comp.get("n_days")
     when = f"{n}거래일 중 {days}일" if n else f"{days}일"
     no_line = cap * (1 + drift_tol) >= 1 - 1e-9  # 허용 폭이 100% 이상이면 이 점검은 걸릴 수 없다
     lim = f"상한의 {1 + drift_tol:g}배" + ("" if no_line else f", {cap * (1 + drift_tol):.1%}")  # 100% 이상이면 숫자는 뜻이 없다 (021: '106.2%')
+    above = f"상한 {_cap_pct(cap)}를 넘은 {subj} 있던 날이 {when}"
     if over:
         tol_days = comp.get(f"days_above_{kind}_tol")
         if tol_days is None:  # 허용 폭을 넘은 날 수가 없는 예전 결과: 예전 문구
-            return f"{head} — 상한 {_cap_pct(cap)}를 넘은 날이 {when}이고 허용 폭({lim})도 넘음 ({', '.join(names)}). 리밸런싱 주기를 줄이면 완화됩니다"
+            return f"{head} — {above}이고 허용 폭({lim})도 넘음 ({', '.join(names)}). {fix}"
         # 두 날 수를 따로 (031: '상한 10%를 넘은 날이 754거래일 중 747일이고 허용 폭(12.5%)도 넘음' 을 서술이 '12.5% 를 747일 넘었다' 로 옮겼다. 12.5% 를 넘은 날은 90일)
-        beyond = f"허용 폭({lim})을 넘은 날은 {int(tol_days)}일" if tol_days else f"허용 폭({lim})은 0.05%p 안쪽으로만 넘음"
-        return f"{head} — 상한 {_cap_pct(cap)}를 넘은 날이 {when}, {beyond} ({', '.join(names)}). 리밸런싱 주기를 줄이면 완화됩니다"
+        beyond = f"허용 폭({lim})을 넘은 {subj} 있던 날은 {int(tol_days)}일" if tol_days else f"허용 폭({lim})은 0.05%p 안쪽으로만 넘음"
+        return f"{head} — {above}, {beyond} ({', '.join(names)}). {fix}"
     if days and no_line:  # 031: 섹터 상한 90% 면 허용 폭이 112.5% 라 늘 통과인데 '허용 폭 안' 이라 써서 서술이 '허용 폭 안이었습니다' 라고 했다
-        return f"{head} — 상한 {_cap_pct(cap)}를 넘은 날이 {when} (허용 폭이 100% 이상이라 이 점검으로는 거르지 않음)"
+        return f"{head} — {above} (허용 폭이 100% 이상이라 이 점검으로는 거르지 않음)"
     if days:
-        return f"{head} — 상한 {_cap_pct(cap)}를 넘은 날이 {when} 있었지만 허용 폭({lim}) 안"
+        return f"{head} — {above} 있었지만 허용 폭({lim}) 안"
     return f"{head} — 상한 {_cap_pct(cap)} 안에 머묾"
 
 
@@ -133,7 +147,8 @@ def evaluate_checks(p, crit, n_days, expected_rb, sector_of, drift_tol, short_wi
                          + (f" (기간 수익률 {m['return']['total_return']:+.1%}; 창이 짧아 참고만)" if short_window else "")))  # fmt: skip
     # R3 비교지수 대비 (권장)
     ex = m["vs_benchmark"]["excess_cagr"] or 0.0
-    cks.append(check("R3", "비교지수 대비", "soft", ex > 0, ex, 0.0, f"{crit['benchmark']} 대비 초과 CAGR {ex:+.1%}p"))
+    cks.append(check("R3", "비교지수 대비", "soft", ex > 0, ex, 0.0,
+                     f"{crit['benchmark']} 대비 초과 CAGR {excess_pp_ko(m['return'].get('cagr'), (bm.get('return') or {}).get('cagr'), ex)}"))  # fmt: skip
     # R7 변동성 (권장) — 비교지수 변동성의 배수
     vol = m["risk"]["ann_vol"] or 0.0
     pref = crit["volatility_preference"]
@@ -148,12 +163,13 @@ def evaluate_checks(p, crit, n_days, expected_rb, sector_of, drift_tol, short_wi
         cks.append(check("R7", "변동성 적합", soft, vol <= crit["vol_band"], vol, crit["vol_band"], f"연변동성 {vol:.1%} vs {PREF_KO.get(pref, pref)} 상한 {crit['vol_band']:.1%}"))
     # 정보: 드리프트 (규칙이 아니라 리밸런싱 주기의 결과). 판정(ok)은 예전대로 '상한 × (1 + 허용 폭)' 을 넘었나지만, 문구·값은 실제 최대 비중으로
     comp = m["composition"]
+    n_rb = (m.get("trading") or {}).get("n_rebalances")  # 시작일 매수 1회뿐이면 리밸런싱 없음(매수 후 보유) — 값이 없는 예전 결과는 리밸런싱이 있었다고 본다
     for rule, name, kind, cap, drift_key in (("R4b", "종목 비중 드리프트", "stock", float(crit["max_weight_per_stock"]), "max_weight_drift"),
                                              ("R5b", "섹터 비중 드리프트", "sector", float(crit["max_weight_per_sector"]), "max_sector_drift")):  # fmt: skip
         over = [b.split(":", 1)[1] for b in comp["breaches"] if b.startswith(f"{kind}_cap:")]
         top = comp.get(f"max_{kind}_weight")
         cks.append(check(rule, name, "info", not over, top if top is not None else comp[drift_key], cap * (1 + drift_tol),
-                         _drift_msg_ko(kind, comp, cap, drift_tol, over)))  # fmt: skip
+                         _drift_msg_ko(kind, comp, cap, drift_tol, over, rebal=n_rb is None or int(n_rb) > 1)))  # fmt: skip
     # 정보: 투자 비율 (상한 때문에 남은 현금). 낙폭 맞춤안의 현금은 의도된 것이라 적용하지 않는다
     invested = float(sum(p["target_weights"].values()))
     min_inv = settings.backtest.min_invested_ratio if settings else 0.9
@@ -356,7 +372,7 @@ def validate(res: dict[str, Any], targets: dict[str, Any], intent: dict[str, Any
     else:
         parts.append("목표수익은 창이 짧아 참고만")
     ex = best["excess_cagr"] or 0.0
-    parts.append(f"{crit['benchmark']} 대비 초과 CAGR {ex:+.1%}p")
+    parts.append(f"{crit['benchmark']} 대비 초과 CAGR {excess_pp_ko(best.get('cagr'), (((res.get('benchmark') or {}).get('metrics') or {}).get('return') or {}).get('cagr'), ex)}")
     parts.append(f"최대낙폭 {mdd_b:.1%} vs 허용 {tol_user:.1%}" + (f" (여유 {tol_user - mdd_b:.1%}p)" if mdd_b <= tol_user + 1e-9 else f" ({mdd_b - tol_user:.1%}p 초과)"))
     sharpes = [t["sharpe"] for t in cands if t["sharpe"] is not None]
     s = best["sharpe"]

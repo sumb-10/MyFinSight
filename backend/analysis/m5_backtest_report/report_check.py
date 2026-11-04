@@ -13,7 +13,7 @@ from typing import Any
 from backend.analysis.settings import AnalysisSettings
 
 from backend.analysis.common.citations import CITE_RE  # 인용 ID 정규식은 한 곳에서
-NUM_RE = re.compile(r"(?:\$\s?)?(-?[\d,]+(?:\.\d+)?)\s*(%p|%|USD|원|달러|일|개|회|종목|배)?")
+NUM_RE = re.compile(r"(?:\$\s?)?(-?[\d,]+(?:\.\d+)?)\s*(%p|%|USD|원|달러|일|개|회(?!계)|종목|배)?")  # 036: '2026 회계연도' 를 2026회로 셌다
 DEV_WORDS = ["샘플", "stub", "mock", "JSON", "파이프라인 내부"]
 
 
@@ -75,7 +75,7 @@ def known_numbers(obj: Any, acc: set[float]) -> None:
         return
     elif isinstance(obj, int | float):
         v = abs(float(obj))
-        if v <= 20:
+        if v <= 1000:  # 비율이면 % 로도 (033: 모멘텀 +3,257.7%(32.58) 를 '결과에 없는 숫자' 로 셌다 — 예전 한도 20)
             acc.add(round(v * 100, 1))
             acc.add(round(v * 100))
             acc.add(round(v * 100, 2))

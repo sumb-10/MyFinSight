@@ -68,12 +68,20 @@ def cash_breakdown(R: dict[str, Any], p: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _rebalance_targets_ko(p: dict[str, Any]) -> str:
-    """선택안이 리밸런싱 때 맞추는 목표 (016: walk-forward 정의를 정적 구성에도 붙여 '리밸런싱일마다 비중을 다시 계산했다' 고 썼다)."""
+def _rebalance_targets_ko(p: dict[str, Any], rebalance: bool = True) -> str:
+    """선택안이 리밸런싱 때 맞추는 목표 (016: walk-forward 정의를 정적 구성에도 붙여 '리밸런싱일마다 비중을 다시 계산했다' 고 썼다).
+    리밸런싱을 끈 요청이면 그대로 (037: '리밸런싱 없음' 인데 '리밸런싱마다 되돌렸습니다' 라고 해, 서술이 둘이 어긋난다고 썼다)."""
+    if not rebalance:
+        return "리밸런싱 없이 백테스트 시작일 비중으로 산 뒤 그대로 보유했습니다 (매수 후 보유, 적립금은 목표 비중대로 투자)."
     # 완결된 문장으로 (023: 'walk-forward: …맞춤' 꼴 그대로 따옴표째 옮겨 적혔다)
     if p.get("mode") == "walkforward":
         return "walk-forward 방식이라 종목은 백테스트 시작일 목록 그대로 두고, 리밸런싱일마다 그때까지의 자료로 비중을 다시 계산해 그 비중으로 맞췄습니다."
     return "정적 구성이라 백테스트 시작일에 정한 목표 비중으로 리밸런싱마다 되돌렸습니다 (비중을 다시 계산하지 않음)."
+
+
+def _rebalances(R: dict[str, Any]) -> bool:
+    """요청이 리밸런싱을 하는가 (끄면 매수 후 보유)."""
+    return bool(((R.get("portfolio") or {}).get("backtest_spec") or {}).get("rebalance_rule", {}).get("enabled", True))
 
 
 def _shown_news_window(nw: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -106,7 +114,8 @@ def _chosen_news_use(R: dict[str, Any], chosen: str, p: dict[str, Any]) -> dict[
     moved = any(max((abs(float(d)) for d in (x.get("delta_vs_baseline") or {}).values()), default=0.0) > 1e-4 for x in f.get("portfolios") or [])
     stuck = "모든 종목이 종목·섹터 상한에 묶여 뷰가 비중을 바꾸지 못해 기준 비중과 같습니다"
     if not f.get("portfolios"):  # 022: 뉴스 끔이라 뉴스 뷰 구성이 없는데 '아래 대안' 이 있다고 했다
-        note = f"추천 현재 구성({label})은 기준 비중 규칙으로 만든 구성이며, 뉴스 반영을 꺼서 뉴스 뷰 구성은 만들지 않았습니다."
+        # '기준 비중 규칙' 은 사용자가 고른 기준(예: 역변동성)이라, 추천이 다른 규칙이면 틀린 말이다 (033: 추천 시가총액비중)
+        note = f"추천 현재 구성({label})은 그 비중 규칙으로 만든 구성이며, 뉴스 반영을 꺼서 뉴스 뷰 구성은 만들지 않았습니다."
     elif uses:
         note = (f"추천 현재 구성은 뉴스 뷰 구성 '{rec_title}'의 비중입니다. " + ("이 구성에는 그 관점의 뷰만 반영됐고, 다른 뉴스 뷰 구성은 참고용 대안입니다." if moved
                 else f"다만 {stuck}.") if rec_id else f"추천 현재 구성({label})이 뉴스 뷰를 반영한 구성입니다.")  # fmt: skip
@@ -141,6 +150,8 @@ def _holdings_vs_request(R: dict[str, Any], chosen: str) -> str | None:
         return "" if k is None else (f"{name} {k}개와 같고" if n == k else f"{name} {k}개보다 {abs(n - k)}개 {'많고' if n > k else '적고'}")
 
     # 콜론 없이 한 문장으로 (024: 그대로 옮긴 서술이 '…다음과 같습니다: 지금 구성은 10종목입니다: …' 처럼 콜론이 겹쳤다)
+    if tgt is not None and tgt == lo:  # 목표 = 최소면 한 번만 (034: '목표 5개와 같고, 최소 5개와 같습니다')
+        return f"지금 구성은 {n}종목으로 " + rel(tgt, "목표·최소").rstrip("고") + "습니다."
     return f"지금 구성은 {n}종목으로 " + ", ".join(x for x in (rel(tgt, "목표"), rel(lo, "최소")) if x).rstrip("고") + "습니다."
 
 
@@ -247,14 +258,17 @@ def _allocation_now(R: dict[str, Any], chosen: str) -> list[dict[str, Any]]:
     return rows + ([{"ticker": "현금", "name": "", "weight": f"{cc[1] * 100:.1f}%"}] if cc[1] > 1e-6 else [])
 
 
-def _wf_changes_label(R: dict[str, Any], chosen: str) -> str:
-    """weight_changes_by_date 가 어느 구성의 변화인지 (024: 이름이 없어 기준 구성의 변화를 추천안의 변화로 썼다)."""
+def _wf_changes_note(R: dict[str, Any], chosen: str) -> str:
+    """weight_changes_by_date 가 어느 구성의 변화인지 (024: 이름이 없어 기준 구성의 변화를 추천안의 변화로 썼다).
+    이름표에 메모를 붙여 넘기면 그대로 따옴표째 옮겨 적는다 (035: '‘역변동성비중 — 기준 비중 구성, 선택안과 다름’의 변화이지') → 평범한 문장으로."""
     p = B.walkforward_changes_plan(R, chosen)
     if not p:
-        return "-"
+        return ""
     bt = next((x for x in R["backtest"]["portfolios"] if x["id"] == chosen), {})
-    mine = (bt.get("base_id") or chosen) == p["id"]
-    return B.NAMES.get(p["id"].removeprefix("wf_"), p.get("name_ko", p["id"])) + (" — 선택안" if mine else " — 기준 비중 구성, 선택안과 다름")
+    name = B.NAMES.get(p["id"].removeprefix("wf_"), p.get("name_ko", p["id"]))
+    if (bt.get("base_id") or chosen) == p["id"]:
+        return f"선택안인 {name} walk-forward 구성의 리밸런싱일별 직전 대비 큰 변화 (뉴스와 무관)"
+    return f"{name} walk-forward 구성의 리밸런싱일별 직전 대비 큰 변화 (뉴스와 무관). 이 구성은 선택안이 아니라 기준 비중 구성이므로 선택안의 변화라고 쓰지 않는다"
 
 
 def facts_for_interpret(R: dict[str, Any], chosen: str) -> dict[str, Any]:
@@ -277,7 +291,7 @@ def facts_for_interpret(R: dict[str, Any], chosen: str) -> dict[str, Any]:
             "assumptions": {**bt["engine"], "period": bt["period"]},
             "rebalance_ko": R["portfolio"]["backtest_spec"]["rebalance_rule"].get("description_ko"),
             "baseline_rule": {"id": base["id"], "label": B.pf_label(base), "rule_ko": next((x.get("rule_ko") for x in R["portfolio"]["baselines"]["portfolios"] if x["id"] == base["id"]), None)},
-            "chosen": {"id": chosen, "label": B.pf_label(p), "kind": p["kind"], "mode": p.get("mode"), "rebalance_targets_ko": _rebalance_targets_ko(p),
+            "chosen": {"id": chosen, "label": B.pf_label(p), "kind": p["kind"], "mode": p.get("mode"), "rebalance_targets_ko": _rebalance_targets_ko(p, _rebalances(R)),
                        "is_recommended": bool(val.get("recommended")), "verdict": (val.get("recommended") or {}).get("verdict"),
                        "base_id": p.get("base_id"), "cash_ratio": p.get("cash_ratio"), "match_target": p.get("match_target"), "headline": p["headline"], "return": p["metrics"]["return"],
                        "risk": p["metrics"]["risk"], "risk_adjusted": p["metrics"]["risk_adjusted"], "vs_benchmark": p["metrics"]["vs_benchmark"], "vs_baseline": p["metrics"]["vs_baseline"],
@@ -297,6 +311,8 @@ def facts_for_interpret(R: dict[str, Any], chosen: str) -> dict[str, Any]:
             "other_benchmarks": [{"label": x["name_ko"], "headline": x["headline"]} for x in bt.get("benchmarks", []) if x["id"] != b["id"]],
             "matched": [{"id": x["id"], "label": x["name_ko"], "base_id": x.get("base_id"), "cash_ratio": x.get("cash_ratio"), "cash_ratio_total": x.get("cash_ratio_total"),
                          "match_target": x.get("match_target"), "headline": x["headline"], "headline_display": _headline_display(x["headline"]),
+                         # 선택안보다 낙폭이 정말 낮은가 (036: 맞춤안 최대낙폭 11.9% 가 추천 11.3% 보다 큰데 '낙폭을 더 낮추려면 맞춤안' 을 권했다)
+                         "lower_drawdown_than_chosen": abs((x.get("headline") or {}).get("max_drawdown") or 0) < abs((p.get("headline") or {}).get("max_drawdown") or 0) - 1e-9,
                          "status": next((r["status"] for r in val["results"] if r["id"] == x["id"]), None),
                          # 010: 기준이 이미 허용 낙폭 안인데 '허용 낙폭에 맞춰 줄였다' 고 썼다 → 기준의 낙폭과 허용 낙폭 안이었는지를 같이 넘긴다
                          "base_max_drawdown": (B.find(R, x["base_id"]).get("headline") or {}).get("max_drawdown") if x.get("base_id") else None,
@@ -315,8 +331,7 @@ def facts_for_interpret(R: dict[str, Any], chosen: str) -> dict[str, Any]:
                              "news_bl_omitted_ko": (R["portfolio"]["walkforward"].get("bl_omitted") or {}).get("reason_ko"),  # 뉴스 반영 구성을 만들지 않은 이유 (없으면 BL 후보 자체가 없다)
                              "top_delta_by_date": B.walkforward_top_deltas(R), "weight_changes_by_date": (wc := {} if B.walkforward_top_deltas(R) else B.walkforward_weight_changes(R, chosen=chosen)),
                              # 변화 자료가 없으면 메모도 넘기지 않는다 (023 재실행: 빈 자료의 메모를 보고 '그 구성의 비중 변화 수치는 확인할 수 없습니다' 라고 썼다)
-                             "weight_changes_note": (f"weight_changes_by_date = walk-forward '{_wf_changes_label(R, chosen)}' 구성의 리밸런싱일별 직전 대비 큰 변화 (뉴스와 무관, 자료로 다시 계산한 비중)"
-                                                     if wc else None),
+                             "weight_changes_note": f"weight_changes_by_date = {_wf_changes_note(R, chosen)}" if wc else None,
                              "results": [{"id": x["id"], "label": x["name_ko"], "headline": x["headline"]} for x in bt["portfolios"] if x.get("mode") == "walkforward"]}
                             if R["portfolio"].get("walkforward") else None),
             "selection_infeasibility": R["selection"]["backtest_as_of"].get("infeasibility"), "sector_overflow": R["selection"]["backtest_as_of"].get("sector_overflow"),
@@ -433,7 +448,7 @@ def facts_for_market(R: dict[str, Any]) -> dict[str, Any]:
             "citation_rule": "뉴스·공시에 관한 사실 문장은 [ev123](뉴스) 또는 [dc45](공시) 처럼 아래 목록의 id 를 인용한다. 성과·섹터 비중 숫자(chosen·benchmark·sector_exposure_pct)는 인용 없이 그대로 쓴다. 목록에 없는 id·숫자·사건을 만들지 않는다. 헤드라인과 공시는 사건의 존재·종류·시점만 알려 준다 (실적 발표 공시 ≠ 좋은 실적).",
             # 선택안 성과 (예전에는 없어서 'SPY 대비 우열을 판단할 수 없다' 고 쓰고, 바로 위 KPI 와 모순됐다)
             "chosen": {"label": B.pf_label(p), "period": f"{R['backtest']['period']['start']} ~ {R['backtest']['period']['end']}", "cagr": pct(h.get("cagr")),
-                       "period_return": pct(h.get("period_return")), "max_drawdown": pct(abs(h.get("max_drawdown") or 0)), "excess_cagr_vs_benchmark_pp": (None if h.get("excess_cagr") is None else f"{h['excess_cagr'] * 100:+.1f}%p")},
+                       "period_return": pct(h.get("period_return")), "max_drawdown": pct(abs(h.get("max_drawdown") or 0)), "excess_cagr_vs_benchmark_pp": (None if h.get("excess_cagr") is None else (_vs_benchmark_display(R, p) or {}).get("cagr_diff") or f"{h['excess_cagr'] * 100:+.1f}%p")},  # 036: 14c 만 원값(-16.3%p)
             "as_of": R["request"]["derived"]["as_of"], "summary_ko": R["intent"]["interpretation"]["summary_ko"],
             "themes": [{"id": t["id"], "label": t["label_ko"], "description": t["description_ko"]} for t in R["intent"]["interpretation"]["themes"]],
             # 섹터는 한국어 이름으로 (영어 GICS 이름을 넘기면 'Communication Services 업종' 처럼 그대로 옮겨 적었다)
@@ -500,7 +515,7 @@ def facts_for_narrate(R: dict[str, Any], chosen: str, interp: dict[str, Any]) ->
                              "scenarios": [{"title": s.get("title_ko"), "narrative": (s.get("portfolio_view") or "").split("\n")[0], "views": [v["summary_ko"] for v in s["views_applied"]],
                                             "top_delta": sorted(s["delta_vs_baseline"].items(), key=lambda x: -abs(x[1]))[:3]} for s in R["portfolio"]["targets"]["portfolios"]],
                              # 시작일 배분과 지금 배분을 나눠 이름 붙인다 (005: 시작일 비중을 '최종 구성' 이라 쓰고 소수 '14.6818%' 를 그대로 옮겼다)
-                             "chosen": {"id": chosen, "label": B.pf_label(p), "mode": p.get("mode"), "rebalance_targets_ko": _rebalance_targets_ko(p),
+                             "chosen": {"id": chosen, "label": B.pf_label(p), "mode": p.get("mode"), "rebalance_targets_ko": _rebalance_targets_ko(p, _rebalances(R)),
                                         "backtest_start": str(R["portfolio"]["backtest_spec"]["period"]["as_of"]),
                                         "allocation_at_backtest_start": [{"ticker": r["ticker"], "name": r["name"], "weight": f"{r['w'] * 100:.1f}%", "usd": round(r["usd"]), "krw": round(r["krw"])}
                                                                          for r in B.allocation_table(R, chosen)["rows"]],
@@ -509,7 +524,7 @@ def facts_for_narrate(R: dict[str, Any], chosen: str, interp: dict[str, Any]) ->
                                                                                    "top_delta_by_date": B.walkforward_top_deltas(R),
                                                                                    "weight_changes_by_date": (wc2 := {} if B.walkforward_top_deltas(R) else B.walkforward_weight_changes(R, chosen=chosen)),
                                                                                    "news_bl_capped_note_ko": (B.news_effect(R) or {}).get("capped_note_ko"),
-                                                                                   "weight_changes_note": f"walk-forward '{_wf_changes_label(R, chosen)}' 구성의 리밸런싱일별 직전 대비 큰 변화 (뉴스와 무관)" if wc2 else None}},
+                                                                                   "weight_changes_note": _wf_changes_note(R, chosen) if wc2 else None}},
             "interpretation": {**interp, "window": R["backtest"]["period"]},
             "forward": ({"as_of": f["as_of"], "news_window": _shown_news_window(f.get("news_window")), "fallback_reason": f.get("fallback_reason_ko"), "news_note_ko": _forward_news_note(R),
                          **_chosen_news_use(R, chosen, p),
@@ -589,6 +604,21 @@ def _drop_matched_suggestions(ans: dict[str, Any], keys: tuple[str, ...]) -> Non
         ans[k] = out or items
 
 
+# 사용자가 보지 못하는 입력을 가리키는 말 (023·030·032·033: '제공된 모멘텀만으로', '입력된 규칙대로', '라벨에 적힌 대로' — 프롬프트 규칙만으로는 계속 새었다)
+_PROMPT_TALK = re.compile(r"(?:제공된|입력된|라벨에 적힌 대로)\s+|제시된\s+(?=모멘텀|지표|자료|정보|근거|수치|숫자|목록|헤드라인|뉴스|데이터)")  # 033: '제시된 모멘텀 지표만으로'
+
+
+def _plain_llm(obj: Any) -> Any:
+    """LLM 문장에서 입력을 가리키는 말만 지운다 (나머지 문장은 그대로). 딕셔너리·목록 안의 문자열 모두."""
+    if isinstance(obj, str):
+        return _PROMPT_TALK.sub("", obj)
+    if isinstance(obj, list):
+        return [_plain_llm(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _plain_llm(v) for k, v in obj.items()}
+    return obj
+
+
 def _group(blocks: list[dict[str, Any] | None], group_ko: str, *, open_: bool = False) -> list[dict[str, Any]]:
     """연속 블록을 접힘 묶음으로 (Front 가 group_ko 가 같은 연속 블록을 하나의 접이식 묶음으로 그린다)."""
     out = []
@@ -636,6 +666,7 @@ def cited_ids(sections: list[dict[str, Any]], idx: dict[str, Any]) -> list[str]:
 def build_doc(R: dict[str, Any], *, interp: dict[str, Any], narr: dict[str, Any], market: dict[str, Any], step_summaries: dict[str, str] | None,
               settings: AnalysisSettings, usage: dict[str, Any] | None = None) -> dict[str, Any]:  # fmt: skip
     """문서 v2: 요약 대시보드(summary) + 7부분. 무거운 표는 묶음(group_ko)으로 접고, 근거 색인은 인용된 것만 evidence 에 싣는다 (나머지는 /evidence)."""
+    interp, narr, market = _plain_llm(interp), _plain_llm(narr), _plain_llm(market)
     chosen, is_rec = B.chosen_portfolio_id(R)
     p = B.find(R, chosen)
     bt = R["backtest"]
@@ -670,6 +701,8 @@ def build_doc(R: dict[str, Any], *, interp: dict[str, Any], narr: dict[str, Any]
     news_ids = B.news_used_ids(R)
     inf = B.infeasibility_callout(R)
     alt = B.alternatives_cards(R)
+    # 맞춤안이 없으면 그 이유를 코드로도 보인다 (037: 이유 문장이 14a 입력에만 있어 리포트 어디에도 안 나왔다)
+    mn = {"type": "callout", "tone": "info", "title_ko": "낙폭 맞춤안", "text_ko": mtxt} if (mtxt := _matched_note(R)) else None
     conf = B.conflicts_cards(R)
     wf_tl = B.timeline(R, chosen)
     wf_notes = [b for b in B.walkforward_blocks(R) if b["type"] == "callout"]  # walk-forward 요약 콜아웃만 (표·뷰 카드는 타임라인으로)
@@ -705,7 +738,7 @@ def build_doc(R: dict[str, Any], *, interp: dict[str, Any], narr: dict[str, Any]
             {"type": "area", "title_ko": "고점 대비 낙폭", "dataset": "drawdown", "series_ids": default_on, "default_on": default_on, "y_format": "pct"},
             B.comparison_table(R), *_group([B.yearly_table(R, chosen), B.monthly_table(R, chosen)], "연도별·월별 수익률"), B.contribution_bar(R, chosen),
             *_group([*([v_tab, {"type": "paragraphs", "items": interp["view_review_ko"], "src": "14a"}] if v_tab and interp.get("view_review_ko") else []),
-                     {"type": "paragraphs", "items": interp["validation_ko"], "src": "14a"}, t1, t2, alt], "검증 상세", open_=True))},
+                     {"type": "paragraphs", "items": interp["validation_ko"], "src": "14a"}, t1, t2, mn, alt], "검증 상세", open_=True))},
         {"id": "assumptions", "title_ko": "판단의 전제와 재검토 조건", "blocks": nz(
             {"type": "paragraphs", "items": narr["assumptions_ko"] + narr["reconsideration_ko"], "src": "14b"}, B.data_quality_table(R), B.notices_table(R),
             {"type": "cards", "title_ko": "다음에 검토할 수 있는 선택지", "src": "14a", "items": [{"title_ko": f"선택지 {i + 1}", "text_ko": s, "meta": []} for i, s in enumerate(interp["next_actions_ko"])]},

@@ -7,6 +7,7 @@ LLM 은 종목을 고르지 않는다. 코드가 GICS 코드·예시 티커를 �
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Sequence
 from typing import Any
 
@@ -78,6 +79,22 @@ def clean_exclude_rules(rules: list[dict[str, Any]]) -> list[str]:
             r["gics_codes"] = sorted(a for a in allowed if any(a.startswith(c) for c in codes))
             warns.append(f"exclude theme {r.get('theme')}: GICS codes {out} dropped "
                          + (f"(only {list(allowed)} match the theme; kept {r['gics_codes']})" if allowed else "(no matching GICS sub-industry)"))  # fmt: skip
+    return warns
+
+
+SECTOR_CODES = ("10", "15", "20", "25", "30", "35", "40", "45", "50", "55", "60")  # GICS 11개 섹터
+_AGNOSTIC = re.compile(r"(?:업종|산업)(?:에|과|와|을|를)?\s*(?:관계\s*없이|무관|상관\s*없이|가리지\s*않|한정하지\s*않)|모든\s*(?:업종|산업)")
+
+
+def broaden_industry_agnostic(themes: list[dict[str, Any]]) -> list[str]:
+    """업종이 아니라 배당·재무 특성으로 정한 테마(설명이 스스로 '업종에 관계없이' 라고 함)에 GICS 코드가 없으면 11개 섹터를 채운다.
+    그 특성은 선정 기준(템플릿)이 순위로 정한다 (037: '배당을 꾸준히 늘려 온 기업' 을 키워드 'dividend growth' 와 예시 4종목으로만 찾아
+    후보가 4개였고, 25종목 요청이 3종목이 됐다). 제자리에서 고치고 경고를 돌려준다. 해석과 실행 단계가 같이 쓴다 (같은 테마면 다시 해도 그대로)."""
+    warns: list[str] = []
+    for th in themes or []:
+        if not th.get("gics_codes") and _AGNOSTIC.search(" ".join(str(th.get(k) or "") for k in ("label_ko", "description_ko"))):
+            th["gics_codes"] = list(SECTOR_CODES)
+            warns.append(f"theme {th.get('id')}: industry-agnostic theme had no GICS codes; searching all 11 sectors (the selection metric ranks)")
     return warns
 
 
@@ -175,6 +192,7 @@ def interpret(
                 warnings.append(f"theme {th['id']}: dropped tickers outside universe {out}")
             th["example_tickers"] = [t for t in th["example_tickers"] if t in universe]
     warnings += clean_exclude_rules(ans.get("exclude_theme_rules", []))
+    warnings += broaden_industry_agnostic(ans["interpretation"]["themes"])
     ans["request_id"] = req["request_id"]
     sp, cons = req["strategy_preference"], req["constraints"]
     metric, direction = TEMPLATE_METRICS[sp["template"]]

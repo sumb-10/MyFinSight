@@ -18,7 +18,7 @@ from backend.analysis.m1_request.derive import derive
 from backend.analysis.m2_data import descriptor as D
 from backend.analysis.m3_selection.classify import classify, is_broad_theme
 from backend.analysis.m3_selection.explain import explain
-from backend.analysis.m3_selection.intent import clean_exclude_rules, interpret
+from backend.analysis.m3_selection.intent import broaden_industry_agnostic, clean_exclude_rules, interpret
 from backend.analysis.m3_selection.retrieve import retrieve
 from backend.analysis.m3_selection.screen import screen
 from backend.analysis.m4_portfolio.construct import construct
@@ -67,7 +67,8 @@ def st_intent(ctx: RunContext) -> str:
     if ctx.intent is not None:
         # 대화에서 확정된 의도를 다시 쓰되, 코드 규칙(제외 테마의 GICS 정리)은 지금 규칙으로 다시 적용한다 — 예전 의도면 '성인 산업' 이 미디어 업종 전체를 뺐다 (013)
         ctx.outputs["02_intent"] = ctx.intent
-        ctx.warn_all("02_intent", clean_exclude_rules(ctx.intent.get("exclude_theme_rules") or []))
+        ctx.warn_all("02_intent", clean_exclude_rules(ctx.intent.get("exclude_theme_rules") or [])
+                     + broaden_industry_agnostic((ctx.intent.get("interpretation") or {}).get("themes") or []))  # fmt: skip  (037)
         return "대화에서 확정된 의도 재사용 (LLM 호출 없음)"
     spec, warns, _ = interpret(ctx.request, ctx.desc, ctx.llm, ctx.settings)
     out = spec.model_dump(mode="json")

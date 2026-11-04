@@ -260,7 +260,8 @@ def evaluate(ctx, p, raw, kind, bench_raw, baseline_idx, *, implied_by_date=None
     if kind == "black_litterman":  # 라운드 5: 뷰를 세운 날부터 다음 리밸런싱일까지의 적중 (뷰가 실제로 비중을 바꾼 기간)
         vbd = p.get("views_by_date") or ({str(ctx["as_of"].date()): p.get("views_applied") or []} if p.get("views_applied") else {})
         # rb[0] 은 첫 매수일이지 '다음' 리밸런싱이 아니다: 시작일이 혼합 포트폴리오 한쪽 시장의 휴장일이라 첫 매수가 하루 밀려도 창이 하루짜리가 되지 않게
-        nxt = M.view_diagnostics_next_window(vbd, ctx["panel"], ctx["rb"][1:], ctx["end"], implied_by_date, implied)
+        # 리밸런싱이 없으면 '다음 리밸런싱까지' 가 곧 전체 기간이라 따로 재지 않는다 (037: 3년 전체를 '다음 리밸런싱까지 적중 0%' 로 보였다)
+        nxt = M.view_diagnostics_next_window(vbd, ctx["panel"], ctx["rb"][1:], ctx["end"], implied_by_date, implied) if ctx["rb"][1:] else []
     cps = build_checkpoints(raw, bench_raw, ctx["panel"], weights, ctx["sectors"], ctx["cp_dates"], ctx["rb_set"], ctx["last"], cfg, views, implied,
                             ctx["as_of"], ctx["end"], s, targets_by_date=tbd)  # fmt: skip  (품질 제외를 뺀 날짜별 목표: 체결 비중과 같은 기준)
     m = res["metrics"]

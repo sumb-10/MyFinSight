@@ -57,6 +57,19 @@ def metric_rank(rows: dict[str, dict[str, Any]], asc: bool) -> dict[str, int]:
     return {t: i + 1 for i, t in enumerate(sorted(rows, key=k)) if math.isfinite(k(t))}
 
 
+RULE_KO = {"gics_match": "산업 분류", "keyword_match": "키워드", "example_match": "예시 종목"}
+
+
+def _matched_label_ko(stats: dict[str, Any]) -> str:
+    """깔때기 '테마 관련 종목' 칸에 실제로 찾은 방법별 수 (037: 후보 4개가 모두 분석 모델이 든 예시 종목이었는데 'GICS·키워드·예시 종목 검색' 이라
+    S&P 500 전체를 뒤져 4개만 찾은 것처럼 읽혔다). 한 종목이 여러 방법에 걸릴 수 있다."""
+    br = stats.get("by_rule") or {}
+    how = [f"{v} {br[k]}" for k, v in RULE_KO.items() if br.get(k)]
+    if not how:
+        return "테마 관련 종목 (GICS·키워드·예시 종목 검색)"
+    return "테마 관련 종목 (찾은 방법: " + ", ".join(how) + ("개, 한 종목이 여러 방법에 걸릴 수 있음)" if len(how) > 1 else "개)")
+
+
 def _ex_theme_ko(rows: list[dict[str, Any]], k: int = 5) -> str:
     """깔때기 테마 단계 뒤에 붙이는 '제외 테마로 뺀 종목' (024: 13개를 뺐는데 테마 판정에서 떨어진 것처럼 보였다)."""
     if not rows:
@@ -197,7 +210,7 @@ def build_results(
     forced_off = [s["ticker"] for s in sel["selected"] if s.get("forced") and not M.eligible(met, s.get("metric_value"))]
     funnel = [
         {"stage": "universe", "label_ko": "투자 가능 종목 (" + " ∪ ".join(req["constraints"]["universe"]) + ")", "count": descriptor_info.get("n_stocks", len(D.tickers(desc)))},
-        {"stage": "matched", "label_ko": "테마 관련 종목 (GICS·키워드·예시 종목 검색)", "count": cand["stats"].get("n_matched", cand["stats"]["n_candidates"])},
+        {"stage": "matched", "label_ko": _matched_label_ko(cand["stats"]), "count": cand["stats"].get("n_matched", cand["stats"]["n_candidates"])},
         {"stage": "candidates", "label_ko": cand_label, "count": cand["stats"]["n_candidates"]},
         {"stage": "theme_passed", "label_ko": (f"테마 해당 판정 (분석 모델, 신뢰도 ≥ {tag['min_confidence']})" if tag.get("theme_filter_applied", True)
                                                else "제외 테마 판정 (넓은 테마라 테마 해당 여부로는 거르지 않음)") + _ex_theme_ko(ex_theme), "count": len(tag["passed_tickers"])},
