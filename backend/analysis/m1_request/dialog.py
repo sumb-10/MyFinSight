@@ -399,7 +399,9 @@ class DialogService:
             if n_now >= 2:
                 sp = shrink_patch(n_now, now.get("sector_counts"))
                 cap, scap = sp["constraints.max_weight_per_stock"], sp["constraints.max_weight_per_sector"]
-                lab = f"종목 수를 {n_now}개로 줄이고 종목당 상한을 {cap:.0%}로 올려" + (f"(섹터당 상한 {scap:.0%})" if scap > sector_cap + 1e-9 else "") + f" 투자 비율 {1 - cash:.0%}를 모두 배분"
+                # 실제로 올리는 상한만 적는다 (012: 이미 15% 인 종목당 상한을 '15%로 올려' 라고 썼다)
+                ups = [f"종목당 상한 {cap:.0%}" for _ in [0] if cap > stock_cap + 1e-9] + [f"섹터당 상한 {scap:.0%}" for _ in [0] if scap > sector_cap + 1e-9]
+                lab = f"종목 수를 {n_now}개로 줄이고" + (f" {'·'.join(ups)}로 올려" if ups else "") + f" 투자 비율 {1 - cash:.0%}를 모두 배분"
                 opts.append({"value": f"shrink_{n_now}", "label_ko": lab, "patch": sp})
             opts.append({"value": "widen_theme", "label_ko": "테마를 넓혀 다시 해석 (인접 산업 포함)",
                          "clarification": f"[테마 넓히기] 테마에 맞는 후보가 {n_now}개뿐이라 인접 산업·관련 업종까지 넓혀 해석해 주세요"})

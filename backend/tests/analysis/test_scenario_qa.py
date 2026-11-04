@@ -1272,3 +1272,38 @@ def test_no_consent_wording_after_auto_shift(monkeypatch, seeded_repo, descripto
     spec, _ = S.build_backtest_spec(md, req, {"screen": {"metric": "return_12m_1m"}}, tag, _fake_selection(6), desc, s, start_shift_ok=False)
     txt = " ".join(spec["warnings"])
     assert "자동으로 옮겼고" in txt and "동의를 받지 않아" in txt and "동의하지 않아" not in txt
+
+
+def test_broken_pooled_connection_is_retried():
+    """012: 네트워크 오류 뒤 풀의 사전 점검이 'can't change autocommit now: connection in transaction status ACTIVE' 로 실패해 일꾼이 멈췄다 → 끊긴 연결로 보고 다시."""
+    from sqlalchemy.exc import ProgrammingError
+
+    from backend.db.sql import _disconnected
+
+    e = ProgrammingError("SELECT 1", {}, Exception("can't change 'autocommit' now: connection in transaction status ACTIVE"))
+    assert _disconnected(e)
+    assert not _disconnected(ProgrammingError("SELECT x", {}, Exception('column "x" does not exist')))  # 진짜 SQL 오류는 다시 하지 않음
+
+
+def test_harness_caps_horizon_to_service_range():
+    """013: 시나리오의 투자기간 15년은 프로필 범위(1~10년) 밖이라 저장이 거부됐다 → 시험 도구가 10년으로 줄이고 기록."""
+    from backend.analysis.eval.run_scenarios import normalize_request
+
+    req, notes = normalize_request({"capital": {"trading_currency": "USD"}, "constraints": {}, "horizon": {"target_years": 15}})
+    assert req["horizon"]["target_years"] == 10 and any("target_years" in n for n in notes)
+
+
+def test_shrink_label_mentions_only_raised_caps(monkeypatch, svc_factory):
+    """012: 이미 15% 인 종목당 상한을 '15%로 올려' 라고 썼다 → 실제로 올리는 상한만."""
+    import backend.analysis.m1_request.dialog as DG
+    from backend.tests.analysis.test_dialog import _intent
+
+    fake = {"signature": "x", "basis": "after_classification", "min": 12, "target": 15, "short_now": True, "short_at_start": False, "capacity_short": False,
+            "as_of": {"n_selected": 9, "n_with_metric": 9, "n_candidates": 9, "capacity": 0.7, "invest": 0.9, "sector_counts": {"Financials": 9}},
+            "start": None, "feasible_start": None}  # fmt: skip
+    monkeypatch.setattr(DG, "run_precheck", lambda *a, **kw: fake)
+    svc, _store, _llm = svc_factory([_intent([])] * 3)
+    st = svc.start("국내 은행 고배당", overrides={"constraints.max_weight_per_stock": 0.15, "constraints.max_weight_per_sector": 0.7, "constraints.min_cash_ratio": 0.1,
+                                                 "constraints.num_holdings": {"target": 15, "min": 12, "max": 18}})  # fmt: skip
+    lab = next(o.label_ko for o in st.question.options if o.patch and "constraints.num_holdings" in o.patch)
+    assert "종목당 상한" not in lab and "섹터당 상한 90%" in lab and lab.startswith("종목 수를 9개로 줄이고")

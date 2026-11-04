@@ -161,6 +161,10 @@ def normalize_request(req: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
         if cons.get(k):
             notes.append(f"constraints.{k} true → false (서비스 미지원: 프로필 저장이 거부되므로 시험을 위해 끔)")
             cons[k] = False
+    hz = req.get("horizon") or {}
+    if float(hz.get("target_years") or 0) > 10:  # 프로필 설계 범위 1~10년 (schemas/request.py) → 넘으면 저장이 거부된다 (013: 15년)
+        notes.append(f"horizon.target_years {hz['target_years']} → 10 (서비스 범위 1~10년: 프로필 저장이 거부되므로 시험을 위해 줄임)")
+        hz["target_years"] = 10
     return req, notes
 
 
