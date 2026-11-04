@@ -1217,3 +1217,21 @@ def test_usd_request_has_no_krw_conversion_text(e2e_results):
     txt = _json.dumps(blocks, ensure_ascii=False)
     assert "1 USD = 1.00 KRW" not in txt and '"원화"' not in txt
     assert RB.build_summary(R, chosen, {}, {})["allocation"]["fx_direction"] is None
+
+
+def test_cautious_reason_names_only_matching_condition():
+    """F14: 성향 문구가 실제 조건(손실 시 매도 OR 투자 경험 없음) 중 해당하는 것만."""
+    from backend.analysis.m5_backtest_report.validate import cautious_reason_ko
+
+    assert cautious_reason_ko({"risk": {"loss_reaction": "sell"}, "profile": {"investment_experience": "intermediate"}}) == "손실 시 매도"
+    assert cautious_reason_ko({"risk": {"loss_reaction": "hold"}, "profile": {"investment_experience": "none"}}) == "투자 경험 없음"
+    assert cautious_reason_ko({"risk": {"loss_reaction": "sell"}, "profile": {"investment_experience": "none"}}) == "손실 시 매도 · 투자 경험 없음"
+
+
+def test_sector_overflow_callout_says_which_date():
+    """008: 시작일 선정의 '정보기술 10개가 섹터 상한 70% 를 나눠 갖습니다' 가 날짜 없이 나왔다."""
+    from backend.analysis.m5_backtest_report.report_blocks import infeasibility_callout
+
+    ov = {"note_ko": "정보기술 종목이 10개로 섹터 상한 70%를 나눠 갖습니다.", "tickers": ["NVDA", "AMAT"]}
+    R = {"selection": {"backtest_as_of": {"as_of": "2022-06-21", "sector_overflow": ov}, "as_of_now": {"as_of": "2025-06-18"}}}
+    assert infeasibility_callout(R)["text_ko"].startswith("백테스트 시작일(2022-06-21) 선정: ")

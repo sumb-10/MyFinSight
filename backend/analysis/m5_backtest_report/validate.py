@@ -158,6 +158,12 @@ def row_of(p, status, extra=None):
             **(extra or {})}  # fmt: skip
 
 
+def cautious_reason_ko(req: dict[str, Any]) -> str:
+    """보수적으로 다룰 성향 조건 중 실제로 해당하는 것만 (F14: 둘 중 하나만 해당해도 '손실 시 매도·투자 경험 없음' 을 다 적었다)."""
+    return " · ".join(x for x, on in (("손실 시 매도", req["risk"].get("loss_reaction") == "sell"),
+                                      ("투자 경험 없음", (req.get("profile") or {}).get("investment_experience") == "none")) if on)
+
+
 def dd_bucket(mdd: float, tol: float, size: float) -> int:
     """허용 낙폭 초과분을 size(5%p) 단위 구간으로. 안이면 0."""
     return int(math.ceil(max(0.0, abs(mdd) - tol) / size - 1e-9)) if size > 0 else int(abs(mdd) > tol)
@@ -299,9 +305,13 @@ def validate(res: dict[str, Any], targets: dict[str, Any], intent: dict[str, Any
         inv = float(sum(pb["target_weights"].values()))
         base_name = (ports.get(base_id) or {}).get("name_ko") or NAMES_KO.get(base_id, base_id)
         parts.append(f"{base_name}의 주식 비중을 {inv:.0%}로 줄여 과거 최대낙폭을 목표 {match_target:.1%} 안에 맞춘 구성")
-        same_prefix = [t for t in ranked[1:] if key(t)[:4] == key(best)[:4]]
-        if cautious and same_prefix:
-            parts.append("손실 시 매도·투자 경험 없음 성향이라 같은 조건이면 낙폭 맞춤안을 우선했습니다")
+        if cautious:
+            # 해당하는 조건만 적고, 이 규칙이 실제로 1위를 바꿨을 때만 쓴다 (F14·N-B1-1: 예전에는 둘 중 하나만 해당해도 둘 다 적고, 순위가 같아도 적었다)
+            why = cautious_reason_ko(req)
+            plain = min(cands, key=lambda t: rank_key(t, by_id.get(t["id"], {}), integrity_failed=t["id"] in failed_ids, tol=tol_user,
+                                                       bucket_size=bs.dd_excess_bucket, cautious=False, baseline_id=targets["baseline"]["id"]))  # fmt: skip
+            if plain["id"] != best["id"]:
+                parts.append(f"{why} 성향이라 같은 조건이면 낙폭 맞춤안을 우선했습니다 (이 규칙이 없으면 {plain['name_ko']})")
     parts.append(f"CAGR {best['cagr']:.1%}, 최종 평가금액 {best['final_value_usd']:,.0f} USD.")
     reason = " · ".join(parts[:-1]) + " · " + parts[-1] if len(parts) > 1 else parts[0]
     recommended = {"id": best["id"], "status": best["status"], "verdict": verdict, "rank_key": [int(x) if isinstance(x, bool) else x for x in key(best)],

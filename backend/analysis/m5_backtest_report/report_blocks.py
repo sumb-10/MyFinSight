@@ -199,8 +199,9 @@ def infeasibility_callout(R):
                + (f" {inf['note_ko']}." if inf.get("note_ko") else "") + (" 해결 방법: " + " / ".join(opts) if opts else ""))  # fmt: skip
         return {"type": "callout", "tone": "caution", "title_ko": "상한 안에서 전액 배분할 수 없는 구성", "text_ko": txt}
     ov = bt_sel.get("sector_overflow") or now.get("sector_overflow")
-    if ov:
-        return {"type": "callout", "tone": "info", "title_ko": "섹터 상한이 비중을 누른 부분", "text_ko": ov["note_ko"] + f" (해당 종목: {', '.join(ov['tickers'])})"}
+    if ov:  # 어느 날 선정인지 밝힌다 (008: 시작일 선정의 '정보기술 10개' 가 날짜 없이 나왔다)
+        when = f"백테스트 시작일({bt_sel.get('as_of')}) 선정: " if bt_sel.get("sector_overflow") else f"분석 기준일({now.get('as_of')}) 선정: "
+        return {"type": "callout", "tone": "info", "title_ko": "섹터 상한이 비중을 누른 부분", "text_ko": when + ov["note_ko"] + f" (해당 종목: {', '.join(ov['tickers'])})"}
     return None
 
 
