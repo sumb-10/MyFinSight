@@ -156,7 +156,8 @@ def test_sector_cap_conflict_is_asked_by_code_rule(svc_factory):
     """테마가 한 섹터(반도체=IT)인데 섹터 상한 0.8 < 1.0 → LLM 질문이 없어도 코드가 먼저 묻는다. 답하면 상한이 바뀐다."""
     svc, store, llm = svc_factory([_intent([]), _intent([])], sector_rule=True)
     st = svc.start("미국과 한국의 반도체·메모리 기업에 분산 투자하고 싶다")
-    assert st.state == "asking" and st.question.field == "constraints.max_weight_per_sector" and st.question.kind == "conflict"
+    # 점검 기반 질문은 실행 가능성 문제라 'feasibility' (2026-11 QA 010: 시작일 질문보다 먼저 묻기 위해)
+    assert st.state == "asking" and st.question.field == "constraints.max_weight_per_sector" and st.question.kind == "feasibility"
     assert "현금" in st.question.question_ko and [o.value for o in st.question.options] == [1.0, 0.8]
     st = svc.answer(st.request_id, 1, option_value=1.0)
     assert st.state == "ready"

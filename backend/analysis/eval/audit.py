@@ -216,10 +216,12 @@ class Audit:
         n = len(rows)
         self.chk("종목 수 최소~최대(기준일)", nh.get("min", 0) <= n <= nh.get("max", 10**6), f"{n} vs {nh.get('min')}~{nh.get('max')}")
         n_bt = len(ss.get("tickers") or [])
-        kept = bool(((self.req_doc or {}).get("overrides") or {}).get("_allow_fewer_at_start"))  # 사용자가 '기간 유지' 를 고름 → 미달은 정책대로 (라벨에 '종목 수 부족')
+        # 정책 결정 4: 동의(질문 건너뜀·옮기기)가 있을 때만 최소 종목 수까지 옮기고, 없으면 1종목 이하일 때만 2종목이 되는 날로 자동 이동.
+        # 그래서 최소 미달 시작은 '2종목 이상 + 라벨에 종목 수 부족' 이면 정책대로다 (사용자가 기간 유지를 골랐거나, 묻지 못했거나, 옮겨도 못 채움)
         lab = str((((o.get("12_validation") or {}).get("recommended") or {}).get("verdict") or {}).get("label_ko") or "")
-        self.chk("종목 수 최소 이상(시작일)" + (" — 사용자가 기간 유지를 골라 라벨 표시로 대신" if kept and n_bt < nh.get("min", 0) else ""),
-                 n_bt >= nh.get("min", 0) or (kept and n_bt >= 2 and "종목 수 부족" in lab), f"{n_bt} vs 최소 {nh.get('min')}")  # fmt: skip
+        short_ok = n_bt >= 2 and "종목 수 부족" in lab
+        self.chk("종목 수 최소 이상(시작일)" + (" — 정책 결정 4 대로 라벨 표시로 대신" if short_ok and n_bt < nh.get("min", 0) else ""),
+                 n_bt >= nh.get("min", 0) or short_ok, f"{n_bt} vs 최소 {nh.get('min')}")  # fmt: skip
         rng = ELIGIBLE.get(str(sc.get("metric")))
         if rng:
             lo, hi = rng

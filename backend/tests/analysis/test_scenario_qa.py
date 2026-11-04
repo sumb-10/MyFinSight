@@ -1235,3 +1235,40 @@ def test_sector_overflow_callout_says_which_date():
     ov = {"note_ko": "정보기술 종목이 10개로 섹터 상한 70%를 나눠 갖습니다.", "tickers": ["NVDA", "AMAT"]}
     R = {"selection": {"backtest_as_of": {"as_of": "2022-06-21", "sector_overflow": ov}, "as_of_now": {"as_of": "2025-06-18"}}}
     assert infeasibility_callout(R)["text_ko"].startswith("백테스트 시작일(2022-06-21) 선정: ")
+
+
+def test_sector_cap_question_comes_before_start_question(monkeypatch, svc_factory):
+    """010: 시작일 질문('기간 유지 — 투자금의 60%만 투자')을 먼저 묻고 섹터 상한을 90% 로 올려 안내가 틀어졌다 → 섹터 상한 질문이 먼저."""
+    import backend.analysis.m1_request.dialog as DG
+    from backend.tests.analysis.test_dialog import _intent
+
+    fake = {"signature": "x", "basis": "after_classification", "min": 25, "target": 30, "short_now": False, "short_at_start": True, "capacity_short": True,
+            "as_of": {"n_selected": 25, "n_with_metric": 25, "n_candidates": 25, "capacity": 0.6, "invest": 0.9, "sector_counts": {"Health Care": 25}, "cap_needed": 0.9},
+            "start": {"date": "2023-06-12", "n_selected": 23, "n_with_metric": 23, "n_candidates": 28, "capacity": 0.6, "sector_counts": {"Health Care": 23}},
+            "feasible_start": None}  # fmt: skip
+    monkeypatch.setattr(DG, "run_precheck", lambda *a, **kw: fake)
+    svc, _store, _llm = svc_factory([_intent([])] * 3, sector_rule=True)
+    st = svc.start("미국 헬스케어 저변동성")
+    assert st.question.field == "constraints.max_weight_per_sector"
+
+
+def test_no_consent_wording_after_auto_shift(monkeypatch, seeded_repo, descriptor_dir):
+    """011: 시작일 질문을 하지 않았는데(보기가 1개뿐) '시작일을 옮기는 데 동의하지 않아' 라고 썼다 → '동의를 받지 않아' + 자동 이동 사실."""
+    from types import SimpleNamespace
+
+    import backend.analysis.m4_portfolio.spec as S
+    from backend.analysis.schemas.selection import Tagging
+
+    md, req, desc, s = _spec_inputs(seeded_repo, descriptor_dir)
+    counts, seen = [1, 2, 2, 2, 2, 2], []
+
+    def fake_at(md_, day, desc_, intent_, cons_, passed, rid, **kw):
+        seen.append(day)
+        return (SimpleNamespace(candidates=[], model_dump=lambda **k: {}), Tagging(request_id="r", min_confidence=0, tagged=[], passed_tickers=[], batches=0),
+                _fake_selection(counts[min(len(seen) - 1, len(counts) - 1)]), [])  # fmt: skip
+
+    monkeypatch.setattr(S, "selectable_at", fake_at)
+    tag = Tagging(request_id="r", min_confidence=0.5, tagged=[], passed_tickers=["NVDA", "AMD", "AVGO", "MU", "AMAT", "MSFT"], batches=0)
+    spec, _ = S.build_backtest_spec(md, req, {"screen": {"metric": "return_12m_1m"}}, tag, _fake_selection(6), desc, s, start_shift_ok=False)
+    txt = " ".join(spec["warnings"])
+    assert "자동으로 옮겼고" in txt and "동의를 받지 않아" in txt and "동의하지 않아" not in txt

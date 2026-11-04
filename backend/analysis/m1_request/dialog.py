@@ -448,12 +448,14 @@ class DialogService:
         1) 아이디어에 적힌 과거 기간("2005년부터 약 12년간", "2006년 ~ 2016년까지") 이 지금 백테스트 창과 다르면 기간을 묻는다.
         2) LLM 이 `conflicts` 에 적은 "아이디어 ↔ 프로필 기본값" 충돌(idea_value 있음)은 사용자가 고르게 질문으로 바꾼다 (자연어가 프로필 기본값을 이길 수 있게).
         3) 테마가 한 GICS 섹터에 몰려 있는데 섹터 상한 < 투자 비율이면 현금이 남는다는 사실을 알리고 "풀까요 / 유지할까요" 를 묻는다."""
+        # 배분 가능 비율(섹터 상한) 질문을 시작일 질문보다 먼저 둔다: 상한을 바꾸면 시작일 구성의 투자 비율도 바뀌어, 먼저 물은
+        # '기간 유지 — 백테스트에서는 투자금의 60%만 투자' 안내가 다음 답(섹터 상한 90%)으로 틀어졌다 (010). 종목 수 부족 질문이 있으면 그 보기가 상한까지 다룬다.
+        cap_q = self._sector_cap_proposals(req, intent, desc, precheck) if self.s.dialog.ask_sector_cap_conflict else []
+        return cap_q + self._feasibility_proposals(req, precheck, overrides or {}) + self._period_proposal(req) + self._conflict_proposals(req, intent, overrides or {})
+
+    def _sector_cap_proposals(self, req: dict[str, Any], intent: dict[str, Any], desc: Any, precheck: dict[str, Any] | None) -> list[QuestionProposal]:
+        """섹터 상한 때문에 투자 비율을 다 배분하지 못하면 '올릴까요 / 유지할까요' (F25: 점검의 예상 선정 종목으로 계산)."""
         out: list[QuestionProposal] = []
-        out += self._feasibility_proposals(req, precheck, overrides or {})
-        out += self._period_proposal(req)
-        out += self._conflict_proposals(req, intent, overrides or {})
-        if not self.s.dialog.ask_sector_cap_conflict:
-            return out
         cons = req["constraints"]
         cap = float(cons.get("max_weight_per_sector", 1.0))
         invest = 1.0 - float(cons.get("min_cash_ratio", 0.0) or 0.0)
@@ -467,8 +469,8 @@ class DialogService:
             need = now.get("cap_needed") or round(invest, 2)
             mix = sector_counts_ko(counts)  # 한국어 질문에 GICS 영어 이름(Industrials)을 쓰지 않는다
             cash_left = 1 - float(now["capacity"])
-            out.append(QuestionProposal(
-                field="constraints.max_weight_per_sector", kind="conflict", priority=1,
+            out.append(QuestionProposal(  # 배분 가능 비율 부족 = 실행 가능성 문제 → 'feasibility' (시작일 질문보다 먼저 정렬되게, 010)
+                field="constraints.max_weight_per_sector", kind="feasibility", priority=1,
                 question_ko=(f"예상 선정 종목 {now.get('n_selected')}개가 {mix}로 몰려 있어 섹터당 상한 {cap:.0%}로는 {float(now['capacity']):.0%}만 투자되고 "
                              f"현금이 {cash_left:.0%} 남습니다" + (f"(최소 현금 {1 - invest:.0%} 포함)" if invest < 1 - 1e-9 else "") + ". 어떻게 할까요?"),
                 options=[{"value": float(need), "label_ko": f"이번 분석에서는 섹터 상한을 {float(need):.0%}로 올려 투자 비율 {invest:.0%}를 모두 배분"},

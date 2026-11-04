@@ -44,6 +44,7 @@ def cash_breakdown(R: dict[str, Any], p: dict[str, Any]) -> dict[str, Any]:
     out = {"stocks": pct(inv), "cash": pct(1 - inv), "min_cash_by_user": pct(mc) if mc > 1e-9 else None,
            "cash_by_caps": pct(max(0.0, 1 - mc - base_inv)) if 1 - mc - base_inv > 0.001 else None,
            "cash_added_by_drawdown_match": pct(base_inv - inv) if base is not p and base_inv - inv > 0.0005 else None}
+    out["basis_ko"] = "백테스트 구성(시작일에 고른 종목) 기준 — 지금 구성(allocation_now)의 현금과 다를 수 있음"  # 011: 백테스트 2종목·현금 50% 를 지금 포트폴리오처럼 썼다
     out["note_ko"] = "현금 = 사용자 최소 현금 + 종목·섹터 상한 때문에 배분하지 못한 몫 + 낙폭 맞춤으로 더 줄인 몫 (없는 항목은 null)"
     return out
 

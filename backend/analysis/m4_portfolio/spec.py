@@ -178,8 +178,9 @@ def build_backtest_spec(
                 why = "기준일에도 최소 종목 수에 못 미쳐 시작일을 옮기지 않고"
             elif allow_fewer_at_start:
                 why = "요청대로 백테스트 기간을 유지해"
-            elif not start_shift_ok:
-                why = "시작일을 옮기는 데 동의하지 않아 기간을 유지하고"
+            elif not start_shift_ok:  # 동의를 '받지 않은' 것 — 질문 자체가 없었을 수도 있다 (011: 묻지 않았는데 '동의하지 않아' 라고 썼다)
+                why = ("1종목 이하라 2종목 이상이 되는 날까지만 자동으로 옮겼고, 최소 종목 수를 채우는 날까지 옮기는 데는 동의를 받지 않아"
+                       if as_of != first_try else "최소 종목 수를 채우는 날까지 시작일을 옮기는 데 동의를 받지 않아 기간을 유지하고")
             else:
                 why = "시작일을 옮겨도 최소 종목 수를 채울 수 없어 기간을 유지하고"
             warnings.append(f"백테스트 시작일 {as_of} 에는 선정 가능한 종목이 {n_sel}개(최소 {nh_min}개)입니다. {why} 그 종목으로 시작합니다")
