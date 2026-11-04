@@ -93,5 +93,6 @@ def scale_weights(w: dict[str, float], c: float) -> dict[str, float]:
 
 
 def matched_name(base_label: str, invested: float) -> str:
-    """총 투자 비중으로 적는다 (기준 구성에 현금이 있어도 합이 100%)."""
-    return f"낙폭 맞춤안 (주식 {invested:.0%} + 현금 {1 - invested:.0%}, {base_label} 기준)"
+    """총 투자 비중으로 적는다 (기준 구성에 현금이 있어도 합이 100%). 현금은 100 − 주식으로 (따로 반올림하면 '주식 24% + 현금 77%' 처럼 합이 어긋날 수 있다)."""
+    stock = int(round(invested * 100))
+    return f"낙폭 맞춤안 (주식 {stock}% + 현금 {100 - stock}%, {base_label} 기준)"

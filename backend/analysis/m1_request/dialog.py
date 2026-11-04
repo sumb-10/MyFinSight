@@ -303,6 +303,15 @@ class DialogService:
         spec, warns, _msgs = interpret(normalized, desc, self.llm, self.s, messages=_dicts(doc.messages), asked_fields=asked)
         intent = spec.model_dump(mode="json")
         proposals = [QuestionProposal.model_validate(q) for q in intent.pop("questions", [])]
+        # 테마와 무관한 답(종목 수·상한·기간 등)이면 테마 정의(GICS·키워드·예시 종목)와 제외 테마 규칙을 이전 턴 그대로 둔다.
+        # LLM 이 턴마다 의도 전체를 다시 쓰며 GICS 코드를 바꿔(004: '2510' 이 빠짐) 점검 후보가 4 → 3 이 됐고, '4개로 줄임' 답이 틀린 숫자 위에 남았다.
+        # 아이디어·보탠 말(테마 넓히기·자유 입력 포함)·제외 테마·유니버스가 바뀌었을 때만 새 테마를 받는다.
+        basis = sha256_hex(canonical_json({"idea": doc.idea, "cl": list(doc.idea_clarifications), "ex": req["constraints"].get("exclude_themes") or [],
+                                           "u": req["constraints"].get("universe") or []}), 12)  # fmt: skip
+        if doc.intent and doc.overrides.get("_theme_basis") == basis:
+            intent["interpretation"]["themes"] = doc.intent["interpretation"]["themes"]
+            intent["exclude_theme_rules"] = doc.intent.get("exclude_theme_rules", [])
+        doc.overrides["_theme_basis"] = basis
         doc.intent = intent
         doc.messages.append(DialogMessage(role="assistant", content=json.dumps({**intent, "questions": [p.model_dump() for p in proposals]}, ensure_ascii=False)))
         doc.warnings = list(warns)
@@ -407,7 +416,10 @@ class DialogService:
         if precheck.get("short_at_start") and not precheck.get("short_now") and "_allow_fewer_at_start" not in overrides:  # 기준일부터 부족하면 위 질문이 다룬다 (07 도 옮기지 않음)
             opts = []
             if n_start >= 2:
-                opts.append({"value": "keep_window", "label_ko": f"백테스트 기간을 유지하고 시작 때 선정 가능한 {n_start}종목으로 평가", "patch": {"_allow_fewer_at_start": True}})
+                # 종목이 적으면 종목·섹터 상한 때문에 백테스트 내내 현금이 남는다 → 고르기 전에 보이게 (002: '기간 유지' 를 골라 현금 50% 로 평가됐는데 질문에는 없었다)
+                cap_st = st.get("capacity")
+                cash_note = (f" — 상한 때문에 백테스트에서는 투자금의 {float(cap_st):.0%}만 투자" if cap_st is not None and float(cap_st) < (1.0 - cash) - 0.005 else "")
+                opts.append({"value": "keep_window", "label_ko": f"백테스트 기간을 유지하고 시작 때 선정 가능한 {n_start}종목으로 평가{cash_note}", "patch": {"_allow_fewer_at_start": True}})
             fs = precheck.get("feasible_start")
             if fs and float(fs.get("years") or 0) >= 1.0:
                 opts.append({"value": f"shorten_{fs['years']}", "label_ko": f"백테스트 기간을 {fs['years']:g}년으로 줄임 ({fs['date']}부터는 {fs['n_with_metric']}종목)",

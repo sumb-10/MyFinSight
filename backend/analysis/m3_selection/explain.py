@@ -16,6 +16,12 @@ from backend.analysis.schemas.selection import Selection, Tagging
 
 STAGE = "06_explain"
 from backend.analysis.common.citations import CITE_RE  # 인용 ID 정규식은 한 곳에서
+
+
+def _dc_date(r: dict[str, Any]) -> str:
+    """공시 날짜 = 접수일(시장 현지). 이용 가능일(그 공시를 쓸 수 있는 첫 거래일)이 다르면 괄호로 덧붙인다 (예전에는 이용 가능일만 적어 3~4일 늦게 보였다, 003)."""
+    filed, avail = r.get("filed_at") or r["available_on"], r["available_on"]
+    return filed if filed == avail else f"{filed}(이용 가능일 {avail})"
 from backend.analysis.m2_data import metrics as M
 
 
@@ -46,7 +52,7 @@ def explain(
             counts = news.event_counts(s.ticker)
             recs = [r for r in news.disclosures if r["evidence_id"] in set(news.by_ticker_dc[s.ticker][:5])]
             dl = (f" / 공시({(news.end - news.dc_start).days if news.dc_start else 0}일): " + ", ".join(f"{k} {n}건" for k, n in counts.items()) + "; "
-                  + "; ".join(f"[{r['evidence_id']}] {r['available_on']} {r['event_label_ko']} ({r['title'][:50]})" for r in recs))
+                  + "; ".join(f"[{r['evidence_id']}] {_dc_date(r)} {r['event_label_ko']} ({r['title'][:50]})" for r in recs))
         mv = M.display_metric(s.metric_name, s.metric_value)
         lines.append(f"{s.rank} | {s.ticker} | {s.name} | {s.sector} | {mv} | {s.theme_confidence} | {reason.get(s.ticker, '')} | 근거: {fl}{nl}{dl}")
     system, user = load_prompts(

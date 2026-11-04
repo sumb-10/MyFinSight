@@ -5,6 +5,7 @@ SEC 공시의 title 은 대개 "8-K" 뿐이라 사건 종류·항목 번호가 �
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 EVENT_LABEL_KO: dict[str, str] = {
@@ -23,8 +24,10 @@ EVENT_LABEL_KO: dict[str, str] = {
     "annual_report": "사업보고서·연간 보고(10-K)", "semiannual_report": "반기보고서", "quarterly_report": "분기보고서(10-Q)", "audit_report": "감사보고서",
     "proxy": "의결권 위임장", "shareholder_meeting": "주주총회", "investor_relations": "기업설명회(IR)", "major_holder": "대량 보유 보고",
     "related_party": "특수관계인 거래", "derivative_offering": "파생결합증권 발행", "offering_document": "증권 발행 후속 서류", "exhibits_only": "첨부 서류만",
-    "current_report": "수시 보고", "other": "기타",
+    "current_report": "수시 보고", "other": "기타", "trading_halt": "매매거래 정지·해제",  # 거래소 절차 (중요 공시 전후 등): 뷰·요약 근거 아님
 }
+_HALT = re.compile(r"매매거래정지")
+_DELIST = re.compile(r"상장폐지|관리종목|불성실공시")
 SEC_ITEM_LABEL_KO: dict[str, str] = {"1.01": "계약", "1.02": "계약 해지", "1.03": "파산", "1.05": "사이버", "2.01": "취득·처분", "2.02": "실적", "2.03": "채무", "2.04": "조기상환",
                                      "2.05": "구조조정", "2.06": "손상", "3.01": "상장폐지 통지", "3.02": "주식 매각", "3.03": "권리 변경", "4.01": "감사인", "4.02": "재작성",
                                      "5.01": "경영권", "5.02": "임원", "5.03": "정관", "5.07": "주주 의결", "7.01": "Reg FD", "8.01": "기타", "9.01": "첨부"}  # fmt: skip
@@ -32,6 +35,18 @@ SEC_ITEM_LABEL_KO: dict[str, str] = {"1.01": "계약", "1.02": "계약 해지", 
 
 def label_ko(event_type: str | None) -> str:
     return EVENT_LABEL_KO.get(event_type or "", event_type or "분류 없음")
+
+
+def event_type_of(rec: dict[str, Any]) -> str | None:
+    """읽을 때 고친 사건 종류. event_type 은 수집할 때 DB 에 저장되는데, DART 규칙 v2 까지는 거래소의 매매거래 정지·해제
+    (중요 공시 전후의 절차상 정지)도 상장폐지 통지로 묶었다 (시나리오 003: 카카오 분할합병 공시 날 '상장폐지·관리종목 통지').
+    상장폐지·관리종목·불성실공시 사유가 함께 적힌 것은 그대로 둔다 (수집기 규칙 v3 과 같은 판정)."""
+    et = rec.get("event_type")
+    if et == "delisting_notice" and (rec.get("source") or "").upper() == "DART":
+        text = f"{rec.get('form') or ''}{rec.get('title') or ''}".replace(" ", "")
+        if _HALT.search(text) and not _DELIST.search(text):
+            return "trading_halt"
+    return et
 
 
 def display_title(rec: dict[str, Any]) -> str:

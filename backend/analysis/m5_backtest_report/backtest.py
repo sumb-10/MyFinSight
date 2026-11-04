@@ -14,6 +14,7 @@ import pandas as pd
 
 import bt as btlib
 
+from backend.analysis.errors import DataMissing
 from backend.analysis.m2_data import descriptor as D
 from backend.analysis.m2_data.market_data import MarketData
 from backend.analysis.m2_data.quality import report_summary
@@ -152,23 +153,44 @@ def build_events(raw, rb_dates, contrib_dates, checkpoints, settings):
 
 
 # ───────────────────────── reusable pieces ─────────────────────────
+def trade_schedule(md: MarketData, spec: dict[str, Any], settings: AnalysisSettings) -> dict[str, Any]:
+    """달력과 매매 일정. 백테스트(prepare)와 walk-forward(10w) 가 이 함수 하나로 날짜를 정한다 (10w 구성일 == 11 리밸런싱일).
+
+    평가 달력(cal) = 종목 시장 ∪ 비교지수 시장 거래일 합집합 — 다른 시장 비교지수도 자기 거래일에 평가한다 (휴장 종목은 직전 종가).
+    매매일(tradable) = 보유 종목 시장이 모두 연 날 (미국+한국 혼합이면 둘 다 연 날). 리밸런싱·적립은 규칙이 고른 날 이후 첫 매매일 —
+    합집합에서 바로 고르면 한국 종목만 든 포트폴리오가 미국 비교지수 때문에 한국 휴장일(2023-10-02 등)에 묵은 가격으로 매매했다 (시나리오 QA 002)."""
+    as_of, end = pd.Timestamp(spec["period"]["as_of"]), pd.Timestamp(spec["period"]["end"])
+    bench, tickers, cap = spec["benchmark"], list(spec["selection"]["tickers"]), spec.get("capital") or {}  # walk-forward 는 리밸런싱일만 쓴다
+    benches = [bench] + [b for b in spec.get("extra_benchmarks", []) if b != bench and b in md.assets]
+    view = md.view(end.date())
+    own = sorted({md.market_of(t) for t in tickers})
+    cal = view.trading_days(as_of.date(), end.date(), markets=sorted({*own, *(md.market_of(b) for b in benches)}))
+    tradable = cal
+    for m in own:
+        tradable = tradable.intersection(view.trading_days(as_of.date(), end.date(), markets=[m]))
+    rb = rebalance_dates(spec["rebalance_rule"], cal, as_of, settings.backtest, tradable=tradable)
+    if len(tradable) == 0 or not rb:  # 보유 종목 시장이 모두 연 날이 하나도 없으면 매수 자체가 없다 → 뒤에서 알 수 없는 오류 대신 이유를 밝혀 멈춤 (검토)
+        raise DataMissing(f"백테스트 기간 {as_of.date()}~{end.date()} 에 보유 종목 시장({', '.join(own)})이 모두 문을 연 날이 없어 매매할 수 없습니다",
+                          details={"code": "NO_COMMON_TRADING_DAYS", "markets": own})  # fmt: skip
+    cd = (contribution_dates(cal, as_of, end, cap["contribution_day"], tradable=tradable)
+          if cap.get("include_contributions") and float(cap.get("monthly_contribution_usd") or 0) > 0 else [])
+    return {"benches": benches, "cal": cal, "tradable": tradable, "rb": rb, "cd": cd}
+
+
 def prepare(md: MarketData, spec: dict[str, Any], req: dict[str, Any], intent: dict[str, Any], mm: dict[str, Any], desc: Descriptor, settings: AnalysisSettings,
             baseline_id: str) -> dict[str, Any]:  # fmt: skip
     """백테스트 실행에 필요한 것 전부: 달력, 품질 통과 패널(USD), 리밸런싱·적립일, 섹터."""
     as_of, end = pd.Timestamp(spec["period"]["as_of"]), pd.Timestamp(spec["period"]["end"])
     bench = spec["benchmark"]
     tickers = list(spec["selection"]["tickers"])
-    benches = [bench] + [b for b in spec.get("extra_benchmarks", []) if b != bench and b in md.assets]
+    sch = trade_schedule(md, spec, settings)  # 달력·리밸런싱일·적립일 (walk-forward 와 같은 함수)
+    benches, cal, rb, cd = sch["benches"], sch["cal"], sch["rb"], sch["cd"]
     view = md.view(end.date())
-    markets = sorted({md.market_of(t) for t in tickers} | {md.market_of(b) for b in benches})
-    cal = view.trading_days(as_of.date(), end.date(), markets=markets)
     panel, quality = view.panel(tickers, as_of.date(), end.date(), required=benches, benchmarks=benches)
     excluded = [t for t in tickers if t not in panel.columns]
     usable = [t for t in tickers if t in panel.columns]
     panel = panel.reindex(cal).ffill()
-    rb = rebalance_dates(spec["rebalance_rule"], cal, as_of, settings.backtest)
     cap = spec["capital"]
-    cd = contribution_dates(cal, as_of, end, cap["contribution_day"]) if cap["include_contributions"] and cap["monthly_contribution_usd"] > 0 else []
     sectors = {t: D.gics_model(desc.by_ticker(t) or {"gics": {}}).sector.name or "Unknown" for t in usable}
     for b in benches:
         sectors[b] = "Benchmark"
@@ -233,7 +255,8 @@ def evaluate(ctx, p, raw, kind, bench_raw, baseline_idx, *, implied_by_date=None
     nxt: list[dict[str, Any]] = []
     if kind == "black_litterman":  # 라운드 5: 뷰를 세운 날부터 다음 리밸런싱일까지의 적중 (뷰가 실제로 비중을 바꾼 기간)
         vbd = p.get("views_by_date") or ({str(ctx["as_of"].date()): p.get("views_applied") or []} if p.get("views_applied") else {})
-        nxt = M.view_diagnostics_next_window(vbd, ctx["panel"], ctx["rb"], ctx["end"], implied_by_date, implied)
+        # rb[0] 은 첫 매수일이지 '다음' 리밸런싱이 아니다: 시작일이 혼합 포트폴리오 한쪽 시장의 휴장일이라 첫 매수가 하루 밀려도 창이 하루짜리가 되지 않게
+        nxt = M.view_diagnostics_next_window(vbd, ctx["panel"], ctx["rb"][1:], ctx["end"], implied_by_date, implied)
     cps = build_checkpoints(raw, bench_raw, ctx["panel"], weights, ctx["sectors"], ctx["cp_dates"], ctx["rb_set"], ctx["last"], cfg, views, implied,
                             ctx["as_of"], ctx["end"], s, targets_by_date=p.get("weights_by_date"))  # fmt: skip
     m = res["metrics"]
@@ -364,10 +387,10 @@ def run_backtest(md: MarketData, targets: dict[str, Any], req: dict[str, Any], i
         mode="static_weights" + (" + walkforward" if wf else ""),
         engine={"library": f"bt {btlib.__version__}", "prices": "adj_close USD (dividends reinvested; KRW converted at daily FX)",
                 "commission_bps": bs.commission_bps, "fractional_shares": not bs.integer_positions, "risk_free_rate": ctx["rf"],
-                "contributions": f"monthly flow invested at target weights, first trading day on/after day {ctx['cap']['contribution_day']}",
+                "contributions": f"monthly flow invested at target weights, first day on/after day {ctx['cap']['contribution_day']} when every holding's market is open",
                 "n_contributions": len(ctx["cd"]), "contribution_usd": ctx["amount"], "rebalance_rule": spec["rebalance_rule"],
                 "checkpoint_freq": bs.checkpoint_freq, "capital_fx": {k: ctx["cap"].get(k) for k in ["currency", "fx_rate", "fx_date", "fx_source"]},
-                "benchmarks": ctx["benches"], "execution_rule": spec.get("execution_rule"), "calendar": "union of market trading days (holidays carry the previous close)"},
+                "benchmarks": ctx["benches"], "execution_rule": spec.get("execution_rule"), "calendar": "union of market trading days (holidays carry the previous close); trades only on days every holding's market is open"},
         series_dates=[str(d.date()) for d in ctx["panel"].index], benchmark=bench_blocks[0], benchmarks=bench_blocks, portfolios=blocks,
         ranking=ranking, reproducibility=repro, data_quality=ctx["quality"], warnings=warnings,
     )  # fmt: skip

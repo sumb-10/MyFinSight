@@ -14,6 +14,7 @@ from backend.analysis.m4_portfolio.views import _quantify
 from backend.analysis.m5_backtest_report import backtest_metrics as M
 from backend.analysis.settings import AnalysisSettings
 from backend.tests.analysis.test_dialog import svc_factory  # noqa: F401
+from backend.tests.analysis.test_pipeline_e2e import e2e  # noqa: F401
 
 PS = AnalysisSettings().portfolio
 
@@ -598,3 +599,601 @@ def test_backtest_start_metric_has_its_own_fact_id(e2e_results):
     chosen = R["validation"]["recommended"]["id"]
     ids = facts_for_narrate(R, chosen, {})["fact_ids"]
     assert {t["metric_backtest_fact_id"] for t in rows} <= set(ids)
+
+
+# ───────────────────────── 라운드 2 독립 검토 (002·003 결과물 다시 읽기) ─────────────────────────
+def test_report_money_uses_start_fx_for_paid_amounts(e2e_results):
+    """002: 백테스트 시작일 배분표 원화가 기준일 환율이라 원금 1,000만 원이 1,160만 원으로 보였다 · 넣은 원화도 기준일 환율."""
+    import copy
+
+    from backend.analysis.m5_backtest_report import report_blocks as RB
+
+    R, _s = e2e_results
+    R = copy.deepcopy(R)
+    R["money_krw"]["backtest_fx"]["fx_rate"] = 1300.0
+    R["money_krw"]["fx_rate"] = 1500.0
+    chosen = R["validation"]["recommended"]["id"]
+    rows = RB.allocation_table(R, chosen)["rows"]
+    init = R["portfolio"]["backtest_spec"]["capital"]["initial_amount_usd"]
+    assert sum(r["krw"] for r in rows) == pytest.approx(init * 1300.0, rel=1e-6)
+
+
+def test_collect_keeps_delta_floor_for_formula(e2e_results):
+    """'계산 조건' 의 δ 식에서 하한이 빠져 '0.1965 × 1.0 × 0.8 = 1.2' 처럼 틀린 식이 나왔다 (결과 묶음이 delta_base 를 버림)."""
+    import copy
+
+    from backend.analysis.m5_backtest_report import report_blocks as RB
+
+    R, _s = e2e_results
+    R = copy.deepcopy(R)
+    mm = R["portfolio"]["market_model"]
+    assert "delta_base" in mm or mm.get("delta_source") != "market_implied"
+    if mm.get("delta_source") == "market_implied":
+        mm["delta_market"], mm["delta_base"] = 0.1965, 1.5
+        txt = json_dumps(RB.parameters_table(R))
+        assert "하한" in txt
+
+
+def json_dumps(x):
+    import json
+
+    return json.dumps(x, ensure_ascii=False)
+
+
+def test_selection_table_rank_is_metric_rank_and_flags_forced(e2e_results):
+    """002: 필수 포함 LS ELECTRIC 이 선정 순서상 맨 앞이라 'ROE 순위 1' 로 보였다 (실제 9개 중 5위)."""
+    R, _s = e2e_results
+    rows = [t for t in R["selection"]["table"] if t["in_selection_now"] and t["metric_now"] is not None]
+    asc = R["selection"]["direction"] == "asc"
+    by_metric = sorted(rows, key=lambda t: t["metric_now"] if asc else -t["metric_now"])
+    assert [t["rank_now"] for t in by_metric] == list(range(1, len(by_metric) + 1)) and all("forced" in t for t in R["selection"]["table"])
+
+
+def test_company_cards_show_current_composition(e2e_results):
+    """002: 회사 카드가 백테스트 시작일 목표 비중이라 지금 선정 9개 중 7개가 '미보유', 날짜도 없었다."""
+    from backend.analysis.m5_backtest_report import report_blocks as RB
+
+    R, _s = e2e_results
+    chosen = R["validation"]["recommended"]["id"]
+    cc = RB.current_composition(R, chosen)
+    blk = RB.companies(R, chosen)
+    if cc:
+        now = {it["ticker"]: it["weight"] for it in blk["items"] if it["in_selection_now"]}
+        assert all(now[t] == pytest.approx(cc[0].get(t, 0.0)) for t in now) and "분석 기준일" in blk["note_ko"]
+
+
+def test_funnel_shows_filter_step_and_reasons(e2e_results):
+    """003: 게임주 4개가 모두 거래대금 기준으로 빠졌는데 깔때기에 그 단계가 없었다."""
+    R, _s = e2e_results
+    stages = [f["stage"] for f in R["selection"]["funnel"]]
+    assert stages[:3] == ["universe", "matched", "candidates"] and isinstance(R["selection"]["candidates_filtered"], list)
+
+
+def test_market_facts_separate_current_and_backtest_holdings(e2e_results):
+    """002: 시장 분석이 지금 9종목 옆에 백테스트(2종목 + 현금) 평균 섹터 비중을 붙여 '평균 산업재 51.6%' 라고 썼다."""
+    from backend.analysis.m5_backtest_report.report import facts_for_market
+
+    R, _s = e2e_results
+    f = facts_for_market(R)
+    assert "current_sector_weights_pct" in f and "backtest_holdings" in f and all("weight_now" in h for h in f["holdings"])
+    assert "backtest_holdings" in f["sector_exposure_note"]
+
+
+def test_cash_breakdown_explains_where_cash_came_from():
+    """002: 서술이 '종목·섹터 상한 때문에 주식 49%' 라고 써서 낙폭 맞춤으로 더 줄인 1%p 까지 상한 탓으로 돌렸다."""
+    from backend.analysis.m5_backtest_report import report as RP
+
+    base = {"id": "inverse_volatility", "kind": "template", "target_weights": {"A": 0.25, "B": 0.25}}
+    m = {"id": "dd_match_inverse_volatility", "kind": "matched", "base_id": "inverse_volatility", "target_weights": {"A": 0.245, "B": 0.245}}
+    R = {"request": {"constraints": {"min_cash_ratio": 0.0}}, "backtest": {"portfolios": [base, m]}}
+    orig = RP.B.find
+    try:
+        RP.B.find = lambda R_, pid: next(p for p in R_["backtest"]["portfolios"] if p["id"] == pid)
+        cb = RP.cash_breakdown(R, m)
+    finally:
+        RP.B.find = orig
+    assert cb["stocks"] == "49.0%" and cb["cash"] == "51.0%" and cb["cash_by_caps"] == "50.0%" and cb["cash_added_by_drawdown_match"] == "1.0%"
+    assert cb["min_cash_by_user"] is None
+
+
+def test_assumptions_and_execution_note_tell_the_truth(e2e_results):
+    """003: 현금 76.5% 가 0% 수익인데 '무위험수익률 연 4%' 만 적혀 있었다 · 실행 기록이 리포트 작성 전 LLM 사용량(3회)만 보여 줬다."""
+    from backend.analysis.m5_backtest_report import report_blocks as RB
+
+    R, _s = e2e_results
+    assert "0%로 계산" in RB.assumptions_callout(R)["text_ko"]
+    assert "리포트 작성 포함" in RB.execution_table(R, {}, {"calls": 6, "cache_hits": 1, "cost_usd": 0.0272, "model": "m"})["note_ko"]
+
+
+def test_request_tables_use_korean_words(e2e_results):
+    """002/003: '투자성향: moderate · 손실 시 hold', '제외: fossil_fuels', 카드 제목 'horizon.backtest_years'."""
+    import copy
+
+    from backend.analysis.m5_backtest_report import report_blocks as RB
+
+    R, _s = e2e_results
+    R = copy.deepcopy(R)
+    R["request"]["constraints"]["exclude_themes"] = ["fossil_fuels"]
+    R["intent"]["interpretation"]["conflicts"] = [{"field": "horizon.backtest_years", "issue_ko": "x", "resolution_ko": "y"}]
+    req_rows = {r["k"]: r["v"] for r in RB.request_table(R)["rows"]}
+    assert not any(w in req_rows["투자성향"] for w in ("moderate", "conservative", "aggressive", "hold", "sell", "buy_more"))
+    assert "화석연료" in {r["k"]: r["v"] for r in RB.constraints_table(R)["rows"]}["제외"]
+    assert RB.conflicts_cards(R)["items"][0]["title_ko"] == "백테스트 기간(년)"
+
+
+def test_keep_window_option_warns_about_cash(monkeypatch, svc_factory):
+    """002: '기간 유지' 를 골라 백테스트가 현금 50% 로 평가됐는데 보기에는 그 사실이 없었다."""
+    import backend.analysis.m1_request.dialog as DG
+    from backend.tests.analysis.test_dialog import _intent
+
+    fake = {"signature": "x", "basis": "after_classification", "min": 5, "target": 10, "short_now": False, "short_at_start": True, "capacity_short": False,
+            "as_of": {"n_selected": 9, "n_with_metric": 9, "n_candidates": 14, "capacity": 1.0, "invest": 1.0, "sector_counts": {"Industrials": 8, "Utilities": 1}},
+            "start": {"date": "2023-07-10", "n_selected": 2, "n_with_metric": 2, "n_candidates": 8, "capacity": 0.5, "sector_counts": {"Industrials": 2}},
+            "feasible_start": {"date": "2024-05-28", "n_with_metric": 6, "n_selected": 6, "years": 2.1}}  # fmt: skip
+    monkeypatch.setattr(DG, "run_precheck", lambda *a, **kw: fake)
+    svc, _store, _llm = svc_factory([_intent([])] * 3)
+    st = svc.start("국내 전력 인프라 장기 투자")
+    opts = {o.value: o.label_ko for o in st.question.options}
+    assert "투자금의 50%만 투자" in opts["keep_window"] and st.question.question_ko.startswith("백테스트 시작일(2023-07-10)에 선정할 수 있는 종목이 2개")
+
+
+def test_dialog_keeps_themes_when_answer_is_not_about_themes(svc_factory):
+    """004: '종목 수 4개로 줄임' 답 뒤에 LLM 이 의도를 다시 쓰며 테마 GICS 코드를 바꿔(2510 이 빠짐) 점검 후보가 4 → 3 이 됐다.
+    테마와 무관한 답이면 이전 턴의 테마를 그대로 두고, 아이디어에 말을 보탠 답이면 새 테마를 받는다."""
+    from backend.analysis.common.store import RequestStore
+    from backend.tests.analysis.test_dialog import Q_IDEA, Q_TEMPLATE, _intent
+
+    t1, t2, t3 = _intent([Q_TEMPLATE]), _intent([Q_IDEA]), _intent([])
+    t2["interpretation"]["themes"][0]["gics_codes"] = ["45"]  # 테마와 무관한 답 뒤의 표류
+    t3["interpretation"]["themes"][0]["gics_codes"] = ["4530", "4520"]  # 말을 보탠 뒤의 정당한 변경
+    svc, store, _llm = svc_factory([t1, t2, t3])
+    st = svc.start("반도체 장기 투자")
+    first = RequestStore(store).load(st.request_id).intent["interpretation"]["themes"]
+    st = svc.answer(st.request_id, 1, option_value="quality")
+    assert RequestStore(store).load(st.request_id).intent["interpretation"]["themes"] == first
+    st = svc.answer(st.request_id, 2, free_text="장비 회사도 포함해 주세요")
+    assert RequestStore(store).load(st.request_id).intent["interpretation"]["themes"][0]["gics_codes"] == ["4530", "4520"]
+
+
+# ───────────────────────── 라운드 3 (004·005) ─────────────────────────
+def test_roe_data_error_ceiling():
+    """005: AbbVie ROE 141% → 15,367% (자기자본이 0 근처·음수) 가 '퀄리티 1위' 로 뽑혔다 → 1000% 초과는 자료 오류로 거른다."""
+    from backend.analysis.m2_data import metrics as MM
+
+    assert MM.eligible("roe_ttm", 1.41) and MM.eligible("roe_ttm", 8.89) and not MM.eligible("roe_ttm", 153.67) and not MM.eligible("roe_ttm", -0.1)
+
+
+def test_usd_ko_units():
+    from backend.analysis.common.labels import usd_ko
+
+    assert usd_ko(10e9) == "100억 달러" and usd_ko(2e9) == "20억 달러" and usd_ko(2e7) == "2,000만 달러" and usd_ko(5e6) == "500만 달러" and usd_ko(2.5e8) == "2.5억 달러"
+
+
+def test_narrate_facts_label_start_and_current_allocation_and_news_off(e2e_results):
+    """005: 시작일 비중을 '최종 구성' 이라 쓰고 '14.6818%' 를 옮겼다 · 004: 뉴스를 껐는데 '헤드라인 0건' 이라고 썼다."""
+    import copy
+
+    from backend.analysis.m5_backtest_report.report import facts_for_interpret, facts_for_narrate
+
+    R, _s = e2e_results
+    chosen = R["validation"]["recommended"]["id"]
+    ch = facts_for_narrate(R, chosen, {})["construction"]["chosen"]
+    assert ch["allocation_at_backtest_start"] and all(r["weight"].endswith("%") for r in ch["allocation_at_backtest_start"]) and "allocation_now" in ch
+    R2 = copy.deepcopy(R)
+    R2["intent"]["news_tilt"]["enabled"] = False
+    wf = facts_for_interpret(R2, chosen).get("walkforward")
+    if wf:
+        assert isinstance(wf["news_summary"], str) and "불러오지 않았" in wf["news_summary"]
+
+
+
+# ───────────────────────── 라운드 2 후속: 매매일 달력 (독립 검토 에이전트 작업) ─────────────────────────
+from types import SimpleNamespace  # noqa: E402
+
+from backend.analysis.common.llm import StubLlm  # noqa: E402
+from backend.analysis.executor import stages  # noqa: E402
+from backend.analysis.executor.context import RunContext  # noqa: E402
+from backend.analysis.m2_data.market_data import MarketData  # noqa: E402
+from backend.analysis.m5_backtest_report.backtest import prepare, run_raw, trade_schedule  # noqa: E402
+from backend.analysis.m5_backtest_report.backtest_engine import contribution_dates, rebalance_dates  # noqa: E402
+
+# ───────────────────────── 매매일 달력 (QA 002: 한국 종목만 + 미국 비교지수) ─────────────────────────
+def _days(start, end, holidays):
+    return pd.DatetimeIndex([d for d in pd.bdate_range(start, end) if d.date() not in holidays], name="date")
+
+
+def test_rebalance_and_contribution_dates_skip_holding_market_holidays():
+    """평가 달력이 한국 ∪ 미국 합집합이어도 한국 종목만 든 포트폴리오의 리밸런싱·적립은 한국이 연 날에만 (QA 002 에서 걸린 실제 날짜)."""
+    kr_h = {dt.date(2023, 8, 15), dt.date(2023, 10, 2), dt.date(2023, 10, 3), dt.date(2024, 9, 16), dt.date(2024, 9, 17), dt.date(2024, 9, 18),
+            dt.date(2024, 10, 1), dt.date(2024, 10, 3)}  # fmt: skip
+    us_h = {dt.date(2023, 7, 4), dt.date(2023, 9, 4), dt.date(2024, 7, 4), dt.date(2024, 9, 2)}
+    kr, us = _days("2023-03-02", "2024-12-31", kr_h), _days("2023-03-02", "2024-12-31", us_h)
+    union, bs, q = kr.union(us), AnalysisSettings().backtest, {"count": 1, "unit": "1q", "enabled": True}
+    old = rebalance_dates(q, union, "2023-03-02", bs)  # tradable 없이 = 예전 동작: 합집합에서 바로 골라 한국 휴장일에 매매
+    new = rebalance_dates(q, union, "2023-03-02", bs, tradable=kr)
+    assert {pd.Timestamp("2023-10-02"), pd.Timestamp("2024-10-01")} <= set(old)
+    assert [str(d.date()) for d in new] == ["2023-03-02", "2023-04-03", "2023-07-03", "2023-10-04", "2024-01-01", "2024-04-01", "2024-07-01", "2024-10-02"]
+    for day, closed, moved in [(15, "2023-08-15", "2023-08-16"), (16, "2024-09-16", "2024-09-19")]:
+        c_old = contribution_dates(union, "2023-03-02", "2024-12-31", day)
+        c_new = contribution_dates(union, "2023-03-02", "2024-12-31", day, tradable=kr)
+        assert pd.Timestamp(closed) in c_old and pd.Timestamp(closed) not in c_new and pd.Timestamp(moved) in c_new
+        assert len(c_new) == len(c_old) and set(c_new) <= set(kr)
+    assert set(rebalance_dates({"count": 1, "unit": "2w", "enabled": True}, union, "2023-03-02", bs, tradable=kr)) <= set(kr)
+    assert rebalance_dates({"count": 0, "unit": "1q"}, union, "2023-03-02", bs, tradable=kr) == [pd.Timestamp("2023-03-02")]
+    # 한 기간 내내 휴장이면 다음 기간 첫 매매일과 겹쳐 하나만 · 마지막 날로 밀리면 리밸런싱하지 않음 (종료 체크포인트만)
+    gap = kr[(kr < "2024-04-01") | (kr >= "2024-07-01")]
+    assert [str(d.date()) for d in rebalance_dates(q, union, "2024-01-02", bs, tradable=gap)] == ["2024-01-02", "2024-07-01", "2024-10-02"]
+    assert [str(d.date()) for d in rebalance_dates(q, union[union <= "2024-10-02"], "2024-07-01", bs, tradable=kr)] == ["2024-07-01"]
+
+
+KR_SPEC = {"period": {"start": "2022-07-01", "end": "2023-06-30", "as_of": "2022-07-01"}, "benchmark": "069500.KS", "extra_benchmarks": ["QQQ"],
+           "selection": {"tickers": ["005930.KS", "000660.KS"]}, "rebalance_rule": {"count": 1, "unit": "1q", "enabled": True},
+           "capital": {"initial_amount_usd": 10_000.0, "monthly_contribution_usd": 300.0, "contribution_day": 3, "include_contributions": True}}  # fmt: skip
+
+
+def test_kr_only_portfolio_trades_on_kr_days_and_walkforward_matches_engine(seeded_repo, seed_info, settings, monkeypatch, tmp_path):
+    """합성 DB 의 2022-10-03(월)은 한국만 휴장(QQQ 는 거래)인 4분기 첫 거래일. 리밸런싱·적립은 다음 한국 거래일(10-04)로 가고,
+    평가 시계열은 합집합 그대로, walk-forward(10w) 구성일 == 백테스트(11) 리밸런싱일."""
+    md = MarketData(seeded_repo, settings)
+    kr = {pd.Timestamp(d) for d in seed_info["kr_days"]}
+    closed, moved = pd.Timestamp("2022-10-03"), pd.Timestamp("2022-10-04")
+    sch = trade_schedule(md, KR_SPEC, settings)
+    assert closed in sch["cal"] and closed not in sch["tradable"]
+    assert closed in rebalance_dates(KR_SPEC["rebalance_rule"], sch["cal"], "2022-07-01", settings.backtest)  # 예전: 합집합에서 바로 → 한국 휴장일
+    assert [str(d.date()) for d in sch["rb"]] == ["2022-07-01", "2022-10-04", "2023-01-02", "2023-04-03"]
+    assert moved in sch["cd"] and closed not in sch["cd"] and set(sch["rb"]) | set(sch["cd"]) <= kr
+    bt_ctx = prepare(md, KR_SPEC, {"constraints": {}}, {"validation_criteria": {"target_annual_return": 0.05}}, {}, SimpleNamespace(by_ticker=lambda t: None),
+                     settings, "equal_weight")  # fmt: skip
+    assert bt_ctx["rb"] == sch["rb"] and bt_ctx["cd"] == sch["cd"] and closed in bt_ctx["panel"].index  # 비교지수는 자기 거래일에 평가 (합집합 유지)
+    raw = run_raw(bt_ctx, "kr_eq", {"005930.KS": 0.5, "000660.KS": 0.5})
+    traded = set(pd.to_datetime(raw["transactions"]["Date"]))
+    assert moved in traded and traded <= kr  # 한국 휴장일에 묵은 가격으로 체결하지 않는다
+
+    seen = []
+
+    def fake_construct(view, tickers, *a, **k):  # 날짜별 구성 내용은 보지 않고 구성일만 기록
+        seen.append(view.as_of)
+        return SimpleNamespace(market_model={"delta": 2.5, "delta_source": "test", "lookback": 252, "implied_returns": {}}, baselines={"portfolios": []},
+                               evidence_summary=lambda: None, evidence=None, warnings=[], bl_portfolios=[], view_sets=[], baseline_weights={t: 0.5 for t in tickers},
+                               applied_bl=[], fallback=True, fallback_reason_ko="")  # fmt: skip
+
+    monkeypatch.setattr(stages, "construct", fake_construct)
+    ctx = RunContext(run_id="qa002", request={"request_id": "req_qa002"}, repo=seeded_repo, md=md, llm=StubLlm(), settings=settings, run_dir=tmp_path)
+    ctx.outputs.update({"07_backtest_spec": KR_SPEC, "02_intent": {}})
+    stages.st_walkforward(ctx)
+    assert ctx.outputs["10w_target_paths"]["dates"] == [str(d.date()) for d in bt_ctx["rb"]] and sorted(seen) == [d.date() for d in bt_ctx["rb"]]
+
+
+def test_mixed_portfolio_trades_when_both_markets_open_and_walkforward_matches(e2e_results, seed_info):
+    """미국+한국 혼합(e2e): 리밸런싱·적립은 두 시장이 모두 연 날에만, 10w 구성일 == 모든 포트폴리오의 리밸런싱 체크포인트·사건 날짜 (감사 항목)."""
+    R, _s = e2e_results
+    wf = R["portfolio"]["walkforward"]
+    own = {"KR" if t.endswith(".KS") else "US" for t in wf["tickers"]}
+    assert own == {"KR", "US"}  # 혼합 포트폴리오를 시험한다 (선정이 한쪽 시장만 되면 아래 확인이 조용히 사라지지 않게)
+    open_days = set.intersection(*[{str(d) for d in seed_info["kr_days" if m == "KR" else "us_days"]} for m in own])
+    for p in [*R["backtest"]["benchmarks"], *R["backtest"]["portfolios"]]:
+        assert [c["date"] for c in p["checkpoints"] if c["kind"] == "rebalance"] == wf["dates"], p["id"]
+        assert [e["date"] for e in p["events"] if e["type"] == "rebalance"] == wf["dates"], p["id"]
+        cdates = [e["date"] for e in p["events"] if e["type"] == "contribution"]
+        assert cdates and set(cdates) <= open_days and set(wf["dates"]) <= open_days, p["id"]
+    first = R["backtest"]["portfolios"][0]
+    contrib = [e["date"] for e in first["events"] if e["type"] == "contribution"]
+    assert "2025-12-25" not in contrib and "2025-12-26" in contrib  # 2025-12-25(목)는 합성 DB 에서 한국만 휴장 → 그달 적립은 12-26
+
+
+
+# ───────────────────────── 라운드 2 후속: 종목별 수익 기여 = 기간 수익률 (독립 검토 에이전트 작업) ─────────────────────────
+from backend.analysis.m5_backtest_report.backtest_engine import extract_raw, run_static_portfolio, xirr  # noqa: E402
+from backend.analysis.settings import BacktestSettings, replace_settings  # noqa: E402
+
+# ───────────────────────── 종목별 수익 기여 = 기간 수익률 (Carino 로그 연결, 시나리오 002·003) ─────────────────────────
+# 보고서 막대 '종목별 수익 기여 (기간 전체)' 가 일별 기여의 단순합이라 기간 수익률과 합이 안 맞았다 (002: 80.9%p + 44.5%p 인데 기간 수익률 205.4%).
+_CD = pd.bdate_range("2024-01-02", periods=8)
+# 두 종목 + 현금 약 10%. 비중은 날마다 바뀐다 (리밸런싱·드리프트). w 는 그날 거래 뒤 비중이라 다음 날 수익에 곱해진다.
+_CW = pd.DataFrame({"A": [0.60, 0.62, 0.45, 0.45, 0.50, 0.55, 0.52, 0.50], "B": [0.30, 0.28, 0.45, 0.45, 0.40, 0.35, 0.38, 0.40]}, index=_CD)
+# A 는 오르고 B 는 내린다 (부호 섞임). 4번째 날은 0.45·(+1%) + 0.45·(−1%) = 0, 5번째 날은 둘 다 0 (휴장일 직전값 유지) → 지수 수익 0 인 날 2개
+_CR = pd.DataFrame({"A": [0.0, 0.10, -0.04, 0.01, 0.0, 0.12, -0.03, 0.09], "B": [0.0, -0.06, 0.03, -0.01, 0.0, -0.05, 0.02, -0.04]}, index=_CD)
+_CSECTORS = {"A": "Tech", "B": "Energy"}
+
+
+def _contrib_index(cost: dict[int, float] | None = None) -> pd.Series:
+    """지수 = Π(1 + Σ_i w_i(t−1)·r_i(t) − 비용_t). 현금 수익은 0. cost = {날짜 위치: 그날 지수 대비 비용률}."""
+    c = np.zeros(len(_CD))
+    for i, v in (cost or {}).items():
+        c[i] = v
+    return 100 * (1 + (_CW.shift(1) * _CR).sum(axis=1) - c).cumprod()
+
+
+def test_linked_contribution_sums_to_compounded_index_return():
+    idx = _contrib_index()
+    R = idx.iloc[-1] / idx.iloc[0] - 1
+    assert (M.daily_returns(idx) == 0).sum() == 2  # 지수 수익 0 인 날(k_t = 1 로 두는 분기)이 실제로 들어 있다
+    contrib, resid = M.linked_contribution(_CW, _CR, idx)
+    assert abs(contrib.sum() - R) < 1e-9 and abs(resid) < 1e-9
+    assert contrib["A"] > 0 > contrib["B"]  # 부호가 섞여도 합이 맞는다
+    assert abs((_CW.shift(1) * _CR).sum().sum() - R) > 1e-3  # 예전 단순합은 이 자료에서 맞지 않는다 (테스트가 결함을 잡는지)
+
+
+def test_linked_contribution_residual_is_linked_trading_cost():
+    at, cost = 2, 0.001  # 3번째 날(비중을 바꾼 날) 지수의 0.1% 를 수수료로 냄
+    idx = _contrib_index({at: cost})
+    R = idx.iloc[-1] / idx.iloc[0] - 1
+    contrib, resid = M.linked_contribution(_CW, _CR, idx)
+    assert abs(resid - (R - contrib.sum())) < 1e-12
+    rt = idx.iloc[at] / idx.iloc[at - 1] - 1
+    assert abs(resid + (np.log1p(rt) / rt) / (np.log1p(R) / R) * cost) < 1e-12  # 잔차 = −(k_t/K)·비용 (닫힌 식)
+    assert resid < 0
+
+
+def test_composition_metrics_contribution_plus_residual_is_period_return_also_to_date():
+    idx = _contrib_index({2: 0.001})
+    px = 100 * (1 + _CR).cumprod()
+    targets = {"A": 0.55, "B": 0.35}
+    out = M.composition_metrics(_CW, px, targets, _CSECTORS, 1.0, 1.0, 0.25, idx)
+    assert set(out["ticker_contribution"]) == {"A", "B"}  # 잔차는 가짜 종목이 아니라 별도 필드
+    assert abs(sum(out["ticker_contribution"].values()) + out["ticker_contribution_residual"] - (idx.iloc[-1] / idx.iloc[0] - 1)) < 2e-6  # 6자리 반올림 3개
+    d = _CD[4]  # 체크포인트처럼 앞부분만 잘라도 (가격은 전체 기간) 그 구간의 기간 수익률과 맞는다
+    part = M.composition_metrics(_CW.loc[:d], px, targets, _CSECTORS, 1.0, 1.0, 0.25, idx.loc[:d])
+    assert abs(sum(part["ticker_contribution"].values()) + part["ticker_contribution_residual"] - (idx[d] / idx.iloc[0] - 1)) < 2e-6
+
+
+def test_compute_all_contribution_bars_reconcile_with_headline_in_bt():
+    """실제 엔진(bt): 비용·적립이 없으면 잔차 0 (w(t−1)·r(t) 가 bt 지수 일 수익률과 날짜가 맞는지), 수수료만 있으면 음수, 적립까지 있어도 막대 + 잔차 = 기간 수익률."""
+    rng = np.random.default_rng(3)
+    cal = pd.bdate_range("2023-01-02", periods=260)
+    px = pd.DataFrame({"A": 100 * np.cumprod(1 + rng.normal(0.001, 0.02, len(cal))), "B": 50 * np.cumprod(1 + rng.normal(0.0, 0.015, len(cal)))}, index=cal)
+    w = {"A": 0.6, "B": 0.3}  # 현금 10%
+    rb = rebalance_dates({"enabled": True, "count": 1, "unit": "1q"}, cal, cal[0], BacktestSettings())
+    for bps, amount in ((0.0, 0.0), (5.0, 0.0), (5.0, 500.0)):
+        s = replace_settings(BacktestSettings(), commission_bps=bps)
+        cd = contribution_dates(cal, cal[0], cal[-1], 25) if amount else []
+        b, res = run_static_portfolio("p", w, px, 10_000.0, rb, cd, amount, s)
+        raw = extract_raw(b, res, cal[0])
+        out = M.compute_all(raw, raw["index"], px, w, _CSECTORS, rb, 0.0, 0.05, 1.0, 1.0, xirr, s)
+        resid = out["metrics"]["composition"]["ticker_contribution_residual"]
+        assert abs(sum(out["ticker_contribution"].values()) + resid - out["metrics"]["return"]["total_return"]) < 3e-6, (bps, amount)
+        if not bps and not amount:
+            assert abs(resid) < 1e-6
+        elif not amount:
+            assert resid < 0
+
+
+
+# ───────────────────────── 라운드 2 후속: 근거 품질 (독립 검토 에이전트 작업) ─────────────────────────
+# ───────────────────────── 시나리오 003: 근거 품질 (매매거래 정지 라벨 · 공시 날짜 · 한국어 뉴스 관련성) ─────────────────────────
+QA003_ASSETS = [("035420.KS", "NAVER", "STOCK"), ("035720.KS", "카카오", "STOCK"), ("267260.KS", "HD현대일렉트릭", "STOCK"), ("015760.KS", "한국전력", "STOCK"),
+                ("010120.KS", "LS ELECTRIC", "STOCK"), ("005380.KS", "현대차", "STOCK"), ("AAPL", "Apple", "STOCK"), ("069500.KS", "KODEX 200", "ETF"),
+                ("SPY", "SPDR S&P 500 ETF", "ETF")]  # fmt: skip
+QA003_HALT = "매매거래정지및정지해제(중요내용공시)"
+QA003_AS_OF = dt.date(2026, 8, 31)
+
+
+def _qa003_news():
+    from backend.schemas.market_ext import NewsRow
+    from backend.tests.analysis.conftest import AT
+
+    def n(aid, k, title, day, *, publisher="한국경제", url=None, source="NAVER_NEWS", lang="ko", query=None):
+        return NewsRow(asset_id=aid, source=source, url=url or f"https://news.test/{aid}/{k}", title=title, publisher=publisher,
+                       published_at=dt.datetime(2026, 8, day, 1, k, tzinfo=dt.UTC), language=lang, query=query, fetched_at=AT)  # fmt: skip
+
+    return [  # 종목 안에서 최신순: 잡음·이용자 글이 가장 새것이라 거르지 않으면 상한(per_asset)을 먼저 채운다
+        n("KR-035420", 1, "부산 분양 시장, 청약 열기", 30, publisher="부산일보", query="NAVER"),
+        n("KR-035420", 2, "네이버페이 써보니 후기", 30, publisher="Naver Blog", source="GOOGLE_RSS"),  # 이용자 글 (회사 이름이 있어도)
+        n("KR-035420", 3, "네이버 웹툰 신작 정리", 29, publisher=None, url="https://m.blog.naver.com/someone/223"),  # 주소가 블로그
+        n("KR-035420", 4, "네이버 주가 전망", 29, publisher="네이버 프리미엄콘텐츠", source="GOOGLE_RSS"),
+        n("KR-035420", 5, "○○구청, 가을 축제 개최", 28, publisher="뉴시스", query="NAVER"),  # 지자체 보도자료
+        n("KR-035420", 6, "네이버, AI 검색 개편", 27),
+        n("KR-035420", 7, "NAVER(035420) 장중 강세", 26, publisher="이데일리"),
+        n("KR-035420", 8, "네이버, AI 검색 개편", 25, publisher="서울경제"),  # 같은 제목 (중복)
+        n("KR-035420", 9, "네이버 클라우드 수주", 24),
+        n("KR-035420", 10, "NHN 라인, 가입자 3억 돌파", 23, source="GOOGLE_RSS", query="NHN"),  # 옛 사명으로 찾은 기사: 검색어가 제목에 있으면 남김
+        n("KR-035720", 1, "BMW, 신형 5시리즈 출시", 30),
+        n("KR-035720", 2, "카카오, 분할합병 결정", 29),
+        n("US-AAPL", 1, "Stocks rally as Fed signals cut", 30, publisher="Reuters", source="GOOGLE_RSS", lang="en"),  # 영어: 제목 검사 안 함
+        n("US-AAPL", 2, "iPhone 18 launch date", 29, publisher="The Verge", source="GOOGLE_RSS", lang="en"),
+    ]
+
+
+def _qa003_discl():
+    from backend.schemas.market_ext import DisclosureRow
+    from backend.tests.analysis.conftest import AT
+
+    def d(aid, source, fid, form, filed_at, avail, et, items=None):
+        return DisclosureRow(asset_id=aid, source=source, filing_id=fid, form=form, items=items, title=form, filed_at=filed_at, available_on=avail,
+                             url=f"https://filings.test/{fid}", event_type=et, rule_version="sec-v1" if source == "SEC_EDGAR" else "dart-v2", fetched_at=AT)  # fmt: skip
+
+    return [  # DART 는 날짜만 있어 그날 0시 KST(= 전날 15시 UTC)로 저장된다. 정지 행은 예전 규칙(v2)으로 delisting_notice 로 저장됨
+        d("KR-035720", "DART", "20260821000123", QA003_HALT, dt.datetime(2026, 8, 20, 15, 30, tzinfo=dt.UTC), dt.date(2026, 8, 24), "delisting_notice"),
+        d("KR-035720", "DART", "20260821000456", "주요사항보고서(회사분할합병결정)", dt.datetime(2026, 8, 20, 15, 0, tzinfo=dt.UTC), dt.date(2026, 8, 24), "merger_split"),
+        d("US-AAPL", "SEC_EDGAR", "0000320193-26-000001", "8-K", dt.datetime(2026, 8, 21, 1, 30, tzinfo=dt.UTC), dt.date(2026, 8, 21), "earnings", "2.02,9.01"),  # 동부 20일 21:30
+    ]  # fmt: skip
+
+
+def _qa003_md(**news_kw):
+    from backend.analysis.m2_data.market_data import MarketData
+    from backend.analysis.settings import AnalysisSettings, replace_settings
+    from backend.db import open_repository
+    from backend.schemas.market import PriceBar
+    from backend.tests.analysis.conftest import AT, _asset
+
+    repo = open_repository("sqlite://", clock=lambda: AT)
+    repo.upsert_assets([_asset(s, n, "KR" if s.endswith(".KS") else "US", k) for s, n, k in QA003_ASSETS])
+    repo.upsert_prices([PriceBar(ticker=s, date=dt.date(2026, 9, 1), adj_close=100.0, currency=c, source="TEST", fetched_at=AT) for s, c in (("SPY", "USD"), ("069500.KS", "KRW"))])  # 기준일 상한만
+    repo.upsert_news(_qa003_news())
+    repo.upsert_disclosures(_qa003_discl())
+    s = AnalysisSettings()
+    return MarketData(repo, replace_settings(s, news=replace_settings(s.news, **news_kw)) if news_kw else s)
+
+
+def test_qa003_trading_halt_is_not_delisting_notice():
+    """거래소의 절차상 매매거래 정지(중요 공시 전후)를 '상장폐지·관리종목 통지' 로 부르지 않는다: 수집기 규칙(새 자료) + 읽을 때 고침(저장된 자료)."""
+    from backend.analysis.m2_data.disclosure_labels import EVENT_LABEL_KO, event_type_of, label_ko
+    from backend.analysis.settings import DisclosureSettings
+    from backend.collectors.disclosures import categories as C
+
+    assert C.dart_event(QA003_HALT) == ("trading_halt", "dart-v3") and C.dart_event("[기재정정]" + QA003_HALT)[0] == "trading_halt"
+    for name in ("상장폐지사유발생", "관리종목지정(매매거래정지)", "불성실공시법인지정(매매거래정지)", "주권매매거래정지(상장폐지사유발생)"):
+        assert C.dart_event(name)[0] == "delisting_notice", name  # 진짜 상장폐지·관리종목 사유는 그대로
+    assert C.dart_event("주권매매거래정지해제")[0] == "trading_halt"
+    assert label_ko("trading_halt") == "매매거래 정지·해제" == EVENT_LABEL_KO["trading_halt"]
+    old = {"source": "DART", "form": QA003_HALT, "title": QA003_HALT, "event_type": "delisting_notice"}
+    assert event_type_of(old) == "trading_halt" == C.dart_event(QA003_HALT)[0]  # 새 규칙과 같은 판정
+    for name in ("관리종목지정(매매거래정지)", "주권매매거래정지(상장폐지사유발생)"):
+        assert event_type_of({**old, "form": name, "title": name}) == "delisting_notice"
+    assert event_type_of({"source": "SEC_EDGAR", "form": "8-K", "items": "3.01", "title": "8-K", "event_type": "delisting_notice"}) == "delisting_notice"
+    assert event_type_of({**old, "event_type": "merger_split"}) == "merger_split"
+    ds = DisclosureSettings()  # 절차상 정지는 뷰 근거·90일 요약 허용 목록에 없다 (악재 사건으로 쓰지 않음)
+    assert "trading_halt" not in ds.event_types and "trading_halt" not in ds.summary_extra_event_types
+
+
+def test_qa003_disclosure_window_relabels_halt_and_uses_local_filing_date():
+    from backend.analysis.m2_data.news import _filed_date, build_window
+    from backend.analysis.m3_selection.explain import _dc_date
+
+    assert _filed_date(dt.datetime(2026, 8, 20, 15, 30, tzinfo=dt.UTC), "DART") == dt.date(2026, 8, 21)  # 서울 21일 00:30
+    assert _filed_date(dt.datetime(2026, 8, 21, 1, 30, tzinfo=dt.UTC), "SEC_EDGAR") == dt.date(2026, 8, 20)  # 뉴욕 20일 21:30
+    assert _filed_date(dt.datetime(2026, 8, 20, 15, 30), "DART") == dt.date(2026, 8, 20)  # tz 없는 값은 그대로
+    md = _qa003_md()
+    # 허용 목록 없이 읽으면: 정지 행이 보이되 '매매거래 정지·해제' 로, 날짜는 접수번호(20260821…)와 같은 서울 날짜
+    win = build_window(md, ["035720.KS", "AAPL"], QA003_AS_OF, days=14, per_ticker=10, languages=["en", "ko"], min_tickers=1, dc_days=45)
+    by = {r["form"]: r for r in win.disclosures}
+    halt, merger, k8 = by[QA003_HALT], by["주요사항보고서(회사분할합병결정)"], by["8-K"]
+    assert (halt["event_type"], halt["event_label_ko"]) == ("trading_halt", "매매거래 정지·해제")
+    assert halt["filed_at"] == halt["published_at"] == "2026-08-21" == merger["filed_at"] and halt["available_on"] == "2026-08-24"
+    assert k8["filed_at"] == "2026-08-20" and k8["available_on"] == "2026-08-21"
+    assert _dc_date(merger) == "2026-08-21(이용 가능일 2026-08-24)" and _dc_date(k8 | {"filed_at": "2026-08-21"}) == "2026-08-21"
+    # 실제 경로(뷰 09: 허용 목록, 기업 근거 06: 허용 목록 + 정기·절차)에서는 정지가 빠지고 본 공시(분할합병)만 남는다
+    from backend.analysis.settings import DisclosureSettings
+
+    ds = DisclosureSettings()
+    view = md.view(QA003_AS_OF)
+    for w in (view.news_window(["035720.KS", "AAPL"]), view.news_window(["035720.KS", "AAPL"], dc_days=90, dc_event_types=[*ds.event_types, *ds.summary_extra_event_types])):
+        kinds = {r["event_type"] for r in w.disclosures if r["ticker"] == "035720.KS"}
+        assert kinds == {"merger_split"} and "상장폐지·관리종목 통지" not in w.event_counts("035720.KS")
+
+
+def test_qa003_news_batch_skips_ugc_and_unrelated_korean_titles():
+    from backend.analysis.m2_data.news import title_aliases
+
+    md = _qa003_md()
+    repo, start, end = md.repo, dt.datetime(2026, 8, 17, tzinfo=dt.UTC), dt.datetime(2026, 8, 31, tzinfo=dt.UTC)
+    ids = ["KR-035420", "KR-035720", "US-AAPL"]
+    aliases = {**title_aliases(md, ["035420.KS", "035720.KS"]), "US-AAPL": ["Apple"]}
+
+    def titles(rows, aid):
+        return [r.title for r in rows if r.asset_id == aid]
+
+    rows = repo.get_news_batch(ids, start, end, aliases=aliases)
+    assert titles(rows, "KR-035420") == ["네이버, AI 검색 개편", "NAVER(035420) 장중 강세", "네이버 클라우드 수주", "NHN 라인, 가입자 3억 돌파"]
+    assert titles(rows, "KR-035720") == ["카카오, 분할합병 결정"]
+    assert titles(rows, "US-AAPL") == ["Stocks rally as Fed signals cut", "iPhone 18 launch date"]  # 영어 기사는 이름이 없어도 그대로
+    two = repo.get_news_batch(ids, start, end, aliases=aliases, per_asset=2)  # 상한은 거른 뒤의 진짜 기사로 센다
+    assert titles(two, "KR-035420") == ["네이버, AI 검색 개편", "NAVER(035420) 장중 강세"] and titles(two, "KR-035720") == ["카카오, 분할합병 결정"]
+    raw = repo.get_news_batch(ids, start, end)  # 이름표가 없으면 제목 검사 없음, 이용자 글만 빠짐 (중복 제목 규칙은 그대로)
+    assert titles(raw, "KR-035420") == ["부산 분양 시장, 청약 열기", "○○구청, 가을 축제 개최", "네이버, AI 검색 개편", "NAVER(035420) 장중 강세", "네이버 클라우드 수주", "NHN 라인, 가입자 3억 돌파"]
+    # 근거 창(설정 news.require_title_mention, 기본 켬)과 끄기
+    win = md.view(QA003_AS_OF).news_window(["035420.KS", "035720.KS", "AAPL"], dc_days=0)
+    assert [r["title"] for r in win.records if r["ticker"] == "035420.KS"] == titles(rows, "KR-035420")
+    assert len(win.by_ticker["AAPL"]) == 2 and not any(r["publisher"] in ("Naver Blog", "네이버 프리미엄콘텐츠") for r in win.records)
+    off = _qa003_md(require_title_mention=False).view(QA003_AS_OF).news_window(["035420.KS"], dc_days=0)
+    assert "부산 분양 시장, 청약 열기" in [r["title"] for r in off.records] and not any("블로그" in (r["publisher"] or "") or r["publisher"] == "Naver Blog" for r in off.records)
+
+
+def test_qa003_title_aliases_and_matching_rules():
+    from backend.analysis.m2_data.news import title_aliases
+    from backend.db.analysis_readers import _is_ugc, _title_mentions
+
+    al = title_aliases(_qa003_md(), ["035420.KS", "035720.KS", "267260.KS", "015760.KS", "010120.KS", "005380.KS", "AAPL", "123456.KS"])
+    assert {"NAVER", "네이버", "035420"} <= set(al["KR-035420"]) and {"카카오", "035720"} <= set(al["KR-035720"])
+    assert "현대일렉트릭" in al["KR-267260"] and "한전" in al["KR-015760"] and "LS일렉트릭" in al["KR-010120"] and "현대자동차" in al["KR-005380"]
+    assert "US-AAPL" not in al and "KR-123456" not in al  # 미국 종목·이름 모르는 종목은 검사하지 않음
+    assert _title_mentions("현대일렉트릭, 美 변압기 수주", al["KR-267260"]) and _title_mentions("HD현대일렉트릭 신고가", al["KR-267260"])
+    assert _title_mentions("한전, 전기요금 동결", al["KR-015760"]) and _title_mentions("LS 일렉트릭 수주", al["KR-010120"])  # 한글 이름은 띄어쓰기 무시
+    assert _title_mentions("네이버가 웃었다", al["KR-035420"]) and _title_mentions("Naver to buy startup", al["KR-035420"])
+    assert not _title_mentions("부산 분양 시장", al["KR-035420"]) and not _title_mentions("KTX 증편", ["KT"]) and _title_mentions("KT, 5G 요금제", ["KT"])
+    assert _is_ugc("Naver Blog", None) and _is_ugc("네이버 블로그", None) and _is_ugc("네이버 프리미엄콘텐츠", None) and _is_ugc("다음 카페", None)
+    assert _is_ugc(None, "https://m.blog.naver.com/x/1") and _is_ugc(None, "https://post.naver.com/viewer?x=1") and _is_ugc(None, "https://abc.tistory.com/12")
+    assert _is_ugc(None, "https://contents.premium.naver.com/a/b") and _is_ugc(None, "https://brunch.co.kr/@a/1") and _is_ugc(None, "https://cafe.naver.com/x")
+    assert not _is_ugc("Bloomberg", "https://www.bloomberg.com/news/a") and not _is_ugc("한국경제", "https://n.news.naver.com/article/015/1")
+    assert not _is_ugc("The Washington Post", "https://news.google.com/rss/articles/abc") and not _is_ugc(None, "http://[broken")
+
+
+def test_linked_contribution_per_ticker_values_and_prefix_residual():
+    """검토 보강: 지수 수익 0 인 날(k_t=1) 분기를 종목별 값으로 확인하고, 앞부분만 자른 창의 K 가 그 창의 R 에서 오는지 잔차 닫힌 식으로 확인."""
+    idx = _contrib_index()
+    R, Rt = idx.iloc[-1] / idx.iloc[0] - 1, M.daily_returns(idx)
+    K = np.log1p(R) / R
+    exp = {c: sum(((np.log1p(Rt[d]) / Rt[d]) if Rt[d] != 0 else 1.0) / K * _CW[c].iloc[i - 1] * _CR[c].iloc[i] for i, d in enumerate(_CD) if i > 0) for c in "AB"}
+    contrib, _ = M.linked_contribution(_CW, _CR, idx)
+    assert contrib.notna().all() and all(abs(contrib[c] - exp[c]) < 1e-12 for c in "AB")
+    idx2 = _contrib_index({2: 0.001})
+    d = _CD[4]
+    px = 100 * (1 + _CR).cumprod()
+    part = M.composition_metrics(_CW.loc[:d], px, {"A": 0.55, "B": 0.35}, _CSECTORS, 1.0, 1.0, 0.25, idx2.loc[:d])
+    Rp, rt = idx2[d] / idx2.iloc[0] - 1, idx2.iloc[2] / idx2.iloc[1] - 1
+    assert abs(part["ticker_contribution_residual"] + (np.log1p(rt) / rt) / (np.log1p(Rp) / Rp) * 0.001) < 2e-6
+
+
+def test_contribution_residual_is_costs_only_with_large_contributions():
+    """검토: 적립이 큰 실행에서 수수료 0 인데도 잔차가 −3.4%p (bt 의 적립일 희석) → values·flows 로 비중을 줄여 잔차 ≈ 0."""
+    rng = np.random.default_rng(7)
+    cal = pd.bdate_range("2023-01-02", periods=520)
+    px = pd.DataFrame({"A": 100 * np.cumprod(1 + rng.normal(0.0015, 0.02, len(cal))), "B": 50 * np.cumprod(1 + rng.normal(0.0005, 0.015, len(cal)))}, index=cal)
+    w = {"A": 0.6, "B": 0.35}
+    rb = rebalance_dates({"enabled": True, "count": 1, "unit": "1q"}, cal, cal[0], BacktestSettings())
+    s = replace_settings(BacktestSettings(), commission_bps=0.0)
+    b, res = run_static_portfolio("p", w, px, 1_000.0, rb, contribution_dates(cal, cal[0], cal[-1], 25), 1_000.0, s)
+    raw = extract_raw(b, res, cal[0])
+    out = M.compute_all(raw, raw["index"], px, w, _CSECTORS, rb, 0.0, 0.05, 1.0, 1.0, xirr, s)
+    assert abs(out["metrics"]["composition"]["ticker_contribution_residual"]) < 2e-3
+
+
+def test_shrink_to_result_size_keeps_same_candidates(e2e):
+    """004: GICS 넓히기를 필터 전 일치 수로 판단해 목표 25 일 때 넓혀서 4개 → '4개로 줄임' 뒤에는 넓히지 않아 3개.
+    합성 자료로 같은 상황: 반도체 소분류(45301020) 6개 중 2개를 제외 종목으로 빼면 4개, 한 단계 넓히면(453010) AMAT 이 더해져 5개.
+    예전 규칙: 목표 10 → 일치 6 < 10 이라 넓혀 5개, 목표 5 → 일치 6 ≥ 5 라 안 넓혀 4개 (어긋남). 지금은 둘 다 5개.
+    (합성 가격·시가총액은 프로세스마다 달라지는 hash 로 만들어 시가총액 하한 대신 제외 종목으로 거른다)"""
+    import json as _json
+
+    from backend.analysis.m3_selection.retrieve import retrieve
+    from backend.tests.analysis.test_pipeline_e2e import REQUEST
+
+    ctx, _ = e2e
+    view = ctx.md.view(ctx.out("_bt_ctx")["end"].date())
+    it = _json.loads(_json.dumps(ctx.outputs["02_intent"]))
+    it["interpretation"]["themes"] = [{**it["interpretation"]["themes"][0], "gics_codes": ["45301020"], "keywords": [], "example_tickers": []}]
+    cons = _json.loads(_json.dumps(REQUEST["constraints"]))
+    cons.update(min_market_cap_usd=0, min_avg_daily_volume_usd=0, exclude_tickers=["NVDA", "AMD"], must_include_tickers=[])
+    got = {}
+    for tgt in (10, 5):
+        cons["num_holdings"] = {"target": tgt, "min": tgt, "max": tgt}
+        got[tgt] = sorted(c.ticker for c in retrieve(view, ctx.desc, it, cons, request_id="t", max_candidates=None).candidates)
+    cons["num_holdings"] = {"target": 5, "min": 5, "max": 5}
+    unwidened = retrieve(view, ctx.desc, it, cons, request_id="t", max_candidates=None, _widen=False)
+    assert unwidened.stats["n_matched"] == 6 and len(unwidened.candidates) == 4  # 예전 규칙이면 여기서 넓히지 않았다 (6 ≥ 5)
+    assert got[10] == got[5] and "AMAT" in got[5] and len(got[5]) == 5
+
+
+def test_news_gate_review_fixes():
+    """검토 보강: (1) 'HL만도 OR 만도 OR Mando' 같은 OR 검색어는 나눠서 본다 (통째로 비교하면 HL만도 8,154건 중 3건만 남았다)
+    (2) 영어 기사의 회사 공지 블로그(Cisco Blogs·NVIDIA Blog)는 이용자 글이 아니다 (3) '공식 블로그' 는 남긴다 (4) 흔한 줄임말 별칭."""
+    import datetime as _dt
+
+    from backend.analysis.m2_data.news import KR_TITLE_ALIASES
+    from backend.db import open_repository
+    from backend.db.analysis_readers import _is_ugc
+    from backend.schemas.market_ext import NewsRow
+    from backend.tests.analysis.conftest import AT, _asset
+
+    assert not _is_ugc("NVIDIA Blog", "https://blogs.nvidia.com/x", "en") and not _is_ugc("Cisco Blogs", None, "en")
+    assert _is_ugc("Naver Blog", None, "ko") and _is_ugc("네이버 프리미엄콘텐츠", None, "ko") and not _is_ugc("에이피알 공식 블로그", None, "ko")
+    assert _is_ugc(None, "https://blog.naver.com/someone/1", "en")  # 주소가 블로그면 언어와 무관
+    assert {"SKT"} <= set(KR_TITLE_ALIASES["017670"]) and "엔씨소프트" in KR_TITLE_ALIASES["036570"]
+    repo = open_repository("sqlite://", clock=lambda: AT)
+    repo.upsert_assets([_asset("204320.KS", "HL만도", "KR", "STOCK")])
+    repo.upsert_news([NewsRow(asset_id="KR-204320", source="NAVER_NEWS", url=f"https://news.test/m/{k}", title=t, publisher="한국경제",
+                              published_at=_dt.datetime(2015, 3, 2 + k, 1, tzinfo=_dt.UTC), language="ko", query="만도 OR HL만도 OR Mando", fetched_at=AT)
+                      for k, t in enumerate(["만도, 3분기 영업이익 증가", "부산 분양 시장 열기"])])  # fmt: skip
+    rows = repo.get_news_batch(["KR-204320"], _dt.datetime(2015, 3, 1, tzinfo=_dt.UTC), _dt.datetime(2015, 3, 9, tzinfo=_dt.UTC),
+                               per_asset=10, aliases={"KR-204320": ["HL만도", "204320"]})  # fmt: skip
+    assert [r.title for r in rows] == ["만도, 3분기 영업이익 증가"]

@@ -6,10 +6,13 @@
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, timedelta
+from functools import lru_cache
 from typing import Any
+from urllib.parse import urlparse
 
 import pandas as pd
 from sqlalchemy import func, select
@@ -50,6 +53,53 @@ VALUATION_COLS = (
     "asset_id", "ticker", "date", "currency", "close", "split_factor", "shares_outstanding", "market_cap",
     "eps_ttm", "per", "bps", "pbr", "roe_ttm", "dps_ttm", "dividend_yield", "fin_period_end", "fin_disclosed_at",
 )  # fmt: skip
+
+# 이용자 글 (블로그·카페·포스트·프리미엄 콘텐츠): 회사 근거가 아니다 (시나리오 003).
+# Google RSS 는 주소가 news.google.com 이라 언론사 칸('Naver Blog'·'네이버 블로그')으로,
+# 그 밖에는 주소의 호스트로 본다
+_UGC_PUBLISHER = re.compile(
+    r"blog|블로그|카페|프리미엄\s?콘텐츠|티스토리|tistory|브런치|brunch"
+    r"|네이버\s?포스트|naver\s?(cafe|post|premium)",
+    re.IGNORECASE,
+)
+# 영어 기사에서 'blog' 는 회사 공지 채널(Cisco Blogs·NVIDIA Blog)이나 업계 매체라 거르지 않는다 → 플랫폼 이름만 (검토: 미국 행 372건이 빠졌다)
+_UGC_PUBLISHER_EN = re.compile(r"blogspot|blogger|tistory|brunch|naver\s?blog|daum\s?blog", re.IGNORECASE)
+_OFFICIAL = re.compile(r"공식|official", re.IGNORECASE)  # '에이피알 공식 블로그' 처럼 회사가 직접 낸 글은 이용자 글이 아니다
+_UGC_HOST = re.compile(
+    r"(^|\.)((blog|post|cafe|contents\.premium)\.naver\.com|(blog|cafe|brunch)\.daum\.net"
+    r"|tistory\.com|brunch\.co\.kr)$"
+)
+_HANGUL = re.compile(r"[가-힣]")
+
+
+def _is_ugc(publisher: str | None, url: str | None, language: str | None = None) -> bool:
+    pub = publisher or ""
+    rx = _UGC_PUBLISHER if (language or "ko") == "ko" else _UGC_PUBLISHER_EN
+    if rx.search(pub) and not _OFFICIAL.search(pub):
+        return True
+    try:
+        host = (urlparse(url or "").hostname or "").lower()
+    except ValueError:  # 깨진 주소
+        return False
+    return bool(_UGC_HOST.search(host))
+
+
+@lru_cache(maxsize=4096)
+def _name_re(name: str) -> re.Pattern[str]:
+    """영문·숫자 이름은 앞뒤가 영문·숫자가 아닐 때만 (KT ≠ KTX, SK ≠ SKT). 띄어쓰기 무시."""
+    return re.compile(r"(?<![a-z0-9])" + re.escape(name).replace(r"\ ", r"\s*") + r"(?![a-z0-9])")
+
+
+def _title_mentions(title: str, names: Iterable[str]) -> bool:
+    """제목에 이름 중 하나가 있나. 한글이 든 이름은 띄어쓰기를 무시한 부분 일치
+    (조사가 붙는다: '네이버가')."""
+    low = (title or "").lower()
+    flat = "".join(low.split())
+    for n in names:
+        n = " ".join(str(n or "").lower().split())
+        if n and ("".join(n.split()) in flat if _HANGUL.search(n) else _name_re(n).search(low)):
+            return True
+    return False
 
 
 class AnalysisReadersMixin:
@@ -167,10 +217,14 @@ class AnalysisReadersMixin:
         *,
         languages: Sequence[str] | None = None,
         per_asset: int | None = None,
+        aliases: Mapping[str, Sequence[str]] | None = None,
     ) -> list[NewsRecord]:
         """여러 종목의 기사, 발행 시각 [start, end) 반개구간. 종목별 최신순, per_asset 개까지.
 
         인덱스 idx_news_asset_published 를 탄다. 제목이 같은 중복은 종목 안에서 하나만 남긴다.
+        블로그·카페 같은 이용자 글은 늘 뺀다. aliases(asset_id → 회사 이름들)에 있는 종목의
+        한국어 기사는 제목에 그 이름이나 그 기사를 찾은 검색어(옛 사명 포함)가 있을 때만 남긴다
+        (네이버 뉴스 검색은 본문만 맞아도 나와 무관한 기사가 대부분). per_asset 은 거른 뒤에 센다.
         """
         n = T.news
         ids = sorted(set(asset_ids))
@@ -190,6 +244,14 @@ class AnalysisReadersMixin:
                 count: dict[str, int] = defaultdict(int)
                 for r in conn.execute(q):
                     row = r._asdict()
+                    if _is_ugc(row.get("publisher"), row.get("url"), row.get("language")):
+                        continue
+                    names = aliases.get(row["asset_id"]) if aliases else None
+                    if names and row.get("language") == "ko":  # 영어 기사는 그대로
+                        # 수집 검색어는 'HL만도 OR 만도 OR Mando' 처럼 OR 로 묶여 있다 → 나눠서 하나씩 (통째로 비교하면 거의 다 빠졌다: HL만도 8,154건 중 3건만 남음, 검토)
+                        qnames = [q.strip(' "()') for q in re.split(r"\s+OR\s+", row.get("query") or "") if q.strip(' "()')]
+                        if not _title_mentions(row["title"], [*names, *qnames]):
+                            continue
                     key = " ".join(str(row["title"]).lower().split())
                     if key in seen[row["asset_id"]]:
                         continue

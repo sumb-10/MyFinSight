@@ -9,7 +9,7 @@ SQLite 를 모두 지원한다. 만들기는 `open_repository()` 를 쓴다.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime
 from typing import Any, Protocol, runtime_checkable
 
@@ -264,8 +264,10 @@ class ExtendedRepository(MarketDataRepository, Protocol):
         *,
         languages: Sequence[str] | None = None,
         per_asset: int | None = None,
+        aliases: Mapping[str, Sequence[str]] | None = None,
     ) -> list[NewsRecord]:
-        """여러 종목 기사, [start, end) 반개구간, 종목별 최신순 per_asset 개."""
+        """여러 종목 기사, [start, end) 반개구간, 종목별 최신순 per_asset 개. 이용자 글(블로그·카페)은 빼고, aliases(asset_id → 회사 이름들)가
+        있는 종목의 한국어 기사는 제목에 그 이름이나 수집 검색어가 있을 때만 (per_asset 은 거른 뒤에 센다)."""
         ...
 
     def get_disclosures_batch(

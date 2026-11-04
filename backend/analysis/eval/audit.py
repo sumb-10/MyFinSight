@@ -18,7 +18,7 @@ from typing import Any
 
 from backend.analysis.paths import REPO_ROOT, run_dir, store_dir
 
-ELIGIBLE = {"pe_ttm": (0.0, 50.0), "roe_ttm": (0.0, None), "dividend_yield_ttm": (0.0, None)}  # 정책 결정 3 (하한은 초과, 상한은 이하)
+ELIGIBLE = {"pe_ttm": (0.0, 50.0), "roe_ttm": (0.0, 10.0), "dividend_yield_ttm": (0.0, 0.30)}  # 정책 결정 3 + 자료 오류 거름 (하한은 초과, 상한은 이하)
 SHARE_CLASS = [{"GOOG", "GOOGL"}, {"FOX", "FOXA"}, {"NWS", "NWSA"}, {"BRK-A", "BRK-B"}]
 TOL = 1e-6
 

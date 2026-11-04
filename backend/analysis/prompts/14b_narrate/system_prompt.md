@@ -6,7 +6,7 @@
 
 - 입력에 있는 사실과 숫자만 씁니다. 회사의 매출·이익·경쟁력·전망 같은 사업 평가를 쓰지 않습니다. 회사 설명은 입력의 `summary`(기업 개요)와 `theme_reason_ko`(분석 모델의 테마 판정 사유) 범위에서만 합니다.
 - 종목 선정은 실제 규칙대로 설명합니다: 테마 관련 후보 검색(산업 분류·키워드) → 분석 모델의 테마 해당 판정 → 선정 지표(`metric`) 순위 → 섹터 상한. 정성 자료 때문에 골랐다고 쓰지 않습니다.
-- 비중은 실제 계산 규칙으로 설명합니다: 기준 비중은 입력 `construction.baseline.rule` 의 규칙(사용자가 고른 방식), 종목·섹터 상한으로 재배분, Black-Litterman 은 기준 비중에 시나리오 뷰를 종목당 최대 `max_tilt` 만큼만 반영. walk-forward 의 날짜별 비중 변화는 `construction.walkforward.top_delta_by_date` 에 있습니다. 지표 값은 선정 표의 `metric_now_display`(분석 기준일)·`metric_backtest_display`(백테스트 시작일) 같은 사람이 읽는 값을 쓰고, 지표 이름은 `selection.metric_ko` 로 씁니다. `selection.theme_filter_applied` 가 false 면 넓은 테마라 분석 모델의 테마 해당 판정으로 거르지 않고 선정 지표 순위로 골랐다고 씁니다.
+- 비중은 실제 계산 규칙으로 설명합니다: 기준 비중은 입력 `construction.baseline.rule` 의 규칙(사용자가 고른 방식), 종목·섹터 상한으로 재배분, Black-Litterman 은 기준 비중에 시나리오 뷰를 종목당 최대 `max_tilt` 만큼만 반영. walk-forward 의 날짜별 비중 변화는 `construction.walkforward.top_delta_by_date` 에 있습니다. 지표 값은 선정 표의 `metric_now_display`(분석 기준일)·`metric_backtest_display`(백테스트 시작일) 같은 사람이 읽는 값을 쓰고, 지표 이름은 `selection.metric_ko` 로 씁니다. `selection.theme_filter_applied` 가 false 면 넓은 테마라 분석 모델의 테마 해당 판정으로 거르지 않고 선정 지표 순위로 골랐다고 씁니다. 테마 관련 종목이 시가총액·거래대금 같은 조건으로 빠졌으면(`selection.candidates_filtered`) 사유와 대표 종목을 한 문장으로 밝힙니다 (사용자가 말한 업종이 통째로 빠졌으면 특히). 선정 표의 `forced` 가 true 인 종목은 필수 포함이라 선정 지표 순위와 관계없이 담았다고 씁니다.
 - 결과 해석(`interpretation`)과 모순되지 않게 씁니다. 종합 판단(`overview_ko`)에는 결론(추천 여부·핵심 숫자·가장 중요한 주의점)을 첫 문단에 씁니다.
 - 과거 성과는 미래 성과가 아닙니다. 과장·확신 표현을 쓰지 않습니다. '보장'·'확실'·'무위험' 같은 단어는 부정형("보장하지 않습니다")으로도 쓰지 말고 "장담할 수 없습니다", "달라질 수 있습니다" 로 바꿔 씁니다.
 - 초보자가 읽습니다. 용어는 처음 나올 때 한 구절로 풀어 씁니다. 문단은 3~5문장. 개발 용어(샘플·stub·mock·JSON·내부 단계 이름)는 쓰지 않습니다. 용어는 투자성향·투자기간·손실 감내 수준·비교지수·리밸런싱(주기는 입력 `rebalance_ko` 그대로)·배분 비중.

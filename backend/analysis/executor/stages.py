@@ -23,8 +23,7 @@ from backend.analysis.m3_selection.retrieve import retrieve
 from backend.analysis.m3_selection.screen import screen
 from backend.analysis.m4_portfolio.construct import construct
 from backend.analysis.m4_portfolio.spec import build_backtest_spec
-from backend.analysis.m5_backtest_report.backtest import run_backtest
-from backend.analysis.m5_backtest_report.backtest_engine import rebalance_dates
+from backend.analysis.m5_backtest_report.backtest import run_backtest, trade_schedule
 from backend.analysis.m5_backtest_report.collect import build_results
 from backend.analysis.m5_backtest_report.report import generate_report
 from backend.analysis.m5_backtest_report.validate import validate
@@ -180,14 +179,10 @@ def st_targets(ctx: RunContext) -> str:
 def st_walkforward(ctx: RunContext) -> str:
     """리밸런싱일마다 construct(mode=rebalance): 시장모형·뉴스 뷰·BL 재계산, 종목 고정 (K8)."""
     spec, intent = ctx.out("07_backtest_spec"), ctx.out("02_intent")
-    as_of, end = dt.date.fromisoformat(str(spec["period"]["as_of"])), dt.date.fromisoformat(str(spec["period"]["end"]))
     tickers = list(spec["selection"]["tickers"])
-    # 백테스트(prepare)와 같은 달력: 종목 시장 ∪ 비교지수 시장의 거래일 합집합. 종목 시장만 쓰면 한국 휴장일에 리밸런싱 날짜가 어긋나
-    # 체크포인트의 '리밸런싱 직후 비중'이 드리프트된 값으로 잡혀 내부 점검(R4)이 틀리게 실패한다 (라운드 5 재실행에서 발견)
-    benches = [spec["benchmark"], *[b for b in spec.get("extra_benchmarks", []) if b in ctx.md.assets]]
-    markets = sorted({ctx.md.market_of(t) for t in tickers} | {ctx.md.market_of(b) for b in benches if b in ctx.md.assets})
-    cal = ctx.md.view(end).trading_days(as_of, end, markets=markets)
-    dates = [d.date() for d in rebalance_dates(spec["rebalance_rule"], cal, as_of, ctx.settings.backtest)]
+    # 백테스트(prepare)와 같은 함수로 날짜를 정한다: 따로 계산하면 날짜가 어긋나 체크포인트의 '리밸런싱 직후 비중'이 드리프트된 값으로 잡혀
+    # 내부 점검(R4)이 틀리게 실패한다 (라운드 5 재실행에서 발견). 날짜는 보유 종목 시장이 모두 연 날 (시나리오 QA 002)
+    dates = [d.date() for d in trade_schedule(ctx.md, spec, ctx.settings)["rb"]]
     ps = ctx.settings.portfolio
     tmpl = {t: {"id": f"wf_{t}", "kind": "template", "name_ko": f"{ps.template_names_ko[t][0]} (walk-forward)", "rule_ko": ps.template_names_ko[t][1],
                 "weights_by_date": {}} for t in ps.templates}  # fmt: skip
@@ -317,7 +312,8 @@ def st_results(ctx: RunContext) -> str:
                            walkforward=o.get("10w_target_paths"), forward=o.get("10f_forward_portfolios"), llm_usage=ctx.llm.usage_summary(),
                            extra_warnings=ctx.warnings)  # fmt: skip
     ctx.outputs["13_results"] = bundle
-    return f"결과 통합: 포트폴리오 {len(bundle['backtest']['portfolios'])}개, 인용 색인 {len(bundle['evidence_index'])}건, 경고 {len(bundle['warnings'])}건"
+    # '경고 3건' 이 사용자 공지 0건인 실행에도 나왔다 (참고·개발용 기록까지 셈, 003) → 사용자에게 보이는 공지 수
+    return f"결과 통합: 포트폴리오 {len(bundle['backtest']['portfolios'])}개, 인용 색인 {len(bundle['evidence_index'])}건, 사용자 공지 {len(bundle.get('notices') or [])}건"
 
 
 def st_report(ctx: RunContext) -> str:

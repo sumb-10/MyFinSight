@@ -137,6 +137,8 @@ def screen(
         warnings.append(f"sector count preference ({sector_pref}/sector, sector cap {max_sector:.0%}) skipped higher-ranked {skipped_pref} ({sec_txt}) for lower-ranked names in other sectors")
 
     cap_now = capacity(sec_count)
+    # 자격선 부족 경고에 배분 가능 비율을 붙인다 → 공지가 '남는 비중은 현금' 을 사실일 때만 말한다 (002: 9종목이 100% 를 다 담는데도 현금이 남는다고 했다)
+    warnings[:] = [w + f" [capacity {cap_now:.2f} of {investable:.2f}]" if w.startswith("only ") and " within eligibility for " in w else w for w in warnings]
     infeasibility = None
     sector_overflow = None
     sec_names = {s.sector_code: s.sector for s in selected}

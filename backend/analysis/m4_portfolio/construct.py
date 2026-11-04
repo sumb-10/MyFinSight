@@ -86,7 +86,7 @@ def construct(
     res = ConstructResult(as_of=str(view.as_of), mode=mode, market_model=model, baselines=base)
     res.warnings += [n for n in model.get("notes", []) if n.startswith("dropped") or n.startswith("caps allow")]
     if not intent["news_tilt"]["enabled"]:
-        res.fallback, res.fallback_reason_ko = True, "뉴스 반영(use_news_tilt)이 꺼져 있어 기준 비중을 사용"
+        res.fallback, res.fallback_reason_ko = True, "뉴스 반영을 꺼서 기준 비중을 사용"
         return res
     ev = view.news_window(tk)
     res.evidence = ev

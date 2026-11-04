@@ -100,8 +100,13 @@ def retrieve(
     max_candidates: int | None | object = _DEFAULT,
     broad_min_sectors: int = BROAD_THEME_MIN_SECTORS,
     metric_prefilter: bool = True,
+    _widen: bool = True,
 ) -> Candidates:
-    """max_candidates=None 이면 상한 없음 (07 재선정·실행 전 점검처럼 뒤에서 교집합을 만드는 호출용)."""
+    """max_candidates=None 이면 상한 없음 (07 재선정·실행 전 점검처럼 뒤에서 교집합을 만드는 호출용).
+
+    GICS 한 단계 넓히기는 시가총액·거래대금 같은 필터를 거친 뒤 후보가 목표보다 적을 때만 한다 (넓혀서 후보가 늘 때만 그 결과를 쓴다).
+    예전에는 필터 전 일치 수로 판단해 목표 종목 수가 판단을 바꿨다: 004 에서 목표 25 일 때는 넓혀서 4개, '4개로 줄임' 답 뒤에는
+    일치 11개 ≥ 4 라 넓히지 않아 필터 뒤 3개 — 실행 전 점검이 말한 숫자와 실제가 어긋났다 (계획 N-T1-18)."""
     it = intent.model_dump(mode="json") if isinstance(intent, IntentSpec) else intent
     cap = MAX_CANDIDATES if max_candidates is _DEFAULT else max_candidates
     as_of = view.as_of
@@ -113,14 +118,6 @@ def retrieve(
 
     themes = it["interpretation"]["themes"]
     hits = _collect(desc, themes)
-    if len(hits) < target:
-        widened = []
-        for th in themes:
-            th = dict(th)
-            th["gics_codes"] = sorted({p[0] for c in th["gics_codes"] for p in [D.parents_of(c)] if p} | set(th["gics_codes"]))
-            widened.append(th)
-        hits = _collect(desc, widened)
-        warnings.append(f"fewer than target after matching; widened GICS codes one level up -> {len(hits)}")
     for t in cons.get("must_include_tickers", []):
         e = desc.by_ticker(t)
         if e:
@@ -260,6 +257,19 @@ def retrieve(
         for x in cands[cap:]:
             drop(x.ticker, reason)
         cands = cands[:cap]
+    if _widen and len(cands) < target:  # 필터 뒤에도 모자라면 GICS 를 한 단계 넓혀 다시 (넓혀서 늘 때만 그 결과)
+        widened = []
+        for th in themes:
+            th = dict(th)
+            th["gics_codes"] = sorted({p[0] for c in th["gics_codes"] for p in [D.parents_of(c)] if p} | set(th["gics_codes"]))
+            widened.append(th)
+        if any(set(a["gics_codes"]) != set(b.get("gics_codes", [])) for a, b in zip(widened, themes, strict=True)):
+            it2 = {**it, "interpretation": {**it["interpretation"], "themes": widened}}
+            alt = retrieve(view, desc, it2, constraints, request_id=request_id, descriptor_version=descriptor_version, max_candidates=max_candidates,
+                           broad_min_sectors=broad_min_sectors, metric_prefilter=metric_prefilter, _widen=False)  # fmt: skip
+            if len(alt.candidates) > len(cands):
+                alt.warnings.insert(0, f"fewer than target after matching; widened GICS codes one level up -> {len(alt.candidates)}")
+                return alt
     if len(cands) < target:
         warnings.append(f"only {len(cands)} candidates for target {target}")
     cands.sort(key=lambda x: x.ticker)

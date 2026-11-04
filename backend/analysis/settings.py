@@ -82,6 +82,9 @@ class NewsSettings:
     view_sets_at_start: int = 5
     view_sets_at_rebalance: int = 1
     views_per_set: int = 4
+    # 한국어 기사는 제목에 회사 이름(별칭·6자리 코드 포함)이 있어야 근거로 쓴다. 네이버 뉴스 검색은 본문만 맞아도 나와서
+    # 제목에 회사가 나오는 기사가 NAVER 9%·SK하이닉스 8% 뿐이었다 (시나리오 003). False 면 예전처럼 모두 (블로그 등 이용자 글은 늘 뺌)
+    require_title_mention: bool = True
 
 
 @dataclass(frozen=True)
@@ -103,7 +106,8 @@ class DisclosureSettings:
     )
     # 90일 요약 건수에만 넣는 정기·절차 공시 (뷰 근거 아님)
     summary_extra_event_types: tuple[str, ...] = ("quarterly_report", "annual_report", "semiannual_report", "investor_relations", "reg_fd", "other_event", "voluntary_disclosure")
-    # 명시 제외: derivative_offering(증권사 ELS 잡음 7.3만), offering_document, major_holder, proxy, related_party, shareholder_meeting, exhibits_only
+    # 명시 제외: derivative_offering(증권사 ELS 잡음 7.3만), offering_document, major_holder, proxy, related_party, shareholder_meeting, exhibits_only,
+    # trading_halt(거래소의 절차상 매매거래 정지·해제 — 악재 신호가 아니고 같은 날의 본 공시가 사건이다)
 
 
 @dataclass(frozen=True)

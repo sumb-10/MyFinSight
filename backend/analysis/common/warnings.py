@@ -45,7 +45,7 @@ CATALOG: dict[str, tuple[Level, str]] = {
     "sector_preference_skipped": ("user", "섹터 상한({cap}) 안에서 투자금을 다 배분하려고 한 섹터에서는 {pref}종목까지만 먼저 골라, 선정 지표 순위가 더 높은 {tickers}(섹터별 {sector})은(는) 빼고 다른 섹터 종목으로 채웠습니다. 섹터 상한을 올리면 순위대로 고를 수 있습니다."),
     # 필수 포함 사유를 사실대로 (2026-11 QA: 지표 자료가 없을 뿐인데 '기준에 맞지 않지만' 이라고 써서 리포트가 '고배당 기준에 못 미친다' 고 오해)
     "must_include_out_of_range": ("user", "필수 포함 종목 {tickers}은(는) 선정 지표가 자격선 밖({detail})이지만 요청에 따라 포함했습니다."),
-    "too_few_eligible": ("user", "선정 지표가 자격선 안에 드는 종목이 {n}개라 목표 {target}개를 다 채우지 못했습니다 (자격선 밖 {n_out}개 제외: {examples}). 남는 비중은 현금으로 둡니다."),
+    "too_few_eligible": ("user", "선정 지표가 자격선 안에 드는 종목이 {n}개라 목표 {target}개를 다 채우지 못했습니다 (자격선 밖 {n_out}개 제외: {examples}). {cash_clause}"),
     "must_include_no_metric": ("user", "필수 포함 종목 {tickers}은(는) 선정 지표 자료가 없어{why} 순위를 매기지 못했지만 요청에 따라 포함했습니다."),
     "must_include_off_theme": ("user", "필수 포함 종목 {tickers}은(는) 테마 판정을 통과하지 못했지만 요청에 따라 포함했습니다."),
     "must_include_excluded_theme": ("user", "필수 포함 종목 {tickers}은(는) 제외 테마({theme})에 해당하지만 요청에 따라 포함했습니다."),
@@ -87,7 +87,8 @@ _LEGACY: list[tuple[re.Pattern[str], str, tuple[str, ...]]] = [
     (re.compile(r"^exclude_sectors: unknown sector name '?([^']+)'?"), "exclude_sector_unknown", ("names",)),
     (re.compile(r"^only (\d+) candidates for target (\d+)"), "too_few_candidates", ("n", "target")),
     (re.compile(r"^only (\d+) tickers have (\S+); target (\d+) -> selecting (\d+)"), "too_few_with_metric", ("n", "metric", "target", "selected")),
-    (re.compile(r"^only (\d+) tickers within eligibility for (\S+); target (\d+) \(excluded (\d+) out of range: (.*)\)$"), "too_few_eligible", ("n", "metric", "target", "n_out", "examples")),
+    (re.compile(r"^only (\d+) tickers within eligibility for (\S+); target (\d+) \(excluded (\d+) out of range: (.*?)\)(?: \[capacity ([\d.]+) of ([\d.]+)\])?$"), "too_few_eligible",
+     ("n", "metric", "target", "n_out", "examples", "cap", "investable")),
     (re.compile(r"^weight capacity ([\d.]+) < ([\d.]+): .*?\(cap needed ([\d.]+|None)(?:; stock (\d+)%, sector (\d+)%, (\d+) names)?\)"), "weight_capacity",
      ("cap", "investable", "needed", "stock_pct", "sector_pct", "n")),
     (re.compile(r"^caps allow at most (\d+)% invested \(stock (\d+)%, sector (\d+)%, (\d+) names(?:, investable (\d+)%)?\)"), "weight_capacity",
@@ -171,6 +172,12 @@ def from_text(stage: str, text: str, *, dates: list[str] | None = None) -> Warni
         kw: dict[str, Any] = {k: m.group(i + 1) for i, k in enumerate(keys) if i + 1 <= rx.groups}
         if code == "weight_capacity":
             kw.update(_capacity_words(kw))
+        if code == "too_few_eligible":  # 남는 비중이 정말 있을 때만 '현금' (배분 가능 비율을 모르는 예전 원문은 가능성으로)
+            try:
+                short = float(kw["cap"]) < float(kw["investable"]) - 1e-9
+                kw["cash_clause"] = "남는 비중은 현금으로 둡니다." if short else f"선정한 {kw['n']}종목에 투자금을 나눠 담습니다."
+            except (TypeError, ValueError, KeyError):
+                kw["cash_clause"] = "종목 수가 적으면 종목·섹터 상한 때문에 현금이 남을 수 있습니다."
         if code == "no_portfolio_passed":
             found = re.findall(r"'(R\d+b?)': (\d+)", kw.get("rules", ""))
             kw["rules"] = ", ".join(f"{RULE_KO.get(r, r)}({r}) {n}개" for r, n in found) or kw.get("rules", "")

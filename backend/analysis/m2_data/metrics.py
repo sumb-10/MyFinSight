@@ -94,7 +94,8 @@ def dividend_yield_ttm(view: MarketDataView, tickers: Sequence[str]) -> tuple[pd
 
 # 선정 자격선 (2026-11 시나리오 QA, 사용자 정책 결정 3): 후보가 목표보다 적어도 이 범위 밖 종목은 뽑지 않는다 (강제 포함 제외).
 # (하한, 상한) — 하한은 초과(>), 상한은 이하(≤). 배당 상한 30% 는 정책이 아니라 자료 오류 거름 (000: STX 배당수익률 20541).
-ELIGIBLE_RANGE: dict[str, tuple[float | None, float | None]] = {"pe_ttm": (0.0, 50.0), "roe_ttm": (0.0, None), "dividend_yield_ttm": (0.0, 0.30)}
+# ROE 상한 1000% 도 자료 오류 거름: 자기자본이 0 근처·음수로 넘어가면 평균 자본이 작아 ROE 가 폭주한다 (005: AbbVie 141% → 15,367%, 장부가 음수로 PBR 없음).
+ELIGIBLE_RANGE: dict[str, tuple[float | None, float | None]] = {"pe_ttm": (0.0, 50.0), "roe_ttm": (0.0, 10.0), "dividend_yield_ttm": (0.0, 0.30)}
 
 
 def eligible(metric: str, value: float | None, ranges: dict[str, tuple[float | None, float | None]] | None = None) -> bool:
