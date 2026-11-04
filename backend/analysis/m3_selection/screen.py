@@ -1,7 +1,7 @@
 """M3-04 정량 스크린·선정기 (코드). 테마 통과 종목에 템플릿 지표(상세설계 표 6)를 계산해 순위를 매기고 섹터 분산을 고려해 고른다.
 
 - 지표가 없는 일반 후보는 제외(must_include 는 유지 + 사유). 지표마다 인용 ID(fin:*) 를 남긴다.
-- 섹터당 선호 종목 수 = floor(섹터 상한 × n) 로 우선 선발, 부족하면 미룬 후보로 채움 (비중 상한은 Module4 가 지킴).
+- 섹터당 선호 종목 수 = floor(섹터 상한 × n ÷ 투자 가능 비율) 로 우선 선발, 부족하면 미룬 후보로 채움 (비중 상한은 Module4 가 지킴).
 - 전액 배분 용량 Σ min(k × 종목 상한, 섹터 상한) < 1 − 현금 비율이면 infeasibility 사유와 선택지를 반환한다.
 """
 
@@ -11,6 +11,7 @@ import math
 from collections import Counter
 from typing import Any
 
+from backend.analysis.common.capacity import cap_cause_ko, cap_limits
 from backend.analysis.common.labels import sector_ko
 from backend.analysis.m2_data import descriptor as D
 from backend.analysis.m2_data import metrics as M
@@ -78,7 +79,9 @@ def screen(
         warnings.append(f"below num_holdings.min={nh['min']} -> fewer holdings than requested (cash may remain; the report labels this)")
     max_stock, max_sector = cons["max_weight_per_stock"], cons["max_weight_per_sector"]
     investable = 1.0 - cons.get("min_cash_ratio", 0)
-    sector_pref = max(1, math.floor(max_sector * n))
+    # 섹터당 선호 종목 수 = 동일비중(투자 가능 비율 ÷ n)으로 섹터 상한 안에 드는 종목 수. 016: 최소 현금 15%·섹터 상한 85% 면 20종목 × 4.25% = 85% 로
+    # 다 들어가는데 floor(0.85 × 20) = 17 로 세어 3종목을 '초과' 로 표시하고, 리포트가 '섹터 상한이 비중을 누른 부분' 을 거짓으로 띄웠다
+    sector_pref = max(1, math.floor(max_sector * n / (investable if investable > 1e-9 else 1.0) + 1e-9))
 
     def capacity(counts: Counter) -> float:
         return sum(min(k * max_stock, max_sector) for k in counts.values())
@@ -118,11 +121,11 @@ def screen(
             continue
         add(t, v)
     skipped_pref: list[str] = []
-    pos = {t: i for i, (t, _) in enumerate(pool)}
+    pure = {t for t, _ in pool[:n]}  # 섹터 선호 없이 순위대로만 뽑았다면 들어갔을 종목
     for t, v in deferred:
         if len(selected) >= n:
-            # 같은 섹터 종목 수 선호 때문에 순위가 더 낮은 다른 섹터 종목에 자리를 내준 경우만 sector_preference (그 밖은 그냥 순위 밖)
-            displaced = any(pos.get(x.ticker, -1) > pos[t] for x in selected)
+            # 순위대로라면 뽑혔는데 섹터 선호 때문에 빠진 경우만 sector_preference (008: 어차피 순위 밖인 TER·LRCX·INTC 까지 '자리를 내줬다' 고 했다)
+            displaced = t in pure
             rejected.append(Rejected(ticker=t, reason="sector_preference" if displaced else "rank_beyond_n", metric_value=v if math.isfinite(v) else None))
             if displaced:
                 skipped_pref.append(t)
@@ -134,7 +137,9 @@ def screen(
         for t in skipped_pref:
             by_sec.setdefault(sector_of(t)[1] or "?", []).append(t)
         sec_txt = "; ".join(f"{k}: {len(v)}" for k, v in by_sec.items())
-        warnings.append(f"sector count preference ({sector_pref}/sector, sector cap {max_sector:.0%}) skipped higher-ranked {skipped_pref} ({sec_txt}) for lower-ranked names in other sectors")
+        subs = [x.ticker for x in selected if x.ticker not in pure]  # 대신 들어간 순위가 더 낮은 다른 섹터 종목
+        warnings.append(f"sector count preference ({sector_pref}/sector, sector cap {max_sector:.0%}) skipped higher-ranked {skipped_pref} ({sec_txt}) "
+                        f"for lower-ranked names in other sectors {subs}")  # fmt: skip
 
     cap_now = capacity(sec_count)
     # 자격선 부족 경고에 배분 가능 비율을 붙인다 → 공지가 '남는 비중은 현금' 을 사실일 때만 말한다 (002: 9종목이 100% 를 다 담는데도 현금이 남는다고 했다)
@@ -143,13 +148,18 @@ def screen(
     sector_overflow = None
     sec_names = {s.sector_code: s.sector for s in selected}
     if cap_now < investable - 1e-9:
-        needed = next((round(c / 100, 2) for c in range(int(max_sector * 100), 101, 5)
-                       if sum(min(k * max_stock, c / 100) for k in sec_count.values()) >= investable), None)  # fmt: skip
+        # 100% 는 늘 시도한다 (34%·66% 같은 상한이면 range 가 100 을 건너뛰었고, int(0.29*100)=28 처럼 내림도 있었다)
+        needed = next((round(c / 100, 2) for c in [*range(int(round(max_sector * 100)), 100, 5), 100]
+                       if sum(min(k * max_stock, c / 100) for k in sec_count.values()) >= investable - 1e-9), None)  # fmt: skip
+        lim = cap_limits(dict(sec_count), max_stock, max_sector, investable)
+        cause = cap_cause_ko(lim, max_stock, max_sector) or f"종목·섹터 상한으로 투자금의 {cap_now:.0%}까지만 담깁니다"
         infeasibility = {
             "reason": "weight_capacity", "target": nh["target"], "n_selected": len(selected), "capacity": round(cap_now, 4),
             "required": investable, "sector_cap": max_sector, "stock_cap": max_stock,
             "sector_counts": {sec_names.get(c, c): k for c, k in sec_count.items()}, "cap_needed_for_target": needed,
-            "max_feasible_n": len(selected),
+            # 원인 문장은 묶는 상한대로 (011: max_feasible_n=선정 수 를 넘겨 '종목당 상한 아래에서 배분 가능한 최대 종목 수는 2개' 라는 거꾸로 된 서술이 나왔다.
+            # 첫 수정은 needed 로 갈라 섹터 상한이 묶을 때도 '2개뿐이라 50%까지' 라고 썼다 → common/capacity 로 R9·현금 설명과 같은 판단)
+            "cause_ko": f"{as_of} 선정 종목은 {cause}" + (" (상한이 종목 수를 줄인 것이 아닙니다)" if lim["kind"] in ("stock", "both") else ""),
             # 섹터 상한을 100% 로 올려도 모자라면(종목 수 × 종목당 상한이 묶임) 그 보기는 빼고 이유를 따로 적는다 (예전에는 '섹터 상한 완화로도 해결 불가' 가 보기로 나왔다)
             "options_ko": ([f"섹터 상한을 {needed:.0%}로 올리기", "종목당 상한을 올리기", "테마를 넓혀 다른 섹터 후보를 늘리기"] if needed
                            else ["종목당 상한을 올리기", "테마를 넓혀 종목 수를 늘리기"]),

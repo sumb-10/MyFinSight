@@ -123,6 +123,20 @@ METRIC_KO = {"return_12m_1m": "모멘텀(최근 12개월 수익률, 직전 1개�
              "roe_ttm": "ROE(최근 12개월 자기자본이익률)", "dividend_yield_ttm": "배당수익률(최근 12개월)"}
 
 
+METRIC_SHORT_KO = {"return_12m_1m": "모멘텀", "vol_60d": "변동성", "pe_ttm": "PER", "roe_ttm": "ROE", "dividend_yield_ttm": "배당수익률"}
+
+
+def eligible_range_ko(metric: str, ranges: dict[str, tuple[float | None, float | None]] | None = None) -> str:
+    """자격선을 사람이 읽는 말로: roe_ttm (0, 10) → '0% 초과 1,000% 이하' ('범위 >0 ≤10' 이 퍼센트 값 옆에서 'ROE 10% 상한' 으로 읽혔다, 009)."""
+    lo, hi = (ranges or ELIGIBLE_RANGE).get(metric, (None, None))
+
+    def f(x: float) -> str:
+        return f"{x:g}배" if metric == "pe_ttm" else f"{x * 100:,.0f}%"
+
+    parts = ([f"{f(lo)} 초과"] if lo is not None else []) + ([f"{f(hi)} 이하"] if hi is not None else [])
+    return " ".join(parts)
+
+
 def display_metric(metric: str, value: float | None) -> str:
     """선정 지표 값을 사람이 읽는 말로 (LLM 입력·리포트용). 예: 0.9540 → '+95.4%', PER 4.6435 → '4.6배'."""
     try:

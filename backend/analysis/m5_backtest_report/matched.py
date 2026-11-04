@@ -92,7 +92,22 @@ def scale_weights(w: dict[str, float], c: float) -> dict[str, float]:
     return {t: round(float(x) * (1 - c), 6) for t, x in w.items()}
 
 
+def _pct1(p: float) -> str:
+    """0.1 단위로 반올림한 퍼센트 값 → '98.5%' / 정수면 '77%'."""
+    return f"{int(round(p))}%" if abs(p - round(p)) < 1e-9 else f"{p:.1f}%"
+
+
+def share_pct(x: float) -> str:
+    """비중 → '98.5%' (정수에서 0.05%p 안이면 '77%'). 015: 0.985 를 '99%' 로 적어 같은 리포트의 98.5% 와 달랐다."""
+    return _pct1(round(float(x) * 100, 1))
+
+
+def stock_cash_ko(invested: float) -> str:
+    """'주식 98.5% + 현금 1.5%' (정수 근처면 '주식 77% + 현금 23%'). 현금은 100 − 주식을 같은 자리수로 (따로 반올림하면 '주식 24% + 현금 77%' 처럼 합이 어긋날 수 있다)."""
+    stock = round(float(invested) * 100, 1)
+    return f"주식 {_pct1(stock)} + 현금 {_pct1(round(100 - stock, 1))}"
+
+
 def matched_name(base_label: str, invested: float) -> str:
-    """총 투자 비중으로 적는다 (기준 구성에 현금이 있어도 합이 100%). 현금은 100 − 주식으로 (따로 반올림하면 '주식 24% + 현금 77%' 처럼 합이 어긋날 수 있다)."""
-    stock = int(round(invested * 100))
-    return f"낙폭 맞춤안 (주식 {stock}% + 현금 {100 - stock}%, {base_label} 기준)"
+    """총 투자 비중으로 적는다 (기준 구성에 현금이 있어도 합이 100%). 정수가 아니면 소수 한 자리 (015: 98.5% 를 '주식 99% + 현금 1%' 로 적었다)."""
+    return f"낙폭 맞춤안 ({stock_cash_ko(invested)}, {base_label} 기준)"

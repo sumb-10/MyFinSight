@@ -18,7 +18,7 @@ from backend.analysis.m1_request.derive import derive
 from backend.analysis.m2_data import descriptor as D
 from backend.analysis.m3_selection.classify import classify, is_broad_theme
 from backend.analysis.m3_selection.explain import explain
-from backend.analysis.m3_selection.intent import interpret
+from backend.analysis.m3_selection.intent import clean_exclude_rules, interpret
 from backend.analysis.m3_selection.retrieve import retrieve
 from backend.analysis.m3_selection.screen import screen
 from backend.analysis.m4_portfolio.construct import construct
@@ -65,7 +65,9 @@ TEMPLATE_KO = {"low_per": "저PER", "quality": "퀄리티(ROE)", "momentum": "�
 
 def st_intent(ctx: RunContext) -> str:
     if ctx.intent is not None:
+        # 대화에서 확정된 의도를 다시 쓰되, 코드 규칙(제외 테마의 GICS 정리)은 지금 규칙으로 다시 적용한다 — 예전 의도면 '성인 산업' 이 미디어 업종 전체를 뺐다 (013)
         ctx.outputs["02_intent"] = ctx.intent
+        ctx.warn_all("02_intent", clean_exclude_rules(ctx.intent.get("exclude_theme_rules") or []))
         return "대화에서 확정된 의도 재사용 (LLM 호출 없음)"
     spec, warns, _ = interpret(ctx.request, ctx.desc, ctx.llm, ctx.settings)
     out = spec.model_dump(mode="json")
@@ -264,7 +266,8 @@ def st_forward(ctx: RunContext) -> str:
     ev = res.evidence
     out = {"request_id": ctx.request_id, "stage": "10f_forward_portfolios", "as_of": str(as_of), "news_window": ev.summary() if ev else None,
            "evidence": {r["evidence_id"]: r for r in (ev.records if ev else [])},
-           "market_model": {k: res.market_model[k] for k in ["as_of", "lookback", "tickers", "ann_vol", "cap_weights", "delta", "delta_source", "tau", "implied_returns"]},
+           "market_model": {**{k: res.market_model[k] for k in ["as_of", "lookback", "tickers", "ann_vol", "cap_weights", "delta", "delta_source", "tau", "implied_returns"]},
+                            "delta_capped": bool(res.market_model.get("delta_capped"))},
            "baseline": {"id": res.baselines["chosen_baseline"], "weights": res.baseline_weights}, "templates": templates, "views_sets": res.view_sets,
            "portfolios": ports, "chosen_weights": res.chosen_weights, "fallback": res.fallback, "fallback_reason_ko": res.fallback_reason_ko,
            "parameters": res.params, "capital": {"initial_amount_usd": init, "fx_rate": fx, "fx_date": str(ctx.request["derived"]["fx_date"])},

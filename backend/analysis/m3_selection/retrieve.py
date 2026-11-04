@@ -1,7 +1,7 @@
 """M3-02 후보 검색기 (코드). IntentSpec 의 GICS 코드·키워드·예시 티커로 사전을 검색하고 하드 필터를 적용한다.
 
 규칙: gics_match / keyword_match(서로 다른 키워드 2개 이상) / example_match / must_include.
-하드 필터: exclude_tickers·exclude_sectors·exclude_theme_rules·asset_types·시가총액·거래대금·가격 이력.
+하드 필터: exclude_tickers·exclude_sectors·exclude_theme_rules·asset_types·시가총액(빈 날은 마지막 주식수로 추정, 그래도 없으면 제외)·거래대금·가격 이력.
 같은 회사의 복수 주식 클래스(GOOG·GOOGL)는 유동성이 큰 하나만 남긴다 (MVP 결함 4).
 후보 상한(120)은 일치 규칙 수 → 거래대금 순으로 자른다.
 """
@@ -12,6 +12,7 @@ import re
 
 import datetime as dt
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from typing import Any
 
 import pandas as pd
@@ -187,9 +188,9 @@ def retrieve(
     else:
         adv = pd.Series(dtype=float)
     fd = view.first_dates(tickers) if tickers else {}
-    mcap = view.market_cap_usd(tickers) if tickers and cons.get("min_market_cap_usd", 0) > 0 else view.market_cap_usd(tickers) if tickers else {}
-    if tickers and not mcap:
-        warnings.append("market cap unavailable from valuation_daily for all candidates")
+    min_mc = float(cons.get("min_market_cap_usd") or 0)
+    mcap = view.market_cap_usd(tickers) if tickers else {}
+    est = view.market_cap_estimated(tickers) if tickers else {}  # 빈 시가총액을 마지막 주식수 × 그날 종가로 추정한 종목 (값은 mcap 에 이미 들어 있다)
 
     cands: list[Candidate] = []
     for t, h in kept.items():
@@ -206,8 +207,13 @@ def retrieve(
             drop(t, "min_avg_daily_volume_usd")
             continue
         mc = mcap.get(t)
-        if not forced and cons.get("min_market_cap_usd", 0) > 0 and mc is not None and mc < cons["min_market_cap_usd"]:
-            drop(t, "min_market_cap_usd")
+        if not forced and min_mc > 0 and mc is None:
+            # 최소 시가총액은 하드 필터 (2026-11 사용자 정책): 마지막 주식수로도 추정할 수 없으면 뺀다 (예전에는 남기고 알려 조건을 확인 못 한 VEEV 가 선정됐다, 010).
+            # 팀 DB 는 XOM(2026-08~)·BLK(2024-11~) 처럼 앞쪽이 빈 대형주가 과거 시점에 빠진다 → 공지로 알린다 (mcap_warnings)
+            drop(t, "market_cap_missing")
+            continue
+        if not forced and min_mc > 0 and mc < min_mc:
+            drop(t, "min_market_cap_usd(estimated)" if t in est else "min_market_cap_usd")  # 추정값으로 뺀 것은 파일에서 구분되게
             continue
         cands.append(Candidate(
             ticker=t, asset_id=e.get("asset_id"), name=e["name"], market=e.get("market", "US"), currency=e.get("currency", "USD"),
@@ -274,10 +280,31 @@ def retrieve(
         warnings.append(f"only {len(cands)} candidates for target {target}")
     cands.sort(key=lambda x: x.ticker)
 
-    return Candidates(
+    out = Candidates(
         request_id=request_id, as_of=as_of, descriptor_version=descriptor_version, candidates=cands, filtered_out=filtered,
         stats={"n_matched": len(hits), "n_candidates": len(cands), "n_filtered": len(filtered), "by_rule": dict(stats["by_rule"]),
                "by_filter": dict(stats["by_filter"]), "by_theme": dict(Counter(th for x in cands for th in x.matched_themes)),
-               "by_market": dict(Counter(x.market for x in cands))},
+               "by_market": dict(Counter(x.market for x in cands)),
+               "mcap_estimated": {c.ticker: str(est[c.ticker]) for c in cands if c.ticker in est}},  # 추정 시가총액 후보 → 쓴 주식수의 행 날짜
         warnings=warnings,
     )  # fmt: skip
+    out.warnings += mcap_warnings(out, cons, view.s.market.mcap_fallback_max_days)
+    return out
+
+
+def mcap_warnings(cand: Candidates, cons: dict[str, Any], max_days: int, *, only: Iterable[str] | None = None) -> list[str]:
+    """최소 시가총액 하드 필터의 경고 두 개: 시가총액 자료가 없어 뺀 종목 / 마지막 주식수로 추정해 남긴 종목 (필수 포함은 필터 밖이라 적지 않는다).
+    only 를 주면 그 종목만 적고 남는 종목이 없으면 그 경고를 내지 않는다 (07 재선정: 기준일 테마 통과 종목만 — 그날 후보 전체를 적으면 무관한 종목이 공지에 섞인다)."""
+    lo = float(cons.get("min_market_cap_usd") or 0)
+    if lo <= 0:
+        return []
+    keep = None if only is None else set(only)
+    missing = sorted(f.ticker for f in cand.filtered_out if f.reason == "market_cap_missing" and (keep is None or f.ticker in keep))
+    est = cand.stats.get("mcap_estimated") or {}
+    estimated = sorted(c.ticker for c in cand.candidates if c.ticker in est and not c.forced and (keep is None or c.ticker in keep))
+    out = []
+    if missing:
+        out.append(f"min market cap {lo:.0f} USD: dropped {len(missing)} candidates without market cap data {missing}")
+    if estimated:
+        out.append(f"market cap estimated from last known shares (within {max_days} days) for {estimated}")
+    return out

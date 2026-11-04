@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 from typing import Any
 
+from backend.analysis.common.capacity import cap_cause_ko, cap_limits
 from backend.analysis.common.jsonio import now_iso
 from backend.analysis.common.labels import sector_ko
 from backend.analysis.common.llm import LlmClient, messages_from_prompts
@@ -34,25 +36,119 @@ def _need(ans: dict[str, Any], key: str, min_n: int = 1) -> None:
 def cash_breakdown(R: dict[str, Any], p: dict[str, Any]) -> dict[str, Any]:
     """선택안의 주식·현금 비율과 현금이 생긴 이유 (백테스트 시작일 구성 기준). 예전에는 숫자만 있어 서술이 '종목·섹터 상한 때문에 주식 49%' 처럼
     낙폭 맞춤으로 더 줄인 몫까지 상한 탓으로 썼다 (002: 상한 때문 50% + 낙폭 맞춤 1%p)."""
-    def pct(x: float) -> str:
-        return f"{x * 100:.1f}%"
-
     inv = float(sum((p.get("target_weights") or {}).values()))
     mc = float(R["request"]["constraints"].get("min_cash_ratio", 0) or 0)
     base = B.find(R, p["base_id"]) if p.get("kind") == "matched" and p.get("base_id") else p
     base_inv = float(sum((base.get("target_weights") or {}).values()))
-    out = {"stocks": pct(inv), "cash": pct(1 - inv), "min_cash_by_user": pct(mc) if mc > 1e-9 else None,
-           "cash_by_caps": pct(max(0.0, 1 - mc - base_inv)) if 1 - mc - base_inv > 0.001 else None,
-           "cash_added_by_drawdown_match": pct(base_inv - inv) if base is not p and base_inv - inv > 0.0005 else None}
+    # 나눈 몫은 보이는 자리수(소수 첫째)로 계산해 합이 맞게: 마지막 몫은 '총 현금 − 앞의 몫' (016: 15.0% + 7.7% 를 22.6% 라고 했다)
+    tot = round((1 - inv) * 100, 1)
+    mc_p = round(mc * 100, 1) if mc > 1e-9 else 0.0
+    has_caps, has_add = 1 - mc - base_inv > 0.001, base is not p and base_inv - inv > 0.0005
+    caps_p = round(max(0.0, 1 - mc - base_inv) * 100, 1) if has_caps else 0.0
+    add_p = round(tot - mc_p - caps_p, 1) if has_add else 0.0
+    if has_caps and not has_add:
+        caps_p = round(tot - mc_p, 1)
+    out = {"stocks": f"{100 - tot:.1f}%", "cash": f"{tot:.1f}%", "min_cash_by_user": f"{mc_p:.1f}%" if mc > 1e-9 else None,
+           "cash_by_caps": f"{caps_p:.1f}%" if has_caps else None, "cash_added_by_drawdown_match": f"{add_p:.1f}%" if has_add else None}
+    # 상한 때문에 남은 현금의 원인을 R9 와 같은 판단으로 (011: '종목·섹터 상한 때문' 이라는 꼬리표를 그대로 옮겨 섹터 상한 100% 인데 섹터 탓을 했다)
+    out["cash_by_caps_cause_ko"] = None
+    if out["cash_by_caps"]:
+        sec = {t["ticker"]: t.get("sector") or "기타" for t in (R.get("selection") or {}).get("table", [])}
+        cnt: dict[str, int] = {}
+        for t, x in (base.get("target_weights") or {}).items():
+            if x > 1e-9:
+                cnt[sec.get(t, "기타")] = cnt.get(sec.get(t, "기타"), 0) + 1
+        cons = R["request"]["constraints"]
+        a, b = float(cons["max_weight_per_stock"]), float(cons["max_weight_per_sector"])
+        cause = cap_cause_ko(cap_limits(cnt, a, b, 1 - mc), a, b, clause=True)
+        out["cash_by_caps_cause_ko"] = f"백테스트 시작일 구성은 {cause} 남은 몫" if cause else None
     out["basis_ko"] = "백테스트 구성(시작일에 고른 종목) 기준 — 지금 구성(allocation_now)의 현금과 다를 수 있음"  # 011: 백테스트 2종목·현금 50% 를 지금 포트폴리오처럼 썼다
-    out["note_ko"] = "현금 = 사용자 최소 현금 + 종목·섹터 상한 때문에 배분하지 못한 몫 + 낙폭 맞춤으로 더 줄인 몫 (없는 항목은 null)"
+    out["note_ko"] = "현금 = 사용자 최소 현금 + 상한 때문에 배분하지 못한 몫(원인은 cash_by_caps_cause_ko) + 낙폭 맞춤으로 더 줄인 몫 (없는 항목은 null)"
     return out
+
+
+def _rebalance_targets_ko(p: dict[str, Any]) -> str:
+    """선택안이 리밸런싱 때 맞추는 목표 (016: walk-forward 정의를 정적 구성에도 붙여 '리밸런싱일마다 비중을 다시 계산했다' 고 썼다)."""
+    if p.get("mode") == "walkforward":
+        return "walk-forward: 종목은 백테스트 시작일 목록 그대로 두고, 리밸런싱일마다 그때까지의 자료로 비중을 다시 계산해 그 비중으로 맞춤"
+    return "정적 구성: 백테스트 시작일에 정한 목표 비중으로 리밸런싱마다 되돌림 (비중을 다시 계산하지 않음)"
+
+
+def _shown_news_window(nw: dict[str, Any] | None) -> dict[str, Any] | None:
+    """창의 끝은 그날을 빼는 경계라 사람에게 보이는 끝은 전날 (013: '07-02 부터 07-16 까지' 라고 써서 기준일 뉴스도 쓴 것처럼 읽혔다)."""
+    if not nw:
+        return nw
+    return {**nw, "window": B.shown_window(nw.get("window")), "disclosure_window": B.shown_window(nw.get("disclosure_window")),
+            "window_note": "window·disclosure_window 는 양 끝 날짜를 포함한 기간 (기준일 당일 뉴스·공시는 쓰지 않음)"}  # fmt: skip
+
+
+def _chosen_news_use(R: dict[str, Any], chosen: str, p: dict[str, Any]) -> dict[str, Any]:
+    """추천 현재 구성이 뉴스 뷰를 쓰는지 (013·017: 추천은 시가총액비중·낙폭 맞춤안인데 '뉴스 기반 비중 조정이 현재 제안' 이라고 썼다).
+    뉴스 뷰 구성(forward.portfolios)은 추천이 BL 일 때만 추천 현재 구성이고, 아니면 참고 대안이다."""
+    uses = p.get("kind") == "black_litterman" or (p.get("kind") == "matched" and str(p.get("base_id") or "").startswith(("bl_", "wf_bl")))
+    cc = B.current_composition(R, chosen)
+    label = cc[2] if cc else B.pf_label(p)
+    note = (f"추천 현재 구성({label})이 뉴스 뷰를 반영한 구성입니다." if uses else
+            f"추천 현재 구성({label})은 뉴스 뷰를 쓰지 않습니다. 아래 뉴스 뷰 구성은 참고용 대안이며, 뷰는 그 대안의 비중만 바꿨습니다.")  # fmt: skip
+    return {"chosen_uses_news_views": uses, "chosen_current_label": label, "chosen_news_note_ko": note}
+
+
+def _news_effect_display(ne: dict[str, Any] | None) -> dict[str, Any] | None:
+    """뉴스 효과 숫자를 보이는 자리수로 맞춘다 (013: 14.2% vs 14.0% 를 '0.3%p 높았다' 고 써서 보이는 숫자끼리 맞지 않았다)."""
+    if not ne or ne.get("disabled") or ne.get("bl_cagr") is None or ne.get("base_cagr") is None:
+        return ne
+    a, b = round(ne["bl_cagr"] * 100, 1), round(ne["base_cagr"] * 100, 1)
+    out = {**ne, "bl_cagr_pct": f"{a:.1f}%", "base_cagr_pct": f"{b:.1f}%", "diff_cagr_pp": f"{a - b:+.1f}%p"}
+    if ne.get("bl_mdd") is not None and ne.get("base_mdd") is not None:
+        m1, m2 = round(abs(ne["bl_mdd"]) * 100, 1), round(abs(ne["base_mdd"]) * 100, 1)
+        out.update(bl_mdd_pct=f"{m1:.1f}%", base_mdd_pct=f"{m2:.1f}%", diff_mdd_pp=f"{m1 - m2:+.1f}%p")
+    out["display_note"] = "숫자를 말할 때는 *_pct·*_pp 표시값을 쓴다 (차이는 표시값끼리 뺀 값)"
+    return out
+
+
+def _holdings_vs_request(R: dict[str, Any], chosen: str) -> str | None:
+    """지금 구성 종목 수와 요청(목표·최소)의 관계를 문장으로 (015: '10개로 목표 10개 및 최소 8개와 같습니다' 라고 썼다)."""
+    nh = R["request"]["constraints"]["num_holdings"]
+    cc = B.current_composition(R, chosen)
+    if not cc:
+        return None
+    n, tgt, lo = sum(1 for x in cc[0].values() if x > 1e-6), nh.get("target"), nh.get("min")
+
+    def rel(k: int | None, name: str) -> str:
+        return "" if k is None else (f"{name} {k}개와 같고" if n == k else f"{name} {k}개보다 {abs(n - k)}개 {'많고' if n > k else '적고'}")
+
+    return f"지금 구성은 {n}종목입니다: " + ", ".join(x for x in (rel(tgt, "목표"), rel(lo, "최소")) if x).rstrip("고") + "습니다."
 
 
 def _news_summary(R: dict[str, Any]) -> Any:
     if not (R["intent"].get("news_tilt") or {}).get("enabled"):
-        return "뉴스 반영을 꺼서 뉴스를 불러오지 않았습니다 (헤드라인 건수 없음)"
+        return "뉴스 반영을 꺼서 리밸런싱일마다 뉴스를 불러오지 않았습니다 (리밸런싱일 헤드라인 건수 없음)"
     return R["portfolio"]["walkforward"]["news_summary"]
+
+
+def _asof_news(R: dict[str, Any]) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+    """근거 색인에서 분석 기준일 창(가장 늦은 window_as_of)의 뉴스·공시만. walk-forward 날짜 창의 옛 근거가 '최근' 으로 섞이지 않게."""
+    idx = R["evidence_index"]
+    win = max((v.get("window_as_of") or "" for v in idx.values() if v.get("kind") in ("news", "disclosure")), default="")
+
+    def ok(v: dict[str, Any]) -> bool:
+        return not win or (v.get("window_as_of") or win) == win
+
+    news = [{"id": k, **v} for k, v in idx.items() if v.get("kind") == "news" and ok(v)]
+    discl = [{"id": k, **v} for k, v in idx.items() if v.get("kind") == "disclosure" and ok(v)]
+    return win, news, discl
+
+
+def _forward_news_note(R: dict[str, Any]) -> str | None:
+    """뉴스를 끈 분석의 기준일 구성 설명용 (009: '뉴스 창과 헤드라인 건수가 없고 인용할 evidence id 도 없다' 고 썼는데, 같은 리포트가 기준일 헤드라인을 인용했다)."""
+    if (R["intent"].get("news_tilt") or {}).get("enabled"):
+        return None
+    _w, news, _d = _asof_news(R)
+    if not news:
+        return "뉴스 반영을 꺼서 분석 기준일 구성에 뉴스 뷰(비중 조정)를 쓰지 않았습니다."
+    dates = sorted(x.get("published_at") or "" for x in news)
+    return (f"뉴스 반영을 꺼서 분석 기준일 구성에 뉴스 뷰(비중 조정)를 쓰지 않았습니다. 다만 기업 설명·시장 분석에는 분석 기준일 직전 헤드라인 {len(news)}건"
+            f"({dates[0]} ~ {dates[-1]})을 참고로 불러왔습니다.")
 
 
 def _allocation_now(R: dict[str, Any], chosen: str) -> list[dict[str, Any]]:
@@ -79,26 +175,36 @@ def facts_for_interpret(R: dict[str, Any], chosen: str) -> dict[str, Any]:
             "user": {"max_drawdown_tolerance": float(R["request"]["risk"]["max_drawdown_tolerance"]), "matched_target": R["intent"]["risk_params"].get("effective_max_drawdown"),
                      "target_annual_return": R["intent"]["validation_criteria"]["target_annual_return"],
                      "volatility_preference": R["intent"]["risk_params"]["volatility_preference"], "risk_tolerance": R["request"]["risk"]["risk_tolerance"],
-                     "horizon_years": R["request"]["horizon"]["target_years"], "benchmark": R["portfolio"]["backtest_spec"]["benchmark"]},
+                     "horizon_years": R["request"]["horizon"]["target_years"], "benchmark": R["portfolio"]["backtest_spec"]["benchmark"],
+                     # 011: 최소 8개를 '목표 8개' 라고 썼다 → 목표·최소를 이름 붙여 넘긴다
+                     "num_holdings": {"target": R["request"]["constraints"]["num_holdings"].get("target"), "min": R["request"]["constraints"]["num_holdings"].get("min")}},
             "assumptions": {**bt["engine"], "period": bt["period"]},
             "rebalance_ko": R["portfolio"]["backtest_spec"]["rebalance_rule"].get("description_ko"),
             "baseline_rule": {"id": base["id"], "label": B.pf_label(base), "rule_ko": next((x.get("rule_ko") for x in R["portfolio"]["baselines"]["portfolios"] if x["id"] == base["id"]), None)},
-            "chosen": {"id": chosen, "label": B.pf_label(p), "kind": p["kind"], "is_recommended": bool(val.get("recommended")), "verdict": (val.get("recommended") or {}).get("verdict"),
+            "chosen": {"id": chosen, "label": B.pf_label(p), "kind": p["kind"], "mode": p.get("mode"), "rebalance_targets_ko": _rebalance_targets_ko(p),
+                       "is_recommended": bool(val.get("recommended")), "verdict": (val.get("recommended") or {}).get("verdict"),
                        "base_id": p.get("base_id"), "cash_ratio": p.get("cash_ratio"), "match_target": p.get("match_target"), "headline": p["headline"], "return": p["metrics"]["return"],
                        "risk": p["metrics"]["risk"], "risk_adjusted": p["metrics"]["risk_adjusted"], "vs_benchmark": p["metrics"]["vs_benchmark"], "vs_baseline": p["metrics"]["vs_baseline"],
                        "composition": {k: p["metrics"]["composition"][k] for k in ["effective_n", "top3_contribution_share", "sector_weights_avg"]}, "trading": p["metrics"]["trading"],
                        "money": {**p["money"], **({} if R["request"]["capital"].get("currency") == "USD" else R["money_krw"]["by_portfolio"][chosen])},
                        "yearly_returns": p["yearly_returns"], "rebalance_periods": periods,
                        "ticker_contribution_top": contrib[:3], "ticker_contribution_bottom": contrib[-3:], "view_diagnostics": p["view_diagnostics"],
-                       "cash_weight": round(1 - sum(p["target_weights"].values()), 4), "cash_breakdown": cash_breakdown(R, p)},
+                       "cash_weight": round(1 - sum(p["target_weights"].values()), 4), "cash_breakdown": cash_breakdown(R, p),
+                       # 011: 백테스트 2종목·현금 50% 를 지금 포트폴리오처럼 썼다 (14b 에는 있었고 14a 에는 없었다)
+                       "n_holdings_backtest": sum(1 for x in p["target_weights"].values() if x > 1e-9), "allocation_now": _allocation_now(R, chosen),
+                       "holdings_now_vs_request_ko": _holdings_vs_request(R, chosen)},
             "benchmark": {"label": b["name_ko"], "headline": b["headline"], "yearly_returns": b["yearly_returns"], "money": b["money"]},
             "other_benchmarks": [{"label": x["name_ko"], "headline": x["headline"]} for x in bt.get("benchmarks", []) if x["id"] != b["id"]],
             "matched": [{"id": x["id"], "label": x["name_ko"], "base_id": x.get("base_id"), "cash_ratio": x.get("cash_ratio"), "cash_ratio_total": x.get("cash_ratio_total"),
-                         "match_target": x.get("match_target"), "headline": x["headline"], "status": next((r["status"] for r in val["results"] if r["id"] == x["id"]), None)}
+                         "match_target": x.get("match_target"), "headline": x["headline"], "status": next((r["status"] for r in val["results"] if r["id"] == x["id"]), None),
+                         # 010: 기준이 이미 허용 낙폭 안인데 '허용 낙폭에 맞춰 줄였다' 고 썼다 → 기준의 낙폭과 허용 낙폭 안이었는지를 같이 넘긴다
+                         "base_max_drawdown": (B.find(R, x["base_id"]).get("headline") or {}).get("max_drawdown") if x.get("base_id") else None,
+                         "base_within_tolerance": (abs((B.find(R, x["base_id"]).get("headline") or {}).get("max_drawdown") or 0)
+                                                   <= float(R["request"]["risk"]["max_drawdown_tolerance"]) + 1e-9) if x.get("base_id") else None}
                         for x in bt["portfolios"] if x.get("kind") == "matched"],
             # 맞춤안이 없을 때 이유 — 백테스트와 같은 규칙(기준 구성의 MDD vs 낙폭 맞춤 목표)으로 (001: 이미 허용 낙폭 안인데 '맞춤안을 따로 확인하라' 고 했다)
             "matched_note": _matched_note(R),
-            "news_effect": B.news_effect(R),
+            "news_effect": _news_effect_display(B.news_effect(R)),
             "window": {"trading_days": bt["period"]["trading_days"], "annualized_reliable": bt["period"].get("annualized_reliable", True),
                        "note": "창이 1.5년 미만이면(annualized_reliable=false) CAGR·Sharpe·XIRR 같은 연환산 값은 참고용이며 기간 수익률(total_return)로 말해야 함",
                        "period_note_ko": B.period_note(R)},
@@ -106,7 +212,8 @@ def facts_for_interpret(R: dict[str, Any], chosen: str) -> dict[str, Any]:
             "walkforward": ({"dates": R["portfolio"]["walkforward"]["dates"], "news_summary": _news_summary(R),
                              "fallback_dates": next((p for p in R["portfolio"]["walkforward"]["portfolios"] if p["kind"] == "black_litterman"), {}).get("fallback_dates", []),
                              "news_bl_omitted_ko": (R["portfolio"]["walkforward"].get("bl_omitted") or {}).get("reason_ko"),  # 뉴스 반영 구성을 만들지 않은 이유 (없으면 BL 후보 자체가 없다)
-                             "top_delta_by_date": B.walkforward_top_deltas(R),
+                             "top_delta_by_date": B.walkforward_top_deltas(R), "weight_changes_by_date": B.walkforward_weight_changes(R),
+                             "weight_changes_note": "weight_changes_by_date = walk-forward 기준 비중 구성의 리밸런싱일별 직전 대비 큰 변화 (뉴스와 무관, 자료로 다시 계산한 비중)",
                              "results": [{"id": x["id"], "label": x["name_ko"], "headline": x["headline"]} for x in bt["portfolios"] if x.get("mode") == "walkforward"]}
                             if R["portfolio"].get("walkforward") else None),
             "selection_infeasibility": R["selection"]["backtest_as_of"].get("infeasibility"), "sector_overflow": R["selection"]["backtest_as_of"].get("sector_overflow"),
@@ -124,10 +231,14 @@ def _matched_note(R: dict[str, Any]) -> str | None:
     target = float(R["intent"]["risk_params"].get("effective_max_drawdown") or R["request"]["risk"]["max_drawdown_tolerance"])
     bases = [R["portfolio"]["targets"]["baseline"]["id"], "wf_bl_news"]
     mdds = [abs((x.get("headline") or {}).get("max_drawdown") or 0) for x in bt["portfolios"] if x["id"] in bases]
+    # 할 수 있는 일은 이유마다 다르다: 이미 목표 안이면 허용 낙폭을 낮춰 다시 분석하면 생기지만, 하한 때문이면 낮출수록 더 못 만든다 (011 검토)
     if mdds and all(m <= target + 1e-9 for m in mdds):
-        return f"기준 구성의 과거 최대낙폭이 이미 낙폭 맞춤 목표({target:.1%}) 안이라 현금을 섞은 낙폭 맞춤안을 만들 필요가 없었습니다"
+        worst = max(mdds)  # 목표가 이 값보다 작아져야 맞춤안이 생긴다 (그래도 주식 30% 하한에 막힐 수 있어 '만들어진다' 고 단정하지 않는다)
+        return (f"기준 구성의 과거 최대낙폭({worst:.1%})이 이미 낙폭 맞춤 목표({target:.1%}) 안이라 현금을 섞은 낙폭 맞춤안을 만들 필요가 없었습니다. "
+                f"그런 안이 필요하면 낙폭 맞춤 목표가 {worst:.1%}보다 작아지도록 손실 감내 수준을 낮춰 다시 분석하면 만들 수 있습니다")
     floor = float(((R.get("parameters") or {}).get("backtest") or {}).get("matched_min_invested", 0.30))  # 정책 결정 2
-    return f"주식 비중을 {floor:.0%} 이상 남기면서는 과거 최대낙폭을 목표({target:.1%}) 안으로 맞추지 못해 낙폭 맞춤안(주식 + 현금)을 만들지 않았습니다"
+    return (f"주식 비중을 {floor:.0%} 이상 남기면서는 과거 최대낙폭을 목표({target:.1%}) 안으로 맞추지 못해 낙폭 맞춤안(주식 + 현금)을 만들지 않았습니다. "
+            "손실 감내 수준을 낮추면 목표가 더 엄격해져 역시 만들 수 없으니, 허용 낙폭을 다시 생각하거나 변동성이 낮은 구성을 검토할 수 있습니다")
 
 
 def _chosen_note(R: dict[str, Any], p: dict[str, Any], is_rec: bool) -> str:
@@ -147,14 +258,35 @@ def _chosen_note(R: dict[str, Any], p: dict[str, Any], is_rec: bool) -> str:
     return "조건을 통과한 포트폴리오가 없어 기준 포트폴리오를 중심으로 설명합니다."
 
 
+def _balanced_news(news: list[dict[str, Any]], held: set[str], k: int) -> list[dict[str, Any]]:
+    """종목마다 돌아가며(보유 종목 먼저) 최신순으로 k 건. 009: 전체 최신 60건만 넘겨 이틀치·일부 종목만 남았고, 서술이 'SOLV 헤드라인 근거 없음' 이라고 썼다."""
+    by_t: dict[str, list[dict[str, Any]]] = {}
+    for x in sorted(news, key=lambda x: (x.get("published_at") or ""), reverse=True):
+        by_t.setdefault(x["ticker"], []).append(x)
+    order = sorted(by_t, key=lambda t: (t not in held, t))
+    picked: list[dict[str, Any]] = []
+    i = 0
+    while len(picked) < k and any(i < len(by_t[t]) for t in order):
+        picked += [by_t[t][i] for t in order if i < len(by_t[t])][: k - len(picked)]
+        i += 1
+    return sorted(picked, key=lambda x: (x.get("published_at") or ""), reverse=True)
+
+
 def facts_for_market(R: dict[str, Any]) -> dict[str, Any]:
-    idx = R["evidence_index"]
-    news = [{"id": k, "ticker": (v.get("tickers") or [""])[0], "published_at": v.get("published_at"), "title": v.get("title"), "source": v.get("source"), "language": v.get("language")}
-            for k, v in idx.items() if v["kind"] == "news"]  # fmt: skip
+    _win, news_all, discl_all = _asof_news(R)
+    news = [{"id": v["id"], "ticker": (v.get("tickers") or [""])[0], "published_at": v.get("published_at"), "title": v.get("title"), "source": v.get("source"), "language": v.get("language")}
+            for v in news_all]  # fmt: skip
     news.sort(key=lambda x: (x["published_at"] or ""), reverse=True)
-    discl = [{"id": k, "ticker": (v.get("tickers") or [""])[0], "available_on": v.get("available_on"), "filed_at": v.get("filed_at"), "event": v.get("event_label_ko"),
-              "form": v.get("form"), "items": v.get("items"), "title": v.get("title"), "source": v.get("source")} for k, v in idx.items() if v["kind"] == "disclosure"]  # fmt: skip
+    held = {t["ticker"] for t in R["selection"]["table"] if t.get("in_selection_now")}
+    n_by_ticker: dict[str, int] = {}
+    for x in news:
+        n_by_ticker[x["ticker"]] = n_by_ticker.get(x["ticker"], 0) + 1
+    picked = _balanced_news(news, held, 60)
+    discl = [{"id": v["id"], "ticker": (v.get("tickers") or [""])[0], "available_on": v.get("available_on"), "filed_at": v.get("filed_at"), "event": v.get("event_label_ko"),
+              "form": v.get("form"), "items": v.get("items"), "title": v.get("title"), "source": v.get("source")} for v in discl_all]  # fmt: skip
     discl.sort(key=lambda x: (x["available_on"] or ""), reverse=True)
+    nd = sorted(x["published_at"] or "" for x in news)
+    dd = sorted(x["filed_at"] or x["available_on"] or "" for x in discl)
     event_summary: dict[str, dict[str, int]] = {}
     for d_ in discl:
         event_summary.setdefault(d_["ticker"], {})
@@ -195,7 +327,11 @@ def facts_for_market(R: dict[str, Any]) -> dict[str, Any]:
             "sector_exposure_pct": {sector_ko(k): pct(v) for k, v in sorted((p["metrics"]["composition"]["sector_weights_avg"] or {}).items(), key=lambda x: -(x[1] or 0))},
             "sector_exposure_note": "백테스트 기간(시작일에 고른 backtest_holdings, 기간 내내 고정) 선택안의 평균 섹터 비중 — 나머지는 현금. 지금 구성의 섹터 비중은 current_sector_weights_pct",
             "benchmark": {"label": bench["name_ko"], "cagr": pct(bh.get("cagr")), "period_return": pct(bh.get("period_return")), "max_drawdown": pct(abs(bh.get("max_drawdown") or 0))},
-            "news": news[:60], "disclosures": discl[:40], "event_summary_90d": event_summary, "news_window": f.get("news_window"),
+            "news": picked, "news_count_by_ticker": {t: n_by_ticker.get(t, 0) for t in sorted(held)},
+            "news_dates": {"from": nd[0], "to": nd[-1], "n": len(news)} if nd else None,
+            "news_note": "news 는 종목마다 돌아가며 고른 최대 60건 — 종목별 전체 건수는 news_count_by_ticker, 기간은 news_dates",
+            "disclosures": discl[:40], "event_summary": event_summary, "disclosure_dates": {"from": dd[0], "to": dd[-1], "n": len(discl)} if dd else None,
+            "news_window": f.get("news_window"),
             "forward_views": [v["summary_ko"] for pp in f.get("portfolios", []) for v in pp["views_applied"]]}  # fmt: skip
 
 
@@ -220,7 +356,10 @@ def facts_for_narrate(R: dict[str, Any], chosen: str, interp: dict[str, Any]) ->
                                     for t in R["selection"]["table"]],
                           "theme_filter_applied": R["selection"].get("tagging_summary", {}).get("theme_filter_applied", True),
                           "excluded_examples": R["selection"]["as_of_now"]["rejected_examples"],
-                          "diff": R["selection"]["backtest_as_of"]["diff_vs_original"], "warnings": [n["message_ko"] for n in (R.get("notices") or []) if n.get("stage") in ("05_selection", "07_backtest_spec")], "explained": R["selection"].get("explained")},
+                          "diff": {k: v for k, v in R["selection"]["backtest_as_of"]["diff_vs_original"].items() if k != "removed_reasons"},
+                          # 시작일 목록에서 빠진 종목과 그날 사유 (candidates_filtered 는 분석 기준일 후보 단계 사유라 시작일 설명에 쓰면 틀린다, 011)
+                          "backtest_start_removed": R["selection"]["backtest_as_of"].get("removed_reasons_ko") or [],
+                          "warnings": [n["message_ko"] for n in (R.get("notices") or []) if n.get("stage") in ("05_selection", "07_backtest_spec")], "explained": R["selection"].get("explained")},
             "construction": {"baseline": {"id": base["id"], "rule": base["rule_ko"], "n": len(base["weights"]), "weights": base["weights"], "cash_weight": base.get("cash_weight", 0),
                                           "constraints_applied": base["constraints_applied"], "sector_weights": base["sector_weights"]},
                              # 소수 그대로 넘기면 LLM 이 '36.7611%' 처럼 옮겨 적는다 → 표시 문자열로 (표 블록은 그대로 숫자)
@@ -234,14 +373,18 @@ def facts_for_narrate(R: dict[str, Any], chosen: str, interp: dict[str, Any]) ->
                              "scenarios": [{"title": s.get("title_ko"), "narrative": (s.get("portfolio_view") or "").split("\n")[0], "views": [v["summary_ko"] for v in s["views_applied"]],
                                             "top_delta": sorted(s["delta_vs_baseline"].items(), key=lambda x: -abs(x[1]))[:3]} for s in R["portfolio"]["targets"]["portfolios"]],
                              # 시작일 배분과 지금 배분을 나눠 이름 붙인다 (005: 시작일 비중을 '최종 구성' 이라 쓰고 소수 '14.6818%' 를 그대로 옮겼다)
-                             "chosen": {"id": chosen, "label": B.pf_label(p), "backtest_start": str(R["portfolio"]["backtest_spec"]["period"]["as_of"]),
+                             "chosen": {"id": chosen, "label": B.pf_label(p), "mode": p.get("mode"), "rebalance_targets_ko": _rebalance_targets_ko(p),
+                                        "backtest_start": str(R["portfolio"]["backtest_spec"]["period"]["as_of"]),
                                         "allocation_at_backtest_start": [{"ticker": r["ticker"], "name": r["name"], "weight": f"{r['w'] * 100:.1f}%", "usd": round(r["usd"]), "krw": round(r["krw"])}
                                                                          for r in B.allocation_table(R, chosen)["rows"]],
                                         "as_of_now": R["selection"]["as_of_now"]["as_of"], "allocation_now": _allocation_now(R, chosen), "cash_breakdown": cash_breakdown(R, p)},
                              "walkforward": R["portfolio"].get("walkforward") and {"dates": R["portfolio"]["walkforward"]["dates"], "news_summary": _news_summary(R),
-                                                                                   "top_delta_by_date": B.walkforward_top_deltas(R)}},
+                                                                                   "top_delta_by_date": B.walkforward_top_deltas(R),
+                                                                                   "weight_changes_by_date": B.walkforward_weight_changes(R),
+                                                                                   "weight_changes_note": "walk-forward 기준 비중 구성의 리밸런싱일별 직전 대비 큰 변화 (뉴스와 무관)"}},
             "interpretation": {**interp, "window": R["backtest"]["period"]},
-            "forward": ({"as_of": f["as_of"], "news_window": f.get("news_window"), "fallback_reason": f.get("fallback_reason_ko"),
+            "forward": ({"as_of": f["as_of"], "news_window": _shown_news_window(f.get("news_window")), "fallback_reason": f.get("fallback_reason_ko"), "news_note_ko": _forward_news_note(R),
+                         **_chosen_news_use(R, chosen, p),
                          "portfolios": [{"id": x["id"], "title": x.get("title_ko"), "narrative": (x.get("portfolio_view") or "").split("\n")[0], "views": [v["summary_ko"] for v in x["views_applied"]],
                                          "evidence_ids": sorted({i for v in x["views_applied"] for i in v.get("evidence_ids", [])}), "top_delta": sorted(x["delta_vs_baseline"].items(), key=lambda y: -abs(y[1]))[:3]} for x in f["portfolios"]],
                          "evidence": {i: {"date": e["published_at"], "publisher": e.get("publisher"), "title": e["title"]} for i, e in f["evidence"].items()}} if f else None),
@@ -256,6 +399,8 @@ def call_interpret(R, chosen, llm):
             _need(a, k, n)
 
     ans = llm.complete_json("14a_interpret", messages_from_prompts(system, user), validator=_check)
+    if not any(x.get("kind") == "matched" for x in R["backtest"]["portfolios"]):
+        _drop_matched_suggestions(ans, ("performance_ko", "risk_fit_ko", "validation_ko", "next_actions_ko"))
     ans.setdefault("headline_ko", "")
     ans.setdefault("view_review_ko", [])
     ans.setdefault("news_ko", [])
@@ -279,7 +424,41 @@ def call_narrate(R, chosen, interp, llm):
 
     ans = llm.complete_json("14b_narrate", messages_from_prompts(system, user), validator=_check)
     ans.setdefault("forward_ko", [])
+    if not any(x.get("kind") == "matched" for x in R["backtest"]["portfolios"]):
+        _drop_matched_suggestions(ans, ("overview_ko", "reconsideration_ko"))
     return ans
+
+
+# '낙폭 맞춤안 … 검토/살펴/확인해 보/볼 수/고려/선택할' 처럼 맞춤안을 보라고 권하는 꼴. 부정(없·않·못)은 맞춤안~동사 사이와 동사 뒤 8자 안에서만 본다
+# (문장 전체에서 보면 '…살펴볼 수 있지만, 이번에는 필요하지 않았습니다' 가 빠져나갔고, '없으므로 …검토해 보세요' 는 지워졌다)
+_MATCHED_SUGGEST = re.compile(r"낙폭\s*맞춤안(.*?)(검토|살펴|확인해\s*보|볼\s*수|고려|선택할|선택해)(.{0,8})")
+_MATCHED_NEG = re.compile(r"없|않|못")
+_RERUN = re.compile(r"다시\s*분석|재분석")
+
+
+def _suggests_matched(sent: str) -> bool:
+    if _RERUN.search(sent):  # '손실 감내 수준을 낮춰 다시 분석하면 만들어집니다' 는 matched_note 가 주는 안내
+        return False
+    return any(not _MATCHED_NEG.search(m.group(1) + m.group(3)) for m in _MATCHED_SUGGEST.finditer(sent))
+
+
+def _drop_matched_suggestions(ans: dict[str, Any], keys: tuple[str, ...]) -> None:
+    """맞춤안이 없는데 '낙폭 맞춤안을 검토할 수 있습니다' 같은 문장을 빼낸다 (001 Q-013 에 이어 011 에서도 프롬프트만으로는 막지 못했다).
+    '만들 필요가 없었습니다' 처럼 없다는 사실을 말하는 문장과 다시 분석하라는 안내는 둔다. 항목이 비면 항목째 빼되, 목록이 비지는 않게 한다."""
+    for k in keys:
+        items = ans.get(k)
+        if not isinstance(items, list):
+            continue
+        out = []
+        for it in items:
+            if not isinstance(it, str):
+                out.append(it)
+                continue
+            sents = re.split(r"(?<=[.!?])\s+", it.strip())
+            keep = [x for x in sents if not _suggests_matched(x)]
+            if keep:
+                out.append(" ".join(keep))
+        ans[k] = out or items
 
 
 def _group(blocks: list[dict[str, Any] | None], group_ko: str, *, open_: bool = False) -> list[dict[str, Any]]:
@@ -516,6 +695,7 @@ def generate_report(R: dict[str, Any], llm: LlmClient, settings: AnalysisSetting
     if res.errors:
         srcs = res.sources_to_retry() or {"14b", "14c"}  # 어디서 났는지 모르면 예전처럼 서술 둘을 다시
         by = res.errors_by_src
+        no_matched = not any(x.get("kind") == "matched" for x in R["backtest"]["portfolios"])
 
         def _errs(*keys: str) -> list[str]:
             got = [e for k in keys for e in by.get(k, [])]
@@ -526,6 +706,8 @@ def generate_report(R: dict[str, Any], llm: LlmClient, settings: AnalysisSetting
             a = llm.complete_json("14a_interpret", [*messages_from_prompts(system, user), {"role": "assistant", "content": json.dumps(interp, ensure_ascii=False)}, _retry_feedback(_errs("14a"))])
             for k, v in [("view_review_ko", []), ("news_ko", []), ("assessment", interp.get("assessment"))]:
                 a.setdefault(k, v)
+            if no_matched:
+                _drop_matched_suggestions(a, ("performance_ko", "risk_fit_ko", "validation_ko", "next_actions_ko"))
             return a
 
         def _redo_market():
@@ -544,6 +726,8 @@ def generate_report(R: dict[str, Any], llm: LlmClient, settings: AnalysisSetting
                                         interpretation_json=json.dumps(interp, ensure_ascii=False, indent=1))  # fmt: skip
             narr = llm.complete_json("14b_narrate", [*messages_from_prompts(system, user), {"role": "assistant", "content": json.dumps(narr, ensure_ascii=False)}, _retry_feedback(_errs("14b", "doc"))])
             narr.setdefault("forward_ko", [])
+            if no_matched:
+                _drop_matched_suggestions(narr, ("overview_ko", "reconsideration_ko"))
         doc = build_doc(R, interp=interp, narr=narr, market=market, step_summaries=step_summaries, settings=settings, usage=_usage(llm))
         res = check(doc, R, settings)
         if res.errors:

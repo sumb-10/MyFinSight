@@ -13,7 +13,7 @@ from backend.analysis.common.llm import Message
 
 _TICKER_LINE = re.compile(r"^([A-Z0-9.\-]+) \| ", re.M)
 _EV_LINE = re.compile(r"^((?:ev|dc)\d+) \| (\S+) \| [^|]* \| [^|]* \| ([A-Z0-9.\-]+) \| ", re.M)  # 뉴스(ev)·공시(dc) 줄: 5번째 칸이 ticker
-_SEL_LINE = re.compile(r"^(\d+) \| ([A-Z0-9.\-]+) \| ([^|]*) \|.*?근거: (.*)$", re.M)
+_SEL_LINE = re.compile(r"^(\d+|–)(?: \(필수 포함\))? \| ([A-Z0-9.\-]+) \| ([^|]*) \|.*?근거: (.*)$", re.M)
 from backend.analysis.common.citations import CITE_RE as _CITE  # noqa: E402
 
 
@@ -68,7 +68,8 @@ def stub_explain(messages: Sequence[Message]) -> dict[str, Any]:
     for m in _SEL_LINE.finditer(u):
         ids = _CITE.findall(m.group(4))
         cite = f"[{ids[0]}]" if ids else ""
-        per.append({"ticker": m.group(2), "rationale_ko": f"stub: 선정 지표 순위 {m.group(1)}위, {m.group(3).strip()} 섹터 {cite}."})
+        rank = "순위 없음" if m.group(1) == "–" else f"{m.group(1)}위"
+        per.append({"ticker": m.group(2), "rationale_ko": f"stub: 선정 지표 순위 {rank}, {m.group(3).strip()} 섹터 {cite}."})
     return {"portfolio_summary_ko": "stub 모드 요약: 테마 후보를 정량 지표로 순위 매겨 고른 목록입니다.", "per_ticker": per, "warnings_ko": []}
 
 

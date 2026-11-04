@@ -14,6 +14,8 @@ from typing import Any
 
 import pandas as pd
 
+from backend.analysis.common.capacity import cap_cause_ko, cap_fix_ko, cap_limits
+from backend.analysis.m5_backtest_report.matched import share_pct
 from backend.analysis.schemas.results import Validation
 from backend.analysis.settings import AnalysisSettings
 
@@ -74,9 +76,9 @@ def evaluate_checks(p, crit, n_days, expected_rb, sector_of, drift_tol, short_wi
     cks.append(check("R1", "최대낙폭", "flag", ok1, mdd, tol,
                      f"최대낙폭 {mdd:.1%} vs 허용 {tol:.1%}" + (f" (같은 기간 {bench_name} {bench_mdd:.1%})" if bench_mdd is not None else "")
                      + ("" if ok1 else f" — 허용보다 {mdd - tol:.1%}p 큼")))  # fmt: skip
-    if bench_mdd is not None:
+    if bench_mdd is not None:  # 두 낙폭이 같은 때 일어났는지 보지 않으므로 '시장 전체가 빠진 구간' 같은 원인은 말하지 않는다 (009: 시장 반등 뒤 업종 하락이었다)
         cks.append(check("R1b", "비교지수 대비 낙폭", "info", mdd <= bench_mdd, mdd, bench_mdd,
-                         f"비교지수보다 낙폭이 {'작음' if mdd <= bench_mdd else '큼'} ({mdd:.1%} vs {bench_mdd:.1%})" + (" — 허용 낙폭은 넘었지만 시장 전체가 그만큼 빠진 구간입니다" if (not ok1 and mdd <= bench_mdd) else "")))  # fmt: skip
+                         f"비교지수보다 낙폭이 {'작음' if mdd <= bench_mdd else '큼'} ({mdd:.1%} vs {bench_mdd:.1%})" + (" — 허용 낙폭은 넘었지만 같은 기간 비교지수의 최대낙폭보다는 작습니다" if (not ok1 and mdd <= bench_mdd) else "")))  # fmt: skip
     # R2 목표수익 (권장) — 투자기간 길이의 과거 구간 중 목표 달성 비율
     cg = m["return"]["cagr"] or 0.0
     td = float(crit.get("rows_per_year") or (settings.backtest.trading_days if settings else 252))  # 실제 달력의 1년 행 수 (합집합 달력이면 ≈259)
@@ -125,8 +127,16 @@ def evaluate_checks(p, crit, n_days, expected_rb, sector_of, drift_tol, short_wi
         gap = max(0.0, expected - invested)
         ok = gap <= (1 - min_inv) + 1e-6
         msg = f"투자 {invested:.0%}, 현금 {1 - invested:.0%}" + (f" (요청한 최소 현금 {min_cash:.0%} 포함)" if min_cash > 1e-6 else "")
-        if not ok:
-            msg += f" — 종목·섹터 상한 때문에 {gap:.0%}를 더 넣지 못했습니다. 상한을 풀거나 테마를 넓히면 투자 비율이 올라갑니다"
+        if not ok:  # 원인을 사실대로(common/capacity), 백테스트 시작일 구성이라고 밝힌다 (011: 섹터 상한 100% 인데 '종목·섹터 상한 때문' 이라 썼고, 지금 구성의 현금처럼 읽혔다)
+            cnt: dict[str, int] = {}
+            for t, x in p["target_weights"].items():
+                if x > 1e-9:
+                    cnt[sector_of(t)] = cnt.get(sector_of(t), 0) + 1
+            stock_cap, sector_cap = float(crit["max_weight_per_stock"]), float(crit["max_weight_per_sector"])
+            lim = cap_limits(cnt, stock_cap, sector_cap, expected)
+            cause = cap_cause_ko(lim, stock_cap, sector_cap, clause=True)
+            msg += (f" — 백테스트 시작일 구성은 {cause} {gap:.0%}를 더 넣지 못했습니다. {cap_fix_ko(lim)}" if cause
+                    else f" — 백테스트 시작일 구성은 {gap:.0%}를 더 넣지 못했습니다 (종목·섹터 상한 때문은 아닙니다)")  # fmt: skip
         cks.append(check("R9", "투자 비율", "info", ok, invested, round(expected - (1 - min_inv), 6), msg))  # fmt: skip
     # 코드 자체 점검 (사용자 표 밖)
     integ = []
@@ -211,11 +221,14 @@ def insufficient_cause(p: dict[str, Any], crit: dict[str, Any], counts: dict[str
     inv, n = float(sum(w.values())), sum(1 for x in w.values() if x > 1e-9)
     mc = float(crit.get("min_cash_ratio") or 0.0)
     stock_cap, sector_cap = float(crit["max_weight_per_stock"]), float(crit["max_weight_per_sector"])
-    if n * stock_cap < (1 - mc) - 1e-9 and (not counts or n * stock_cap <= sum(min(k * stock_cap, sector_cap) for k in counts.values()) + 1e-9):
+    lim = cap_limits(counts or {"": n}, stock_cap, sector_cap if counts else 1.0, 1 - mc)
+    if lim["kind"] == "stock":
         return f"선정 종목이 {n}개뿐이라 종목당 상한 {stock_cap:.0%}로는 {min(1.0, n * stock_cap):.0%}까지만 투자됩니다"
-    if counts and sum(min(k * stock_cap, sector_cap) for k in counts.values()) < (1 - mc) - 1e-9:
+    if lim["kind"] in ("sector", "both"):
         top = max(counts.items(), key=lambda x: x[1])
-        return f"선정 종목이 {top[0]} 등 적은 섹터에 몰려 섹터당 상한 {sector_cap:.0%} 때문에 {inv:.0%}만 투자됩니다"
+        # 두 상한이 다 걸리면 섹터 상한만 올려서는 다 담지 못한다는 것도 적는다 (002: 2종목 × 25% 인데 섹터 상한 35% 만 탓했다)
+        both = f" (섹터 상한을 올려도 {n}종목 × 종목당 상한 {stock_cap:.0%}라 {lim['stock_room']:.0%}까지)" if lim["kind"] == "both" else ""
+        return f"선정 종목이 {top[0]} 등 적은 섹터에 몰려 섹터당 상한 {sector_cap:.0%} 때문에 {inv:.0%}만 투자됩니다{both}"
     if mc >= 0.5:
         return f"요청한 최소 현금 비율이 {mc:.0%}입니다"
     return f"투자 비율이 {inv:.0%}입니다"
@@ -229,8 +242,9 @@ def validate(res: dict[str, Any], targets: dict[str, Any], intent: dict[str, Any
     tol_user = float(max_drawdown_override if max_drawdown_override is not None else req["risk"]["max_drawdown_tolerance"])
     match_target = float((intent.get("risk_params") or {}).get("effective_max_drawdown") or tol_user)
     cautious = req["risk"].get("loss_reaction") == "sell" or (req.get("profile") or {}).get("investment_experience") == "none"
+    # 투자기간은 확정된 요청값이 먼저 (013: 요청 10년인데 02 LLM 이 아이디어의 '약 15년' 을 적어 R2 가 '투자기간 15년' 구간으로 판정했다)
     crit = {"max_drawdown": tol_user, "input_max_drawdown": tol_user, "match_target": match_target, "cautious": cautious,
-            "horizon_years": float(vc.get("horizon_years") or req["horizon"].get("target_years") or 0),
+            "horizon_years": float(req["horizon"].get("target_years") or vc.get("horizon_years") or 0),
             "target_annual_return": vc["target_annual_return"], "benchmark": vc["benchmark"], "volatility_preference": intent["risk_params"]["volatility_preference"],
             "vol_band": bs.vol_bands[intent["risk_params"]["volatility_preference"]], "max_weight_per_stock": cons["max_weight_per_stock"],
             "max_weight_per_sector": cons["max_weight_per_sector"], "min_holdings": cons["num_holdings"]["min"], "drift_tolerance": bs.drift_tolerance,
@@ -304,7 +318,8 @@ def validate(res: dict[str, Any], targets: dict[str, Any], intent: dict[str, Any
     if pb.get("kind") == "matched":
         inv = float(sum(pb["target_weights"].values()))
         base_name = (ports.get(base_id) or {}).get("name_ko") or NAMES_KO.get(base_id, base_id)
-        parts.append(f"{base_name}의 주식 비중을 {inv:.0%}로 줄여 과거 최대낙폭을 목표 {match_target:.1%} 안에 맞춘 구성")
+        # 주식 비중은 맞춤안 이름과 같은 자리수로 (015: 98.5% 를 '99%로 줄여' 라고 써 같은 리포트의 98.5%·1.5% 와 달랐다)
+        parts.append(f"{base_name}의 주식 비중을 {share_pct(inv)}로 줄여 과거 최대낙폭을 목표 {match_target:.1%} 안에 맞춘 구성")
         if cautious:
             # 해당하는 조건만 적고, 이 규칙이 실제로 1위를 바꿨을 때만 쓴다 (F14·N-B1-1: 예전에는 둘 중 하나만 해당해도 둘 다 적고, 순위가 같아도 적었다)
             why = cautious_reason_ko(req)

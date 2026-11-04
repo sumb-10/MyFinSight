@@ -541,14 +541,28 @@ class DialogService:
         if abs(cur_years - per["years"]) < 0.6 and (cur_end[:4] == (want_end or "")[:4] or (not want_end and not cur_end)):
             return []  # 이미 그 기간이다
         label_req = f"{per['start_year']}년부터 {per['end_year']}년까지 ({per['years']:g}년)" if want_end else f"{per['start_year']}년부터 지금까지 ({per['years']:g}년)"
+        # 자료가 시작되기 전 기간은 실행 단계(derive)가 옮기거나 거부한다 → 보기도 같은 규칙으로 (검토: 시가총액 하드 조건 뒤 실행할 수 없는 기간을 보기로 냈다)
+        mk = sorted({UNIVERSE_MARKET[u] for u in req["constraints"]["universe"]})
+        floors = [self.s.market.mcap_data_start[m] for m in mk if m in self.s.market.mcap_data_start] if (req["constraints"].get("min_market_cap_usd") or 0) > 0 else []
+        if req["strategy_preference"].get("template") in self.s.market.valuation_templates:
+            floors += [self.s.market.valuation_data_start[m] for m in mk if m in self.s.market.valuation_data_start]
+        floor = dt.date.fromisoformat(max(floors)) if floors else None
+        end = dt.date.fromisoformat(want_end) if want_end else self.md.ceiling
+        if floor and end < floor:
+            return []  # 아이디어대로 하면 기준일이 자료 시작 전이라 실행할 수 없다 → 묻지 않는다
+        start = end - dt.timedelta(days=int(round(per["years"] * 365.25)))
+        if floor and start < floor:  # 실제로 평가되는 기간을 보기에 적는다
+            label_req += f" — 자료가 {floor} 부터라 실제 평가는 약 {(end - floor).days / 365.25:.1f}년"
         value_req = {"backtest_years": per["years"], "start_date": want_end}
         value_cur = {"backtest_years": cur_years, "start_date": hz.get("start_date")}
+        vs, ms = self.s.market.valuation_data_start, self.s.market.mcap_data_start
         return [QuestionProposal(
             field="horizon", kind="conflict", priority=1,
             question_ko=f"아이디어에 적으신 기간대로 백테스트를 {label_req}로 할까요? 지금 설정은 최근 {cur_years:g}년입니다.",
             options=[{"value": value_req, "label_ko": f"아이디어대로 {label_req}"}, {"value": value_cur, "label_ko": f"지금 설정대로 최근 {cur_years:g}년"}],
             allow_free_text=False,
-            why_ko="기준일(백테스트 끝)이 과거이면 그 날짜 이전 자료만으로 종목을 고릅니다. 재무 지표 자료는 미국 2009년 8월, 한국 2004년 8월부터 있어 저PER·퀄리티·고배당은 그 이후만 가능합니다.",
+            why_ko=(f"기준일(백테스트 끝)이 과거이면 그 날짜 이전 자료만으로 종목을 고릅니다. 재무 지표 자료는 미국 {vs.get('US')}, 한국 {vs.get('KR')} 부터 충분해 저PER·퀄리티·고배당은 그 이후만, "
+                    f"최소 시가총액 조건은 시가총액 자료가 충분한 미국 {ms.get('US')}, 한국 {ms.get('KR')} 이후만 평가할 수 있습니다."),
         )]  # fmt: skip
 
     def _pick_question(self, doc: AnalysisRequestDoc, proposals: list[QuestionProposal], req: dict[str, Any]) -> QuestionProposal | None:

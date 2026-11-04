@@ -50,6 +50,7 @@ class _Cache:
     fx: pd.Series | None = None  # index date, value KRW per USD (daily, 원본만)
     fx_range: tuple[dt.date, dt.date] | None = None
     valuation: dict[tuple[dt.date, frozenset[str]], pd.DataFrame] = field(default_factory=dict)
+    shares: dict[tuple[dt.date, str], dict[str, Any] | None] = field(default_factory=dict)  # (d, asset_id) → 시가총액 대체용 마지막 주식수 행 (없음도 기억)
     news: dict[tuple, EvidenceWindow] = field(default_factory=dict)
 
 
@@ -337,23 +338,29 @@ class MarketDataView:
 
     # ───────────────────────── 가치평가 ─────────────────────────
     def valuation(self, tickers: Sequence[str], *, strict_before: bool | None = None) -> pd.DataFrame:
-        """종목별 기준일 가치평가 (index=ticker): per, pbr, roe_ttm, dividend_yield, market_cap_usd, shares_outstanding, date.
+        """종목별 기준일 가치평가 (index=ticker): per, pbr, roe_ttm, dividend_yield, market_cap_usd, shares_outstanding, date,
+        market_cap_source ('valuation' | 'estimated' | None), market_cap_basis_date (시가총액에 쓴 주식수가 있던 행의 날짜).
 
         valuation_daily 는 그날 종가·그날까지 공시된 재무만 쓰므로, 추정용(strict)에는 as_of−1 행을 쓴다.
+        시가총액이 빈 행은 마지막으로 알려진 주식수로 추정해 채운다 (`_mcap_fallback`) → 최소 시가총액 필터와 시가총액비중이 같은 값을 쓴다.
         """
         d = self._end(None, strict_before)
         tickers = [normalize_ticker(t) for t in tickers]
-        key = (d, frozenset(tickers))
+        key = (d, frozenset(tickers))  # 대체값도 (d, 종목) 과 실행 설정만으로 정해져 같은 키로 둔다
         if key in self.md._c.valuation:
             return self.md._c.valuation[key]
         ids = {self.md.asset_id(t): t for t in tickers}
         rows = self.md.repo.get_valuation_asof(list(ids), d, max_staleness_days=self.s.market.valuation_max_staleness_days)
+        est = self._mcap_fallback(rows, d)
         fx = self.fx_on_or_before(d).rate
         recs = []
         for aid, r in rows.items():
             t = ids[aid]
             krw = (r.get("currency") or self.md.currency_of(t)) == "KRW"
-            mcap = r.get("market_cap")
+            mcap, src, basis = r.get("market_cap"), "valuation", r["date"]
+            if mcap is None:
+                mcap, basis = est.get(aid, (None, None))
+                src = "estimated" if mcap is not None else None
             recs.append(
                 {
                     "ticker": t,
@@ -367,22 +374,60 @@ class MarketDataView:
                     "eps_ttm": r.get("eps_ttm"),
                     "shares_outstanding": r.get("shares_outstanding"),
                     "market_cap_usd": (mcap / fx if krw else mcap) if mcap is not None else None,
+                    "market_cap_source": src,
+                    "market_cap_basis_date": basis,
                     "fin_disclosed_at": r.get("fin_disclosed_at"),
                 }
             )
         cols = ["ticker", "asset_id", "date", "currency", "per", "pbr", "roe_ttm", "dividend_yield", "eps_ttm",
-                "shares_outstanding", "market_cap_usd", "fin_disclosed_at"]  # fmt: skip
+                "shares_outstanding", "market_cap_usd", "market_cap_source", "market_cap_basis_date", "fin_disclosed_at"]  # fmt: skip
         df = pd.DataFrame(recs, columns=cols).set_index("ticker").reindex(tickers)
         self.md._c.valuation[key] = df
         return df
+
+    def _mcap_fallback(self, rows: dict[str, dict[str, Any]], d: dt.date) -> dict[str, tuple[float, dt.date]]:
+        """시가총액이 빈 가치평가 행의 대체값 {asset_id: (종목 통화 시가총액, 주식수 기준일)}. 팀 DB 는 주식수가 빈 구간이 있다 (SCHW 2022-02 ~).
+
+        t0 = d 이하에서 주식수가 있는 마지막 행, 그 주식수의 기준일(shares_as_of)이 최대 mcap_fallback_max_days 전 (d 뒤는 읽지 않음 → 앞쪽 공백(XOM 2026-08 전·BLK 2024-11 전)은 대체 없음).
+        t0 뒤 비율 r 로 분할되면 주식수도 r 배라 실제 종가(d) × S(t0)·r = close(d)·sf(d) × S(t0)·sf(t0)/sf(d) = close(d) × S(t0) × sf(t0)
+        (close = 분할 보정 종가, 실제 종가 = close × split_factor; 두 행의 가격을 같은 때 받았다는 가정 — 팀 DB 이력은 한꺼번에 받았다).
+        그날 종가는 위 가치평가 행의 close (분할 계수와 같은 표) — 그 행이 없으면 추정하지 않는다."""
+        need = [aid for aid, r in rows.items() if r.get("market_cap") is None and r.get("close")]
+        reader = getattr(self.md.repo, "get_shares_asof", None)  # 리더가 없는 저장소(예전 가짜 저장소)는 대체 없음 = 자료 없음
+        if not need or reader is None:
+            return {}
+        c = self.md._c.shares  # 같은 날 후보 검색·선정 지표·시장모형이 종목 집합만 바꿔 다시 부른다 (실행 전 점검은 날마다 반복) → 종목별로 한 번만 묻는다
+        ask = [aid for aid in need if (d, aid) not in c]
+        if ask:
+            got = reader(ask, d, max_staleness_days=self.s.market.mcap_fallback_max_days)
+            c.update({(d, aid): got.get(aid) for aid in ask})
+        out: dict[str, tuple[float, dt.date]] = {}
+        for aid in need:
+            s = c.get((d, aid))
+            if not s or not (s.get("shares_outstanding") or 0) > 0 or _d(s["date"]) > d:
+                continue
+            # 나이는 주식수 자체의 기준일(shares_as_of)로 잰다 — 행 날짜로 재면 팀 DB 가 550일까지 행에 남기는 옛 주식수를 썼다
+            # (2023-11 SCHW: 2022-02 행의 주식수는 2020-07 값이라 1,189일 전 — TD Ameritrade 인수 전이라 29% 낮았고, 공지의 '최대 2년 전' 도 거짓)
+            basis = _d(s.get("shares_as_of") or s["date"])
+            if basis > d or (d - basis).days > self.s.market.mcap_fallback_max_days:
+                continue
+            out[aid] = (float(rows[aid]["close"]) * float(s["shares_outstanding"]) * float(s.get("split_factor") or 1.0), basis)
+        return out
 
     def shares_outstanding(self, tickers: Sequence[str]) -> dict[str, float]:
         v = self.valuation(tickers)["shares_outstanding"]
         return {t: float(x) for t, x in v.items() if pd.notna(x)}
 
     def market_cap_usd(self, tickers: Sequence[str]) -> dict[str, float]:
+        """valuation_daily 시가총액(USD). 빈 날은 마지막 주식수로 추정한 값 (어느 종목인지는 market_cap_estimated)."""
         v = self.valuation(tickers)["market_cap_usd"]
         return {t: float(x) for t, x in v.items() if pd.notna(x)}
+
+    def market_cap_estimated(self, tickers: Sequence[str]) -> dict[str, dt.date]:
+        """시가총액을 주식수 대체로 추정한 종목 → 쓴 주식수의 행 날짜 (market_cap_usd 와 같은 기준일·캐시)."""
+        v = self.valuation(tickers)
+        est = v.loc[v["market_cap_source"] == "estimated", "market_cap_basis_date"]
+        return {t: _d(x) for t, x in est.items()}
 
     # ───────────────────────── 뉴스 ─────────────────────────
     def news_window(

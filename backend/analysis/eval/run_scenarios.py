@@ -254,9 +254,23 @@ def replay_scenario(name: str, api: Api, env: dict[str, str], wait_s: float, out
     return finish_run(api, env, new_id, wait_s, out)
 
 
+# 사용자 결정 (2026-11-04): 백테스트 시작이 2015년 이전인 시나리오는 건너뛴다 (팀 DB 에 한국 시가총액이 2015-05 부터라 QA 범위 밖)
+SKIP_BACKTEST_BEFORE = dt.date(2015, 1, 1)
+
+
+def _skipped(name: str, sc: dict[str, Any], normalized: list[str], start: dt.date, **extra: Any) -> dict[str, Any]:
+    return {"name": name, "title_ko": sc["title_ko"], "scenario_file": str(sc["file"]), "normalized": normalized, "status": "skipped",
+            "skip_reason_ko": f"백테스트 시작({start})이 {SKIP_BACKTEST_BEFORE.year}년 이전이라 건너뜀 (사용자 결정 2026-11-04)", **extra}  # fmt: skip
+
+
 def run_scenario(name: str, api: Api, env: dict[str, str], policy: str, wait_s: float) -> dict[str, Any]:
     sc = SCENARIOS[name]
     req, normalized = normalize_request(load_request(sc["file"]))
+    hz = req.get("horizon") or {}
+    if hz.get("start_date"):  # 대화 전에 시나리오 값으로 먼저 거른다 (기본 백테스트 3년)
+        est = dt.date.fromisoformat(str(hz["start_date"])[:10]) - dt.timedelta(days=round(float(hz.get("backtest_years") or 3.0) * 365.25))
+        if est < SKIP_BACKTEST_BEFORE:
+            return _skipped(name, sc, normalized, est)
     profile = {k: req[k] for k in PROFILE_KEYS}
     profile["risk_type_computed"] = req["risk"]["risk_tolerance"]
     profile["risk_type_overridden"] = False
@@ -275,6 +289,10 @@ def run_scenario(name: str, api: Api, env: dict[str, str], policy: str, wait_s: 
         return {"name": name, "title_ko": sc["title_ko"], "scenario_file": str(sc["file"]), "normalized": normalized, "overrides": overrides, "request_id": rid,
                 "dialog_state": state.get("state"), "qa": qa, "blocked_reason_ko": state.get("blocked_reason_ko"), "hard_errors": state.get("hard_errors"), "status": "not_confirmed",
                 "dialog_cost_usd": (dc := dialog_cost(t0_dt, dt.datetime.now())), "cost_total_usd": dc}  # fmt: skip
+    bt = ((state.get("summary") or {}).get("derived") or {}).get("backtest_start")
+    if bt and dt.date.fromisoformat(str(bt)[:10]) < SKIP_BACKTEST_BEFORE:  # 대화 답으로 기간이 바뀐 경우 (확정하지 않음)
+        return _skipped(name, sc, normalized, dt.date.fromisoformat(str(bt)[:10]), overrides=overrides, request_id=rid, qa=qa,
+                        dialog_cost_usd=dialog_cost(t0_dt, dt.datetime.now()))  # fmt: skip
     conf = api.ok("POST", f"/requests/{rid}/confirm")
     run_id = conf["run_id"]
     dialog_s = round(time.time() - t0, 1)
@@ -293,8 +311,8 @@ def to_markdown(rows: list[dict[str, Any]], llm: str) -> str:
         lines.append(f"| {r['title_ko']} | {r.get('status')} | {qa} | {r.get('recommended') or '없음'} | {r.get('chosen_id') or '-'} | {vs} | {r.get('n_evidence', '-')} | {r.get('dialog_seconds', '-')} | {r.get('run_seconds', '-')} | {r.get('cost_total_usd', '-')} | `{r.get('run_id', '-')}` |")  # fmt: skip
     lines.append("")
     for r in rows:
-        if r.get("error") or r.get("report_error") or r.get("blocked_reason_ko"):
-            lines.append(f"- {r['title_ko']}: {json.dumps(r.get('error') or r.get('report_error') or r.get('blocked_reason_ko'), ensure_ascii=False)[:300]}")
+        if r.get("error") or r.get("report_error") or r.get("blocked_reason_ko") or r.get("skip_reason_ko"):
+            lines.append(f"- {r['title_ko']}: {json.dumps(r.get('error') or r.get('report_error') or r.get('blocked_reason_ko') or r.get('skip_reason_ko'), ensure_ascii=False)[:300]}")
     return "\n".join(lines)
 
 

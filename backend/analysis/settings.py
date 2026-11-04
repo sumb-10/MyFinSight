@@ -26,11 +26,16 @@ class MarketSettings:
     coverage_threshold: float = 0.95  # 품질 판정: 커버리지 0.95 통과, 0.9499 제외
     max_fill_days: int = 1  # 1거래일 결측만 직전값 채움, 2일 이상 연속 결측은 제외
     valuation_max_staleness_days: int = 10
+    # 시가총액이 빈 날의 대체: 그날 이하 마지막으로 주식수가 있던 행이 이만큼(달력일) 안이면 그 주식수 × 그날 종가 (2026-11 정책: 최소 시가총액은 하드 필터)
+    mcap_fallback_max_days: int = 730
     descriptor_universe: str = "ALL"
     descriptor_dir: str | None = None  # None -> backend/data/processed (build_descriptor.py 산출물)
     # 재무 지표(PER·ROE·배당) 자료가 시작되는 날 (docs/데이터_현황.md). 저PER·퀄리티·고배당 백테스트는 이 날 이후만 가능
     valuation_data_start: dict[str, str] = field(default_factory=lambda: {"US": "2010-04-01", "KR": "2005-06-01"})  # 자료가 "있는" 날이 아니라 종목 수가 충분해지는 날 (미국 PER 168종목, 한국 97종목)
     valuation_templates: tuple[str, ...] = ("low_per", "quality", "high_dividend")
+    # 시가총액 자료가 충분해지는 날 (최소 시가총액 조건이 있으면 이 날 이후만 백테스트, 2026-11 팀 DB 실측: 미국 2010-01 55%·2011-01 84%, 한국 2015-07 95%).
+    # 그 전에는 대체값(직전 주식수)도 없어 모든 종목이 빠진다
+    mcap_data_start: dict[str, str] = field(default_factory=lambda: {"US": "2010-01-04", "KR": "2015-07-01"})
 
 
 @dataclass(frozen=True)

@@ -57,7 +57,9 @@ def build_checkpoints(raw, bench_raw, panel, targets, sectors, cp_dates, rb_set,
     bs = settings.backtest
     sw, pos, tx, tv = raw["security_weights"], raw["positions"], raw["transactions"], raw["turnover"]
     idx, values, flows = raw["index"], raw["values"], raw["flows"]
-    cols = [c for c in targets if c in sw.columns]
+    # 첫 날 목표에 없던 종목도 (walk-forward 는 target_weights 가 첫 날 목표라, 나중에 담긴 종목이 체크포인트에서 빠지고 현금으로 보였다)
+    names = list(targets) + [c for v in (targets_by_date or {}).values() for c in v if c not in targets]
+    cols = [c for c in dict.fromkeys(names) if c in sw.columns]
     contrib = flows.copy()
     contrib.iloc[0] = 0.0
     cum_contrib = contrib.cumsum()
@@ -67,9 +69,9 @@ def build_checkpoints(raw, bench_raw, panel, targets, sectors, cp_dates, rb_set,
     for seq, d in enumerate(cp_dates):
         if tbd:
             past = [k for k in sorted(tbd) if k <= d]
-            tgt = pd.Series({c: tbd[past[-1]].get(c, 0.0) for c in cols}) if past else pd.Series(targets)[cols]
+            tgt = pd.Series({c: tbd[past[-1]].get(c, 0.0) for c in cols}) if past else pd.Series(targets, dtype=float).reindex(cols).fillna(0.0)
         else:
-            tgt = pd.Series(targets)[cols]
+            tgt = pd.Series(targets, dtype=float).reindex(cols).fillna(0.0)
         kind = "rebalance" if d in rb_set else ("closing" if d == last else "monthly")
         pos_d = sw.index.get_loc(d)
         before = sw.iloc[pos_d - 1][cols] if pos_d > 0 else None
@@ -247,9 +249,10 @@ def evaluate(ctx, p, raw, kind, bench_raw, baseline_idx, *, implied_by_date=None
     if views and p.get("views_by_date"):  # walk-forward: 날짜별 진단으로 바꾸고 시작일 기준 진단은 끈다
         wf_vd = walkforward_view_diagnostics(p["views_by_date"], ctx["panel"], ctx["end"], implied_by_date, implied, s.backtest.view_horizon_days)
         views = None
+    tbd = {d: _usable_weights(ctx, w) for d, w in p["weights_by_date"].items()} if p.get("weights_by_date") else None
     res = M.compute_all(raw, bench_raw["index"], ctx["panel"], weights, ctx["sectors"], ctx["rb"], ctx["rf"], ctx["target_return"],
                         cfg["max_stock"], cfg["max_sector"], xirr, s.backtest, baseline_idx=baseline_idx, views=views, implied=implied,
-                        as_of=ctx["as_of"], end=ctx["end"])  # fmt: skip
+                        as_of=ctx["as_of"], end=ctx["end"], targets_by_date=tbd)  # fmt: skip
     if wf_vd is not None:
         res["view_diagnostics"] = wf_vd
     nxt: list[dict[str, Any]] = []
@@ -258,7 +261,7 @@ def evaluate(ctx, p, raw, kind, bench_raw, baseline_idx, *, implied_by_date=None
         # rb[0] 은 첫 매수일이지 '다음' 리밸런싱이 아니다: 시작일이 혼합 포트폴리오 한쪽 시장의 휴장일이라 첫 매수가 하루 밀려도 창이 하루짜리가 되지 않게
         nxt = M.view_diagnostics_next_window(vbd, ctx["panel"], ctx["rb"][1:], ctx["end"], implied_by_date, implied)
     cps = build_checkpoints(raw, bench_raw, ctx["panel"], weights, ctx["sectors"], ctx["cp_dates"], ctx["rb_set"], ctx["last"], cfg, views, implied,
-                            ctx["as_of"], ctx["end"], s, targets_by_date=p.get("weights_by_date"))  # fmt: skip
+                            ctx["as_of"], ctx["end"], s, targets_by_date=tbd)  # fmt: skip  (품질 제외를 뺀 날짜별 목표: 체결 비중과 같은 기준)
     m = res["metrics"]
     hits = [v["hit"] for v in res["view_diagnostics"] if v.get("hit") is not None]  # 12개월이 끝나지 않은 뷰(판정 보류)는 적중률에서 뺀다
     headline = {"final_value_usd": res["money"]["final_value_usd"], "cagr": m["return"]["cagr"], "period_return": m["return"]["total_return"],
@@ -355,7 +358,8 @@ def run_backtest(md: MarketData, targets: dict[str, Any], req: dict[str, Any], i
     wf = walkforward if walkforward and walkforward.get("request_id") == targets["request_id"] else None
     if wf:
         for p in wf["portfolios"]:
-            p["weights"] = p["weights_by_date"][max(p["weights_by_date"])]
+            # target_weights = 시작일(첫 리밸런싱) 목표: 정적 안처럼 '시작일 배분' 표·R9·현금 설명이 시작일을 보게 (예전에는 마지막 리밸런싱일 비중, 008)
+            p["weights"] = dict(p["weights_by_date"][min(p["weights_by_date"])])
             runs[p["id"]] = run_raw_dynamic(ctx, p["id"], p["weights_by_date"])
     bench_blocks = [evaluate(ctx, {"id": r["id"], "name_ko": f"{b} 매수보유 (동일 적립)", "weights": {b: 1.0}}, r, "benchmark", primary_raw, None)
                     for b, r in bench_raws.items()]  # fmt: skip

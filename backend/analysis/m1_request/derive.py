@@ -58,6 +58,7 @@ def derive(req: UserRequest | dict[str, Any], md: MarketData, settings: Analysis
         warnings.append(f"백테스트 시작일 {bt_start} 을 자료 범위에 맞춰 {min_start} 로 줄임 (공분산 추정 창 {settings.portfolio.lookback_days}거래일 필요)")
         bt_start = min_start
     tpl = r.strategy_preference.template
+    req_start, vmsg = bt_start, None  # 두 규칙(재무 지표·시가총액 자료)이 다 옮기면 공지는 마지막 규칙 하나로 (기간 메모가 앞 규칙을 이유로 보였다)
     if tpl in settings.market.valuation_templates:
         starts = [dt.date.fromisoformat(settings.market.valuation_data_start[m]) for m in markets if m in settings.market.valuation_data_start]
         vstart = max(starts) if starts else None
@@ -65,8 +66,21 @@ def derive(req: UserRequest | dict[str, Any], md: MarketData, settings: Analysis
             raise RequestInvalid(f"{TEMPLATE_KO.get(tpl, tpl)} 선정에 쓰는 재무 지표 자료가 {vstart} 부터 있어 기준일 {as_of} 로는 분석할 수 없습니다",
                                  details={"fields": {"horizon.start_date": f"{vstart} 이후 날짜"}})  # fmt: skip
         if vstart and bt_start < vstart:
-            warnings.append(f"{TEMPLATE_KO.get(tpl, tpl)} 선정에 쓰는 재무 지표 자료가 {vstart} 부터 있어 백테스트 시작을 {bt_start} → {vstart} 로 옮김")
+            vmsg = f"{TEMPLATE_KO.get(tpl, tpl)} 선정에 쓰는 재무 지표 자료가 {vstart} 부터 있어 백테스트 시작을 {bt_start} → {vstart} 로 옮김"
+            warnings.append(vmsg)
             bt_start = vstart
+    # 최소 시가총액은 하드 조건이라(정책 결정 7) 시가총액 자료가 없는 날에는 모든 종목이 빠진다 → 재무 지표 자료와 같은 규칙으로 시작을 옮긴다
+    if (r.constraints.min_market_cap_usd or 0) > 0:
+        mstarts = [dt.date.fromisoformat(settings.market.mcap_data_start[m]) for m in markets if m in settings.market.mcap_data_start]
+        mstart = max(mstarts) if mstarts else None
+        if mstart and as_of < mstart:
+            raise RequestInvalid(f"최소 시가총액 조건에 쓰는 시가총액 자료가 {mstart} 부터 있어 기준일 {as_of} 로는 분석할 수 없습니다",
+                                 details={"fields": {"horizon.start_date": f"{mstart} 이후 날짜"}})  # fmt: skip
+        if mstart and bt_start < mstart:
+            if vmsg:
+                warnings.remove(vmsg)
+            warnings.append(f"최소 시가총액 조건에 쓰는 시가총액 자료가 {mstart} 부터 있어 백테스트 시작을 {req_start} → {mstart} 로 옮김")
+            bt_start = mstart
     if bt_start >= as_of:
         raise DataMissing(f"백테스트 창을 만들 수 없음: 시작 {bt_start} ≥ 기준일 {as_of}")
     # 백테스트 시작일 환율: 과거 시점의 투자금은 그날 환율로 환산한다 (07 단계가 실제로 쓰는 값과 같은 규칙)

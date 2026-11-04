@@ -14,7 +14,7 @@ import pandas as pd
 
 from backend.analysis.errors import DataMissing
 from backend.analysis.m2_data.market_data import MarketData
-from backend.analysis.m3_selection.retrieve import retrieve
+from backend.analysis.m3_selection.retrieve import mcap_warnings, retrieve
 from backend.analysis.m3_selection.screen import screen
 from backend.analysis.schemas.backtest import BacktestRequest, BacktestSpec
 from backend.analysis.schemas.selection import Selection, Tagging
@@ -49,6 +49,8 @@ def selectable_at(md: MarketData, day: dt.date, desc: Descriptor, intent: dict[s
     tag = Tagging(request_id=request_id, min_confidence=0.0, tagged=[], excluded_by_theme=[], passed_tickers=passed_bt, batches=0,
                   warnings=[f"re-selection at {day}: passed ∩ candidates_bt = {len(passed_bt)}"])  # fmt: skip
     sel, facts = screen(view_bt, desc, tag, intent, cons, request_id=request_id)
+    # 그날 후보 단계의 시가총액 경고(자료 없어 뺀 종목·추정한 종목)를 기준일 테마 통과 종목만으로 → 07 이 'screen@날짜:' 를 달아 시작일 공지가 된다
+    sel.warnings += mcap_warnings(cand, cons, md.s.market.mcap_fallback_max_days, only=passed)
     return cand, tag, sel, facts
 
 
@@ -219,6 +221,17 @@ def build_backtest_spec(
     tickers = list(dict.fromkeys(r["ticker"] for r in rows))
     if not tickers:
         raise DataMissing("백테스트에 쓸 종목이 남지 않았습니다. 테마를 넓히거나 조건을 바꿔 보세요.", details={"code": "SELECTION_EMPTY_AT_START"})
+    # 시작일 목록에서 빠진 종목의 그날 사유 (011: 리포트가 기준일 후보 단계 사유(한전KPS 거래대금 등)를 시작일 축소 이유로 썼다.
+    # 실제로는 2024 년 거래대금 미달 6개 + 상장 전 1개였다)
+    removed_why: dict[str, str] = {}
+    if sel_bt_obj is not None:
+        f_out = {f.ticker: f.reason for f in getattr(cand_bt, "filtered_out", None) or []}
+        cset = {c.ticker for c in getattr(cand_bt, "candidates", None) or []}
+        rej = {r.ticker: r.reason for r in getattr(sel_bt_obj, "rejected", None) or []}
+        for t in sorted(set(orig) - set(tickers)):
+            removed_why[t] = ("user_removed" if t in removed else f_out.get(t) or ("not_in_candidates" if t not in cset else rej.get(t, "not_selected")))
+    else:
+        removed_why = {t: ("user_removed" if t in removed else "insufficient_price_history") for t in sorted(set(orig) - set(tickers))}
 
     # 초기자본·적립을 백테스트 시작일 환율로 환산
     c = req["capital"]
@@ -249,7 +262,7 @@ def build_backtest_spec(
         selection={"source": source, "metric": selection.summary["metric"], "tickers": tickers,
                    "table": [{"ticker": r["ticker"], "name": r["name"], "sector": r["sector"], "rank": r["rank"], "metric_value": r["metric_value"],
                               "metric_fact_id": r.get("metric_fact_id")} for r in rows],  # 시작일 지표의 인용 ID (예전에는 없어 리포트가 기준일 ID 를 붙였다, 003)
-                   "diff_vs_original": {"added": sorted(set(tickers) - set(orig)), "removed": sorted(set(orig) - set(tickers))},
+                   "diff_vs_original": {"added": sorted(set(tickers) - set(orig)), "removed": sorted(set(orig) - set(tickers)), "removed_reasons": removed_why},
                    "infeasibility": sel_src.infeasibility, "sector_overflow": sel_src.summary.get("sector_overflow")},
         warnings=warnings,
     )  # fmt: skip

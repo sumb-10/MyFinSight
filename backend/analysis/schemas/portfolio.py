@@ -26,6 +26,7 @@ class MarketModel(BaseModel):
     delta_window: dict | None = None
     delta_dd_multiplier: float | None = None  # 허용 낙폭 배수 (라운드 5)
     delta_tolerance: float | None = None
+    delta_capped: bool = False  # 배수를 곱한 값이 상한 8 을 넘어 상한이 δ 를 정했다
     tau: float
     baseline_id: str
     implied_returns: dict[str, float]

@@ -29,7 +29,8 @@ from backend.pipeline.descriptor import Descriptor
 def signature(normalized: dict[str, Any], intent: dict[str, Any], *, reselect: bool = True, classified: bool = True) -> str:
     d = normalized["derived"]
     c = normalized["constraints"]
-    src = {"v": 2, "as_of": str(d["as_of"]), "bt_start": str(d["backtest_start"]), "metric": (intent.get("screen") or {}).get("metric"),
+    # v3: 최소 시가총액 자료가 없으면 제외(정책 결정 7) — 예전 규칙으로 센 점검 결과를 다시 쓰지 않게
+    src = {"v": 3, "as_of": str(d["as_of"]), "bt_start": str(d["backtest_start"]), "metric": (intent.get("screen") or {}).get("metric"),
            "themes": [{k: t.get(k) for k in ("gics_codes", "keywords", "example_tickers", "label_ko", "description_ko")} for t in (intent.get("interpretation") or {}).get("themes", [])],
            "rules": intent.get("exclude_theme_rules"), "reselect": reselect, "classified": classified,
            "cons": {k: c.get(k) for k in ("universe", "num_holdings", "exclude_tickers", "exclude_sectors", "exclude_themes", "must_include_tickers",

@@ -250,6 +250,12 @@ class ExtendedRepository(MarketDataRepository, Protocol):
         """종목별 d 이하 최신 valuation_daily 행 (per, pbr, roe_ttm, dividend_yield, market_cap, shares_outstanding …)."""
         ...
 
+    def get_shares_asof(
+        self, asset_ids: Sequence[str], d: date, *, max_staleness_days: int = 730
+    ) -> dict[str, dict[str, Any]]:
+        """종목별 d 이하에서 주식수가 있는 마지막 valuation_daily 행 {date, shares_outstanding, split_factor, currency} (시가총액 공백 대체용)."""
+        ...
+
     def constituents_at(
         self, index: IndexCode | str, d: date
     ) -> tuple[date | None, list[IndexConstituent], list[str]]:

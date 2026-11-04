@@ -24,9 +24,11 @@ def _exclude_block(rules: list[dict[str, Any]]) -> str:
 
 
 def is_broad_theme(themes: list[dict[str, Any]], min_sectors: int) -> bool:
-    """넓은 테마 = 한 테마가 GICS 섹터 코드(2자리)를 min_sectors 개 이상 그대로 나열 (예: '고배당 기업' 이 11개 섹터 전부).
-    여러 테마의 세부 업종 코드를 합쳐 섹터 수가 많아진 좁은 테마(가치사슬 아이디어)는 넓은 테마가 아니다 — 이때는 테마 판정으로 거른다."""
-    return any(len({str(c) for c in th.get("gics_codes", []) if len(str(c).strip()) == 2}) >= min_sectors for th in themes)
+    """넓은 테마 = 한 테마의 GICS 코드가 그 테마 안에서만 섹터(앞 2자리) min_sectors 개 이상에 걸침 (예: '고배당 기업' 이 11개 섹터 전부를
+    2자리로 나열(000·014)하거나 4·6자리 코드 25개로 나열(013)). 03 검색과 같은 앞 2자리 기준이다.
+    여러 테마를 합쳐야 섹터 수가 많아지는 좁은 테마(가치사슬 아이디어)는 테마마다 섹터가 적어 넓은 테마가 아니다 — 이때는 테마 판정으로 거른다.
+    013: 2자리 코드만 세서 03(넓은 테마 → 배당수익률 순 상한)과 판단이 갈렸고, 04 가 배당 수준을 기억으로 다시 판정해 120개 중 30개를 떨어뜨렸다."""
+    return any(len({str(c).strip()[:2] for c in th.get("gics_codes", []) if str(c).strip()}) >= min_sectors for th in themes)
 
 
 def _check(a: dict[str, Any]) -> None:

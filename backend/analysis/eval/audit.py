@@ -233,6 +233,17 @@ class Audit:
                 if not (v > lo and (hi is None or v <= hi)):
                     out_.append(f"{s['ticker']}={v:.4g}")
             self.chk(f"자격선 {sc.get('metric')} {lo}<v" + (f"≤{hi}" if hi else ""), not out_, ", ".join(sorted(set(out_))))
+        # 최소 시가총액(하드): 강제 아닌 선정 종목은 그날 시가총액(대체값 포함)이 있고 최소 이상 (010: 자료 없는 VEEV 가 확인 없이 통과)
+        lo_mc = _num(cons.get("min_market_cap_usd")) or 0.0
+        if lo_mc > 0:
+            bad = []
+            for cand, sel_rows in ((c3, rows), (o.get("07_candidates_bt") or {}, (o.get("07_selection_bt") or {}).get("selected") or [])):
+                mc = {c["ticker"]: c.get("market_cap_usd") for c in cand.get("candidates") or []}
+                for s in sel_rows:
+                    v = _num(mc.get(s["ticker"]))
+                    if not s.get("forced") and s["ticker"] in mc and (v is None or v < lo_mc):
+                        bad.append(f"{s['ticker']}={'없음' if v is None else f'{v / 1e9:.1f}B'}")
+            self.chk(f"최소 시가총액 {lo_mc / 1e9:g}B 이상(강제 제외)", not bad, ", ".join(sorted(set(bad))))
 
     def _check_weights(self, label: str, w: dict[str, float], cash: float | None, cons: dict[str, Any], secs: dict[str, str]) -> list[str]:
         errs = []
@@ -407,9 +418,9 @@ class Audit:
         tmpl_ko = {"equal_weight": "동일비중", "market_cap": "시가총액비중", "inverse_volatility": "역변동성비중", "min_variance": "최소분산"}
         ok = (tmpl_ko.get(core, "@@") in basis) or (str(rec_label) in basis) or ("BL" in basis and core.startswith("bl"))
         self.chk("추천안 = 대시보드 배분 규칙", ok, f"추천 {rec_label} vs 배분 '{basis}'")
-        m1, m2 = re.search(r"주식 (\d+)%", str(rec_label)), re.search(r"주식 (\d+)%", basis)
+        m1, m2 = re.search(r"주식 (\d+(?:\.\d+)?)%", str(rec_label)), re.search(r"주식 (\d+(?:\.\d+)?)%", basis)  # '주식 98.5%' 도 (맞춤안 이름이 소수 첫째까지)
         if m1 and m2:  # 낙폭 맞춤안: 백테스트로 확인한 주식 비중 = 대시보드 주식 비중 (기준일 구성이 더 적게 담는 경우만 예외)
-            self.chk("맞춤안 주식 비중 = 대시보드 주식 비중", int(m2.group(1)) <= int(m1.group(1)) + 1, f"추천 주식 {m1.group(1)}% vs 대시보드 주식 {m2.group(1)}%")
+            self.chk("맞춤안 주식 비중 = 대시보드 주식 비중", float(m2.group(1)) <= float(m1.group(1)) + 1, f"추천 주식 {m1.group(1)}% vs 대시보드 주식 {m2.group(1)}%")
 
 
 def main(argv: list[str] | None = None) -> int:

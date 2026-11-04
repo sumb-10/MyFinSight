@@ -254,7 +254,7 @@ def test_current_composition_follows_recommended_rule():
         RB.find = lambda R_, pid: next(p for p in R_["backtest"]["portfolios"] if p["id"] == pid)
         w, cash, name = current_composition(R, "dd_match_equal_weight")
         assert w == pytest.approx({"A": 0.475 * 0.52, "B": 0.475 * 0.52}) and cash == pytest.approx(1 - 0.95 * 0.52)
-        assert "주식 49%" in name and "현금 51%" in name  # 이름이 이 구성의 실제 비중
+        assert "주식 49.4%" in name and "현금 50.6%" in name  # 이름이 이 구성의 실제 비중 (백테스트 이름과 같은 소수 첫째 자리, 015)
         assert current_composition(R, "wf_min_variance")[0] == {"A": 0.7, "B": 0.25}
         assert current_composition(R, "bl_02")[0] == {"A": 0.4, "B": 0.55}  # 모의투자와 같은 규칙: 분석 기준일의 chosen_weights
     finally:
@@ -685,7 +685,7 @@ def test_cash_breakdown_explains_where_cash_came_from():
 
     base = {"id": "inverse_volatility", "kind": "template", "target_weights": {"A": 0.25, "B": 0.25}}
     m = {"id": "dd_match_inverse_volatility", "kind": "matched", "base_id": "inverse_volatility", "target_weights": {"A": 0.245, "B": 0.245}}
-    R = {"request": {"constraints": {"min_cash_ratio": 0.0}}, "backtest": {"portfolios": [base, m]}}
+    R = {"request": {"constraints": {"min_cash_ratio": 0.0, "max_weight_per_stock": 0.25, "max_weight_per_sector": 1.0}}, "backtest": {"portfolios": [base, m]}}
     orig = RP.B.find
     try:
         RP.B.find = lambda R_, pid: next(p for p in R_["backtest"]["portfolios"] if p["id"] == pid)
@@ -694,6 +694,7 @@ def test_cash_breakdown_explains_where_cash_came_from():
         RP.B.find = orig
     assert cb["stocks"] == "49.0%" and cb["cash"] == "51.0%" and cb["cash_by_caps"] == "50.0%" and cb["cash_added_by_drawdown_match"] == "1.0%"
     assert cb["min_cash_by_user"] is None
+    assert cb["cash_by_caps_cause_ko"] == "백테스트 시작일 구성은 2종목이라 종목당 상한 25%로는 50%까지만 담겨 남은 몫"
 
 
 def test_assumptions_and_execution_note_tell_the_truth(e2e_results):
@@ -1307,3 +1308,505 @@ def test_shrink_label_mentions_only_raised_caps(monkeypatch, svc_factory):
                                                  "constraints.num_holdings": {"target": 15, "min": 12, "max": 18}})  # fmt: skip
     lab = next(o.label_ko for o in st.question.options if o.patch and "constraints.num_holdings" in o.patch)
     assert "종목당 상한" not in lab and "섹터당 상한 90%" in lab and lab.startswith("종목 수를 9개로 줄이고")
+
+
+def test_sector_preference_marks_only_names_that_would_have_made_the_cut(monkeypatch):
+    """008: 대신 들어간 종목(AMZN)이 맨 꼴찌라, 어차피 순위 밖인 TER·LRCX·INTC 까지 '섹터 선호로 빠졌다' 고 했다 (실제로는 WDC 하나).
+    순위대로라면 뽑혔을 종목만 sector_preference, 공지에 대신 들어간 종목 이름."""
+    from types import SimpleNamespace
+
+    import pandas as pd_
+
+    from backend.analysis.common.warnings import from_text
+    from backend.analysis.m2_data import metrics as Mx
+    from backend.analysis.m3_selection.screen import screen
+
+    vals = {"A1": 0.9, "A2": 0.8, "A3": 0.7, "A4": 0.6, "A5": 0.5, "B1": 0.1}
+    monkeypatch.setitem(Mx.METRICS, "return_12m_1m", lambda view, tks: (pd_.Series({t: vals[t] for t in tks}, dtype=float), []))
+    sec = {"A": ("45", "Information Technology"), "B": ("25", "Consumer Discretionary")}
+    monkeypatch.setattr("backend.analysis.m3_selection.screen.D.gics_model",
+                        lambda e: SimpleNamespace(sector=SimpleNamespace(code=sec[e["ticker"][0]][0], name=sec[e["ticker"][0]][1])))  # fmt: skip
+    desc = SimpleNamespace(by_ticker=lambda t: {"ticker": t, "name": t, "market": "US", "gics": {}})
+    tagging = SimpleNamespace(tagged=[SimpleNamespace(ticker=t, confidence=0.9) for t in vals], passed_tickers=list(vals))
+    intent = {"screen": {"metric": "return_12m_1m", "direction": "desc"}}
+    cons = {"num_holdings": {"min": 1, "target": 3, "max": 3}, "max_weight_per_stock": 1.0, "max_weight_per_sector": 0.5, "min_cash_ratio": 0.0}
+    sel, _ = screen(SimpleNamespace(as_of=dt.date(2025, 6, 25)), desc, tagging, intent, cons, request_id="r")
+    reasons = {r.ticker: r.reason for r in sel.rejected}
+    assert sorted(s.ticker for s in sel.selected) == ["A1", "A2", "B1"]
+    assert reasons == {"A3": "sector_preference", "A4": "rank_beyond_n", "A5": "rank_beyond_n"}
+    w = from_text("05_selection", next(x for x in sel.warnings if x.startswith("sector count preference")))
+    assert "A3" in w.message_ko and "A4" not in w.message_ko and "(B1)" in w.message_ko
+
+
+def test_walkforward_drift_measured_against_date_specific_targets():
+    """008: walk-forward 드리프트를 마지막 목표 하나와 비교해 0.0965 로 보였다 (실제 날짜별 목표 대비 0.048). 그날 적용 중인 목표와 비교한다."""
+    import pandas as pd_
+
+    from backend.analysis.m5_backtest_report.backtest_metrics import composition_metrics
+
+    idx = pd_.bdate_range("2024-01-01", periods=6)
+    w = pd_.DataFrame({"A": [0.6, 0.6, 0.6, 0.3, 0.3, 0.3], "B": [0.4, 0.4, 0.4, 0.7, 0.7, 0.7]}, index=idx)
+    px = pd_.DataFrame({"A": [1.0] * 6, "B": [1.0] * 6}, index=idx)
+    tbd = {str(idx[0].date()): {"A": 0.6, "B": 0.4}, str(idx[3].date()): {"A": 0.3, "B": 0.7}}
+    sectors = {"A": "IT", "B": "HC"}
+    one = pd_.Series(1.0, index=idx)
+    by_date = composition_metrics(w, px, tbd[str(idx[0].date())], sectors, 1.0, 1.0, 0.0, one, targets_by_date=tbd)
+    last_only = composition_metrics(w, px, tbd[str(idx[3].date())], sectors, 1.0, 1.0, 0.0, one)
+    assert by_date["max_weight_drift"] == 0.0 and by_date["max_sector_drift"] == 0.0
+    assert last_only["max_weight_drift"] > 0.29
+
+
+def test_explain_prompt_uses_metric_rank_and_marks_forced():
+    """010: 06 설명에 선정 순서(필수 포함 = 1)를 순위로 넘겨 VRTX 를 '변동성 첫 순위' 라고 썼다 (실제 5위). 지표 순위 + '(필수 포함)' 표시."""
+    from types import SimpleNamespace
+
+    from backend.analysis.m3_selection.explain import explain
+    from backend.analysis.schemas.selection import Selected
+
+    def row(t, rank, v, forced=False):
+        return Selected(ticker=t, name=t, sector="Health Care", sector_code="35", rank=rank, metric_name="vol_60d", metric_value=v, forced=forced)
+
+    sel = SimpleNamespace(request_id="r", selected=[row("VRTX", 1, 0.2423, True), row("JNJ", 2, 0.1825), row("PFE", 3, 0.1917)],
+                          summary={"metric": "vol_60d", "direction": "asc", "as_of": "2026-06-11"})  # fmt: skip
+    tagging = SimpleNamespace(tagged=[SimpleNamespace(ticker=t, reason_ko="r", themes=["pharma_biotech"]) for t in ("VRTX", "JNJ", "PFE")])
+    intent = {"interpretation": {"summary_ko": "s"}, "report_settings": {"explanation_level": "beginner"}}
+    seen = {}
+
+    class Llm:
+        def complete_json(self, stage, messages, validator=None):
+            seen["user"] = messages[-1]["content"]
+            return {"portfolio_summary_ko": "s", "per_ticker": []}
+
+    explain(sel, tagging, intent, Llm(), facts=[])
+    lines = {ln.split(" | ")[1]: ln.split(" | ")[0] for ln in seen["user"].splitlines() if " | " in ln and not ln.startswith("##")}
+    assert lines == {"VRTX": "3 (필수 포함)", "JNJ": "1", "PFE": "2"}
+    assert "pharma biotech" in seen["user"]
+
+
+def test_no_matched_plan_suggestion_is_dropped_when_none_exists():
+    """011: 맞춤안이 없는데(기준 낙폭 34.7% ≤ 목표 35%) 다음 행동에 '낙폭 맞춤안을 검토할 수 있습니다' 가 나왔다 (001 Q-013 재발).
+    그 문장만 빼고, 없다는 사실을 말하는 문장은 둔다."""
+    from backend.analysis.m5_backtest_report.report import _drop_matched_suggestions
+
+    ans = {"next_actions_ko": ["과거 최대낙폭이 감당 가능한 수준인지 손실 감내 수준을 다시 확인해 보세요. 허용 수준에 가까운 낙폭이 불편하다면 낙폭 맞춤안을 검토할 수 있습니다.",
+                               "낙폭 맞춤안을 검토해 보세요.", "테마를 넓혀 재분석해 보세요."],
+           "risk_fit_ko": ["기준 구성의 낙폭이 이미 목표 안이라 낙폭 맞춤안은 만들 필요가 없었습니다. 확인해 보세요."]}  # fmt: skip
+    _drop_matched_suggestions(ans, ("next_actions_ko", "risk_fit_ko"))
+    assert ans["next_actions_ko"] == ["과거 최대낙폭이 감당 가능한 수준인지 손실 감내 수준을 다시 확인해 보세요.", "테마를 넓혀 재분석해 보세요."]
+    assert ans["risk_fit_ko"][0].startswith("기준 구성의 낙폭이 이미 목표 안이라 낙폭 맞춤안은 만들 필요가 없었습니다.")
+    # 검토(2026-11-04)에서 나온 사례: 부정은 맞춤안~동사 사이에서만, 다시 분석하라는 안내는 둔다, 소수점이 있어도 잡는다
+    keep = ["낙폭 맞춤안이 필요하다면 손실 감내 수준을 낮춰 다시 분석해 볼 수 있습니다.", "낙폭 맞춤안이 없으므로 현금 비중을 직접 검토해 보세요.",
+            "낙폭 맞춤안 후보가 없어 동일비중 구성을 선택했습니다.", "낙폭 맞춤안이 필요하면 다시 분석하는 것을 고려해 보세요."]
+    drop = ["더 낮은 낙폭을 우선한다면 낙폭 맞춤안을 살펴볼 수 있지만, 이번 결과에는 별도의 맞춤안이 필요하지 않았습니다.",
+            "낙폭 맞춤안처럼 현금을 12.5% 섞은 구성을 검토할 수 있습니다.", "낙폭 맞춤안(현금 30.0%)을 검토해 보세요.",
+            "낙폭 맞춤안을 검토할 수 있지만 결과를 장담할 수 없습니다."]  # fmt: skip
+    ans2 = {"next_actions_ko": [*keep, *drop, "적립을 유지할지 검토해 보세요."]}
+    _drop_matched_suggestions(ans2, ("next_actions_ko",))
+    assert ans2["next_actions_ko"] == [*keep, "적립을 유지할지 검토해 보세요."]
+
+
+def test_r9_cash_cause_names_stock_cap_and_backtest_basis():
+    """011: 섹터 상한 100% 인데 R9 가 '종목·섹터 상한 때문에 50%를 더 넣지 못했다' 고 해서, 지금 9종목·현금 0% 구성 옆에서 지금 현금처럼 읽혔다."""
+    from backend.analysis.m5_backtest_report.validate import evaluate_checks
+
+    def run(w, stock, sector):
+        p = {"id": "x", "kind": "template", "target_weights": w, "headline": {"max_drawdown": -0.1, "cagr": 0.1},
+             "metrics": {"composition": {"breaches": [], "max_weight_drift": 0.0, "max_sector_drift": 0.0}, "risk": {"ann_vol": 0.15, "max_drawdown": -0.1}, "return": {"cagr": 0.1, "total_return": 0.1},
+                         "vs_benchmark": {"excess_cagr": 0.0}, "trading": {"n_rebalances": 1}},
+             "series": {"index": [100, 101]}, "checkpoints": [{"kind": "rebalance", "weights": {"after": w}}]}  # fmt: skip
+        crit = {"max_drawdown": 0.2, "match_target": 0.2, "horizon_years": 0, "target_annual_return": 0.05, "benchmark": "SPY", "volatility_preference": "medium",
+                "vol_band": 1.0, "max_weight_per_stock": stock, "max_weight_per_sector": sector, "min_holdings": 1, "min_cash_ratio": 0.0}  # fmt: skip
+        cks = evaluate_checks(p, crit, 2, 1, lambda t: "IT", 0.5, False, settings=AnalysisSettings())[0]
+        return next(c for c in cks if c["rule"] == "R9")["message_ko"]
+
+    msg = run({"A": 0.25, "B": 0.25}, 0.25, 1.0)
+    assert "백테스트 시작일 구성은 2종목이라 종목당 상한 25%로는 50%까지만" in msg and "섹터 상한" not in msg
+    assert "섹터 상한 60% 때문에" in run({"A": 0.2, "B": 0.2, "C": 0.2}, 0.5, 0.6)
+    # 002: 2종목 × 25% 에 섹터 상한 35% — 두 상한이 다 걸린다 (섹터 상한만 탓하면 '섹터 상한을 올리면 된다' 로 읽힌다)
+    both = run({"A": 0.175, "B": 0.175}, 0.25, 0.35)
+    assert "종목당 상한 25%로는 50%까지만 담기고, 섹터 상한 35%에도 걸려" in both and "섹터 상한만 올리면 50%까지만" in both
+
+
+def test_timeline_blanks_annualized_metrics_under_one_year():
+    """009·010: 29거래일 구간에 'CAGR -16.6%', 14거래일에 'CAGR 21.7%' 를 보였다. 1년 미만이면 연환산 값은 비우고(화면은 '–') 기간 수익률·MDD 는 둔다."""
+    from backend.analysis.m5_backtest_report.report_blocks import _to_date_view
+
+    short = _to_date_view({"total_return": -0.02, "cagr": -0.166, "max_drawdown": -0.05, "sharpe": -2.7, "excess_cagr": -0.1, "reliable": False})
+    assert short == {"total_return": -0.02, "cagr": None, "max_drawdown": -0.05, "sharpe": None, "excess_cagr": None}
+    long = _to_date_view({"total_return": 0.2, "cagr": 0.09, "max_drawdown": -0.1, "sharpe": 0.8, "excess_cagr": 0.01, "reliable": True})
+    assert long["cagr"] == 0.09 and long["sharpe"] == 0.8 and _to_date_view(None) is None
+
+
+def test_tilt_cap_and_bl_card_changes_use_percentage_points():
+    """008·010: 카드가 '+5.0%'(상대 변화로 읽힘), 한도가 '3%p'(실제 3.33%p) 로 적혀 실제 +3.3%p 변화가 한도를 넘어 보였다."""
+    from backend.analysis.m5_backtest_report.report_blocks import _pp
+
+    assert _pp(0.033333) == "3.33%p" and _pp(0.05) == "5%p" and _pp(0.1) == "10%p"
+
+
+def test_sampled_chart_keeps_every_series_drawdown_trough():
+    """010: 표본(2칸마다)에서 QQQ 최저점(2025-04-08)이 빠져 차트 최저 -21.3%, 본문·KPI 는 22.8% 였다."""
+    from backend.analysis.m5_backtest_report.report_blocks import sample_series
+
+    n = 20
+    dates = [f"2025-01-{i + 1:02d}" for i in range(n)]
+    pf = {"index": [100.0] * n, "drawdown": [0.0] * n}
+    pf["drawdown"][4] = -0.1
+    bench = {"index": [100.0] * n, "drawdown": [0.0] * n}
+    bench["drawdown"][7] = -0.228  # 홀수 칸 → stride 2 에서 빠지던 자리
+    ds, out, meta = sample_series(dates, {"p": pf, "benchmark_QQQ": bench}, max_points=10, pin_id="p")
+    assert "2025-01-08" in ds and min(out["benchmark_QQQ"]["drawdown"]) == -0.228
+    assert "2025-01-08" in meta["pinned_troughs"]
+
+
+def test_delta_cap_is_disclosed_not_called_market_estimate():
+    """009: 기준일 δ=8.0 은 상한이 정한 값인데 '시장 자료로 추정' 이라고만 적었다."""
+    from backend.analysis.m5_backtest_report.report_blocks import _delta_src_ko
+    from backend.analysis.schemas.portfolio import MarketModel
+
+    assert "delta_capped" in MarketModel.model_fields
+    assert _delta_src_ko({"delta_source": "market_implied", "delta_capped": True}) == "시장 자료로 추정한 값이 상한 8을 넘어 상한 적용"
+    assert _delta_src_ko({"delta_source": "market_implied"}) == "시장 자료로 추정"
+
+
+def test_eligibility_range_reads_in_display_units():
+    """009: 제외 표에 'roe_ttm=-0.1572, 범위 >0 ≤10' 이 퍼센트 값 옆에 나와 ROE 상한이 10% 처럼 읽혔다 (실제 1,000%)."""
+    from backend.analysis.m2_data.metrics import eligible_range_ko
+
+    assert eligible_range_ko("roe_ttm") == "0% 초과 1,000% 이하"
+    assert eligible_range_ko("pe_ttm") == "0배 초과 50배 이하"
+    assert eligible_range_ko("dividend_yield_ttm") == "0% 초과 30% 이하"
+    assert eligible_range_ko("return_12m_1m") == ""
+
+
+def test_market_facts_balance_headlines_per_ticker_and_give_counts():
+    """009: 14c 에 전체 최신 60건만 넘겨(이틀치, SOLV 0건) '최근 헤드라인은 08-18~19', 'SOLV 헤드라인 근거 없음' 이라고 썼다 (SOLV 10건)."""
+    from backend.analysis.m5_backtest_report import report as RP
+
+    idx = {}
+    k = 0
+    for t, n, day in [("AAA", 80, "2026-08-19"), ("SOLV", 10, "2026-08-10")]:
+        for i in range(n):
+            k += 1
+            idx[f"ev{k}"] = {"kind": "news", "tickers": [t], "published_at": day, "title": f"{t} {i}", "source": "x", "language": "en", "window_as_of": "2026-08-20"}
+    idx["ev999"] = {"kind": "news", "tickers": ["SOLV"], "published_at": "2024-01-02", "title": "old wf window", "source": "x", "window_as_of": "2024-01-03"}
+    R = {"evidence_index": idx, "selection": {"table": [{"ticker": "AAA", "in_selection_now": True}, {"ticker": "SOLV", "in_selection_now": True}]}}
+    win, news, _ = RP._asof_news(R)
+    assert win == "2026-08-20" and len(news) == 90  # walk-forward 창의 옛 헤드라인은 빼고
+    picked = RP._balanced_news([{**x, "ticker": x["tickers"][0]} for x in news], {"AAA", "SOLV"}, 60)
+    assert sum(1 for x in picked if x["ticker"] == "SOLV") == 10 and len(picked) == 60
+
+
+def test_forward_news_note_when_news_off_mentions_loaded_headlines():
+    """009: 뉴스 끔 분석의 기준일 구성 문단이 '헤드라인 건수·evidence id 가 없다' 고 썼다 (같은 리포트가 기준일 헤드라인 4건 인용)."""
+    from backend.analysis.m5_backtest_report.report import _forward_news_note
+
+    idx = {"ev1": {"kind": "news", "tickers": ["A"], "published_at": "2026-08-06", "title": "t", "window_as_of": "2026-08-20"},
+           "ev2": {"kind": "news", "tickers": ["B"], "published_at": "2026-08-19", "title": "t", "window_as_of": "2026-08-20"}}
+    note = _forward_news_note({"intent": {"news_tilt": {"enabled": False}}, "evidence_index": idx})
+    assert "헤드라인 2건(2026-08-06 ~ 2026-08-19)" in note and "evidence" not in note
+    assert _forward_news_note({"intent": {"news_tilt": {"enabled": True}}, "evidence_index": idx}) is None
+
+
+def _screen_two_caps(monkeypatch, vals, sectors, stock, sector):
+    from types import SimpleNamespace
+
+    import pandas as pd_
+
+    from backend.analysis.m2_data import metrics as Mx
+    from backend.analysis.m3_selection.screen import screen
+
+    monkeypatch.setitem(Mx.METRICS, "return_12m_1m", lambda view, tks: (pd_.Series({t: vals[t] for t in tks}, dtype=float), []))
+    monkeypatch.setattr("backend.analysis.m3_selection.screen.D.gics_model",
+                        lambda e: SimpleNamespace(sector=SimpleNamespace(code=sectors[e["ticker"]][0], name=sectors[e["ticker"]][1])))  # fmt: skip
+    desc = SimpleNamespace(by_ticker=lambda t: {"ticker": t, "name": t, "market": "US", "gics": {}})
+    tagging = SimpleNamespace(tagged=[SimpleNamespace(ticker=t, confidence=0.9) for t in vals], passed_tickers=list(vals))
+    intent = {"screen": {"metric": "return_12m_1m", "direction": "desc"}}
+    cons = {"num_holdings": {"min": 1, "target": len(vals), "max": len(vals)}, "max_weight_per_stock": stock, "max_weight_per_sector": sector, "min_cash_ratio": 0.0}
+    sel, _ = screen(SimpleNamespace(as_of=dt.date(2024, 3, 5)), desc, tagging, intent, cons, request_id="r")
+    return sel.infeasibility
+
+
+def test_infeasibility_cause_follows_the_binding_cap(monkeypatch):
+    """011 검토: cause_ko 를 needed 로 갈라, 섹터 상한 30% 가 묶는데도 '2개뿐이라 종목당 25%로 50%까지' 라고 썼다 (실제 30%).
+    34%·66% 같은 상한이면 needed 탐색이 100% 를 건너뛰어 '3개뿐이라 102%까지' 가 나왔다."""
+    inf = _screen_two_caps(monkeypatch, {"A": 0.9, "B": 0.8}, {"A": ("20", "Industrials"), "B": ("20", "Industrials")}, 0.25, 0.30)
+    assert inf["capacity"] == 0.3 and inf["cap_needed_for_target"] is None
+    assert inf["cause_ko"] == "2024-03-05 선정 종목은 2종목이라 종목당 상한 25%로는 50%까지만 담기고, 섹터 상한 30%에도 걸려 30%까지만 담깁니다 (상한이 종목 수를 줄인 것이 아닙니다)"
+    it = {t: ("45", "Information Technology") for t in "ABC"}
+    inf = _screen_two_caps(monkeypatch, {"A": 0.9, "B": 0.8, "C": 0.7}, it, 0.34, 0.66)
+    assert inf["cap_needed_for_target"] == 1.0 and inf["cause_ko"] == "2024-03-05 선정 종목은 섹터 상한 66% 때문에 66%까지만 담깁니다"
+
+
+def test_cash_breakdown_names_the_binding_cap_for_cap_cash():
+    """011: cash_breakdown 의 '종목·섹터 상한 때문에 배분하지 못한 몫' 을 그대로 옮겨, 섹터 상한 100% 인데 섹터 탓을 했다."""
+    from backend.analysis.m5_backtest_report.report import cash_breakdown
+
+    p = {"id": "market_cap", "kind": "template", "target_weights": {"A": 0.25, "B": 0.25}}
+    R = {"request": {"constraints": {"min_cash_ratio": 0.0, "max_weight_per_stock": 0.25, "max_weight_per_sector": 1.0}},
+         "selection": {"table": [{"ticker": "A", "sector": "Industrials"}, {"ticker": "B", "sector": "Utilities"}]}}  # fmt: skip
+    cb = cash_breakdown(R, p)
+    assert cb["cash_by_caps"] == "50.0%" and cb["cash_by_caps_cause_ko"] == "백테스트 시작일 구성은 2종목이라 종목당 상한 25%로는 50%까지만 담겨 남은 몫"
+
+
+def test_matched_note_advice_depends_on_why_no_plan_was_built():
+    """011 검토: '손실 감내 수준을 낮춰 다시 분석하라' 는 이미 목표 안일 때만 맞다. 하한 때문에 못 만들었으면 낮출수록 더 못 만든다."""
+    from backend.analysis.m5_backtest_report.report import _matched_note
+
+    def R(mdd):
+        return {"backtest": {"portfolios": [{"id": "equal_weight", "kind": "template", "headline": {"max_drawdown": mdd}}]},
+                "intent": {"risk_params": {"effective_max_drawdown": 0.10}}, "request": {"risk": {"max_drawdown_tolerance": 0.12}},
+                "portfolio": {"targets": {"baseline": {"id": "equal_weight"}}}, "parameters": {"backtest": {"matched_min_invested": 0.3}}}  # fmt: skip
+
+    within = _matched_note(R(-0.08))
+    # 목표가 기준 낙폭(8.0%)보다 작아져야 생기고, 그래도 하한에 막힐 수 있어 '만들 수 있습니다' (검토: '만들어집니다' 는 단정)
+    assert "만들 필요가 없었습니다" in within and "목표가 8.0%보다 작아지도록" in within and within.endswith("다시 분석하면 만들 수 있습니다")
+    floor = _matched_note(R(-0.40))
+    assert "만들지 않았습니다" in floor and "더 엄격해져 역시 만들 수 없으니" in floor and "다시 분석하면" not in floor
+
+
+def test_dashboard_notices_skip_the_period_note_sentence():
+    """011 검토: 결론 옆 기간 메모와 같은 공지가 대시보드 3칸 중 한 칸을 또 차지해, 현금 원인 공지(weight_capacity)가 다시 잘렸다."""
+    from backend.analysis.m5_backtest_report.report_blocks import dashboard_notices, period_note
+
+    shifted = "백테스트 시작일 2023-10-10 에는 선정 가능한 종목이 1개뿐이라 시작을 2024-03-05 로 자동으로 옮김 (5개월 뒤, 선정 2종목)"
+    R = {"portfolio": {"backtest_spec": {"period": {"start": "2024-03-05", "end": "2026-10-08"}}}, "request": {"horizon": {"backtest_years": 3}},
+         "parameters": {"backtest": {}},
+         "notices": [{"code": "too_few_with_metric", "message_ko": "기준일 9개 선정", "level": "user"},
+                     {"code": "backtest_start_shifted", "message_ko": shifted, "level": "user"},
+                     {"code": "fewer_holdings_at_start", "message_ko": "시작일 2종목", "level": "user"},
+                     {"code": "weight_capacity", "message_ko": "현금 50% 원인", "level": "user"},
+                     {"code": "must_include_not_in_universe", "message_ko": "필수 포함 X 없음", "level": "user"}]}  # fmt: skip
+    assert shifted in period_note(R)
+    assert dashboard_notices(R) == ["필수 포함 X 없음", "시작일 2종목", "현금 50% 원인"]
+
+
+def test_explain_prompt_gives_no_rank_to_forced_name_without_metric():
+    """검토: 지표 자료가 없는 필수 포함 종목에 꼴찌 순위를 줬다 (공지는 '순위를 매기지 못했다'). '–' 로."""
+    from types import SimpleNamespace
+
+    from backend.analysis.m3_selection.explain import explain
+    from backend.analysis.schemas.selection import Selected
+
+    def row(t, rank, v, forced=False):
+        return Selected(ticker=t, name=t, sector="Financials", sector_code="40", rank=rank, metric_name="pe_ttm", metric_value=v, forced=forced)
+
+    sel = SimpleNamespace(request_id="r", selected=[row("MUST", 1, float("nan"), True), row("A", 2, 8.0), row("B", 3, 6.0)],
+                          summary={"metric": "pe_ttm", "direction": "asc", "as_of": "2026-06-11"})  # fmt: skip
+    tagging = SimpleNamespace(tagged=[])
+    seen = {}
+
+    class Llm:
+        def complete_json(self, stage, messages, validator=None):
+            seen["user"] = messages[-1]["content"]
+            return {"portfolio_summary_ko": "s", "per_ticker": []}
+
+    explain(sel, tagging, {"interpretation": {"summary_ko": "s"}, "report_settings": {"explanation_level": "beginner"}}, Llm(), facts=[])
+    ranks = {ln.split(" | ")[1]: ln.split(" | ")[0] for ln in seen["user"].splitlines() if " | " in ln and not ln.startswith("##")}
+    assert ranks == {"MUST": "– (필수 포함)", "A": "2", "B": "1"}
+
+
+def test_walkforward_checkpoints_keep_names_added_after_the_first_date():
+    """검토: target_weights 를 첫 날 목표로 바꾸자, 첫 날에 없던 종목이 모든 체크포인트에서 빠지고 현금으로 보였다."""
+    import numpy as np
+    import pandas as pd_
+
+    from backend.analysis.m5_backtest_report.backtest import build_checkpoints
+    from backend.analysis.settings import AnalysisSettings
+
+    idx = pd_.bdate_range("2024-01-01", periods=60)
+    rb = [idx[0], idx[30]]
+    sw = pd_.DataFrame({"A": 0.3, "B": 0.3, "C": 0.3, "D": 0.0}, index=idx)
+    sw.loc[idx[30]:, ["A", "B", "C", "D"]] = 0.25
+    px = pd_.DataFrame({c: np.linspace(100, 110, len(idx)) for c in "ABCD"}, index=idx)
+    vals = pd_.Series(np.linspace(1000, 1100, len(idx)), index=idx)
+    raw = {"security_weights": sw, "positions": sw * 10, "transactions": pd_.DataFrame(columns=["Date", "Security", "price", "quantity"]),
+           "turnover": pd_.Series(0.0, index=idx), "index": vals / 10, "values": vals, "flows": pd_.Series(0.0, index=idx)}  # fmt: skip
+    bench = {"index": vals / 10, "values": vals}
+    tbd = {str(rb[0].date()): {"A": 0.3, "B": 0.3, "C": 0.3}, str(rb[1].date()): {"A": 0.25, "B": 0.25, "C": 0.25, "D": 0.25}}
+    cfg = {"rf": 0.0, "baseline_idx": None, "max_stock": 1.0, "max_sector": 1.0}
+    cps = build_checkpoints(raw, bench, px, tbd[str(rb[0].date())], {c: "IT" for c in "ABCD"}, rb + [idx[-1]], set(rb), idx[-1], cfg, None, None,
+                            idx[0], idx[-1], AnalysisSettings(), targets_by_date=tbd)  # fmt: skip
+    assert all("D" in cp["weights"]["after"] for cp in cps)
+    assert cps[1]["weights"]["target"]["D"] == 0.25
+
+
+def test_backtest_start_moves_to_market_cap_data_start(seeded_repo, descriptor_dir):
+    """정책 결정 7 의 결과: 시가총액 자료가 없는 날에는 최소 시가총액 조건으로 모든 종목이 빠진다(팀 DB: 미국 2009·한국 2015 이전).
+    재무 지표 자료와 같은 규칙으로 시작을 옮기고 알린다. 최소 시가총액이 0 이면 옮기지 않는다."""
+    import json
+
+    from backend.analysis.common.warnings import from_text
+    from backend.analysis.errors import RequestInvalid
+    from backend.analysis.m1_request.derive import derive
+    from backend.analysis.m2_data.market_data import MarketData as MD
+    from backend.analysis.settings import replace_settings
+    from backend.tests.analysis.test_pipeline_e2e import REQUEST
+
+    s = AnalysisSettings()
+    s = replace_settings(s, market=replace_settings(s.market, descriptor_dir=str(descriptor_dir), mcap_data_start={"US": "2024-06-03", "KR": "2024-06-03"}))
+    req = json.loads(json.dumps(REQUEST))
+    req["horizon"]["backtest_years"] = 4
+    req["constraints"]["min_market_cap_usd"] = 1e9
+    out = derive(req, MD(seeded_repo, s), s).derived
+    note = next(w for w in out.warnings if "시가총액 자료가" in w)
+    assert out.backtest_start == dt.date(2024, 6, 3) and from_text("01_request", note).code == "backtest_start_clamped"
+    req["constraints"]["min_market_cap_usd"] = 0
+    assert derive(req, MD(seeded_repo, s), s).derived.backtest_start < dt.date(2024, 6, 3)
+    req["constraints"]["min_market_cap_usd"] = 1e9
+    req["horizon"]["start_date"] = "2023-12-29"
+    with pytest.raises(RequestInvalid):
+        derive(req, MD(seeded_repo, s), s)
+
+
+def test_harness_skips_scenarios_whose_backtest_starts_before_2015(monkeypatch, tmp_path):
+    """사용자 결정 (2026-11-04): 백테스트 시작이 2015년 이전인 시나리오는 건너뛴다 — 대화 전(시나리오 값)과 확정 직전(대화로 바뀐 기간) 둘 다."""
+    import json
+
+    from backend.analysis.eval import run_scenarios as RS
+
+    f = tmp_path / "scenario_x.json"
+    base = {"natural_language": {"idea": "x"}, "capital": {}, "constraints": {}, "risk": {"risk_tolerance": "moderate"}, "profile": {},
+            "horizon": {"start_date": "2017-06-01", "target_years": 3}}  # fmt: skip
+    f.write_text(json.dumps(base), encoding="utf-8")
+    monkeypatch.setitem(RS.SCENARIOS, "scenario_x", {"file": f, "title_ko": "x"})
+    calls = []
+
+    class Api:
+        def ok(self, method, path, body=None):
+            calls.append((method, path))
+            if path == "/requests":
+                return {"request_id": "r1", "state": "ready", "summary": {"derived": {"backtest_start": "2014-05-02"}}}
+            return {}
+
+    r = RS.run_scenario("scenario_x", Api(), {}, "all", 1.0)
+    assert r["status"] == "skipped" and "2014-06-01" in r["skip_reason_ko"] and calls == []  # 2017-06-01 − 3년 → 대화 전에 건너뜀
+    base["horizon"]["start_date"] = "2025-06-02"
+    f.write_text(json.dumps(base), encoding="utf-8")
+    monkeypatch.setattr(RS, "PROFILE_KEYS", ())
+    monkeypatch.setattr(RS, "answer_questions", lambda api, rid, state, policy, qa: state)
+    r = RS.run_scenario("scenario_x", Api(), {}, "all", 1.0)
+    assert r["status"] == "skipped" and "2014-05-02" in r["skip_reason_ko"] and ("POST", "/requests/r1/confirm") not in calls
+
+
+def test_period_question_follows_data_start_rules(svc_factory):
+    """검토: 최소 시가총액이 하드 조건이 된 뒤에도 대화가 실행할 수 없는 과거 기간(시가총액 자료 전)을 '아이디어대로' 보기로 냈다.
+    끝이 자료 시작 전이면 묻지 않고, 시작만 그 전이면 실제 평가 기간을 보기에 적는다."""
+    from backend.tests.analysis.test_dialog import _intent
+
+    svc, _store, _llm = svc_factory([_intent([]), _intent([]), _intent([]), _intent([])])
+    cap = {"constraints.min_market_cap_usd": 1e9}
+    st = svc.start("미국과 한국의 반도체 기업에 2010년부터 2012년까지 투자했다면", overrides=cap)
+    assert not (st.question and st.question.field == "horizon")
+    st = svc.start("미국과 한국의 반도체 기업에 2014년부터 2024년까지 투자했다면", overrides=cap)
+    assert st.question and st.question.field == "horizon" and "자료가 2015-07-01 부터라 실제 평가는 약 9.5년" in st.question.options[0].label_ko
+
+
+def test_cap_tie_advice_says_both_caps_must_move():
+    """검토: 한 섹터 3종목 × 25% = 섹터 상한 75% 처럼 두 상한이 같은 지점에서 막으면, '종목당 상한을 올리면 된다' 는 거짓 안내였다."""
+    from backend.analysis.common.capacity import cap_fix_ko, cap_limits
+
+    tie = cap_limits({"IT": 3}, 0.25, 0.75, 1.0)
+    assert tie["kind"] == "stock" and tie["tie"] and "함께 올려야" in cap_fix_ko(tie)
+    plain = cap_limits({"IT": 2}, 0.25, 1.0, 1.0)
+    assert plain["kind"] == "stock" and not plain["tie"] and cap_fix_ko(plain).startswith("종목 수가 늘거나")
+
+
+def test_double_start_clamp_leaves_one_notice_from_the_requested_start(seeded_repo, descriptor_dir):
+    """검토: 재무 지표·시가총액 두 규칙이 다 시작을 옮기면 기간 메모가 앞 규칙(재무 지표)을 이유로 보였다 → 마지막 규칙 하나, 원래 요청한 날부터."""
+    import json
+
+    from backend.analysis.m1_request.derive import derive
+    from backend.analysis.m2_data.market_data import MarketData as MD
+    from backend.analysis.settings import replace_settings
+    from backend.tests.analysis.test_pipeline_e2e import REQUEST
+
+    s = AnalysisSettings()
+    s = replace_settings(s, market=replace_settings(s.market, descriptor_dir=str(descriptor_dir), valuation_data_start={"US": "2024-03-01", "KR": "2024-03-01"},
+                                                    mcap_data_start={"US": "2024-06-03", "KR": "2024-06-03"}))  # fmt: skip
+    req = json.loads(json.dumps(REQUEST))
+    req["strategy_preference"]["template"] = "low_per"
+    req["horizon"]["backtest_years"] = 4
+    req["constraints"]["min_market_cap_usd"] = 1e9
+    d = derive(req, MD(seeded_repo, s), s).derived
+    moved = [w for w in d.warnings if "로 옮김" in w and "자료가" in w]
+    assert d.backtest_start == dt.date(2024, 6, 3) and len(moved) == 1 and moved[0].startswith("최소 시가총액") and "→ 2024-06-03" in moved[0]
+    assert "2024-03-01 →" not in moved[0]  # 중간 날짜(재무 지표 규칙)가 아니라 원래 요청한 시작에서
+
+
+def test_rebalance_targets_tell_static_from_walkforward():
+    """016: walk-forward 정의('리밸런싱일마다 비중만 다시 계산')를 정적 추천안(낙폭 맞춤안, 역변동성 기준)에도 붙였다 → 선택안 방식을 사실로 넘긴다."""
+    from backend.analysis.m5_backtest_report.report import _rebalance_targets_ko
+    from backend.analysis.m5_backtest_report.report_blocks import _mcap_limitation
+
+    assert _rebalance_targets_ko({"mode": "static"}).startswith("정적 구성") and "다시 계산하지 않음" in _rebalance_targets_ko({"mode": "static"})
+    assert _rebalance_targets_ko({"mode": "walkforward"}).startswith("walk-forward")
+    assert "최대 2년 전 기준" in _mcap_limitation({"parameters": {"market": {"mcap_fallback_max_days": 730}}})
+
+
+def test_round9_report_facts_windows_news_use_and_numbers():
+    """013·015·016·017 독립 검토: 근거 창 끝(그날 제외)을 끝 날로 보였고, 추천이 뉴스 뷰를 안 쓰는데 '뉴스 기반 조정이 현재 제안' 이라 썼고,
+    표시값끼리 맞지 않는 차이(14.2 vs 14.0 → 0.3%p)·현금 몫 합(15.0+7.7≠22.6)·'10개로 목표 10개 및 최소 8개와 같다' 가 나왔다."""
+    from backend.analysis.m5_backtest_report import report as RP
+    from backend.analysis.m5_backtest_report.report_blocks import shown_window
+
+    assert shown_window(["2026-07-02", "2026-07-16"]) == ["2026-07-02", "2026-07-15"] and shown_window(None) is None
+    ne = RP._news_effect_display({"disabled": False, "bl_cagr": 0.142275, "base_cagr": 0.139717, "bl_mdd": -0.082, "base_mdd": -0.081})
+    assert ne["bl_cagr_pct"] == "14.2%" and ne["base_cagr_pct"] == "14.0%" and ne["diff_cagr_pp"] == "+0.2%p" and ne["diff_mdd_pp"] == "+0.1%p"
+    # 016 낙폭 맞춤안: 기준 투자 85.0002%, 맞춤 77.3502%, 최소 현금 15%
+    base = {"id": "inverse_volatility", "kind": "template", "target_weights": {"A": 0.425001, "B": 0.425001}}
+    m = {"id": "dd_match_inverse_volatility", "kind": "matched", "base_id": "inverse_volatility", "target_weights": {"A": 0.386751, "B": 0.386751}}
+    R = {"request": {"constraints": {"min_cash_ratio": 0.15, "max_weight_per_stock": 0.1, "max_weight_per_sector": 0.85}}, "backtest": {"portfolios": [base, m]}}
+    orig = RP.B.find
+    try:
+        RP.B.find = lambda R_, pid: next(x for x in R_["backtest"]["portfolios"] if x["id"] == pid)
+        cb = RP.cash_breakdown(R, m)
+    finally:
+        RP.B.find = orig
+    assert (cb["cash"], cb["min_cash_by_user"], cb["cash_added_by_drawdown_match"], cb["stocks"]) == ("22.6%", "15.0%", "7.6%", "77.4%")
+
+
+def test_chosen_current_composition_news_use_is_stated(monkeypatch):
+    """013·017: 추천 현재 구성(시가총액비중·낙폭 맞춤안)은 뉴스 뷰를 쓰지 않는데 서술이 '뉴스로 비중을 조정한 현재 제안' 이라고 했다."""
+    from backend.analysis.m5_backtest_report import report as RP
+
+    monkeypatch.setattr(RP.B, "current_composition", lambda R, c: ({"A": 1.0}, 0.0, "시가총액비중"))
+    no = RP._chosen_news_use({}, "market_cap", {"id": "market_cap", "kind": "template"})
+    assert no["chosen_uses_news_views"] is False and "뉴스 뷰를 쓰지 않습니다" in no["chosen_news_note_ko"]
+    yes = RP._chosen_news_use({}, "bl_01", {"id": "bl_01", "kind": "black_litterman"})
+    assert yes["chosen_uses_news_views"] is True
+    assert RP._chosen_news_use({}, "dd_match_wf_bl_news", {"id": "dd_match_wf_bl_news", "kind": "matched", "base_id": "wf_bl_news"})["chosen_uses_news_views"]
+
+
+def test_round9_report_blocks_formats_and_notes():
+    """016: 제외 표가 PER 97.1 을 +9,710% 로 보였고, 검증 요약 메모가 손실 시 매도 성향의 동점 규칙을 빼 Sharpe 가 더 낮은 추천과 어긋나 보였다.
+    015: 뉴스 끔인데 비중 비교 메모가 없는 '뉴스 뷰' 열을 설명했고, walk-forward 날짜별 비중 변화가 '제공되지 않았다' 고 썼다."""
+    from backend.analysis.m5_backtest_report import report_blocks as RB
+
+    R = {"selection": {"metric": "pe_ttm", "as_of_now": {"as_of": "2026-03-02", "rejected_examples": [{"ticker": "ABBV", "name": "AbbVie", "reason": "x", "metric_value": 97.1}]}}}
+    t = RB.excluded_table(R)
+    assert next(c for c in t["columns"] if c["key"] == "metric")["format"] == "num"
+    R["selection"]["metric"] = "roe_ttm"
+    assert next(c for c in RB.excluded_table(R)["columns"] if c["key"] == "metric")["format"] == "pct"
+    wf = {"portfolios": [{"id": "wf_market_cap", "weights_by_date": {"2023-05-11": {"PFE": 0.1462, "AMGN": 0.0846}, "2023-07-03": {"PFE": 0.1462, "AMGN": 0.0846},
+                                                                     "2024-01-02": {"PFE": 0.0932, "AMGN": 0.1227}}}]}  # fmt: skip
+    ch = RB.walkforward_weight_changes({"portfolio": {"walkforward": wf, "targets": {"baseline": {"id": "market_cap"}}}})
+    assert ch == {"2023-07-03": ["변화 없음"], "2024-01-02": ["PFE -5.3%p", "AMGN +3.8%p"]}
+
+
+def test_reused_dialog_intent_gets_current_exclusion_cleanup(monkeypatch):
+    """013 다시 돌리기: 실행은 대화에서 확정된 의도를 다시 써서, 예전 의도의 '성인 산업' → 영화·인터랙티브 미디어 업종 코드가 남았다 (디즈니·알파벳 제외).
+    실행 단계에서도 같은 정리를 한다 (같은 규칙이면 다시 해도 그대로)."""
+    from types import SimpleNamespace
+
+    from backend.analysis.executor import stages as ST
+    from backend.analysis.m3_selection.intent import clean_exclude_rules
+
+    intent = {"exclude_theme_rules": [{"theme": "adult_entertainment", "gics_codes": ["50202010", "50203010"], "keywords": ["adult content"]},
+                                      {"theme": "gambling", "gics_codes": ["253010", "50202010"], "keywords": []}]}  # fmt: skip
+    warned = []
+    ctx = SimpleNamespace(intent=intent, outputs={}, warn_all=lambda stage, ws: warned.extend(ws))
+    ST.st_intent(ctx)
+    rules = ctx.outputs["02_intent"]["exclude_theme_rules"]
+    assert rules[0]["gics_codes"] == [] and rules[1]["gics_codes"] == ["25301010"] and len(warned) == 2
+    assert clean_exclude_rules(rules) == []  # 두 번째는 바꿀 것이 없다

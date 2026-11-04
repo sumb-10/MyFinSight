@@ -9,6 +9,7 @@ import re
 from typing import Any
 
 from backend.analysis.common.labels import VOL_PREF_KO, enum_ko, field_ko, sector_counts_ko, sector_ko, theme_ko, usd_ko
+from backend.analysis.m5_backtest_report.matched import stock_cash_ko
 
 NAMES = {"equal_weight": "동일비중", "market_cap": "시가총액비중", "inverse_volatility": "역변동성비중", "min_variance": "최소분산"}
 STATUS_KO = {"pass": "통과", "warn": "주의", "fail": "미통과", "info": "참고", "flag": "허용 초과", "n/a": "-"}
@@ -125,11 +126,16 @@ def constraints_table(R):
     return table("지켜야 하는 조건 (하드 제약)", [("k", "항목", "text"), ("v", "값", "text")], rows)
 
 
+def _pp(x: float) -> str:
+    """비중 차이 한도 → '%p' (0.0333 → '3.33%p', 0.05 → '5%p'). 예전 '{:.0%}p' 는 3.33%p 를 '3%p' 로 적어 실제 +3.3%p 변화가 한도를 넘어 보였다 (010)."""
+    return f"{round(float(x) * 100, 2):g}%p"
+
+
 def soft_table(R):
     rp, nt = R["intent"]["risk_params"], R["intent"]["news_tilt"]
     rows = [{"k": "변동성 선호", "v": VOL_PREF_KO.get(rp["volatility_preference"], rp["volatility_preference"])}, {"k": "허용 최대낙폭·낙폭 맞춤안 목표", "v": _tolerance_note(R).replace("손실 감내 수준 ", "")},
             {"k": "해석 메모", "v": rp.get("notes_ko", "")},
-            {"k": "뉴스 뷰 반영", "v": (f"켜짐 · 종목당 최대 {nt['max_tilt_per_stock']:.0%}p, 뷰 신뢰도 상한 {nt['max_view_confidence']}" if nt["enabled"] else "꺼짐 (기준 비중만)")}]  # fmt: skip
+            {"k": "뉴스 뷰 반영", "v": (f"켜짐 · 종목당 최대 {_pp(nt['max_tilt_per_stock'])}, 뷰 신뢰도 상한 {nt['max_view_confidence']}" if nt["enabled"] else "꺼짐 (기준 비중만)")}]  # fmt: skip
     return table("성향 해석 (소프트 조건)", [("k", "항목", "text"), ("v", "해석", "text")], rows)
 
 
@@ -163,8 +169,9 @@ def excluded_table(R):
     if not ex:
         return None
     rows = [{"ticker": r["ticker"], "name": r["name"], "reason": r["reason"], "metric": r.get("metric_value")} for r in ex]
+    fmt = "num" if R["selection"].get("metric") == "pe_ttm" else "pct"  # PER 은 배수 (016: 'pct' 로 고정해 PER 97.1 이 +9,710% 로 보였다)
     return table(f"테마에는 해당하지만 최종 선정에서 빠진 예 ({R['selection']['as_of_now']['as_of']} 기준)",
-                 [("ticker", "티커", "text"), ("name", "회사", "text"), ("reason", "제외 이유", "text"), ("metric", "지표값", "pct")], rows)  # fmt: skip
+                 [("ticker", "티커", "text"), ("name", "회사", "text"), ("reason", "제외 이유", "text"), ("metric", "PER(배)" if fmt == "num" else "지표값", fmt)], rows)  # fmt: skip
 
 
 def diff_table(R):
@@ -241,7 +248,7 @@ def scenario_cards(R):
         views = "\n".join("· " + v["summary_ko"] for v in p["views_applied"])
         hit = bt.get(p["id"], {}).get("headline", {}).get("view_hit_ratio")
         items.append({"title_ko": p.get("title_ko") or p["name_ko"], "text_ko": (p.get("portfolio_view") or "").split("\n")[0] + "\n" + views,
-                      "meta": [{"label_ko": "기준 대비 주요 변화", "value": ", ".join(f"{t} {x:+.1%}" for t, x in top)},
+                      "meta": [{"label_ko": "기준 대비 주요 변화", "value": ", ".join(f"{t} {x * 100:+.1f}%p" for t, x in top)},
                                {"label_ko": "뷰 적중률(백테스트)", "value": f"{hit:.0%}" if hit is not None else "-"},
                                {"label_ko": "근거", "value": ", ".join(sorted({i for v in p["views_applied"] for i in v.get("evidence_ids", [])})) or "-"}]})  # fmt: skip
     return {"type": "cards", "title_ko": "시작일 뉴스 뷰 Black-Litterman 포트폴리오", "items": items}
@@ -340,6 +347,17 @@ def contribution_bar(R, chosen):
             **({"note_ko": f"막대를 모두 더하면 기간 수익률 {period * 100:+.1f}% 와 같습니다 (현금은 수익 0%라 기여 0)."} if period is not None else {})}
 
 
+def _to_date_view(td: dict[str, Any] | None) -> dict[str, Any] | None:
+    """시작부터 누적 성과. 1년이 안 된 구간의 연환산(CAGR·Sharpe·초과 CAGR)은 비운다 — 6주 수익을 '연 -16.6%' 로 보였다 (009·010).
+    화면은 빈 값을 '–' 로 그린다. 기간 수익률·MDD 는 그대로."""
+    if not td:
+        return None
+    out = {k: td.get(k) for k in ("total_return", "cagr", "max_drawdown", "sharpe", "excess_cagr")}
+    if td.get("reliable") is False:
+        out.update(cagr=None, sharpe=None, excess_cagr=None)
+    return out
+
+
 def checkpoints_block(R, chosen):
     p = find(R, chosen)
     items = []
@@ -370,12 +388,15 @@ def validation_tables(R, chosen):
     integ = (res or alt or {}).get("integrity") or []
     n_int = sum(1 for c in integ if c["status"] == "pass")
     t1 = table(f"검증 규칙 ({pf_label(find(R, chosen))})", [("rule", "규칙", "text"), ("name", "항목", "text"), ("level", "수준", "text"), ("msg", "측정 결과", "text"), ("status", "판정", "text")], rows,
-               note=(f"표시 = 추천 여부를 가르지 않고 순위에 반영(허용 낙폭 초과는 5%p 마다 한 단계 뒤로), 권장 = 주의로만 표시, 참고 = 판정에 넣지 않는 정보. 종목·섹터 상한 준수와 자료 무결성은 코드가 따로 점검했습니다 ({n_int}/{len(integ)} 통과, 실행 기록 참고)." if integ else None))  # fmt: skip
+               note=(f"표시 = 추천 여부를 가르지 않고 순위에 반영(허용 낙폭을 조금이라도 넘으면 한 단계 뒤로, 그 뒤 5%p 마다 한 단계씩 더), 권장 = 주의로만 표시, 참고 = 판정에 넣지 않는 정보. 종목·섹터 상한 준수와 자료 무결성은 코드가 따로 점검했습니다 ({n_int}/{len(integ)} 통과, 실행 기록 참고)." if integ else None))  # fmt: skip
     rows2 = [{"name": pf_label(find(R, r["id"])), "status": STATUS_KO[r["status"]],
               "fails": ", ".join(f"{c['rule']} {c['name_ko']}" for c in r["checks"] if c["status"] == "fail") or "-",
               "warns": ", ".join(f"{c['rule']} {c['name_ko']}" + (" (허용 초과)" if c["status"] == "flag" else "") for c in r["checks"] if c["status"] in ("warn", "flag")) or "-"} for r in R["validation"]["results"]]  # fmt: skip
+    # 손실 시 매도·투자 경험 없음이면 같은 조건에서 낙폭 맞춤안을 먼저 둔다 — 이 단계가 빠진 설명은 016 처럼 Sharpe 가 더 낮은 추천과 어긋나 보였다
+    cautious = bool((R["validation"].get("criteria") or {}).get("cautious"))
+    order = "목표수익 → 비교지수 → 허용 낙폭 초과 폭 → " + ("같은 조건이면 낙폭 맞춤안 우선(손실 시 매도·투자 경험 없음) → " if cautious else "") + "Sharpe"
     t2 = table("전체 포트폴리오 검증 요약", [("name", "포트폴리오", "text"), ("status", "판정", "text"), ("fails", "미통과 항목", "text"), ("warns", "주의·표시 항목", "text")], rows2,
-               note="추천은 순위(목표수익 → 비교지수 → 허용 낙폭 초과 폭 → Sharpe) 1위입니다. 미통과는 내부 점검(상한·자료 무결성)에 걸린 경우만 생깁니다.")  # fmt: skip
+               note=f"추천은 순위({order}) 1위입니다. 미통과는 내부 점검(상한·자료 무결성)에 걸린 경우만 생깁니다.")  # fmt: skip
     return t1, t2
 
 
@@ -435,6 +456,33 @@ def news_used_ids(R) -> list[str]:
             for v in p["views_applied"]:
                 out.update(v.get("evidence_ids", []))
     return sorted(out)
+
+
+def shown_window(w: list[str] | None) -> list[str] | None:
+    """근거 창 [시작, 끝) 의 끝은 그날을 빼는 경계 → 사람에게는 끝 전날까지로 (013: '07-02 ~ 07-16' 이라 기준일 뉴스도 쓴 것처럼 보였고, 시장 분석의 07-15 와 달랐다)."""
+    import datetime as dt
+
+    if not w or len(w) != 2:
+        return w
+    try:
+        return [str(w[0]), str(dt.date.fromisoformat(str(w[1])[:10]) - dt.timedelta(days=1))]
+    except ValueError:
+        return w
+
+
+def walkforward_weight_changes(R, k: int = 3) -> dict[str, list[str]]:
+    """뉴스 반영 구성이 없을 때(뉴스 끔) walk-forward 기준 비중 구성의 리밸런싱일별 '직전 리밸런싱 대비' 큰 변화 (015: 빈 칸을 받아 '날짜별 비중 변화 내역이 제공되지 않았다' 고 썼다)."""
+    wf = R["portfolio"].get("walkforward") or {}
+    base = next((p for p in wf.get("portfolios") or [] if p["id"] == f"wf_{R['portfolio']['targets']['baseline']['id']}"), None)
+    wbd = (base or {}).get("weights_by_date") or {}
+    out, prev = {}, None
+    for d in sorted(wbd):
+        if prev is not None:
+            w, b = wbd[d], wbd[prev]
+            top = sorted(((t, w.get(t, 0.0) - b.get(t, 0.0)) for t in {*w, *b}), key=lambda x: -abs(x[1]))[:k]
+            out[d] = [f"{t} {x * 100:+.1f}%p" for t, x in top if abs(x) >= 0.0005] or ["변화 없음"]
+        prev = d
+    return out
 
 
 def walkforward_top_deltas(R, k: int = 3) -> dict[str, list[str]]:
@@ -543,8 +591,8 @@ def current_composition(R, chosen: str) -> tuple[dict[str, float], float, str] |
         w = {t: x * (1 - cash_ratio) for t, x in w.items()}
     cash = max(0.0, 1 - sum(w.values()))
     if target_inv is not None or cash_ratio > 0:  # 이름은 이 구성의 실제 비중으로, 백테스트 이름과 같은 꼴 ('낙폭 맞춤안 (주식 a% + 현금 b%, X 기준)')
-        stock = int(round(sum(w.values()) * 100))  # 합이 100 이 되게 현금 = 100 − 주식
-        name = f"{label or '현금 혼합안'} (주식 {stock}% + 현금 {100 - stock}%, {name} 기준)"
+        # 백테스트 이름과 같은 자리수 (015: 백테스트는 '주식 98.5%', 대시보드는 '주식 99%' 로 달랐다). 현금 = 100 − 주식
+        name = f"{label or '현금 혼합안'} ({stock_cash_ko(sum(w.values()))}, {name} 기준)"
     return w, cash, name
 
 
@@ -555,13 +603,13 @@ def forward_blocks(R, chosen: str | None = None):
     blocks = []
     nw = f.get("news_window")
     blocks.append({"type": "callout", "tone": "info", "title_ko": f"현재 구성 (분석 기준일 {f['as_of']})",
-                   "text_ko": ((f"뉴스 창 {nw['window'][0]} ~ {nw['window'][1]}, 기사 {nw['n_articles']}건, 뉴스 있는 종목 {nw['n_tickers_with_news']}개. " if nw else "")
-                               + f"기준일 시장모형(위험회피 δ={f['market_model']['delta']}, {'시장 자료로 추정' if f['market_model']['delta_source'] == 'market_implied' else '성향별 고정값'})으로 규칙 4개"
+                   "text_ko": ((f"뉴스 창 {' ~ '.join(shown_window(nw['window']))}, 기사 {nw['n_articles']}건, 뉴스 있는 종목 {nw['n_tickers_with_news']}개. " if nw else "")
+                               + f"기준일 시장모형(위험회피 δ={f['market_model']['delta']}, {_delta_src_ko(f['market_model'])})으로 규칙 4개"
                                + (f"와 뉴스 뷰 Black-Litterman {len(f['portfolios'])}개를 만들었습니다." if f["portfolios"] else f"를 만들었습니다 ({f.get('fallback_reason_ko') or '뉴스 뷰 없음'}).")
                                + " 이 구성은 분석 기준일의 제안이며 백테스트 결과가 아닙니다.")})  # fmt: skip
     for p in f["portfolios"]:
         blocks.append({"type": "cards", "title_ko": p["name_ko"], "items": [{"title_ko": p.get("title_ko") or p["name_ko"], "text_ko": p.get("portfolio_view", ""), "meta": [
-            {"label_ko": "기준 비중 대비 주요 변화", "value": ", ".join(f"{t} {x:+.1%}" for t, x in sorted(p["delta_vs_baseline"].items(), key=lambda x: -abs(x[1]))[:4])},
+            {"label_ko": "기준 비중 대비 주요 변화", "value": ", ".join(f"{t} {x * 100:+.1f}%p" for t, x in sorted(p["delta_vs_baseline"].items(), key=lambda x: -abs(x[1]))[:4])},
             {"label_ko": "예상 수익·변동성", "value": f"{p['ex_ante']['exp_return']:.1%} / {p['ex_ante']['vol']:.1%}"},
             {"label_ko": "근거", "value": ", ".join(sorted({i for v in p["views_applied"] for i in v.get("evidence_ids", [])})) or "-"}]}]})  # fmt: skip
     cc = current_composition(R, chosen) if chosen else None
@@ -587,6 +635,11 @@ def sources_table(R):
     return table("자료 출처", [("name", "출처", "text"), ("what", "사용한 내용", "text"), ("url", "링크", "text")], [{"name": s["name"], "what": s["what"], "url": s["url"] or ""} for s in R["sources"]])
 
 
+def _delta_src_ko(mm: dict[str, Any]) -> str:
+    src = "시장 자료로 추정" if mm.get("delta_source") == "market_implied" else "성향별 고정값"
+    return f"{src}한 값이 상한 8을 넘어 상한 적용" if mm.get("delta_capped") else src
+
+
 def parameters_table(R):
     pp, pb, mm, d = R["parameters"]["portfolio"], R["parameters"]["backtest"], R["portfolio"]["market_model"], R["request"]["derived"]
     bfx = R["money_krw"].get("backtest_fx") or {}
@@ -600,6 +653,8 @@ def parameters_table(R):
         dtxt = f"{base_txt} × 성향 배수 {mm.get('delta_multiplier')}{ddm} = {mm['delta']}"
     else:
         dtxt = f"성향별 상수{ddm} = {mm['delta']}"
+    if mm.get("delta_capped"):  # 곱한 값이 상한을 넘었으면 '= 8.0' 이 거짓 등식이 된다
+        dtxt = dtxt.rsplit(" = ", 1)[0] + f" → 상한 8 적용 = {mm['delta']}"
     ex = R["parameters"].get("execution_rule") or {}
     desc = R["parameters"].get("descriptor") or {}
     rows = [{"k": "분석 기준일", "v": str(d["as_of"])},
@@ -647,11 +702,19 @@ def notices_table(R):
     return table("분석 중 확인한 점 (조건을 바꾸면 달라질 수 있는 것)", [("msg", "내용", "text"), ("when", "횟수·기간", "text")], rows)
 
 
+def _mcap_limitation(R) -> str:
+    """정책 결정 7 뒤의 시가총액 처리 (예전 문구 '가치평가 항목이 비어 있는 종목은 0' 은 대체값·제외 규칙과 달랐다, 검토)."""
+    days = int(((R.get("parameters") or {}).get("market") or {}).get("mcap_fallback_max_days") or 730)
+    span = "2년" if days == 730 else f"{days}일"
+    return (f"시가총액은 valuation_daily 의 유통주식수 × 종가를 씁니다. 그날 시가총액이 비어 있으면 그 전에 마지막으로 알려진 유통주식수(최대 {span} 전 기준) × 그날 종가로 추정하고, "
+            "그래도 없으면 시가총액비중에서 0 으로 두며 최소 시가총액 조건이 있으면 후보에서 뺍니다.")
+
+
 def limitations(R):
     desc = R["parameters"].get("descriptor") or {}
-    out = [f"구성종목 사전은 {desc.get('snapshot_date', '최근')} 스냅샷 하나를 모든 과거 기준일에 적용했습니다. 당시 지수에 없던 종목이나 이후 상장폐지된 종목을 반영하지 못하는 생존 편향이 있습니다.",
+    out = [f"구성종목 사전은 {desc.get('snapshot_date', '최근')} 스냅샷 하나를 모든 과거 기준일에 적용했습니다. 그 사이 지수에서 빠지거나 상장폐지된 종목은 과거 후보에 없고(생존 편향), 당시에는 지수에 없던 종목이 과거 후보에 들어갈 수 있습니다(선견 편향).",
            "뉴스 뷰는 팀 데이터베이스의 공시 목록(사건 종류·제목·이용 가능일만, 본문 없음)과 뉴스 헤드라인(본문 없음)만 근거로 하며, 근거가 없는 날짜·종목은 기준 비중을 유지합니다. 공시는 사건의 존재만 알려 주고, 뉴스·공시가 성과의 원인이라고 단정하지 않습니다.",
-           "시가총액비중은 valuation_daily 의 유통주식수 × 종가를 쓰며, 가치평가 항목이 비어 있는 종목은 0 으로 처리됩니다.",
+           _mcap_limitation(R),
            "세금, 환전 수수료, 호가 차이(슬리피지)는 반영하지 않았습니다.",
            "리밸런싱일 t 의 비중은 t−1 까지 자료로 계산하고 t 종가로 체결했다고 가정합니다. 실제 체결 가격·시점은 다를 수 있습니다.",
            "회사 소개는 데이터베이스의 사업 설명 첫 문장이며, 이 리포트는 기업의 재무 상태나 경쟁력을 평가하지 않습니다."]  # fmt: skip
@@ -697,7 +760,8 @@ def weights_compare(R) -> dict[str, Any]:
     cash = {c["id"]: max(0.0, 1 - sum(rows_w[c["id"]].values())) for c in cols}
     base_id = R["portfolio"]["targets"]["baseline"]["id"]
     return {"type": "weights_compare", "title_ko": "비중 규칙별 구성 (백테스트 시작일)", "columns": cols, "rows": rows, "cash": cash, "ex_ante": ex_ante, "baseline_id": base_id,
-            "note_ko": "규칙 4개는 기준 비중에 종목·섹터 상한을 적용한 값, 뉴스 뷰는 기준 비중을 Black-Litterman 으로 조정한 값입니다."}  # fmt: skip
+            "note_ko": ("규칙 4개는 기준 비중에 종목·섹터 상한을 적용한 값, 뉴스 뷰는 기준 비중을 Black-Litterman 으로 조정한 값입니다." if R["portfolio"]["targets"]["portfolios"]
+                        else "규칙 4개는 기준 비중에 종목·섹터 상한을 적용한 값입니다 (뉴스 뷰 구성 없음).")}  # fmt: skip  (015: 뉴스 끔인데 없는 열을 설명했다)
 
 
 def timeline(R, chosen) -> dict[str, Any] | None:
@@ -720,13 +784,14 @@ def timeline(R, chosen) -> dict[str, Any] | None:
               "benchmark_value_usd": cp["money"]["benchmark_value_usd"], "net_invested_usd": cp["money"]["net_invested_usd"],
               "since_last": ({k: cp["since_last"].get(k) for k in ("return", "benchmark_return", "excess", "max_drawdown")} if cp.get("since_last") else None),
               "n_trades": len(cp.get("trades") or []), "turnover": cp.get("turnover"), "commission_usd": cp.get("commission_usd"),
-              "to_date": ({k: (cp["to_date"] or {}).get(k) for k in ("total_return", "cagr", "max_drawdown", "sharpe", "excess_cagr")} if cp.get("to_date") else None),
+              "to_date": _to_date_view(cp.get("to_date")),
               "cash_after": cp["weights"].get("cash_after"), "news": None, "views": [], "top_delta": []}  # fmt: skip
         if bl is not None and d in (wf.get("news_summary") or {}):
             ns = wf["news_summary"][d]
             views = bl["views_by_date"].get(d, [])
             it["news"] = {"n_articles": ns.get("n_articles", 0), "n_disclosures": ns.get("n_disclosures", 0), "n_tickers_with_evidence": ns.get("n_tickers_with_evidence", ns.get("n_tickers_with_news", 0)),
-                          "n_views": len(views), "fallback": d in (bl.get("fallback_dates") or []), "window": ns.get("window"), "disclosure_window": ns.get("disclosure_window")}  # fmt: skip
+                          "n_views": len(views), "fallback": d in (bl.get("fallback_dates") or []), "window": shown_window(ns.get("window")),
+                          "disclosure_window": shown_window(ns.get("disclosure_window"))}  # fmt: skip
             it["views"] = [{"summary_ko": v.get("summary_ko", ""), "confidence": v.get("confidence"), "evidence_ids": v.get("evidence_ids", []), "evidence_type": v.get("evidence_type")} for v in views]
             if wf_base is not None and d in bl["weights_by_date"] and d in wf_base["weights_by_date"]:
                 w, b = bl["weights_by_date"][d], wf_base["weights_by_date"][d]
@@ -781,6 +846,19 @@ def companies(R, chosen) -> dict[str, Any]:
             "note_ko": f"{w_note} 순위는 그 기준일 선정 종목 안의 선정 지표 순위이고, 비어 있으면 그 기준일에는 선정되지 않은 종목입니다. 인용 ID 를 누르면 출처를 볼 수 있습니다."}  # fmt: skip
 
 
+_DASH_RANK = {"must_include_not_in_universe": 0, "exclude_sector_unknown": 0, "added_tickers_ignored": 0, "backtest_start_shifted": 1, "backtest_start_clamped": 1,
+              "fewer_holdings_at_start": 2, "weight_capacity": 3, "too_few_eligible": 4, "too_few_with_metric": 4, "too_few_candidates": 4}
+
+
+def dashboard_notices(R, k: int = 3) -> list[str]:
+    """대시보드는 공지 k 개만 보인다 → 요청이 반영되지 않은 사실과, 백테스트 종목 수·현금을 설명하는 공지를 먼저 (011: 현금 50% 의 원인 공지가 5번째라 잘렸다).
+    결론 옆 기간 메모(period_note)에 이미 나온 공지는 빼서 같은 문장이 두 번 자리를 차지하지 않게 (011·010 검토)."""
+    pn = period_note(R) or ""
+    users = sorted((n for n in (R.get("notices") or []) if n.get("level", "user") == "user" and n["message_ko"] not in pn),
+                   key=lambda n: _DASH_RANK.get(n.get("code"), 9))  # fmt: skip
+    return [n["message_ko"] for n in users][:k]
+
+
 def build_summary(R, chosen: str, interp: dict[str, Any], narr: dict[str, Any]) -> dict[str, Any]:
     """'한눈에 보기' 대시보드 자료: 판단·KPI(비교지수 동반)·배분·미니 시계열·검증·다음 행동."""
     p = find(R, chosen)
@@ -811,7 +889,7 @@ def build_summary(R, chosen: str, interp: dict[str, Any], narr: dict[str, Any]) 
     r1c = next((c for c in (res or {}).get("checks", []) if c["rule"] == "R1"), None)
     r1 = ({"mdd": r1c["value"], "tolerance": r1c["threshold"], "benchmark_mdd": abs(bh["max_drawdown"] or 0.0), "excess": round(max(0.0, (r1c["value"] or 0) - (r1c["threshold"] or 0)), 6),
            "status": r1c["status"], "match_target": R["validation"]["criteria"].get("match_target")} if r1c else None)  # fmt: skip
-    user_notices = [n["message_ko"] for n in (R.get("notices") or []) if n.get("level", "user") == "user"][:3]
+    user_notices = dashboard_notices(R)
     kp = kpis(R, chosen)
     bench_vals = {"final_value": bh["final_value_usd"], "cagr": (bm["return"]["total_return"] if not R["backtest"]["period"].get("annualized_reliable", True) else bh["cagr"]),
                   "excess": None, "mdd": bh["max_drawdown"], "sharpe": bh["sharpe"], "view_hit": None}  # fmt: skip
@@ -900,8 +978,16 @@ def sample_series(dates: list[str], series: dict[str, dict[str, Any]], max_point
         peak = max(range(trough + 1), key=lambda i: idx[i] if i < len(idx) and idx[i] is not None else -1) if idx else 0
         keep |= {trough, peak}
         pinned = [dates[peak], dates[trough]]
+    # 다른 시리즈(비교지수 등)의 최저점도 고정한다: 표본에서 빠지면 차트 최저점이 KPI·본문의 MDD 와 달랐다 (010 QQQ: 차트 -21.3% vs 22.8%)
+    troughs = set()
+    for ser in series.values():
+        d = ser.get("drawdown")
+        if isinstance(d, list) and len(d) == n and any(v is not None for v in d):
+            troughs.add(min(range(n), key=lambda i: d[i] if d[i] is not None else 0))
+    keep |= troughs
     order = sorted(keep)
     out_series = {}
     for sid, ser in series.items():
         out_series[sid] = {k: ([v[i] for i in order] if isinstance(v, list) and len(v) == n else v) for k, v in ser.items()}
-    return [dates[i] for i in order], out_series, {"method": "stride", "stride": stride, "full_points": n, "points": len(order), "pinned": pinned}
+    return [dates[i] for i in order], out_series, {"method": "stride", "stride": stride, "full_points": n, "points": len(order), "pinned": pinned,
+                                                   "pinned_troughs": sorted(dates[i] for i in troughs)}  # fmt: skip

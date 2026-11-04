@@ -192,17 +192,23 @@ def linked_contribution(w: pd.DataFrame, r: pd.DataFrame, idx: pd.Series, values
 
 
 def composition_metrics(sec_w: pd.DataFrame, asset_px: pd.DataFrame, targets: dict, sectors: dict, max_stock, max_sector, drift_tol: float, idx: pd.Series,
-                        values: pd.Series | None = None, flows: pd.Series | None = None):  # fmt: skip
-    cols = [c for c in targets if c in sec_w.columns]
+                        values: pd.Series | None = None, flows: pd.Series | None = None, targets_by_date: dict | None = None):  # fmt: skip
+    names = list(targets) + [c for v in (targets_by_date or {}).values() for c in v if c not in targets]
+    cols = [c for c in dict.fromkeys(names) if c in sec_w.columns]
     w = sec_w[cols].fillna(0.0)
     r = asset_px[cols].pct_change().reindex(w.index).fillna(0.0)
     contrib, resid = linked_contribution(w, r, idx, values, flows)  # 연결 안 한 단순합은 기간 수익률과 합이 안 맞아 보고서 막대가 틀렸다 (시나리오 002·003)
     avg = w.mean()
     sec_set = {sectors[c] for c in cols}
     sec_w_t = pd.DataFrame({s: w[[c for c in cols if sectors[c] == s]].sum(axis=1) for s in sec_set})
-    tgt = pd.Series(targets)[cols]
+    if targets_by_date:  # walk-forward: 그날 적용 중인 목표와 비교 (예전에는 마지막 목표 하나와 비교해 드리프트가 두 배로 보였다, 008)
+        tb = pd.DataFrame({pd.Timestamp(k): pd.Series(v, dtype=float) for k, v in targets_by_date.items()}).T.sort_index()
+        tgt = tb.reindex(columns=cols).fillna(0.0).reindex(w.index, method="ffill").bfill().fillna(0.0)
+        sec_tgt = pd.DataFrame({s: tgt[[c for c in cols if sectors[c] == s]].sum(axis=1) for s in sec_w_t.columns})
+    else:
+        tgt = pd.Series(targets, dtype=float).reindex(cols).fillna(0.0)
+        sec_tgt = pd.Series({s: tgt[[c for c in cols if sectors[c] == s]].sum() for s in sec_w_t.columns})
     drift = (w - tgt).abs().max().max()
-    sec_tgt = pd.Series({s: tgt[[c for c in cols if sectors[c] == s]].sum() for s in sec_w_t.columns})
     sdrift = (sec_w_t - sec_tgt).abs().max().max()
     ac = contrib.abs().sort_values(ascending=False)
     tot = float(avg.sum())
@@ -332,7 +338,7 @@ def view_diagnostics_next_window(views_by_date, asset_px: pd.DataFrame, rb_dates
 
 # ───────────────────────── all ─────────────────────────
 def compute_all(raw, bench_idx, asset_px, targets, sectors, rebal_dates, rf, target_return, max_stock, max_sector, xirr_fn,
-                settings: BacktestSettings, baseline_idx=None, views=None, implied=None, as_of=None, end=None):  # fmt: skip
+                settings: BacktestSettings, baseline_idx=None, views=None, implied=None, as_of=None, end=None, targets_by_date=None):  # fmt: skip
     td = settings.trading_days
     idx, values, flows = raw["index"], raw["values"], raw["flows"]
     r = daily_returns(idx)
@@ -342,7 +348,7 @@ def compute_all(raw, bench_idx, asset_px, targets, sectors, rebal_dates, rf, tar
     dd_ = downside_deviation(r, rf, te_)
     var, cvar = var_cvar(mr)
     comp = composition_metrics(raw["security_weights"], asset_px, targets, sectors, max_stock, max_sector, settings.drift_tolerance, idx,
-                               values=raw.get("values"), flows=raw.get("flows"))  # fmt: skip
+                               values=raw.get("values"), flows=raw.get("flows"), targets_by_date=targets_by_date)  # fmt: skip
     m = {
         "return": {"total_return": _r(total_return(idx)), "cagr": _r(cg), "best_month": _r(mr.max()), "worst_month": _r(mr.min()),
                    "positive_months_ratio": _r((mr > 0).mean()), "rolling_12m": rolling_12m(idx, target_return, td)},

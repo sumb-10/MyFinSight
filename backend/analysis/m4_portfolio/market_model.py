@@ -61,6 +61,9 @@ def build_market_model(
         notes.append(f"market cap missing for {missing_mc}: treated as 0 in market_cap weights")
     capw = P.cap_weights(tk, mcap)
     notes.append("cap_weights use valuation_daily market_cap (shares × close) as of the day before construction, USD converted")
+    est = view.market_cap_estimated(tk) if hasattr(view, "market_cap_estimated") else {}
+    if est:  # 시가총액이 빈 종목은 직전 주식수 × 그날 종가 추정치로 비중을 정했다 (후보 필터와 같은 값)
+        notes.append(f"cap_weights use estimated market cap (last known shares × close) for {sorted(est)}")
     tol = req["risk"]["risk_tolerance"]
     dd_tol = float(req["risk"].get("max_drawdown_tolerance") or ps.delta_dd_ref_tol)
     dd_mult = drawdown_delta_multiplier(dd_tol, ps)  # 라운드 5: 허용 낙폭이 작을수록 위험회피 ↑ (낙폭을 합격 기준 대신 구성 입력으로)
@@ -74,12 +77,13 @@ def build_market_model(
         d_base = max(ps.delta_floor, d_mkt)
         delta = round(min(d_base * mult * dd_mult, 8.0), 4)
         delta_meta = {"delta_source": "market_implied", "delta_market": round(d_mkt, 4), "delta_base": round(d_base, 4), "delta_multiplier": mult,
-                      "delta_window": d_win, "delta_dd_multiplier": dd_mult, "delta_tolerance": dd_tol}  # fmt: skip
+                      "delta_window": d_win, "delta_dd_multiplier": dd_mult, "delta_tolerance": dd_tol,
+                      "delta_capped": d_base * mult * dd_mult > 8.0}  # 상한 8 이 값을 정했으면 리포트가 '시장 자료로 추정' 이라고만 쓰지 않게 (009)  # fmt: skip
         notes.append(f"delta = max(market-implied {d_mkt:.2f} ({bench}, {d_win['start']}~{d_win['end']}), floor {ps.delta_floor}) × {mult} ({tol}) × {dd_mult} (drawdown tolerance {dd_tol:.0%}) = {delta} (cap 8)")
     else:
         d_base = max(ps.delta_floor, ps.risk_aversion[tol])
         delta = round(min(d_base * dd_mult, 8.0), 4)
-        delta_meta = {"delta_source": "fixed", "delta_base": round(d_base, 4), "delta_dd_multiplier": dd_mult, "delta_tolerance": dd_tol}
+        delta_meta = {"delta_source": "fixed", "delta_base": round(d_base, 4), "delta_dd_multiplier": dd_mult, "delta_tolerance": dd_tol, "delta_capped": d_base * dd_mult > 8.0}
     total = 1.0 - cons.get("min_cash_ratio", 0)
     max_stock, max_sector = cons["max_weight_per_stock"], cons["max_weight_per_sector"]
     capacity = P.weight_capacity(sec_code, max_stock, max_sector)

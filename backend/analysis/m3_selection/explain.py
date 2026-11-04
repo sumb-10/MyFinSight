@@ -5,9 +5,11 @@
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Any
 
+from backend.analysis.common.labels import theme_ko
 from backend.analysis.common.llm import LlmClient, messages_from_prompts
 from backend.analysis.common.prompts import load_prompts
 from backend.analysis.m2_data.news import EvidenceWindow
@@ -35,6 +37,18 @@ def explain(
     news: EvidenceWindow | None = None, warnings_ko: list[str] | None = None) -> dict[str, Any]:
     it = intent.model_dump(mode="json") if isinstance(intent, IntentSpec) else intent
     reason = {r.ticker: r.reason_ko for r in tagging.tagged}
+    # 판정 테마는 의도의 한국어 테마 이름으로 (013: theme_ko 는 제외 테마만 알아 'us high dividend income' 을 넘겼고, 설명이 없는 테마 '미국 고배당 소득' 을 지어냈다)
+    label = {t["id"]: t.get("label_ko") or theme_ko(t["id"]) for t in (it.get("interpretation") or {}).get("themes") or [] if t.get("id")}
+    themes = {r.ticker: ", ".join(label.get(t) or theme_ko(t) for t in r.themes) for r in tagging.tagged}
+    asc = sel.summary.get("direction") == "asc"
+
+    def _mk(x) -> float:
+        v = x.metric_value
+        return float("inf") if v is None or not math.isfinite(float(v)) else (float(v) if asc else -float(v))
+
+    # 순위 = 선정 종목 안의 지표 순위 (선정 순서가 아니라). 필수 포함 종목은 선정 순서상 맨 앞이라 '첫 순위' 라고 썼다 (010 VRTX, 실제 5위).
+    # 지표 자료가 없는 필수 포함 종목은 순위가 없다('–'): 꼴찌 순위를 주면 '순위를 매기지 못했다' 는 공지와 어긋난다
+    mrank = {x.ticker: i + 1 for i, x in enumerate(sorted((x for x in sel.selected if math.isfinite(_mk(x))), key=_mk))}
     fact_ids = {f["id"] for f in facts}
     by_ticker_facts: dict[str, list[dict[str, Any]]] = {}
     for f in facts:
@@ -54,7 +68,8 @@ def explain(
             dl = (f" / 공시({(news.end - news.dc_start).days if news.dc_start else 0}일): " + ", ".join(f"{k} {n}건" for k, n in counts.items()) + "; "
                   + "; ".join(f"[{r['evidence_id']}] {_dc_date(r)} {r['event_label_ko']} ({r['title'][:50]})" for r in recs))
         mv = M.display_metric(s.metric_name, s.metric_value)
-        lines.append(f"{s.rank} | {s.ticker} | {s.name} | {s.sector} | {mv} | {s.theme_confidence} | {reason.get(s.ticker, '')} | 근거: {fl}{nl}{dl}")
+        rk = (str(mrank[s.ticker]) if s.ticker in mrank else "–") + (" (필수 포함)" if s.forced else "")
+        lines.append(f"{rk} | {s.ticker} | {s.name} | {s.sector} | {mv} | {s.theme_confidence} | {themes.get(s.ticker, '')} | {reason.get(s.ticker, '')} | 근거: {fl}{nl}{dl}")
     system, user = load_prompts(
         STAGE, summary_ko=it["interpretation"]["summary_ko"], explanation_level=it["report_settings"]["explanation_level"],
         metric=M.METRIC_KO.get(sel.summary["metric"], sel.summary["metric"]), direction=sel.summary["direction"], as_of=sel.summary["as_of"], selected_block="\n".join(lines),

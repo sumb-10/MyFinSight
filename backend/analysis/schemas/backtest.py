@@ -89,7 +89,7 @@ class SelectionSpec(BaseModel):
     metric: str
     tickers: list[str] = Field(min_length=1)
     table: list[SelectionRow]
-    diff_vs_original: dict[str, list[str]]
+    diff_vs_original: dict[str, list[str] | dict[str, str]]  # added·removed 목록 + removed_reasons {종목: 그날 사유}
     infeasibility: dict | None = None
     sector_overflow: dict | None = None
 

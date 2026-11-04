@@ -174,6 +174,36 @@ class AnalysisReadersMixin:
 
         return self._read("가치평가(기준일)", run)  # type: ignore[attr-defined]
 
+    def get_shares_asof(
+        self, asset_ids: Sequence[str], d: date, *, max_staleness_days: int = 730
+    ) -> dict[str, dict[str, Any]]:
+        """종목별 d 이하에서 shares_outstanding 이 있는 마지막 valuation_daily 행 (d − max_staleness_days 보다 오래된 것은 제외).
+
+        시가총액 공백 구간의 대체용: {date, shares_outstanding, shares_as_of(주식수 자체의 기준일), split_factor, currency}. d 뒤 행은 읽지 않는다 (선견 없음).
+        """
+        v = T.valuation_daily
+        lo = d - timedelta(days=max_staleness_days)
+        ids = sorted(set(asset_ids))
+
+        def run(conn: Any) -> dict[str, dict[str, Any]]:
+            out: dict[str, dict[str, Any]] = {}
+            for part in _chunks(ids):
+                sub = (
+                    select(v.c.asset_id, func.max(v.c.date).label("d"))
+                    .where(v.c.asset_id.in_(part), v.c.date <= d, v.c.date >= lo, v.c.shares_outstanding.is_not(None))
+                    .group_by(v.c.asset_id)
+                    .subquery()
+                )
+                q = select(v.c.asset_id, v.c.date, v.c.shares_outstanding, v.c.shares_as_of, v.c.split_factor, v.c.currency).join(
+                    sub, (sub.c.asset_id == v.c.asset_id) & (sub.c.d == v.c.date)
+                )
+                for r in conn.execute(q):
+                    out[r.asset_id] = {"date": r.date, "shares_outstanding": float(r.shares_outstanding), "shares_as_of": r.shares_as_of,
+                                       "split_factor": None if r.split_factor is None else float(r.split_factor), "currency": r.currency}  # fmt: skip
+            return out
+
+        return self._read("주식수(기준일 이하)", run)  # type: ignore[attr-defined]
+
     def constituents_at(
         self, index: IndexCode | str, d: date
     ) -> tuple[date | None, list[IndexConstituent], list[str]]:
