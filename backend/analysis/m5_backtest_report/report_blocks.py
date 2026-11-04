@@ -422,7 +422,7 @@ def walkforward_blocks(R):
         w, base = bl["weights_by_date"][d], base_p["weights_by_date"][d]
         top = sorted(((t, w[t] - base[t]) for t in w if t in base), key=lambda x: -abs(x[1]))[:3]
         rows.append({"date": d, "window": " ~ ".join(ns.get("window", ["", ""])), "articles": ns.get("n_articles", 0), "tickers": ns.get("n_tickers_with_news", 0),
-                     "views": len(views), "delta": ", ".join(f"{t} {x:+.1%}" for t, x in top) if views else "기준 비중 유지 (뉴스 부족)"})  # fmt: skip
+                     "views": len(views), "delta": ", ".join(f"{t} {x:+.1%}" for t, x in top) if views else "기준 비중 유지"})  # fmt: skip
     blocks = [table("리밸런싱 시점별 뉴스와 비중 변화", [("date", "리밸런싱일", "text"), ("window", "뉴스 창", "text"), ("articles", "기사 수", "int"), ("tickers", "뉴스 있는 종목", "int"),
                     ("views", "뷰 수", "int"), ("delta", "기준 대비 주요 변화", "text")], rows)]  # fmt: skip
     cards = []
@@ -438,7 +438,7 @@ def walkforward_blocks(R):
             h = p["headline"]
             blocks.append({"type": "callout", "tone": "info", "title_ko": p["name_ko"],
                            "text_ko": f"기간 수익률 {h['period_return']:+.2%}, 최대낙폭 {h['max_drawdown']:.2%}, 최종 평가금액 {h['final_value_usd']:,.0f} USD"
-                                      + (f" · 뉴스 부족으로 기준 비중을 쓴 날짜: {', '.join(bl['fallback_dates'])}" if pid == bl["id"] and bl["fallback_dates"] else "")})  # fmt: skip
+                                      + (f" · 기준 비중을 쓴 날짜: {', '.join(bl['fallback_dates'])}" if pid == bl["id"] and bl["fallback_dates"] else "")})  # fmt: skip
     return blocks
 
 
@@ -607,8 +607,11 @@ def timeline(R, chosen) -> dict[str, Any] | None:
                 w, b = bl["weights_by_date"][d], wf_base["weights_by_date"][d]
                 it["top_delta"] = [{"ticker": t, "delta": round(w[t] - b[t], 6)} for t in sorted((t for t in w if t in b), key=lambda t: -abs(w[t] - b[t]))[:3]]
         items.append(it)
+    note = "시점을 고르면 그날의 보유 종목·거래·뷰를 자세히 볼 수 있습니다. 종목은 백테스트 시작일의 선정 종목을 유지하며, 평가금액은 적립을 포함합니다."
+    if p.get("mode") == "static":
+        note += " 이 구성의 목표 비중은 기간 중 고정이며, 리밸런싱 시 매매로 해당 비중을 되맞춥니다."
     return {"type": "timeline", "title_ko": f"리밸런싱 타임라인 ({pf_label(p)})", "portfolio_id": chosen, "walkforward": bl is not None, "items": items,
-            "note_ko": "시점을 고르면 그날의 보유 종목·거래·뷰를 자세히 볼 수 있습니다. 평가금액은 적립을 포함한 값입니다."}  # fmt: skip
+            "note_ko": note}  # fmt: skip
 
 
 def _paragraphs(text: str) -> list[str]:

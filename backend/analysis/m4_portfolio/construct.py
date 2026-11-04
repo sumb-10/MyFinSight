@@ -100,4 +100,7 @@ def construct(
     ports, w2, params = build_bl(model, base, sets, req, intent, desc, settings, id_prefix=id_prefix, name_prefix=name_prefix)
     res.bl_portfolios, res.view_sets, res.params = ports, sets, params
     res.warnings += w2
+    if ports and any(a.startswith("optimizer_failed") for a in ports[0]["active_constraints"]):
+        res.fallback = True
+        res.fallback_reason_ko = "뉴스 뷰 비중 최적화가 수렴하지 않아 기준 비중을 사용"
     return res

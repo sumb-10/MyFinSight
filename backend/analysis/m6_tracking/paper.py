@@ -246,7 +246,7 @@ class PaperService:
             if res.bl_portfolios:
                 p = res.bl_portfolios[0]
                 info["views"] = [{"summary_ko": v.get("summary_ko") or v.get("text_ko") or str(v.get("view", "")), "evidence_ids": list(v.get("evidence_ids", [])), "confidence": float(v.get("confidence", 0) or 0)}
-                                 for v in (res.view_sets[0].get("views", []) if res.view_sets else [])]  # fmt: skip
+                                 for v in p.get("views_applied", [])]  # fmt: skip
                 w, cash = dict(p["weights"]), float(p.get("cash_weight") or 0.0)
             else:
                 w, cash = dict(res.baseline_weights), float(res.baseline.get("cash_weight") or 0.0)

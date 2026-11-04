@@ -168,7 +168,7 @@ def st_targets(ctx: RunContext) -> str:
     ctx.outputs["10_target_portfolios"] = targets.model_dump(mode="json")
     ctx.warn_all("10_targets", list(res.warnings))
     _warn_optimizer(ctx, "10_targets", res.bl_portfolios)
-    return f"비중 규칙 {len(res.baselines['portfolios'])}개 + 뉴스 반영 구성 {len(res.bl_portfolios)}개 ({'뉴스 뷰 적용' if not res.fallback else '근거 부족으로 기준 비중 유지'})"
+    return f"비중 규칙 {len(res.baselines['portfolios'])}개 + 뉴스 반영 구성 {len(res.bl_portfolios)}개 ({'뉴스 뷰 적용' if not res.fallback else '기준 비중 유지'})"
 
 
 def st_walkforward(ctx: RunContext) -> str:
@@ -215,6 +215,7 @@ def st_walkforward(ctx: RunContext) -> str:
         else:
             bl["weights_by_date"][key] = res.baseline_weights
             bl["views_by_date"][key] = []
+        if res.fallback:
             bl["fallback_dates"].append(key)
     out = {"request_id": ctx.request_id, "stage": "10w_target_paths", "dates": [str(d) for d in dates], "tickers": tickers,
            "portfolios": [*tmpl.values(), bl], "market_models_by_date": models, "news_summary": news_summary,

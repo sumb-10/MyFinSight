@@ -116,8 +116,18 @@ def generate_views(
                 v["expected_return_annual"] = min(max(r, lo), hi)
             v.setdefault("horizon_months", 12)
             v.setdefault("rationale_ko", "")
-            ids = [i for i in v.get("evidence_ids", []) if i in known_ev]
-            missing = [i for i in v.get("evidence_ids", []) if i not in known_ev]
+            ids, missing = [], []
+            for raw_id in v.get("evidence_ids", []):
+                eid = str(raw_id).strip()
+                if eid not in known_ev and eid.isdecimal():
+                    # 접두사 누락만 복원하며, 뉴스·공시 ID 가 겹치면 추측하지 않는다.
+                    matches = [prefix + eid for prefix in ("ev", "dc") if prefix + eid in known_ev]
+                    if len(matches) == 1:
+                        eid = matches[0]
+                if eid in known_ev:
+                    ids.append(eid)
+                else:
+                    missing.append(raw_id)
             if missing:
                 warnings.append(f"{sid}: unknown evidence ids {missing} removed")
             if not ids:

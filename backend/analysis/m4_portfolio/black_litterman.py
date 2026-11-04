@@ -42,7 +42,8 @@ def build_bl(
     sec_code, sec_name = sector_lists(desc, tk)
     bp = next(p for p in base["portfolios"] if p["id"] == base["chosen_baseline"])
     wb = np.array([bp["weights"][t] for t in tk])
-    total = float(wb.sum())  # 기준 비중의 투자 총액 (상한 용량·현금 비율 반영)
+    # 반올림된 종목 비중의 합은 상한 용량을 초과할 수 있으므로 원래 투자 총액을 쓴다.
+    total = float(mm.get("invested_total", 1.0 - bp["cash_weight"]))
     sec_names = dict(zip(sec_code, sec_name, strict=True))
 
     def label(x: str) -> str:
@@ -63,13 +64,14 @@ def build_bl(
         Pm, Q, C = P.build_PQ(s["views"], tk)
         mu, cov_bl = P.black_litterman(cov, pi, Pm, Q, C, tau)
         w, active = P.optimize_utility(mu, cov_bl, delta, wb, max_stock, max_sector, sec_code, max_tilt, total, min_weight=ps.min_weight)
+        failed = any(x.startswith("optimizer_failed") for x in active)
         d = w - wb
         pv = s.get("narrative_ko", "") + "\n" + "\n".join("- " + view_summary(v) for v in s["views"])
         ports.append(Portfolio(
             id=f"{id_prefix}_{k:02d}", kind="black_litterman", name_ko=f"{name_prefix} {k}: {s.get('title_ko', '')}",
             rule_ko="Black-Litterman (기준 비중 prior + 뉴스 근거 뷰)", scenario_id=s.get("scenario_id", f"set{k}"), title_ko=s.get("title_ko"),
             portfolio_view=pv,
-            views_applied=[{"summary_ko": view_summary(v), "type": v["type"], "long": v["long"], "short": v.get("short", []),
+            views_applied=[] if failed else [{"summary_ko": view_summary(v), "type": v["type"], "long": v["long"], "short": v.get("short", []),
                             "expected_return_annual": v["expected_return_annual"], "confidence": v["confidence"],
                             "rationale_ko": v.get("rationale_ko", ""), "evidence_type": v.get("evidence_type", "news"),
                             "evidence_ids": v.get("evidence_ids", [])} for v in s["views"]],
