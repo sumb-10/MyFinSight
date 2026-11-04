@@ -264,9 +264,10 @@ def evaluate(ctx, p, raw, kind, bench_raw, baseline_idx, *, implied_by_date=None
                             ctx["as_of"], ctx["end"], s, targets_by_date=tbd)  # fmt: skip  (품질 제외를 뺀 날짜별 목표: 체결 비중과 같은 기준)
     m = res["metrics"]
     hits = [v["hit"] for v in res["view_diagnostics"] if v.get("hit") is not None]  # 12개월이 끝나지 않은 뷰(판정 보류)는 적중률에서 뺀다
+    hits_nx = [v["hit"] for v in nxt if v.get("hit") is not None]  # 종료일에서 잘린 짧은 마지막 창(판정 보류)도 같은 방식으로 뺀다 (020)
     headline = {"final_value_usd": res["money"]["final_value_usd"], "cagr": m["return"]["cagr"], "period_return": m["return"]["total_return"],
                 "excess_cagr": m["vs_benchmark"]["excess_cagr"], "max_drawdown": m["risk"]["max_drawdown"], "sharpe": m["risk_adjusted"]["sharpe"],
-                "view_hit_ratio": _f(np.mean(hits)) if hits else None, "view_hit_ratio_next_rb": _f(np.mean([v["hit"] for v in nxt])) if nxt else None,
+                "view_hit_ratio": _f(np.mean(hits)) if hits else None, "view_hit_ratio_next_rb": _f(np.mean(hits_nx)) if hits_nx else None,
                 "annualized_reliable": len(raw["index"]) - 1 >= s.backtest.min_annualize_days}  # fmt: skip
     contrib = raw["flows"].copy()
     contrib.iloc[0] = 0.0

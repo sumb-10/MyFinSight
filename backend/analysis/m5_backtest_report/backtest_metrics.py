@@ -210,6 +210,9 @@ def composition_metrics(sec_w: pd.DataFrame, asset_px: pd.DataFrame, targets: di
         sec_tgt = pd.Series({s: tgt[[c for c in cols if sectors[c] == s]].sum() for s in sec_w_t.columns})
     drift = (w - tgt).abs().max().max()
     sdrift = (sec_w_t - sec_tgt).abs().max().max()
+    # 드리프트(|w − 목표|)가 아니라 비중 자체의 최댓값과 상한을 넘은 날 수 — 검증 R4b/R5b 문구가 실제로 본 것을 말하게 (019: 정보기술 63.1% 로 상한 55% 를 넘었는데 '상한 안에 머묾')
+    st_max, sec_max = w.max(), sec_w_t.max()
+    noise = 5e-4  # 0.05%p 안은 체결·반올림 잡음 (리밸런싱일에 상한과 같게 맞춘 비중이 1e-6 만큼 넘는 것을 세지 않게)
     ac = contrib.abs().sort_values(ascending=False)
     tot = float(avg.sum())
     avg_n = avg / tot if tot > 0 else avg  # 현금 제외 투자 비중으로 정규화 (F20: 현금 15% 면 4종목이 5.5종목으로 보였다)
@@ -217,6 +220,10 @@ def composition_metrics(sec_w: pd.DataFrame, asset_px: pd.DataFrame, targets: di
             "top3_contribution_share": _r(ac.head(3).sum() / ac.sum()) if ac.sum() > 0 else None,
             "sector_weights_avg": {s: _r(v) for s, v in sec_w_t.mean().items()},
             "max_weight_drift": _r(drift), "max_sector_drift": _r(sdrift),
+            "max_stock_weight": _r(st_max.max()) if len(st_max) else None, "max_stock_weight_ticker": str(st_max.idxmax()) if len(st_max) else None,
+            "max_sector_weight": _r(sec_max.max()) if len(sec_max) else None, "max_sector_weight_sector": str(sec_max.idxmax()) if len(sec_max) else None,
+            "days_above_stock_cap": int((w > max_stock + noise).any(axis=1).sum()), "days_above_sector_cap": int((sec_w_t > max_sector + noise).any(axis=1).sum()) if len(sec_max) else 0,
+            "n_days": int(len(w)),
             "ticker_contribution": {c: _r(contrib[c]) for c in cols}, "ticker_contribution_residual": _r(resid),
             "ticker_total_return": {c: _r(asset_px[c].iloc[-1] / asset_px[c].iloc[0] - 1) for c in cols},
             "breaches": sorted({f"stock_cap:{c}" for c in cols if (w[c] > max_stock * (1 + drift_tol)).any()}
@@ -300,15 +307,26 @@ def view_diagnostics(views, asset_px: pd.DataFrame, as_of, end, implied: dict, h
 
 
 
-def view_diagnostics_next_window(views_by_date, asset_px: pd.DataFrame, rb_dates, end, implied_by_date, implied_start):
+NEXT_RB_MIN_TAIL_ROWS = 20  # 거래일 ≈ 1개월. 마지막 리밸런싱일 뷰의 '다음 리밸런싱까지' 창이 종료일에서 잘려 이보다 짧으면 판정 보류
+
+
+def view_diagnostics_next_window(views_by_date, asset_px: pd.DataFrame, rb_dates, end, implied_by_date, implied_start, *,
+                                 min_tail_rows: int = NEXT_RB_MIN_TAIL_ROWS):  # fmt: skip
     """뷰를 세운 리밸런싱일 d 부터 다음 리밸런싱일(없으면 종료일)까지의 실현 수익 vs 뷰 방향 (라운드 5).
 
     365일 지평(`view_diagnostics`)과 달리 '그 뷰로 비중을 바꾼 기간' 안에서 맞았는지를 본다.
     absolute 뷰는 기간에 비례한 내재 수익 대비, relative 뷰는 long−short 가 기간에 비례한 사전 차이보다 컸나.
+
+    다음 리밸런싱일이 창 안에 없는 마지막 창은 종료일에서 잘린 것이다. 그 창이 min(min_tail_rows, 리밸런싱 간격 중앙값) 거래일보다 짧으면
+    판정하지 않는다(hit=None, pending=True) — 적중률에서 빠진다. 020: 연 1회 리밸런싱의 마지막 뷰 4개를 종료일까지 8거래일로 채점해
+    '다음 리밸런싱까지 43.8%' 가 됐다 (같은 뷰를 12개월 지표는 판정 보류로 뺐다). 간격이 1개월보다 짧은 규칙(2주)은 그 간격이 기준.
     """
     out = []
     rbs = sorted(pd.Timestamp(d) for d in (rb_dates or []))
     end_ts = pd.Timestamp(end)
+    pos = sorted({int(asset_px.index.searchsorted(x)) for x in {*(pd.Timestamp(d) for d in (views_by_date or {})), *rbs} if x <= end_ts})
+    gaps = [b - a for a, b in zip(pos, pos[1:], strict=False) if b > a]
+    min_rows = min(min_tail_rows, float(np.median(gaps))) if gaps else min_tail_rows
     for d in sorted(views_by_date or {}):
         vs = views_by_date[d] or []
         if not vs:
@@ -318,6 +336,7 @@ def view_diagnostics_next_window(views_by_date, asset_px: pd.DataFrame, rb_dates
         px = asset_px.loc[d0:min(nxt, end_ts)]
         if len(px) < 2:
             continue
+        pending = not any(x > d0 for x in rbs) and len(px) - 1 < min_rows  # 종료일에서 잘린 짧은 마지막 창
         real = px.iloc[-1] / px.iloc[0] - 1
         days = max(1, (px.index[-1] - px.index[0]).days)
         implied = (implied_by_date or {}).get(d) or implied_start or {}
@@ -329,10 +348,10 @@ def view_diagnostics_next_window(views_by_date, asset_px: pd.DataFrame, rb_dates
                 realized = float(real[v["long"][0]])
             else:
                 realized = float(real[v["long"]].mean() - real[v["short"]].mean())
-            hit = _view_hit(v, realized, prior_annual * days / 365.0, prior_annual)
+            hit = None if pending else bool(_view_hit(v, realized, prior_annual * days / 365.0, prior_annual))
             out.append({"as_of": str(d0.date()), "window_end": str(px.index[-1].date()), "horizon": "next_rebalance", "type": v["type"],
-                        "summary_ko": v.get("summary_ko", ""), "expected_return_annual": v["expected_return_annual"], "realized": _r(realized), "hit": bool(hit),
-                        "evidence_ids": v.get("evidence_ids", [])})  # fmt: skip
+                        "summary_ko": v.get("summary_ko", ""), "expected_return_annual": v["expected_return_annual"], "realized": _r(realized), "hit": hit,
+                        "pending": pending, "evidence_ids": v.get("evidence_ids", [])})  # fmt: skip
     return out
 
 
@@ -360,7 +379,9 @@ def compute_all(raw, bench_idx, asset_px, targets, sectors, rebal_dates, rf, tar
         "vs_benchmark": relative_to(idx, bench_idx, rf, td),
         "vs_baseline": None,
         # ticker_contribution_residual = 기간 수익률 − Σ 종목 기여 (수수료·적립일 처리). 종목→값 dict 에 가짜 종목으로 넣으면 보고서·해석이 종목으로 읽어서 여기 둔다
-        "composition": {k: comp[k] for k in ["effective_n", "hhi", "top3_contribution_share", "sector_weights_avg", "max_weight_drift", "max_sector_drift", "breaches", "ticker_contribution_residual"]},
+        "composition": {k: comp[k] for k in ["effective_n", "hhi", "top3_contribution_share", "sector_weights_avg", "max_weight_drift", "max_sector_drift", "breaches", "ticker_contribution_residual",
+                                             "max_stock_weight", "max_stock_weight_ticker", "max_sector_weight", "max_sector_weight_sector", "days_above_stock_cap",
+                                             "days_above_sector_cap", "n_days"]},
         "trading": trading_metrics(raw["transactions"], raw["turnover"], rebal_dates, values, settings.commission_bps),
         "stability": rolling_metrics(idx, rf, td),
     }  # fmt: skip

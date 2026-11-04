@@ -139,6 +139,14 @@ def build_results(
 
     rm_why = (spec["selection"].get("diff_vs_original") or {}).get("removed_reasons") or {}
     removed_ko = [{"ticker": t, "name": (desc.by_ticker(t) or {}).get("name", t), "reason_ko": _why_ko(c)} for t, c in rm_why.items()]
+    # 반대 방향: 시작일 목록에는 있었지만 지금(기준일) 목록에 없는 종목의 기준일 사유 (019: PANW·SNPS 가 왜 빠졌는지 어디에도 없었다)
+    rej_now = {r["ticker"]: r["reason"] for r in sel.get("rejected") or []}
+    f_now = {f["ticker"]: f["reason"] for f in cand.get("filtered_out") or []}
+    passed_now = set(tag.get("passed_tickers") or [])
+    bt_only = [t for t in spec["selection"].get("tickers") or [] if t not in {x["ticker"] for x in sel["selected"]}]
+    bt_only_ko = [{"ticker": t, "name": (desc.by_ticker(t) or {}).get("name", t),
+                   "reason_ko": (_why_ko(rej_now[t]) if t in rej_now else _why_ko(f_now[t]) if t in f_now else
+                                 "분석 기준일 테마 판정을 통과하지 못함" if t not in passed_now else "분석 기준일 목록에 없음")} for t in bt_only]  # fmt: skip
     by_reason: dict[str, list[str]] = {}
     for f in cand.get("filtered_out") or []:
         key = str(f["reason"]).split("(")[0].split(":")[0]
@@ -160,7 +168,10 @@ def build_results(
         {"stage": "candidates", "label_ko": cand_label, "count": cand["stats"]["n_candidates"]},
         {"stage": "theme_passed", "label_ko": (f"테마 해당 판정 (분석 모델, 신뢰도 ≥ {tag['min_confidence']})" if tag.get("theme_filter_applied", True)
                                                else "제외 테마 판정 (넓은 테마라 테마 해당 여부로는 거르지 않음)"), "count": len(tag["passed_tickers"])},
-        {"stage": "with_metric", "label_ko": f"선정 지표({M_KO.get(sel['summary']['metric'], sel['summary']['metric'])}) 계산 가능·자격선 안", "count": sel["summary"]["n_with_metric"]},
+        # 필수 포함은 지표·자격선과 관계없이 담기므로 따로 적는다 (018: 지표 없는 필수 포함까지 '지표 계산 가능' 으로 셌다)
+        {"stage": "with_metric", "label_ko": f"선정 지표({M_KO.get(sel['summary']['metric'], sel['summary']['metric'])}) 계산 가능·자격선 안"
+                                             + (f" (필수 포함 {sel['summary']['n_forced']}개 포함)" if sel["summary"].get("n_forced") else ""),
+         "count": sel["summary"]["n_with_metric"]},  # fmt: skip
         # 섹터 분산은 실제로 순위를 바꿨을 때만 적는다 (015·017: 섹터 상한 100%·한 섹터 12종목인데 '섹터 분산 적용' 이라고 했다)
         {"stage": "selected_now", "label_ko": f"최종 선정 ({sel['summary']['as_of']}"
                                               + (", 섹터 분산으로 순위 일부 조정" if any(r.get("reason") == "sector_preference" for r in sel.get("rejected") or []) else "") + ")",
@@ -176,7 +187,8 @@ def build_results(
                                "warnings": sel["warnings"], "infeasibility": sel.get("infeasibility"), "sector_overflow": sel["summary"].get("sector_overflow")},
                  "explained": expl,
                  "backtest_as_of": {"as_of": spec["period"]["as_of"], "source": spec["selection"]["source"], "table": spec["selection"]["table"],
-                                    "diff_vs_original": spec["selection"]["diff_vs_original"], "removed_reasons_ko": removed_ko, "infeasibility": spec["selection"].get("infeasibility"),
+                                    "diff_vs_original": spec["selection"]["diff_vs_original"], "removed_reasons_ko": removed_ko, "backtest_only_reasons_ko": bt_only_ko,
+                                    "infeasibility": spec["selection"].get("infeasibility"),
                                     "sector_overflow": spec["selection"].get("sector_overflow")},
                  "table": table}  # fmt: skip
     mm_small = {k: mm[k] for k in ["as_of", "lookback", "tickers", "ann_vol", "cap_weights", "delta", "delta_source", "delta_market", "delta_base", "delta_multiplier",

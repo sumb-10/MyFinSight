@@ -1771,11 +1771,15 @@ def test_chosen_current_composition_news_use_is_stated(monkeypatch):
     from backend.analysis.m5_backtest_report import report as RP
 
     monkeypatch.setattr(RP.B, "current_composition", lambda R, c: ({"A": 1.0}, 0.0, "시가총액비중"))
-    no = RP._chosen_news_use({}, "market_cap", {"id": "market_cap", "kind": "template"})
+    R = {"portfolio": {"forward": {"chosen_weights": {"A": 0.6, "B": 0.4}, "portfolios": [{"id": "fwd_bl_01", "title_ko": "임상·제품 파이프라인 촉매", "weights": {"A": 0.6, "B": 0.4}},
+                                                                                         {"id": "fwd_bl_03", "weights": {"A": 0.3, "B": 0.7}}]}}}  # fmt: skip
+    no = RP._chosen_news_use(R, "market_cap", {"id": "market_cap", "kind": "template"})
     assert no["chosen_uses_news_views"] is False and "뉴스 뷰를 쓰지 않습니다" in no["chosen_news_note_ko"]
-    yes = RP._chosen_news_use({}, "bl_01", {"id": "bl_01", "kind": "black_litterman"})
-    assert yes["chosen_uses_news_views"] is True
-    assert RP._chosen_news_use({}, "dd_match_wf_bl_news", {"id": "dd_match_wf_bl_news", "kind": "matched", "base_id": "wf_bl_news"})["chosen_uses_news_views"]
+    yes = RP._chosen_news_use(R, "bl_01", {"id": "bl_01", "kind": "black_litterman"})
+    # 021: 추천 현재 구성이 어느 세트인지 밝혀 다른 세트의 뷰를 반영됐다고 쓰지 않게
+    assert yes["chosen_uses_news_views"] is True and yes["recommended_forward_id"] == "fwd_bl_01"
+    assert "'임상·제품 파이프라인 촉매'" in yes["chosen_news_note_ko"] and "fwd_bl" not in yes["chosen_news_note_ko"] and "views" not in yes["chosen_news_note_ko"]
+    assert RP._chosen_news_use(R, "dd_match_wf_bl_news", {"id": "dd_match_wf_bl_news", "kind": "matched", "base_id": "wf_bl_news"})["chosen_uses_news_views"]
 
 
 def test_round9_report_blocks_formats_and_notes():
@@ -1810,3 +1814,62 @@ def test_reused_dialog_intent_gets_current_exclusion_cleanup(monkeypatch):
     rules = ctx.outputs["02_intent"]["exclude_theme_rules"]
     assert rules[0]["gics_codes"] == [] and rules[1]["gics_codes"] == ["25301010"] and len(warned) == 2
     assert clean_exclude_rules(rules) == []  # 두 번째는 바꿀 것이 없다
+
+
+def test_news_effect_explains_views_that_could_not_move_capped_weights():
+    """018: 시작일 3종목 × 종목당 상한 14% 라 37개 날짜 모두 뉴스 뷰 BL = 기준 비중이었는데 이유가 없었다(점검은 실패로 셈).
+    모든 종목이 상한에 걸린 날은 뷰가 비중을 바꿀 수 없다 — 그 날 수와 이유를 남긴다."""
+    from backend.analysis.m5_backtest_report.report_blocks import news_effect
+
+    w = {"A": 0.14, "B": 0.14, "C": 0.14}
+    bl = {"id": "wf_bl_news", "kind": "black_litterman", "name_ko": "뉴스 뷰 BL", "headline": {"cagr": 0.05, "excess_cagr": -0.1, "max_drawdown": -0.1},
+          "views_by_date": {"2023-07-17": [{"x": 1}], "2023-08-01": [{"x": 1}]}, "weights_by_date": {"2023-07-17": dict(w), "2023-08-01": dict(w)}}
+    base = {"id": "wf_market_cap", "kind": "template", "name_ko": "시가총액비중 (walk-forward)", "headline": {"cagr": 0.05, "excess_cagr": -0.1, "max_drawdown": -0.1},
+            "weights_by_date": {"2023-07-17": dict(w), "2023-08-01": dict(w)}}  # fmt: skip
+    R = {"backtest": {"portfolios": [bl, base], "period": {}}, "portfolio": {"targets": {"baseline": {"id": "market_cap"}}},
+         "request": {"constraints": {"max_weight_per_stock": 0.14}}, "intent": {"news_tilt": {"enabled": True}}}  # fmt: skip
+    ne = news_effect(R)
+    assert ne["n_dates_capped"] == 2 and "모든 종목이 종목당 상한(14%)에 걸려" in ne["capped_note_ko"]
+
+
+def test_adj_factor_spike_is_relinked_but_ex_dividend_step_is_kept():
+    """020: 팀 DB 가 YFINANCE 가 빈 날만 KIS(수정주가 = 종가)로 채워 2022-05-09 에 한국 종목 수정주가가 배당만큼 튀었다가 돌아왔다
+    (우리금융 +34.7% → −26%, 최대낙폭 30% → 38%). 계수가 잠깐 튀었다 돌아오면 앞의 계수로 이어 붙이고, 배당락처럼 바뀐 채 유지되면 둔다."""
+    import pandas as pd_
+
+    from backend.analysis.m2_data.market_data import repair_adj_spikes
+
+    days = pd_.to_datetime(["2022-05-04", "2022-05-06", "2022-05-09", "2022-05-10", "2022-05-11", "2022-05-12"])
+    close = [58200.0, 57800.0, 58100.0, 59100.0, 59600.0, 60000.0]
+    adj = [c * 0.792 for c in close]
+    adj[2] = 58100.0  # KIS 로 채운 날: 수정주가 = 종가
+    b = pd_.DataFrame({"ticker": "017670.KS", "date": days, "close": close, "adj_close": adj})
+    # 배당락 종목: 계수가 0.95 → 1.0 으로 바뀐 채 유지 (고치면 안 됨)
+    b2 = pd_.DataFrame({"ticker": "XYZ", "date": days, "close": [100.0] * 6, "adj_close": [95.0, 95.0, 100.0, 100.0, 100.0, 100.0]})
+    out, rep = repair_adj_spikes(pd_.concat([b, b2], ignore_index=True))
+    fixed = out[out["ticker"] == "017670.KS"]["adj_close"].tolist()
+    assert abs(fixed[2] - 58100.0 * 0.792) < 1e-6 and [r[:2] for r in rep] == [("017670.KS", dt.date(2022, 5, 9))]
+    assert out[out["ticker"] == "XYZ"]["adj_close"].tolist() == [95.0, 95.0, 100.0, 100.0, 100.0, 100.0]
+
+
+def test_round10_report_notes_and_facts(monkeypatch):
+    """018~022 독립 검토: 시작일 3종목·42% 를 날짜 없이 '그대로 투자하기 부족' 이라 했고(지금은 7종목·95%), 맞춤안 메모가 뉴스 반영 walk-forward 의
+    낙폭을 '기준 구성' 낙폭이라 했고, 뉴스 끔인데 '아래 뉴스 뷰 대안' 이 있다고 했고, 상한에 묶인 BL 카드가 ±0.0%p 를 '주요 변화' 로 보였다."""
+    from backend.analysis.m5_backtest_report import report as RP
+    from backend.analysis.m5_backtest_report.report_blocks import _delta_ko, _delta_src_ko
+
+    assert _delta_ko([("A", 1e-6), ("B", -1e-6)]).startswith("변화 없음") and _delta_ko([("A", 0.033), ("B", 1e-6)]) == "A +3.3%p"
+    assert "하한 1.5보다 낮아" in _delta_src_ko({"delta_source": "market_implied", "delta_market": -2.68, "delta_base": 1.5})
+    monkeypatch.setattr(RP.B, "current_composition", lambda R, c: ({f"T{i}": 0.135 for i in range(7)}, 0.055, "시가총액비중"))
+    R = {"validation": {"recommended": {"verdict": {"status": "insufficient", "cause_ko": "선정 종목이 3개뿐이라 종목당 상한 14%로는 42%까지만 투자됩니다", "cautions_ko": []}}},
+         "parameters": {"backtest": {"min_invested_for_recommendation": 0.5}}, "portfolio": {"forward": {"portfolios": []}}}  # fmt: skip
+    note = RP._chosen_note(R, {"id": "market_cap", "kind": "template"}, True)
+    assert note.startswith("백테스트 시작일 구성은 선정 종목이 3개뿐이라") and "지금 구성(분석 기준일)은 7종목·투자 94%" in note
+    off = RP._chosen_news_use(R, "market_cap", {"id": "market_cap", "kind": "template"})
+    assert "뉴스 뷰 구성은 만들지 않았습니다" in off["chosen_news_note_ko"]
+    mR = {"backtest": {"portfolios": [{"id": "inverse_volatility", "kind": "template", "name_ko": "역변동성비중", "headline": {"max_drawdown": -0.111}},
+                                      {"id": "wf_bl_news", "kind": "black_litterman", "name_ko": "뉴스 뷰 Black-Litterman (walk-forward)", "headline": {"max_drawdown": -0.118}}]},
+          "intent": {"risk_params": {"effective_max_drawdown": 0.12}}, "request": {"risk": {"max_drawdown_tolerance": 0.12}},
+          "portfolio": {"targets": {"baseline": {"id": "inverse_volatility"}}}, "parameters": {"backtest": {}}}  # fmt: skip
+    mn = RP._matched_note(mR)
+    assert "역변동성비중 11.1%" in mn and "11.8%" in mn and "기준 구성의 과거 최대낙폭(11.8%)" not in mn

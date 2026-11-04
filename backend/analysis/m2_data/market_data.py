@@ -32,6 +32,43 @@ MARKET_BENCH = {"US": "primary_benchmark_default", "KR": "kr_benchmark"}
 # 창 첫날이 어느 시장의 휴장일이면 "직전 종가"가 창 안에 없다. 이만큼 앞서 읽어 채운 뒤 잘라낸다.
 log = logging.getLogger(__name__)
 HOLIDAY_LOOKBACK_DAYS = 14
+ADJ_FACTOR_TOL = 0.02  # 수정 계수(adj_close / close)가 이만큼 넘게 움직였다가
+ADJ_SPIKE_MAX_RUN = 5  # 이 거래일 수 안에 원래 계수로 돌아오면, 그 사이만 계수가 잘못된 날로 본다
+
+
+def repair_adj_spikes(bars: pd.DataFrame) -> tuple[pd.DataFrame, list[tuple[str, dt.date, float, float]]]:
+    """수정 계수가 며칠만 튀었다가 앞의 계수로 돌아온 날은 앞의 계수로 이어 붙인다 → (고친 bars, [(종목, 날짜, 원래 계수, 고친 계수)]).
+    팀 DB 는 한국 종목 수정주가를 YFINANCE(배당 보정) 우선, 그날 값이 없으면 KIS(수정주가 = 종가)로 채워, YFINANCE 가 빈 날만 수정주가가
+    누적 배당만큼 튀었다가 돌아왔다 (020: 2022-05-09 우리금융 +34.7% → 다음 날 −26%, 최대낙폭 30% 가 38% 로). 배당락·분할처럼
+    계수가 바뀐 채 유지되는 날은 건드리지 않는다. 종가 자체가 튄 경우(계수는 그대로)는 여기서 다루지 않는다."""
+    if bars is None or bars.empty or not {"close", "adj_close"} <= set(bars.columns):
+        return bars, []
+    out, repairs = bars, []
+    for t, g in bars.groupby("ticker", sort=False):
+        close, adj = g["close"].to_numpy(dtype=float), g["adj_close"].to_numpy(dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            f = adj / close
+        n, i = len(f), 1
+        while i < n:
+            base = f[i - 1]
+            if not (np.isfinite(base) and base > 0 and np.isfinite(f[i])) or abs(f[i] / base - 1) <= ADJ_FACTOR_TOL:
+                i += 1
+                continue
+            j = i
+            while j < n and j - i < ADJ_SPIKE_MAX_RUN and np.isfinite(f[j]) and abs(f[j] / base - 1) > ADJ_FACTOR_TOL:
+                j += 1
+            if j < n and np.isfinite(f[j]) and abs(f[j] / base - 1) <= ADJ_FACTOR_TOL:
+                if out is bars:
+                    out = bars.copy()
+                for k in range(i, j):
+                    out.at[g.index[k], "adj_close"] = close[k] * base
+                    repairs.append((str(t), pd.Timestamp(g["date"].iloc[k]).date(), round(float(f[k]), 6), round(float(base), 6)))
+                i = j + 1
+            else:
+                i += 1  # 계수가 바뀐 채 유지 (배당락·분할) → 그대로
+    if repairs:
+        log.warning("[md] 수정 계수가 잠깐 튄 가격 %d건을 앞의 계수로 이어 붙임 (예: %s)", len(repairs), repairs[:3])
+    return out, repairs
 UNIVERSE_INDEX = {"SP500": IndexCode.SP500, "NASDAQ100": IndexCode.NDX, "KOSPI200": IndexCode.KOSPI200}
 
 
@@ -51,6 +88,7 @@ class _Cache:
     fx_range: tuple[dt.date, dt.date] | None = None
     valuation: dict[tuple[dt.date, frozenset[str]], pd.DataFrame] = field(default_factory=dict)
     shares: dict[tuple[dt.date, str], dict[str, Any] | None] = field(default_factory=dict)  # (d, asset_id) → 시가총액 대체용 마지막 주식수 행 (없음도 기억)
+    price_repairs: list[tuple[str, dt.date, float, float]] = field(default_factory=list)  # repair_adj_spikes 가 고친 (종목, 날짜, 원래 계수, 고친 계수)
     news: dict[tuple, EvidenceWindow] = field(default_factory=dict)
 
 
@@ -140,8 +178,8 @@ class MarketData:
             start, end = min(start, lo), max(end, hi)
             want = want | c.tickers_loaded
             log.warning("[md] price reload #%d: +%d tickers, %s~%s (이미 적재한 범위 밖 요청)", c.n_loads + 1, len(want - c.tickers_loaded), start, end)
-        bars = self.repo.get_price_bars(sorted(want), start, end)
-        c.bars, c.bars_range = bars, (start, end)
+        bars, repairs = repair_adj_spikes(self.repo.get_price_bars(sorted(want), start, end))
+        c.bars, c.bars_range, c.price_repairs = bars, (start, end), repairs
         c.tickers_loaded = set(want)  # 자료가 없는 종목도 "요청함" 으로 기억한다 (예전에는 빠져서 매번 전체 재적재)
         c.first_date = {t: _d(d) for t, d in bars.groupby("ticker")["date"].min().items()} if len(bars) else {}
         c.n_loads += 1
@@ -306,6 +344,10 @@ class MarketDataView:
         raw = self._carry_market_holidays(raw, load_start, end)
         raw = raw.loc[raw.index >= pd.Timestamp(start)]
         report, clean = assess(raw, [*required, *benchmarks], raw.index, self.s.market)
+        fixed = sorted({(t, d) for t, d, _f, _b in self.md._c.price_repairs if t in set(all_t) and start <= d <= end})
+        if fixed:  # 자료 품질 표에 남긴다 (예전에는 '이상 없음' 으로 보였다)
+            ex = ", ".join(f"{t} {d}" for t, d in fixed[:3])
+            report.warnings.append(f"배당 보정이 하루~며칠 빠진 수정주가 {len(fixed)}건을 앞뒤 계수로 이어 붙였습니다 (예: {ex}).")
         return clean, report
 
     def _carry_market_holidays(self, wide: pd.DataFrame, start: dt.date, end: dt.date) -> pd.DataFrame:

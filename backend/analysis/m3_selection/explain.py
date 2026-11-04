@@ -55,7 +55,8 @@ def explain(
         by_ticker_facts.setdefault(f["ticker"], []).append(f)
     news_ids = news.ids if news else set()
     lines = []
-    for s in sel.selected:
+    # 행도 지표 순위 순으로 (순위 없는 필수 포함은 맨 뒤). 019: 선정 순서(필수 포함 → 섹터 선호)로 넘겨 LLM 이 첫 칸 대신 줄 수를 세어 20종목 중 13개 순위를 틀렸다('21위')
+    for s in sorted(sel.selected, key=lambda x: mrank.get(x.ticker, len(mrank) + 1)):
         fl = " ".join(f"[{f['id']}] {M.METRIC_KO.get(f['metric'], f['metric'])} {M.display_metric(f['metric'], f['value'])}" for f in by_ticker_facts.get(s.ticker, []))
         nl = ""
         if news and news.by_ticker.get(s.ticker):

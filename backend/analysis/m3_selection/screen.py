@@ -13,6 +13,7 @@ from typing import Any
 
 from backend.analysis.common.capacity import cap_cause_ko, cap_limits
 from backend.analysis.common.labels import sector_ko
+from backend.analysis.common.warnings import metric_value_ko
 from backend.analysis.m2_data import descriptor as D
 from backend.analysis.m2_data import metrics as M
 from backend.analysis.m2_data.market_data import MarketDataView
@@ -69,12 +70,17 @@ def screen(
 
     n_pass = len(pool)
     n = nh["target"] if n_pass >= nh["target"] else max(nh["min"], n_pass)
+    # '후보 조건·테마 판정을 통과하고 지표가 있는 종목' 수에는 필수 포함을 넣지 않는다: 그 검사를 건너뛰고(지표 없음·자격선 밖도 유지) 들어온다.
+    # 018: 시작일 3개 중 2개가 필수 포함(105560.KS 배당 자료 없음, 033780.KS 시가총액 미달)인데 '자료가 있는 종목이 3개' 라고 했다 → 따로 센다
+    n_forced = sum(1 for t, _ in pool if t.upper() in forced)
+    fx = f" (+{n_forced} must_include)" if n_forced else ""
     out_of_range = [r for r in rejected if r.reason.startswith("metric_out_of_range")]
     if n_pass < nh["target"] and out_of_range:
-        ex = ", ".join(f"{r.ticker} {M.display_metric(metric, r.metric_value)}" for r in out_of_range[:4])
-        warnings.append(f"only {n_pass} tickers within eligibility for {metric}; target {nh['target']} (excluded {len(out_of_range)} out of range: {ex})")
+        # 예시는 앞 5개 (나머지는 공지가 '외 N개'), 작은 값은 부호가 보이게 (019: AMD ROE −0.045% 가 '-0.0%')
+        ex = ", ".join(f"{r.ticker} {metric_value_ko(metric, r.metric_value)}" for r in out_of_range[:5])
+        warnings.append(f"only {n_pass - n_forced} tickers within eligibility for {metric}{fx}; target {nh['target']} (excluded {len(out_of_range)} out of range: {ex})")
     elif n_pass < nh["target"]:
-        warnings.append(f"only {n_pass} tickers have {metric}; target {nh['target']} -> selecting {min(n, n_pass)}")
+        warnings.append(f"only {n_pass - n_forced} tickers have {metric}{fx}; target {nh['target']} -> selecting {min(n, n_pass)}")
     if n_pass < nh["min"]:
         warnings.append(f"below num_holdings.min={nh['min']} -> fewer holdings than requested (cash may remain; the report labels this)")
     max_stock, max_sector = cons["max_weight_per_stock"], cons["max_weight_per_sector"]
@@ -180,7 +186,7 @@ def screen(
     sel = Selection(
         request_id=request_id, as_of=as_of, selected=selected, rejected=rejected, infeasibility=infeasibility,
         summary={"as_of": str(as_of), "metric": metric, "direction": direction, "n_candidates": len(tagging.tagged), "n_tagged": len(tickers),
-                 "n_with_metric": n_pass, "n_target": nh["target"], "n_selected": len(selected), "sector_cap": sector_pref,
+                 "n_with_metric": n_pass, "n_forced": n_forced, "n_target": nh["target"], "n_selected": len(selected), "sector_cap": sector_pref,  # n_with_metric 은 필수 포함 포함
                  "weight_capacity": round(cap_now, 4), "sector_overflow": sector_overflow,
                  "sector_counts": {sec_names.get(c, c): k for c, k in sec_count.items()},
                  "market_counts": dict(Counter(s.market for s in selected))},

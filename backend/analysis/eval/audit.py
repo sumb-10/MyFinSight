@@ -306,14 +306,18 @@ class Audit:
             for d, w in (p.get("weights_by_date") or {}).items():
                 errs += self._check_weights(f"10w:{pid}@{d}", w, None, cons, secs)
         if bl and base_wf:
-            moved, with_views = 0, 0
+            moved, with_views, capped = 0, 0, 0
+            cap = float(cons.get("max_weight_per_stock") or 1.0)
             for d, vs in (bl.get("views_by_date") or {}).items():
                 if vs:
                     with_views += 1
-                    diff = max(abs(bl["weights_by_date"][d].get(t, 0) - base_wf["weights_by_date"][d].get(t, 0)) for t in base_wf["weights_by_date"][d])
+                    b = base_wf["weights_by_date"][d]
+                    diff = max(abs(bl["weights_by_date"][d].get(t, 0) - b.get(t, 0)) for t in b)
                     moved += diff > 1e-4
+                    # 모든 종목이 종목당 상한에 걸린 날은 뷰가 비중을 바꿀 수 없다 (018: 3종목 × 14% — 실패가 아니라 상한 묶임)
+                    capped += diff <= 1e-4 and all(abs(x - cap) < 1e-4 for x in b.values() if x > 1e-9)
             self.w(f"- walk-forward: 리밸런싱 {len(wf.get('dates') or [])}회 · 뷰 있는 날 {with_views} · 그중 비중이 바뀐 날 {moved} · 기준 비중 유지 {len(bl.get('fallback_dates') or [])} · 최적화 메모 {list((bl.get('optimizer_notes') or {}).items())[:2]}")
-            self.chk("뷰가 있는 날 BL 비중이 실제로 바뀜", moved == with_views, f"{moved}/{with_views}")
+            self.chk("뷰가 있는 날 BL 비중이 실제로 바뀜 (상한에 묶인 날 제외)", moved + capped == with_views, f"{moved}/{with_views}" + (f" · 상한에 묶인 날 {capped}" if capped else ""))
         self.chk("뉴스 끔이면 BL 없음", news_on or not bl, "wf_bl_news 있음" if bl else "")
         fw = o.get("10f_forward_portfolios") or {}
         for p in [*(fw.get("templates") or []), *(fw.get("portfolios") or [])]:
