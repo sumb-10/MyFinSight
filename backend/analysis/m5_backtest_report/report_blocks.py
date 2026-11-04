@@ -17,6 +17,11 @@ KIND_KO = {"black_litterman": "뉴스 뷰(BL)", "template": "규칙", "benchmark
 VERDICT_HEAD_KO = {"recommended": "추천", "recommended_warn": "추천(주의)", "insufficient": "구성 불충분"}
 
 
+def _usd(R) -> bool:
+    """달러 요청이면 환율이 1 이라 원화 환산·'1 USD = 1.00 KRW' 표기는 뜻이 없다 (007: 다섯 군데에 나왔다, 계획 N-T3-8)."""
+    return (R["request"].get("capital") or {}).get("currency") == "USD"
+
+
 def pf_label(p: dict[str, Any]) -> str:
     if p.get("kind") in ("benchmark", "alternative", "matched"):
         return p.get("name_ko", p["id"])
@@ -88,7 +93,7 @@ def request_table(R):
     q, d, c, h, r = R["request"], R["request"]["derived"], R["request"]["capital"], R["request"]["horizon"], R["request"]["risk"]
     cur = "원" if c["currency"] == "KRW" else "USD"
     bfx = R["money_krw"].get("backtest_fx") or {}
-    rows = [{"k": "투자금", "v": f"{c['initial_amount']:,.0f}{cur} → 백테스트 시작 {R['portfolio']['backtest_spec']['capital']['initial_amount_usd']:,.2f} USD (시작일 환율 {bfx.get('direction', '-')}, {bfx.get('fx_date', '-')}) · 현재 구성 {d['initial_amount_usd']:,.2f} USD (기준일 환율 {R['money_krw']['direction']}, {d['fx_date']})"},
+    rows = [{"k": "투자금", "v": f"{c['initial_amount']:,.0f} USD" if _usd(R) else f"{c['initial_amount']:,.0f}{cur} → 백테스트 시작 {R['portfolio']['backtest_spec']['capital']['initial_amount_usd']:,.2f} USD (시작일 환율 {bfx.get('direction', '-')}, {bfx.get('fx_date', '-')}) · 현재 구성 {d['initial_amount_usd']:,.2f} USD (기준일 환율 {R['money_krw']['direction']}, {d['fx_date']})"},
             {"k": "월 적립", "v": ("없음" if not c.get("monthly_contribution") else
                                   f"{c['monthly_contribution']:,.0f}{cur} (매월 {c.get('contribution_day', 25)}일)" + (
                                       f" → 백테스트 {R['portfolio']['backtest_spec']['capital']['monthly_contribution_usd']:,.2f} USD (시작일 환율) · 현재 구성 {d['monthly_contribution_usd']:,.2f} USD (기준일 환율)"
@@ -252,7 +257,8 @@ def allocation_table(R, chosen):
     cash = 1 - sum(p["target_weights"].values())
     if cash > 1e-6:
         rows.append({"ticker": "현금", "name": "", "sector": "", "w": cash, "usd": init * cash, "krw": init * cash * fx})
-    return table(f"배분 금액 ({pf_label(p)}, 백테스트 시작일 초기 투자금 {init:,.0f} USD 기준, 원화는 시작일 환율)", [("ticker", "티커", "text"), ("name", "회사", "text"), ("sector", "섹터", "text"), ("w", "비중", "pct1"), ("usd", "USD", "usd"), ("krw", "원화", "krw")], rows)
+    cols = [("ticker", "티커", "text"), ("name", "회사", "text"), ("sector", "섹터", "text"), ("w", "비중", "pct1"), ("usd", "USD", "usd")] + ([] if _usd(R) else [("krw", "원화", "krw")])
+    return table(f"배분 금액 ({pf_label(p)}, 백테스트 시작일 초기 투자금 {init:,.0f} USD 기준" + (")" if _usd(R) else ", 원화는 시작일 환율)"), cols, rows)
 
 
 def delta_bar(R, pid):
@@ -570,8 +576,8 @@ def forward_blocks(R, chosen: str | None = None):
     donut_items = items if (cash > 1e-6 and (len(top8) < 8 or cash >= top8[-1])) else dict(sorted(w.items(), key=lambda x: -x[1]))
     blocks.append(donut(f"{name} 배분 비중 (현재 구성)", donut_items))  # 화면 도넛은 상위 8개 + '기타 N종목' 이라 작은 현금은 표에만
     rows = [{"ticker": t, "w": x, "usd": round(init * x, 2), "krw": round(init * x * fx)} for t, x in items.items() if x > 1e-6]
-    blocks.append(table(f"배분 금액 ({name}, 투자금 {init:,.0f} USD, 환율 1 USD = {fx:,.2f} KRW)",
-                        [("ticker", "티커", "text"), ("w", "비중", "pct1"), ("usd", "USD", "usd"), ("krw", "원화", "krw")], rows))  # fmt: skip
+    blocks.append(table(f"배분 금액 ({name}, 투자금 {init:,.0f} USD" + (")" if _usd(R) else f", 환율 1 USD = {fx:,.2f} KRW)"),
+                        [("ticker", "티커", "text"), ("w", "비중", "pct1"), ("usd", "USD", "usd")] + ([] if _usd(R) else [("krw", "원화", "krw")]), rows))  # fmt: skip
     return blocks
 
 
@@ -596,10 +602,11 @@ def parameters_table(R):
     ex = R["parameters"].get("execution_rule") or {}
     desc = R["parameters"].get("descriptor") or {}
     rows = [{"k": "분석 기준일", "v": str(d["as_of"])},
-            {"k": "환율(기준일)", "v": f"{R['money_krw']['direction']} ({d['fx_date']}, {d.get('fx_source', 'fx_daily')})"},
-            {"k": "환율(백테스트 시작일)", "v": f"{bfx.get('direction', '-')} ({bfx.get('fx_date', '-')}) — 백테스트 초기자본·적립 환산에 사용"},
+            *([{"k": "환율", "v": "달러 요청이라 환산하지 않음"}] if _usd(R) else [
+                {"k": "환율(기준일)", "v": f"{R['money_krw']['direction']} ({d['fx_date']}, {d.get('fx_source', 'fx_daily')})"},
+                {"k": "환율(백테스트 시작일)", "v": f"{bfx.get('direction', '-')} ({bfx.get('fx_date', '-')}) — 백테스트 초기자본·적립 환산에 사용"}]),
             {"k": "정보 마감·체결", "v": ex.get("description_ko", "t−1 정보, t 종가 체결")},
-            {"k": "거래일 달력", "v": "요청 시장들의 거래일 합집합, 휴장일은 직전 종가 유지"},
+            {"k": "거래일 달력", "v": "평가는 종목·비교지수 시장 거래일의 합집합(휴장 시장은 직전 종가), 리밸런싱·적립 매매는 보유 종목 시장이 모두 연 날"},
             {"k": "공분산 추정", "v": f"구성일 이전 {pp['lookback_days']}거래일, {pp['shrinkage']} 수축 ({mm['lookback']['start']}~{mm['lookback']['end']})"},
             {"k": "Black-Litterman", "v": f"τ={pp['tau']}, 위험회피 δ: {dtxt}, 뷰 신뢰도 하한 {pp['confidence_floor']}, 뉴스 창 {R['parameters']['news']['window_days']}일"},
             {"k": "백테스트", "v": f"거래비용 {pb['commission_bps']}bp, 무위험수익률 {pb['risk_free_rate']:.0%}, 소수 주식 {'허용' if not pb['integer_positions'] else '불허'}, 체크포인트 {pb['checkpoint_freq']}"},
@@ -829,7 +836,7 @@ def build_summary(R, chosen: str, interp: dict[str, Any], narr: dict[str, Any]) 
                            "tolerance_note_ko": _tolerance_note(R), "r1_ko": rule_msgs.get("R1"), "r1": r1},
             "news_effect": news_effect(R),
             "kpis": kpi_items,
-            "allocation": {"basis": basis, "basis_ko": basis_ko, "items": items, "cash_weight": cash_w, "initial_amount_usd": a_init, "fx_rate": fx, "fx_direction": f"1 USD = {fx:,.2f} KRW"},
+            "allocation": {"basis": basis, "basis_ko": basis_ko, "items": items, "cash_weight": cash_w, "initial_amount_usd": a_init, "fx_rate": fx, "fx_direction": None if _usd(R) else f"1 USD = {fx:,.2f} KRW"},
             "mini_series": {"dataset": "index", "ids": list(dict.fromkeys([chosen, bench["id"]])), "label_ko": "누적 수익률 (시작 = 100)"},
             "period": R["backtest"]["period"], "next_actions_ko": list(interp.get("next_actions_ko") or [])}  # fmt: skip
 

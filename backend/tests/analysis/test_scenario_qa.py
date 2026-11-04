@@ -1197,3 +1197,23 @@ def test_news_gate_review_fixes():
     rows = repo.get_news_batch(["KR-204320"], _dt.datetime(2015, 3, 1, tzinfo=_dt.UTC), _dt.datetime(2015, 3, 9, tzinfo=_dt.UTC),
                                per_asset=10, aliases={"KR-204320": ["HL만도", "204320"]})  # fmt: skip
     assert [r.title for r in rows] == ["만도, 3분기 영업이익 증가"]
+
+
+def test_usd_request_has_no_krw_conversion_text(e2e_results):
+    """007: 달러 요청 리포트에 '1 USD = 1.00 KRW' 가 다섯 군데(요청 내용·배분표 제목·계산 조건 두 줄·대시보드), 원화 열은 달러와 같은 숫자 (N-T3-8)."""
+    import copy
+    import json as _json
+
+    from backend.analysis.m5_backtest_report import report_blocks as RB
+
+    R, _s = e2e_results
+    R = copy.deepcopy(R)
+    R["request"]["capital"]["currency"] = "USD"
+    R["money_krw"]["fx_rate"] = 1.0
+    R["money_krw"]["direction"] = "1 USD = 1.00 KRW"
+    R["money_krw"]["backtest_fx"].update(fx_rate=1.0, direction="1 USD = 1.00 KRW")
+    chosen = R["validation"]["recommended"]["id"]
+    blocks = [RB.request_table(R), RB.parameters_table(R), RB.allocation_table(R, chosen), *RB.forward_blocks(R, chosen)]
+    txt = _json.dumps(blocks, ensure_ascii=False)
+    assert "1 USD = 1.00 KRW" not in txt and '"원화"' not in txt
+    assert RB.build_summary(R, chosen, {}, {})["allocation"]["fx_direction"] is None
