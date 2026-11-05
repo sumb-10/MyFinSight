@@ -106,7 +106,8 @@ def precheck(normalized: dict[str, Any], intent: dict[str, Any], desc: Descripto
         return out
     day0 = cal[0].date()
     passed = list(tag.passed_tickers)
-    c0, t0, s0, _f0 = selectable_at(md, day0, desc, intent, cons, passed, rid)
+    bx = {"broad": not getattr(tag, "theme_filter_applied", True), "excluded": [r.ticker for r in tag.excluded_by_theme]}  # 07 과 같은 규칙 (넓은 테마는 그날 후보 전체)
+    c0, t0, s0, _f0 = selectable_at(md, day0, desc, intent, cons, passed, rid, **bx)
     out["start"] = {**_summary(day0, c0, t0, s0, invest), "dropped_by": _dropped_by(now["tickers"], c0, s0)}
     n_start = len(s0.selected)
     out["short_at_start"] = n_start < nh_min
@@ -117,14 +118,14 @@ def precheck(normalized: dict[str, Any], intent: dict[str, Any], desc: Descripto
             if nxt is None or not shift_window_ok(as_of, nxt, total_days):
                 break
             day = nxt
-            _c, _t, s1, _f = selectable_at(md, day, desc, intent, cons, passed, rid)
+            _c, _t, s1, _f = selectable_at(md, day, desc, intent, cons, passed, rid, **bx)
             if len(s1.selected) >= nh_min:
                 years = int((as_of - day).days / 365.25 * 10) / 10  # 내림: 반올림하면 새 시작일이 이 날보다 앞서 다시 부족할 수 있다
                 # 내림한 기간이 실제로 만드는 시작일(derive 와 같은 식)에서 다시 센다 (040: '2024-03-04 로 옮겨 2.5년' 인데 2.5년을 고르면 2024-04-09 부터였다)
                 start2 = as_of - dt.timedelta(days=int(round(years * 365.25)))
                 later = [d.date() for d in cal if d.date() >= start2]
                 if later and later[0] != day:
-                    _c2, _t2, s2, _f2 = selectable_at(md, later[0], desc, intent, cons, passed, rid)
+                    _c2, _t2, s2, _f2 = selectable_at(md, later[0], desc, intent, cons, passed, rid, **bx)
                     if len(s2.selected) >= nh_min:
                         day, s1 = later[0], s2
                 out["feasible_start"] = {"date": str(day), "n_with_metric": len(s1.selected), "n_selected": len(s1.selected), "years": years}

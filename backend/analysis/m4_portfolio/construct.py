@@ -6,7 +6,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import math
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 from backend.analysis.common.llm import LlmClient
@@ -19,6 +20,11 @@ from backend.analysis.settings import AnalysisSettings
 from backend.pipeline.descriptor import Descriptor
 
 Mode = Literal["start", "rebalance", "current", "paper"]
+
+
+def news_min_tickers(configured: int, n: int) -> int:
+    """뉴스 뷰에 필요한 '근거 있는 종목' 수: 설정값과 종목 수의 절반(올림) 중 작은 쪽 (2종목 1개, 3~4종목 2개, 5종목 이상 3개)."""
+    return min(int(configured), max(1, math.ceil(n / 2)))
 
 
 @dataclass
@@ -91,6 +97,11 @@ def construct(
         res.fallback, res.fallback_reason_ko = True, "뉴스 반영을 꺼서 뉴스 뷰 구성을 만들지 않음"
         return res
     ev = view.news_window(tk)
+    # 작은 포트폴리오는 근거 있는 종목의 최소 수를 종목 수의 절반(올림)까지 낮춘다 — 2종목이면 설정값 3개를 영영 채울 수 없었다 (사용자 결정 2026-11-05).
+    # 그래도 모자라면 뉴스 뷰 구성 없이 규칙 기반 구성(기준 비중 등)을 대안으로 제시한다
+    mt = getattr(ev, "min_tickers", None)
+    if isinstance(ev, EvidenceWindow) and mt is not None and news_min_tickers(mt, len(tk)) != mt:
+        ev = replace(ev, min_tickers=news_min_tickers(mt, len(tk)))
     res.evidence = ev
     if not ev.enough:
         res.fallback = True

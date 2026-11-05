@@ -94,6 +94,11 @@ def classify(cand: Candidates, intent: IntentSpec | dict[str, Any], llm: LlmClie
             r.excluded_theme = None
         elif r.excluded_theme:
             r.excluded_theme = rule_names[_norm_theme(r.excluded_theme)]  # 규칙 이름 그대로 (공지·표가 같은 이름을 쓰게)
+        # 화석연료 제외는 석유·가스·석탄을 생산·정제·운송하는 회사에 적용한다 — 전기·가스를 공급하는 규제 유틸리티(GICS 55)는 화석연료 회사가 아니다
+        # (024: AEE·ATO·CMS·ED·XEL 등 유틸리티 13개를 '전력과 천연가스 공급' 이라는 이유로 뺐다. 화석연료 매장량을 가진 회사를 빼는 흔한 기준과 같게)
+        if r.excluded_theme and "fossil" in _norm_theme(r.excluded_theme) and x.gics.sector.code == "55":
+            warnings.append(f"{r.ticker}: utility kept despite excluded theme {r.excluded_theme} -> utilities are not fossil fuel producers")
+            r.excluded_theme = None
         if x.forced and not r.in_theme and not broad:  # 넓은 테마는 테마 판정으로 거르지 않으므로 '테마 불통과' 공지가 뜻이 없다
             warnings.append(f"{r.ticker}: must_include but not in theme -> kept (forced)")
         if x.forced and r.excluded_theme:  # 필수 포함이 제외 테마와 겹치면 조용히 빠지지 않게: 유지하고 알린다

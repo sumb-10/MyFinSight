@@ -52,6 +52,7 @@ CATALOG: dict[str, tuple[Level, str]] = {
     "must_include_no_metric": ("user", "필수 포함 종목 {tickers}은(는) 선정 지표 자료가 없어{why} 순위를 매기지 못했지만 요청에 따라 포함했습니다."),
     "must_include_off_theme": ("user", "필수 포함 종목 {tickers}은(는) 테마 판정을 통과하지 못했지만 요청에 따라 포함했습니다."),
     "must_include_excluded_theme": ("user", "필수 포함 종목 {tickers}은(는) 제외 테마({theme})에 해당하지만 요청에 따라 포함했습니다."),
+    "utility_not_fossil": ("user", "화석연료 제외는 석유·가스·석탄을 생산·정제·운송하는 회사에 적용했습니다. 전기·가스를 공급하는 유틸리티 {tickers}은(는) 빼지 않았습니다."),
     # 필수 포함은 후보 단계의 최소 시가총액·거래대금 필터를 건너뛴다(정책) — 건너뛴 사실은 알린다 (018: 시작일 033780.KS 시가총액 76억 달러 < 최소 100억 달러인데 공지가 없었다)
     "must_include_below_filters": ("user", "필수 포함 종목 {tickers}은(는) 후보 조건을 채우지 못했지만({detail}) 요청에 따라 포함했습니다."),
     # 최소 시가총액은 하드 필터 (2026-11 사용자 정책): 확인할 수 없는 종목은 뺀다. 팀 DB 는 XOM·BLK 같은 대형주도 과거 시가총액이 비어 있어 과거 시점에 빠지므로 알린다
@@ -82,7 +83,7 @@ CATALOG: dict[str, tuple[Level, str]] = {
     "lookback_short": ("info", "백테스트 시작일 {date} 이전 가격 이력이 공분산 추정 창({days}거래일)보다 짧아 추정 창이 줄어듭니다."),
     "window_clamped": ("info", "{text}"),
     "fx_reconverted": ("info", "백테스트 초기자본은 시작일 환율({date}, 1 USD = {rate} KRW)로 환산한 {usd} USD입니다 (기준일 환율 기준 {usd0} USD)."),
-    "news_thin_fallback": ("info", "뉴스·공시가 있는 종목이 최소 {min}개에 못 미쳐 뉴스 뷰 없이 기준 비중을 사용했습니다."),
+    "news_thin_fallback": ("info", "뉴스·공시가 있는 종목이 최소 {min}개에 못 미쳐 뉴스 뷰 구성을 만들지 않았습니다. 대신 규칙 기반 구성(기준 비중 등)을 대안으로 보여 줍니다."),
     "views_none_valid": ("info", "분석 모델이 만든 뷰가 코드 검사를 모두 통과하지 못해 기준 비중을 사용했습니다."),
     "short_window": ("info", "백테스트 창이 {days}거래일로 짧아(1.5년 미만) 연환산 지표는 참고용이고 목표수익(R2)·변동성(R7) 규칙도 참고로만 평가했습니다."),
     "data_quality_note": ("info", "{text}"),
@@ -112,6 +113,7 @@ _LEGACY: list[tuple[re.Pattern[str], str, tuple[str, ...]]] = [
     (re.compile(r"^must_include (\S+): metric_missing( \(eps<=0)?"), "must_include_no_metric", ("tickers", "why")),
     (re.compile(r"^must_include (\S+): insufficient price history"), "must_include_short_history", ("tickers",)),
     (re.compile(r"^(\S+): must_include matches excluded theme (.+?) -> "), "must_include_excluded_theme", ("tickers", "theme")),
+    (re.compile(r"^(\S+): utility kept despite excluded theme "), "utility_not_fossil", ("tickers",)),
     (re.compile(r"^must_include (\S+): below candidate filters \((.*)\), kept"), "must_include_below_filters", ("tickers", "detail")),  # 아래 포괄 규칙보다 먼저
     (re.compile(r"^must_include (\S+): "), "must_include_forced", ("tickers",)),
     (re.compile(r"^(\S+): must_include but not in theme"), "must_include_off_theme", ("tickers",)),

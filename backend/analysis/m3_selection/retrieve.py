@@ -145,8 +145,14 @@ def retrieve(
             excl_by_rule[e["yfinance_symbol"]] = f"exclude_theme:{r['theme']}(gics)"
         # 키워드 제외는 이름·소개문에서 서로 다른 키워드 2개 이상일 때만 (예전: 1개, GICS 이름 토큰까지 검색 → Caterpillar 를 '화석연료',
         # 콜라 회사를 '주류'('non-alcoholic' 안의 alcoholic)로 뺐다). 1개만 맞는 종목은 04 분류(excluded_theme)가 판단한다.
+        fossil = "fossil" in str(r.get("theme", "")).lower()
         for sym, hit in _exclude_keyword_hits(desc, r.get("keywords", [])).items():
             if len(hit) >= MIN_KEYWORD_HITS:
+                # 전기·가스 유틸리티는 소개문에 'natural gas'·'coal' 이 있어도 화석연료 회사가 아니다 (04 분류와 같은 규칙, 024)
+                e_ = desc.by_ticker(sym) if fossil else None
+                g_ = D.gics_model(e_) if e_ else None
+                if g_ is not None and g_.sector.code == "55":
+                    continue
                 excl_by_rule.setdefault(sym, f"exclude_theme:{r['theme']}(keyword)")
 
     def drop(t: str, reason: str) -> None:

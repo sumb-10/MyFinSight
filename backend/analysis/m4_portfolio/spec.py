@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Iterable
 from typing import Any
 
 import pandas as pd
@@ -15,7 +16,7 @@ import pandas as pd
 from backend.analysis.common.labels import usd_ko
 from backend.analysis.errors import DataMissing
 from backend.analysis.m2_data.market_data import MarketData
-from backend.analysis.m3_selection.retrieve import mcap_warnings, retrieve
+from backend.analysis.m3_selection.retrieve import _exclude_keyword_hits, mcap_warnings, retrieve
 from backend.analysis.m3_selection.screen import screen
 from backend.analysis.schemas.backtest import BacktestRequest, BacktestSpec
 from backend.analysis.schemas.selection import Selection, Tagging
@@ -41,19 +42,29 @@ def shift_window_ok(end: dt.date, day: dt.date, total_days: int) -> bool:
 
 
 def selectable_at(md: MarketData, day: dt.date, desc: Descriptor, intent: dict[str, Any], cons: dict[str, Any], passed: list[str], request_id: str,
-                  *, added: tuple[str, ...] = (), removed: frozenset[str] | set[str] = frozenset()) -> tuple[Any, Tagging | None, Selection, list[dict[str, Any]]]:  # fmt: skip
-    """그날 선정 가능한 종목: 그날 후보 검색(상한 없음) ∩ 기준일 테마 판정 통과 → 정량 선정. 07 재선정과 실행 전 점검이 같이 쓴다."""
+                  *, added: tuple[str, ...] = (), removed: frozenset[str] | set[str] = frozenset(), broad: bool = False,
+                  excluded: Iterable[str] = ()) -> tuple[Any, Tagging | None, Selection, list[dict[str, Any]]]:  # fmt: skip
+    """그날 선정 가능한 종목: 그날 후보 검색(상한 없음) ∩ 기준일 테마 판정 통과 → 정량 선정. 07 재선정과 실행 전 점검이 같이 쓴다.
+
+    broad(넓은 테마 — 테마 판정으로 거르지 않음): 그날 후보 전체에서 고른다. 기준일 통과 집합은 기준일 지표 순으로 자른 후보(상한 120)라
+    교집합을 하면 오늘 순위가 과거 후보를 정하는 선견이었다 (030·논의사항 B2 의 넓은 테마 부분, 사용자 결정 2026-11-05: 판단 위임).
+    기준일에 분석 모델이 제외 테마로 판정한 종목(excluded)은 계속 빼고, 판정을 받지 않은 종목은 제외 키워드가 하나라도 맞으면 뺀다(보수적으로)."""
     view_bt = md.view(day)
     cand = retrieve(view_bt, desc, intent, cons, request_id=request_id, max_candidates=None)  # 04 통과 집합과의 교집합이 최종이라 상한을 두지 않는다
     cset = {c.ticker for c in cand.candidates}
-    passed_bt = sorted((set(passed) & cset | set(added)) - set(removed))
+    if broad:
+        unseen = cset - set(passed) - set(excluded)
+        hit = {t for r in intent.get("exclude_theme_rules") or [] for t in _exclude_keyword_hits(desc, r.get("keywords", [])) if t in unseen}
+        passed_bt = sorted((cset - set(excluded) - hit | set(added)) - set(removed))
+    else:
+        passed_bt = sorted((set(passed) & cset | set(added)) - set(removed))
     tag = Tagging(request_id=request_id, min_confidence=0.0, tagged=[], excluded_by_theme=[], passed_tickers=passed_bt, batches=0,
                   warnings=[f"re-selection at {day}: passed ∩ candidates_bt = {len(passed_bt)}"])  # fmt: skip
     sel, facts = screen(view_bt, desc, tag, intent, cons, request_id=request_id)
     # 테마 판정을 다시 하지 않아(tagged=[]) screen 이 후보 수를 0 으로 적는다 → 그날 후보 수 (031: 07_selection_bt 의 n_candidates 가 늘 0)
     sel.summary["n_candidates"] = len(cand.candidates)
     # 그날 후보 단계의 시가총액 경고(자료 없어 뺀 종목·추정한 종목)를 기준일 테마 통과 종목만으로 → 07 이 'screen@날짜:' 를 달아 시작일 공지가 된다
-    sel.warnings += mcap_warnings(cand, cons, md.s.market.mcap_fallback_max_days, only=passed)
+    sel.warnings += mcap_warnings(cand, cons, md.s.market.mcap_fallback_max_days, only=None if broad else passed)
     return cand, tag, sel, facts
 
 
@@ -133,7 +144,8 @@ def build_backtest_spec(
         cons_bt["exclude_tickers"] = sorted(set(cons_bt.get("exclude_tickers", [])) | removed)
 
         def at(day: dt.date):
-            return selectable_at(md, day, desc, intent, cons_bt, list(tagging.passed_tickers), req["request_id"], added=tuple(added), removed=removed)
+            return selectable_at(md, day, desc, intent, cons_bt, list(tagging.passed_tickers), req["request_id"], added=tuple(added), removed=removed,
+                                 broad=not getattr(tagging, "theme_filter_applied", True), excluded=[r.ticker for r in getattr(tagging, "excluded_by_theme", None) or []])  # fmt: skip
 
         first = at(first_try)
         n_first = len(first[2].selected)

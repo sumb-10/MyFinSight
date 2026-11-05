@@ -304,3 +304,52 @@ def test_stored_weights_never_eat_into_minimum_cash():
     out, cash = weights_out([f"T{i}" for i in range(25)], w)
     assert sum(out.values()) <= 0.85 + 1e-12 and cash >= 0.15 and cash - 0.15 < 25e-6
     assert weights_out(["A", "B"], np.array([0.034, -1e-17])) == ({"A": 0.034, "B": 0.0}, 0.966)
+
+
+def test_round17_decisions_fossil_utilities_news_minimum_broad_start_pool(monkeypatch):
+    """사용자 결정(2026-11-05, 판단 위임) 세 가지.
+    4) 화석연료 제외는 석유·가스·석탄 생산·정제·운송 회사 — 전기·가스 유틸리티(GICS 55)는 빼지 않고 알린다 (024: 유틸리티 13개 제외).
+    5) 뉴스 뷰에 필요한 근거 있는 종목 수는 종목 수의 절반(올림)까지 낮춘다 (2종목이면 3개를 영영 못 채웠다).
+    6) 넓은 테마의 시작일 재선정은 그날 후보 전체에서 (기준일 지표 순으로 자른 후보와의 교집합은 선견)."""
+    import datetime as dt
+    from types import SimpleNamespace as NS
+
+    from backend.analysis.common.llm import StubLlm
+    from backend.analysis.common.warnings import from_text
+    from backend.analysis.m3_selection.classify import classify
+    from backend.analysis.m4_portfolio import spec as S
+    from backend.analysis.m4_portfolio.construct import news_min_tickers
+    from backend.analysis.schemas.selection import Candidates
+
+    def cand(t, sec):
+        return {"ticker": t, "name": t, "market": "US", "gics": {"sector": {"code": sec, "name": "x"}, "industry_group": {"code": sec + "10", "name": "x"},
+                "industry": {"code": sec + "1010", "name": "x"}, "sub_industry": {"code": sec + "101010", "name": "x"}}, "company_summary": "s",
+                "matched_by": ["gics"], "matched_themes": ["inc"], "forced": False}  # fmt: skip
+
+    cands = Candidates.model_validate({"request_id": "r", "as_of": "2025-06-25", "candidates": [cand("ED", "55"), cand("XOM", "10")], "filtered_out": [], "stats": {}, "warnings": []})
+    intent = {"interpretation": {"themes": [{"id": "inc", "label_ko": "인컴", "description_ko": "d"}]}, "screen": {"theme_filter": {"min_confidence": 0.5}},
+              "exclude_theme_rules": [{"theme": "fossil_fuels", "keywords": ["oil", "natural gas"]}]}  # fmt: skip
+    ans = {"results": [{"ticker": t, "in_theme": True, "themes": ["inc"], "confidence": 0.9, "reason_ko": "", "excluded_theme": "fossil_fuels"} for t in ("ED", "XOM")]}
+    tag = classify(cands, intent, StubLlm({"04_classify": ans}))
+    assert tag.passed_tickers == ["ED"] and [r.ticker for r in tag.excluded_by_theme] == ["XOM"]
+    w = from_text("04_tagging", next(x for x in tag.warnings if "utility kept" in x))
+    assert w.code == "utility_not_fossil" and w.level == "user" and "ED" in w.message_ko
+
+    assert [news_min_tickers(3, n) for n in (1, 2, 3, 4, 5, 20)] == [1, 1, 2, 2, 3, 3]
+
+    seen = {}
+    monkeypatch.setattr(S, "retrieve", lambda view, desc, it, cons, **k: NS(candidates=[NS(ticker=t) for t in ("A", "B", "C", "D", "E")], filtered_out=[], stats={}))
+    monkeypatch.setattr(S, "_exclude_keyword_hits", lambda desc, kws: {"D": {"oil"}, "A": {"oil"}})
+    monkeypatch.setattr(S, "mcap_warnings", lambda *a, **k: [])
+
+    def fake_screen(view, desc, tag_, it, cons, request_id):
+        seen["pool"] = list(tag_.passed_tickers)
+        return NS(summary={}, warnings=[]), []
+
+    monkeypatch.setattr(S, "screen", fake_screen)
+    md = NS(view=lambda d: NS(as_of=d), s=NS(market=NS(mcap_fallback_max_days=730)))
+    it2 = {"exclude_theme_rules": [{"theme": "fossil_fuels", "keywords": ["oil"]}]}
+    S.selectable_at(md, dt.date(2023, 1, 3), None, it2, {}, ["A", "B"], "r")
+    assert seen["pool"] == ["A", "B"]  # 테마 판정이 있는 테마: 기준일 통과 종목만 (그대로)
+    S.selectable_at(md, dt.date(2023, 1, 3), None, it2, {}, ["A", "B"], "r", broad=True, excluded=["E"])
+    assert seen["pool"] == ["A", "B", "C"]  # 넓은 테마: 그날 후보 전체 − 기준일 제외 판정(E) − 판정 없이 제외 키워드가 맞은 D (A 는 기준일 판정을 통과)
