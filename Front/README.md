@@ -2,7 +2,27 @@
 
 React 19 · TypeScript · Vite 8 · Tailwind CSS 4 · Recharts 기반 데스크톱 앱. 분석 서비스 API(`backend/analysis/api`, FastAPI :8001)를 호출하는 실제 클라이언트다. 요구사항과 디자인 기준은 [docs/README.md](docs/README.md).
 
-## 로컬 실행
+> **화면은 두 가지 모드로 열 수 있다.** 그냥 열면 실제 서버를 쓰는 **일반 모드**이고, 주소에 `?mock=1` 을 붙이면 백엔드 없이 목업 자료로 도는 **목업 모드**다.
+> 백엔드에 아직 없는 기능(리포트 이름 바꾸기·삭제, 여러 질문 한 번에 답하기, 원화 기준 성과 등)은 **목업 모드에서만 보인다.** 아래 「목업 모드」를 먼저 본다.
+
+## 목업 모드 (백엔드 없이 화면 보기)
+
+```sh
+cd Front
+nvm use
+pnpm install --frozen-lockfile
+pnpm dev
+# 브라우저에서 http://localhost:5173/?mock=1#/home   (?mock=1 은 # 앞에)
+```
+
+- 백엔드를 켜지 않아도 된다. 목업 모드는 서버로 요청을 보내지 않고, 바꾼 내용은 이 브라우저 탭에만 저장된다 (탭을 닫거나 「목업 데이터 초기화」를 누르면 처음 상태).
+- 화면 맨 위 노란 띠가 목업 모드 표시다. 목업 값이 쓰인 곳에는 「목업」 표시가 붙는다. 목업 결과는 **실제 투자 분석 결과가 아니다.**
+- 오른쪽 아래 「목업 데이터」 버튼에서 시나리오(정상·주의·추천 없음 리포트, 진행 중 분석, 질문 중인 요청 등)로 바로 이동할 수 있다.
+- 일반 모드로 돌아가려면 노란 띠의 「일반 모드로 돌아가기」를 누르거나 주소에서 `?mock=1` 을 뺀다.
+- **개발 서버(`pnpm dev`)에서만 켜진다.** 운영 빌드(`pnpm build`)에는 목업 코드가 들어가지 않고 `?mock=1` 을 무시한다 (시연용으로만 `VITE_ENABLE_MOCK=1` 빌드 허용).
+- 자세한 내용: [docs/mock-mode.md](docs/mock-mode.md) (기능별 위치·시나리오), 백엔드가 같은 기능을 지원하려면 필요한 API·데이터: [docs/backend-integration.md](docs/backend-integration.md).
+
+## 로컬 실행 (일반 모드 — 실제 서버)
 
 Node.js 22.x 와 pnpm 10. `.nvmrc` 가 22.22.2 를 지정한다.
 
@@ -21,7 +41,7 @@ pnpm typecheck && pnpm test && pnpm build
 
 리포트·모의투자·비교 화면은 차트 라이브러리(recharts)를 쓰므로 `React.lazy` 로 따로 묶여 처음 화면이 가볍게 뜬다. 단위 테스트는 Vitest + Testing Library (`src/**/*.test.ts(x)`: 표시 규칙, 라우터, 오류 메시지, 수정안 카드).
 
-환경변수(`.env.example` → `.env.local`): `VITE_API_BASE`(기본 `/api/v1`), `VITE_PROXY_TARGET`. 데이터 원천은 서버 하나뿐이다(샘플·오프라인 모드 없음). 서버가 연습(stub) LLM 모드면 사이드바에 "연습 모드 (LLM 없음)" 배지가 뜬다.
+환경변수(`.env.example` → `.env.local`): `VITE_API_BASE`(기본 `/api/v1`), `VITE_PROXY_TARGET`. 일반 모드의 데이터 원천은 서버 하나뿐이다 (목업 모드는 위 「목업 모드」, 개발 서버에서만). 서버가 연습(stub) LLM 모드면 사이드바에 "연습 모드 (LLM 없음)" 배지가 뜬다.
 
 ## 구조
 
