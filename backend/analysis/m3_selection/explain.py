@@ -133,8 +133,18 @@ def explain(
     if isinstance(ans.get("per_ticker"), list):
         ans = {**ans, "per_ticker": [{**r, "rationale_ko": re.sub(r"(?:제공된|입력된)\s+|(?:제시된|주어진)\s+(?=(?:모멘텀|지표|자료|정보|근거|수치|숫자|목록|헤드라인|뉴스|데이터))", "", r["rationale_ko"])} if isinstance(r.get("rationale_ko"), str) else r
                                      for r in ans["per_ticker"]]}  # fmt: skip
+    # 입력 표의 칸 이름 '판정 테마' 가 문장에 새지 않게 (062: '판정 테마인 미국 유틸리티에 해당합니다')
+    if isinstance(ans.get("per_ticker"), list):
+        ans = {**ans, "per_ticker": [{**r, "rationale_ko": _no_column_name(r["rationale_ko"])} if isinstance(r.get("rationale_ko"), str) else r
+                                     for r in ans["per_ticker"]]}  # fmt: skip
     if sel.summary.get("metric") == "dividend_yield_ttm" and isinstance(ans.get("per_ticker"), list):  # 모멘텀 선정(return_12m_1m)의 '12개월 수익률' 은 맞는 이름 (027)
         ans = {**ans, "per_ticker": [{**r, "rationale_ko": _dividend_wording(r["rationale_ko"])} if isinstance(r.get("rationale_ko"), str) else r
                                      for r in ans["per_ticker"]]}  # fmt: skip
     return {"request_id": sel.request_id, "stage": "06_selection_explained", **ans,
             "citations_available": sorted(allowed)}  # fmt: skip
+
+
+def _no_column_name(text: str) -> str:
+    """'판정 테마인 X에 해당' → 'X 테마에 해당', 남은 '판정 테마' → '테마'."""
+    text = re.sub(r"판정\s*테마인\s+([^.,\n]+?)에\s*해당", r"\1 테마에 해당", text)
+    return re.sub(r"판정\s*테마", "테마", text)

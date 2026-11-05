@@ -99,7 +99,10 @@ def _drift_msg_ko(kind: str, comp: dict[str, Any], cap: float, drift_tol: float,
         if tol_days is None:  # 허용 폭을 넘은 날 수가 없는 예전 결과: 예전 문구
             return f"{head} — {above}이고 허용 폭({lim})도 넘음 ({', '.join(names)}). {fix}"
         # 두 날 수를 따로 (031: '상한 10%를 넘은 날이 754거래일 중 747일이고 허용 폭(12.5%)도 넘음' 을 서술이 '12.5% 를 747일 넘었다' 로 옮겼다. 12.5% 를 넘은 날은 90일)
-        beyond = f"허용 폭({lim})을 넘은 {subj} 있던 날은 {int(tol_days)}일" if tol_days else f"허용 폭({lim})은 0.05%p 안쪽으로만 넘음"
+        # 허용 폭을 잡음 기준(0.05%p) 안에서만 넘었으면 실제로 넘은 폭을 적는다 (064: '0.05%p 안쪽으로만 넘음' 을 서술이 '허용 폭을 0.05%p 넘었다' 로 옮겼다 — 실제 0.04%p)
+        ex = max(0.0, float(top) - cap * (1 + drift_tol))
+        beyond = (f"허용 폭({lim})을 넘은 {subj} 있던 날은 {int(tol_days)}일" if tol_days
+                  else f"허용 폭({lim})은 최대 {ex * 100:.2f}%p만 넘어 잡음 기준(0.05%p) 안이라 넘은 날로 세지 않음")  # fmt: skip
         return f"{head} — {above}, {beyond} ({', '.join(names)}). {fix}"
     if days and no_line:  # 031: 섹터 상한 90% 면 허용 폭이 112.5% 라 늘 통과인데 '허용 폭 안' 이라 써서 서술이 '허용 폭 안이었습니다' 라고 했다
         return f"{head} — {above} (허용 폭이 100% 이상이라 이 점검으로는 거르지 않음)"
@@ -204,6 +207,19 @@ def evaluate_checks(p, crit, n_days, expected_rb, sector_of, drift_tol, short_wi
             msg += (f" · {'리밸런싱 사이 ' if rebal else ''}현금은 {low}최소 현금 {_cap_pct(min_cash)}보다 낮았던 날이 " + (f"{nd}거래일 중 {low_days}일" if nd else f"{low_days}일")
                     + (" (리밸런싱 때 다시 맞춤)" if rebal else " (시작 뒤 리밸런싱이 없어 다시 맞추지 않음)"))  # fmt: skip
         cks.append(check("R9", "투자 비율", "info", ok, invested, round(expected - (1 - min_inv), 6), msg))  # fmt: skip
+    elif p.get("kind") == "matched":
+        # 맞춤안은 현금을 일부러 늘린 구성이라 투자 비율 비교는 하지 않지만, 현금이 최소 현금 아래로 내려간 날은 다른 구성처럼 밝힌다
+        # (061: 추천 맞춤안의 현금이 752일 중 485일 최소 현금 10% 아래였는데 R9 를 통째로 건너뛰어 리포트 어디에도 없었다)
+        min_cash = float(crit.get("min_cash_ratio") or 0.0)
+        low_days = int(comp.get("days_cash_below_min") or 0)
+        if min_cash > 1e-6 and low_days > 0:
+            lo, lo_d, nd = comp.get("min_cash_weight"), comp.get("min_cash_date"), comp.get("n_days")
+            rebal = int((m.get("trading") or {}).get("n_rebalances") or 0) > 1
+            low = (f"최저 {max(0.0, float(lo)):.1%}" + (f"({lo_d})" if lo_d else "") + "까지 내려가 ") if lo is not None else ""
+            msg = (f"주식 {min(invested, 1.0):.1%} + 현금 {max(0.0, 1 - invested):.1%}로 시작했지만 {'리밸런싱 사이 ' if rebal else ''}현금은 {low}"
+                   f"최소 현금 {_cap_pct(min_cash)}보다 낮았던 날이 " + (f"{nd}거래일 중 {low_days}일" if nd else f"{low_days}일")
+                   + (" (리밸런싱 때 다시 맞춤)" if rebal else " (시작 뒤 리밸런싱이 없어 다시 맞추지 않음)"))  # fmt: skip
+            cks.append(check("R9", "투자 비율", "info", True, invested, round(1.0 - min_cash, 6), msg))  # fmt: skip
     # 코드 자체 점검 (사용자 표 밖)
     integ = []
     rb_cps = [cp for cp in p["checkpoints"] if cp["kind"] == "rebalance"] or p["checkpoints"][:1]

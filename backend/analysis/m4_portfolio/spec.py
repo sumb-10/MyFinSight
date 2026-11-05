@@ -45,7 +45,8 @@ def shift_window_ok(end: dt.date, day: dt.date, total_days: int) -> bool:
 START_DROP_KO = {"min_market_cap_usd": "그날 시가총액이 최소 시가총액({mc})에 못 미침", "market_cap_missing": "그날 시가총액 자료 없음",
                  "min_avg_daily_volume_usd": "그날 거래대금이 최소 거래대금에 못 미침", "insufficient_price_history": "상장 전이거나 가격 이력 부족",
                  "not_in_candidates": "그날 후보 검색에 없음(상장 전이거나 조건 밖)", "metric_missing": "그날 선정 지표 자료 없음",
-                 "metric_out_of_range": "그날 선정 지표가 자격선 밖", "rank_beyond_n": "그날 순위 밖", "sector_preference": "그날 섹터 선호로 밀림"}  # fmt: skip
+                 "metric_out_of_range": "그날 선정 지표가 자격선 밖", "rank_beyond_n": "그날 순위 밖", "sector_preference": "그날 섹터 선호로 밀림",
+                 "sector_preference_lower": "그날 섹터 선호로 밀림", "no_dividend": "그날 최근 12개월 배당 확인 안 됨(배당 기업 테마)"}  # fmt: skip
 
 
 def dropped_by(now_tickers: list[str], cand: Any, sel: Any) -> dict[str, int]:
@@ -72,7 +73,7 @@ def dropped_ko(by: dict[str, int], cons: dict[str, Any]) -> str:
 
 def selectable_at(md: MarketData, day: dt.date, desc: Descriptor, intent: dict[str, Any], cons: dict[str, Any], passed: list[str], request_id: str,
                   *, added: tuple[str, ...] = (), removed: frozenset[str] | set[str] = frozenset(), broad: bool = False,
-                  excluded: Iterable[str] = ()) -> tuple[Any, Tagging | None, Selection, list[dict[str, Any]]]:  # fmt: skip
+                  excluded: Iterable[str] = (), theme_ok: Iterable[str] = ()) -> tuple[Any, Tagging | None, Selection, list[dict[str, Any]]]:  # fmt: skip
     """그날 선정 가능한 종목: 그날 후보 검색(상한 없음) ∩ 기준일 테마 판정 통과 → 정량 선정. 07 재선정과 실행 전 점검이 같이 쓴다.
 
     broad(넓은 테마 — 테마 판정으로 거르지 않음): 그날 후보 전체에서 고른다. 기준일 통과 집합은 기준일 지표 순으로 자른 후보(상한 120)라
@@ -89,8 +90,8 @@ def selectable_at(md: MarketData, day: dt.date, desc: Descriptor, intent: dict[s
     else:
         passed_bt = sorted((set(passed) & cset | set(added)) - set(removed))
     tag = Tagging(request_id=request_id, min_confidence=0.0, tagged=[], excluded_by_theme=[], passed_tickers=passed_bt, batches=0,
-                  warnings=[f"re-selection at {day}: passed ∩ candidates_bt = {len(passed_bt)}"])  # fmt: skip
-    sel, facts = screen(view_bt, desc, tag, intent, cons, request_id=request_id)
+                  warnings=[f"re-selection at {day}: passed ∩ candidates_bt = {len(passed_bt)}"], theme_filter_applied=not broad)  # fmt: skip  (넓은 배당 테마 검사가 그날도 같게)
+    sel, facts = screen(view_bt, desc, tag, intent, cons, request_id=request_id, theme_ok=theme_ok)  # 기준일 테마 판정 통과 = 배당 기업 확인 (넓은 배당 테마)
     # 테마 판정을 다시 하지 않아(tagged=[]) screen 이 후보 수를 0 으로 적는다 → 그날 후보 수 (031: 07_selection_bt 의 n_candidates 가 늘 0)
     sel.summary["n_candidates"] = len(cand.candidates)
     # 그날 후보 단계의 시가총액 경고(자료 없어 뺀 종목·추정한 종목)를 기준일 테마 통과 종목만으로 → 07 이 'screen@날짜:' 를 달아 시작일 공지가 된다
@@ -98,6 +99,12 @@ def selectable_at(md: MarketData, day: dt.date, desc: Descriptor, intent: dict[s
     if broad:  # 그날 후보 전체에서 골랐고, 판정을 받지 않은 종목은 제외 키워드로만 걸렀다는 사실을 공지로 (060: 시작일 후보 465개가 리포트 어디에도 없었다)
         sel.warnings.append(f"broad start pool {len(cset)} candidates; exclusion keywords dropped {len(hit)} unchecked names {sorted(hit)[:8]}")
     return cand, tag, sel, facts
+
+
+def theme_passed(tagging: Any) -> list[str]:
+    """분석 기준일 테마 판정을 통과한 종목 (해당 + 신뢰도 기준 이상)."""
+    mc = float(getattr(tagging, "min_confidence", 0.5) or 0.0)
+    return [r.ticker for r in getattr(tagging, "tagged", None) or [] if getattr(r, "in_theme", False) and float(r.confidence or 0) >= mc]
 
 
 def benchmarks_for(req: dict[str, Any], tickers: list[str], md: MarketData, settings: AnalysisSettings) -> tuple[str, list[str]]:
@@ -181,7 +188,8 @@ def build_backtest_spec(
 
         def at(day: dt.date):
             return selectable_at(md, day, desc, intent, cons_bt, list(tagging.passed_tickers), req["request_id"], added=tuple(added), removed=removed,
-                                 broad=not getattr(tagging, "theme_filter_applied", True), excluded=[r.ticker for r in getattr(tagging, "excluded_by_theme", None) or []])  # fmt: skip
+                                 broad=not getattr(tagging, "theme_filter_applied", True), excluded=[r.ticker for r in getattr(tagging, "excluded_by_theme", None) or []],
+                                 theme_ok=theme_passed(tagging))  # fmt: skip
 
         first = at(first_try)
         n_first = len(first[2].selected)

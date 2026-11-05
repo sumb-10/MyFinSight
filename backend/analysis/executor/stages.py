@@ -244,6 +244,10 @@ def st_walkforward(ctx: RunContext) -> str:
             p0 = applied[0]
             bl["weights_by_date"][key] = p0["weights"]
             bl["views_by_date"][key] = p0["views_applied"]
+            # 그날 '뷰 방향 유지' 로 기준 비중에 고정된 종목 — 비중을 못 바꾼 뷰의 이유를 상한 탓으로 쓰지 않게 (065: Visa 는 상한과 멀었다)
+            holds_ = [str(a).split(":", 1)[1] for a in p0.get("active_constraints", []) if str(a).startswith("view_direction_hold:")]
+            if holds_:
+                bl.setdefault("holds_by_date", {})[key] = holds_
             i0 = res.bl_portfolios.index(p0)
             bl["narrative_by_date"][key] = res.view_sets[i0].get("narrative_ko", "") if i0 < len(res.view_sets) else ""
         else:

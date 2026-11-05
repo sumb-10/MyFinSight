@@ -75,7 +75,9 @@ CATALOG: dict[str, tuple[Level, str]] = {
     "excluded_by_data_quality": ("user", "가격 자료 품질 기준에 미달한 {tickers}을(를) 백테스트에서 제외하고 나머지 비중을 다시 맞췄습니다."),
     "no_portfolio_passed": ("user", "모든 포트폴리오가 필수 검증 규칙을 통과하지 못했습니다. 미통과 규칙: {rules}. 허용 낙폭·목표를 조정하거나 현금 혼합안을 검토해 보세요."),
     "alternative_skipped": ("user", "조건을 통과한 포트폴리오가 없고 현금 혼합안도 만들 수 없었습니다 ({reason})."),
-    "matched_floor": ("user", "과거 최대낙폭을 낙폭 맞춤 목표({target}) 안으로 맞추려면 주식 비중을 {floor}보다 더 줄여야 해서 낙폭 맞춤안(주식 + 현금)을 만들지 않았습니다. 주식이 너무 적은 구성은 후보로 두지 않습니다."),
+    # 어느 구성의 맞춤안인지 밝힌다 (064: 시가총액비중의 맞춤안은 있었는데 walk-forward 뉴스 뷰 BL 의 맞춤안을 못 만든 공지가 '맞춤안을 만들지 않았다' 로만 읽혔다)
+    "no_dividend_dropped": ("user", "배당 기업 테마라 최근 12개월 배당을 확인할 수 없는 종목 {n}개({tickers})는 선정하지 않았습니다 (팀 데이터베이스 배당 자료가 없거나 0이고, 분석 기준일 테마 판정에서도 배당 기업으로 확인되지 않음)."),
+    "matched_floor": ("user", "{base}: 과거 최대낙폭을 낙폭 맞춤 목표({target}) 안으로 맞추려면 주식 비중을 {floor}보다 더 줄여야 해서 이 구성의 낙폭 맞춤안(주식 + 현금)은 만들지 않았습니다. 주식이 너무 적은 구성은 후보로 두지 않습니다."),
     # 참고 (파일에만)
     "descriptor_version_fallback": ("info", "{text}"),
     "gics_draft": ("info", "{text}"),
@@ -126,7 +128,8 @@ _LEGACY: list[tuple[re.Pattern[str], str, tuple[str, ...]]] = [
     (re.compile(r"^excluded by data quality \(weights renormalized\): (.+)"), "excluded_by_data_quality", ("tickers",)),
     (re.compile(r"^no portfolio passed the hard rules \(fail counts by rule: (.+)\)"), "no_portfolio_passed", ("rules",)),
     (re.compile(r"^alternative skipped: (.+)"), "alternative_skipped", ("reason",)),
-    (re.compile(r"^matched variant skipped for \S+: stocks below floor (\S+) would be needed to bring max drawdown within (\S+) "), "matched_floor", ("floor", "target")),
+    (re.compile(r"^dividend theme: dropped (\d+) candidates without a confirmed dividend in the last 12 months \[([^\]]*)\]"), "no_dividend_dropped", ("n", "tickers")),
+    (re.compile(r"^matched variant skipped for (\S+): stocks below floor (\S+) would be needed to bring max drawdown within (\S+) "), "matched_floor", ("base", "floor", "target")),
     (re.compile(r"^fewer than target after matching; widened GICS codes one level up -> (\d+)"), "gics_widened", ("n",)),
     # 후보 단계 시가총액 하드 필터 (retrieve.mcap_warnings). 아래 시장모형 공지('market cap missing for …: treated as 0')와 앞말이 달라 서로 가리지 않는다
     (re.compile(r"^min market cap ([\d.]+) USD: dropped (\d+) candidates without market cap data \[([^\]]*)\]"), "min_mcap_missing", ("min", "n", "tickers")),
@@ -227,7 +230,7 @@ def from_text(stage: str, text: str, *, dates: list[str] | None = None) -> Warni
                 kw["sector"] = ", ".join(f"{sector_ko(a.strip())} {b.strip()}개" for a, b in pairs)
             subs = [x.strip().strip("'\"") for x in (kw.get("subs") or "").split(",") if x.strip()]
             kw["subs"] = f"({', '.join(subs[:5])}" + (f" 외 {len(subs) - 5}개" if len(subs) > 5 else "") + ")" if subs else ""
-        if code in ("min_mcap_missing", "mcap_estimated", "market_cap_missing") and "tickers" in kw:  # 과거 시점에는 앞쪽이 빈 종목이 열 개 넘게 빠지기도 한다 → 앞 5개 + '외 N개'
+        if code in ("min_mcap_missing", "mcap_estimated", "market_cap_missing", "no_dividend_dropped") and "tickers" in kw:  # 과거 시점에는 앞쪽이 빈 종목이 열 개 넘게 빠지기도 한다 → 앞 5개 + '외 N개'
             names = [x.strip().strip("'\"") for x in kw.get("tickers", "").split(",") if x.strip()]
             kw["tickers"] = ", ".join(names[:5]) + (f" 외 {len(names) - 5}개" if len(names) > 5 else "")
             kw["n"] = len(names)
@@ -238,6 +241,8 @@ def from_text(stage: str, text: str, *, dates: list[str] | None = None) -> Warni
                 kw["days"] = f"{days // 365}년" if days and days % 365 == 0 else f"{days}일"
         elif code == "market_cap_missing":  # 예전 원문(후보 전체에 시가총액 자료 없음)은 종목 목록이 없어 그 사실만 적는다 (make 가 채우지 못한 템플릿 대신 text 를 쓴다)
             kw["text"] = "시가총액 자료가 있는 후보가 하나도 없었습니다."
+        if code == "matched_floor":
+            kw["base"] = _plan_ko(kw.get("base", ""))
         if code == "must_include_no_metric":  # 적자 여부는 PER 에서만 안다 (배당·ROE·모멘텀은 그냥 자료 없음)
             kw["why"] = "(적자이거나 재무 자료 없음)" if kw.get("why") else ""
         if code == "must_include_out_of_range":
@@ -250,9 +255,23 @@ def from_text(stage: str, text: str, *, dates: list[str] | None = None) -> Warni
             kw["text"] = text
         w = make(stage, code, dates=dates, **kw)
         # 기준일 배분 가능 비율은 05 선정·10f 구성이 같은 사실을 따로 낸다 → 하나로 (먼저 나온 05 문장이 해결 방법이 더 구체적)
-        w.details = {"text": text, "key": kw.get("tickers") or kw.get("names") or (f"@now:{kw.get('cap')}" if code == "weight_capacity" else None)}
+        w.details = {"text": text, "key": kw.get("tickers") or kw.get("names") or kw.get("base") or (f"@now:{kw.get('cap')}" if code == "weight_capacity" else None)}
         return w
     return Warning(stage=stage, code="legacy_note", level="debug", message_ko=text, dates=dates, details={"text": text})
+
+
+_PLAN_KO = {"equal_weight": "동일비중", "market_cap": "시가총액비중", "inverse_volatility": "역변동성비중", "min_variance": "최소분산", "bl_news": "뉴스 뷰 BL"}
+
+
+def _plan_ko(pid: str) -> str:
+    """구성 id → 이름 ('wf_market_cap' → '시가총액비중 (walk-forward)', 'wf_bl_news' → 'walk-forward 뉴스 뷰 BL', 'bl_02' → 'BL 타겟 2')."""
+    if pid == "wf_bl_news":
+        return "walk-forward 뉴스 뷰 BL"
+    if m := re.fullmatch(r"bl_0*(\d+)", pid):
+        return f"BL 타겟 {m.group(1)}"
+    wf = pid.startswith("wf_")
+    name = _PLAN_KO.get(pid[3:] if wf else pid, pid)
+    return f"{name} (walk-forward)" if wf else name
 
 
 def _pct(x: float) -> str:

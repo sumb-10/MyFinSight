@@ -81,7 +81,7 @@ def test_drift_rule_keeps_old_wording_for_old_results_and_handles_noise_only_bre
     # 판정은 허용 폭을 넘었는데 넘은 폭이 잡음(0.05%p) 안이라 날 수가 0 이면 '0일' 이라 쓰지 않는다
     tiny = {**old, "max_stock_weight": 0.5003, "days_above_stock_cap": 1, "days_above_stock_tol": 0}
     assert _drift_msg_ko("stock", tiny, 0.40, 0.25, ["A"]) == (
-        "리밸런싱 사이 최대 종목 비중 50.0%(A) — 상한 40%를 넘은 종목이 있던 날이 6거래일 중 1일, 허용 폭(상한의 1.25배, 50.0%)은 0.05%p 안쪽으로만 넘음 (A). 리밸런싱 주기를 줄이면 완화됩니다")
+        "리밸런싱 사이 최대 종목 비중 50.0%(A) — 상한 40%를 넘은 종목이 있던 날이 6거래일 중 1일, 허용 폭(상한의 1.25배, 50.0%)은 최대 0.03%p만 넘어 잡음 기준(0.05%p) 안이라 넘은 날로 세지 않음 (A). 리밸런싱 주기를 줄이면 완화됩니다")
 
 
 # ───────────────────────── 031: 허용 폭이 100% 이상 ─────────────────────────
@@ -155,7 +155,10 @@ def test_r9_says_when_cash_fell_below_min_between_rebalances():
                                 "최소 현금 10%보다 낮았던 날이 5거래일 중 2일 (리밸런싱 때 다시 맞춤)")  # fmt: skip
     hold = _checks(comp, target, 0.50, 0.90, min_cash=0.10, n_rb=1, n_days=5)["R9"]["message_ko"]  # 시작일 1회뿐(매수 후 보유)
     assert hold.endswith(" · 현금은 최저 7.6%(2024-01-04)까지 내려가 최소 현금 10%보다 낮았던 날이 5거래일 중 2일 (시작 뒤 리밸런싱이 없어 다시 맞추지 않음)")
-    assert "R9" not in _checks(comp, target, 0.50, 0.90, min_cash=0.10, kind="matched", n_days=5)
+    # 낙폭 맞춤안은 투자 비율 비교는 하지 않지만 최소 현금 아래로 내려간 날은 밝힌다 (061: 추천 맞춤안이 752일 중 485일 10% 아래)
+    assert _checks(comp, target, 0.50, 0.90, min_cash=0.10, kind="matched", n_days=5)["R9"]["message_ko"] == (
+        "주식 90.0% + 현금 10.0%로 시작했지만 리밸런싱 사이 현금은 최저 7.6%(2024-01-04)까지 내려가 최소 현금 10%보다 낮았던 날이 5거래일 중 2일 (리밸런싱 때 다시 맞춤)")
+    assert "R9" not in _checks({**comp, "days_cash_below_min": 0}, target, 0.50, 0.90, min_cash=0.10, kind="matched", n_days=5)
     assert _checks(comp, target, 0.50, 0.90, min_cash=0.0, n_days=5)["R9"]["message_ko"] == "투자 90%, 현금 10%"  # 최소 현금을 안 정했으면 말하지 않는다
     for stale in ({**comp, "days_cash_below_min": 0}, {k: v for k, v in comp.items() if k != "days_cash_below_min"}):  # 미달 없음 · 예전 결과
         assert _checks(stale, target, 0.50, 0.90, min_cash=0.10, n_days=5)["R9"]["message_ko"] == "투자 90%, 현금 10% (요청한 최소 현금 10% 포함)"

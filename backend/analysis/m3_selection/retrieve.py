@@ -160,6 +160,8 @@ def retrieve(
         stats["by_filter"][reason.split("(")[0]] += 1
 
     excl_tickers = {str(x).upper() for x in cons.get("exclude_tickers", [])}
+    # 제외 종목과 같은 회사의 다른 주식 클래스도 뺀다 (063: GOOGL 을 뺐는데 GOOG 가 선정됐다 — F8, 회사 키는 주식 클래스 묶음과 같은 규칙)
+    excl_company = {_share_class_key(desc.by_ticker(x)): x for x in excl_tickers if desc.by_ticker(x)}
     # 예시·필수 포함 종목과 같은 세부산업이면 키워드가 하나만 맞아도 04 가 판단한다 (058: 조선 전업 한화오션이 'shipbuilding' 하나라 빠졌는데
     # 예시 종목 셋과 같은 세부산업 20101010 이었다 — 테마의 GICS 코드가 예시 종목의 세부산업을 담지 못한 경우)
     peer_sub: set[str] = set()
@@ -184,6 +186,9 @@ def retrieve(
                 continue
         if t.upper() in excl_tickers or e["ticker"].upper() in excl_tickers:
             drop(t, "exclude_tickers")
+            continue
+        if _share_class_key(e) in excl_company:
+            drop(t, f"exclude_tickers(같은 회사 {excl_company[_share_class_key(e)]})")
             continue
         if D.code_of(e, "sector") in excl_sectors:
             drop(t, "exclude_sectors")

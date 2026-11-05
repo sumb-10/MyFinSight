@@ -185,7 +185,7 @@ def _notes_ko(text: str) -> str:
 def soft_table(R):
     rp, nt = R["intent"]["risk_params"], R["intent"]["news_tilt"]
     rows = [{"k": "변동성 선호", "v": VOL_PREF_KO.get(rp["volatility_preference"], rp["volatility_preference"])}, {"k": "허용 최대낙폭·낙폭 맞춤안 목표", "v": _tolerance_note(R).replace("손실 감내 수준 ", "")},
-            {"k": "해석 메모", "v": _notes_ko(rp.get("notes_ko") or "")},
+            *([{"k": "해석 메모", "v": memo}] if (memo := _notes_ko(rp.get("notes_ko") or "")) else []),  # 빈 메모 줄은 보이지 않는다 (061·062)
             {"k": "뉴스 뷰 반영", "v": (f"켜짐 · 종목당 최대 {_pp(nt['max_tilt_per_stock'])}, 뷰 신뢰도 상한 {nt['max_view_confidence']}" if nt["enabled"] else "꺼짐 (기준 비중만)")}]  # fmt: skip
     return table("성향 해석 (소프트 조건)", [("k", "항목", "text"), ("v", "해석", "text")], rows)
 
@@ -687,6 +687,23 @@ def walkforward_blocks(R):
     return blocks
 
 
+def invested_gap_note(R, chosen: str) -> str | None:
+    """백테스트(시작일 구성)의 주식 비중이 지금 구성보다 10%p 넘게 낮으면 — 최대낙폭·변동성이 그 현금만큼 눌린 값이라는 사실.
+    062: 시작일 6종목 × 종목당 상한 10% 라 백테스트는 주식 60%·현금 40% 였는데 지금 구성은 주식 90% — '손실 감내 수준에 맞다' 고만 했다."""
+    try:
+        p = find(R, chosen)
+    except StopIteration:
+        return None
+    cc = current_composition(R, chosen)
+    if cc is None or not p.get("target_weights"):
+        return None
+    bt_inv, now_inv = float(sum(p["target_weights"].values())), float(sum(cc[0].values()))
+    if now_inv - bt_inv < 0.10 - 1e-9:
+        return None
+    return (f"백테스트는 주식 {bt_inv:.0%}·현금 {1 - bt_inv:.0%}로 시작해 최대낙폭·변동성이 그 현금만큼 낮게 나왔습니다. "
+            f"지금 구성은 주식 {now_inv:.0%}라 같은 흐름이면 손실 폭이 백테스트보다 클 수 있습니다")
+
+
 def current_composition(R, chosen: str) -> tuple[dict[str, float], float, str] | None:
     """추천(선택)안의 규칙으로 고른 분석 기준일 구성 (weights, cash, 이름) — 모의투자 시작 비중(paper._report_weights)과 같은 규칙.
 
@@ -1022,8 +1039,10 @@ def companies(R, chosen) -> dict[str, Any]:
     expl = {r["ticker"]: r for r in ((R["selection"].get("explained") or {}).get("per_ticker") or [])}
     idx = R["evidence_index"]
     by_ticker: dict[str, dict[str, int]] = {}
+    now = str(R["selection"]["as_of_now"]["as_of"])
     for e in idx.values():
-        if e["kind"] in ("news", "disclosure"):
+        # 분석 기준일 창의 근거만 센다 — 백테스트 종목은 walk-forward 날짜마다 창이 따로 있어 3년치가 섞였다 (062: NEE 140건 vs WELL 10건, 기준일 창만 보면 NEE 10건)
+        if e["kind"] in ("news", "disclosure") and str(e.get("window_as_of") or now) == now:
             for t in e.get("tickers", []):
                 by_ticker.setdefault(t, {"news": 0, "disclosure": 0})[e["kind"]] += 1
     items = []
@@ -1112,7 +1131,7 @@ def build_summary(R, chosen: str, interp: dict[str, Any], narr: dict[str, Any]) 
              for t, w in sorted(alloc_w.items(), key=lambda x: -x[1]) if w > 1e-6]  # fmt: skip
     cash_w = max(0.0, 1 - sum(alloc_w.values()))
     return {"verdict": {"status": status, "label_ko": label, "headline_ko": headline, "reason_ko": reason, "chosen_portfolio_id": chosen, "chosen_label_ko": pf_label(p),
-                        "cautions_ko": list((vd or {}).get("cautions_ko") or []), "period_note_ko": period_note(R), "notices_ko": user_notices,
+                        "cautions_ko": [*((vd or {}).get("cautions_ko") or []), *([g] if (g := invested_gap_note(R, chosen)) else [])], "period_note_ko": period_note(R), "notices_ko": user_notices,
                         "n_notices": len([n for n in (R.get("notices") or []) if n.get("level", "user") == "user"])},
             "validation": {"n_pass": val["summary"]["n_pass"], "n_warn": val["summary"]["n_warn"], "n_fail": val["summary"]["n_fail"], "n_candidates": val["summary"].get("n_candidates"),
                            "chosen_status": chosen_status, "failed_rules_ko": failed, "warned_rules_ko": warned, "info_notes_ko": info_notes,
@@ -1125,21 +1144,26 @@ def build_summary(R, chosen: str, interp: dict[str, Any], narr: dict[str, Any]) 
             "period": R["backtest"]["period"], "next_actions_ko": list(interp.get("next_actions_ko") or [])}  # fmt: skip
 
 
-def _stuck_views(views, bw: dict[str, float], sw: dict[str, float], cap: float, floor: float = 0.0) -> tuple[int, dict[str, int], set[str]]:
+def _stuck_views(views, bw: dict[str, float], sw: dict[str, float], cap: float, floor: float = 0.0,
+                 holds: set[str] | frozenset[str] = frozenset()) -> tuple[int, dict[str, int], set[str]]:
     """뷰가 걸린 종목 비중이 기준 비중과 같은 뷰 — (뷰 수, 종목별 횟수, 묶은 경계들: 'cap'·'floor'·'both'·'other').
     종목당 상한은 비중을 올리는 쪽(오름·상대 뷰의 강한 쪽)만, 최소 비중은 내리는 쪽(내림·상대 뷰의 약한 쪽)만 막는다
     (036·037: '내림' 뷰를 '종목당 상한에 묶여' 라고 썼다, 060: 29개 중 23개가 최소 비중 1% 에 묶인 내림 쪽이었는데 '상한·섹터 예산' 탓)."""
     n, stuck, kinds = 0, {}, set()
     for v in views:
         legs = [*v.get("long", []), *v.get("short", [])]
-        if legs and all(abs(bw.get(t, 0.0) - sw.get(t, 0.0)) <= 1e-4 for t in legs):
+        # '바꾸지 못함' 은 카드의 비중 변화 표시(_delta_ko)와 같은 잡음 기준 0.05%p 로 (063: SNDK 내림 뷰가 1.0153% → 최소 비중 1.00% 로
+        # 0.015%p 만 움직여 표에는 '변화 없음' 인데 1e-4 기준으로는 움직인 뷰라 최소 비중 설명이 없었다). 경계는 BL 비중이 닿았는지로 본다
+        if legs and all(abs(bw.get(t, 0.0) - sw.get(t, 0.0)) < 0.0005 for t in legs):
             n += 1
             down_abs = v.get("type") != "relative" and v.get("direction") == "down"
             ups = [] if down_abs else list(v.get("long", []))
             downs = list(v.get("long", [])) if down_abs else list(v.get("short", []))
-            at_cap = all(abs(sw.get(t, 0.0) - cap) < 1e-4 for t in ups)
-            at_floor = floor > 0 and all(sw.get(t, 0.0) <= floor + 1e-4 for t in downs)
-            if at_cap and (not downs or at_floor):
+            at_cap = all(abs(bw.get(t, 0.0) - cap) < 1e-4 for t in ups)
+            at_floor = floor > 0 and all(bw.get(t, 0.0) <= floor + 1e-4 for t in downs)
+            if holds and set(legs) <= set(holds):  # '뷰 방향 유지' 경계가 기준 비중에 고정 (056·065)
+                kinds.add("hold")
+            elif at_cap and (not downs or at_floor):
                 kinds.add("cap" if not downs else "floor" if not ups else "both")
             else:
                 kinds.add("other")
@@ -1157,8 +1181,8 @@ def _stuck_note_ko(R, n_views: int, n_stuck: int, stuck: dict[str, int], kinds: 
     top = [f"{names.get(t) or t}" for t, _ in sorted(stuck.items(), key=lambda x: -x[1])[:3]]
     fl = _floor(R)
     # 상한이 아니라 '뷰 방향 유지' 경계에 걸린 경우 (056: KMI 는 상한과 멀었는데 상관이 높은 WMB 오름 뷰 때문에 최적화가 오히려 줄이려 해 기준 비중에 고정됐다)
-    why = ("다른 뷰와 함께 최적화하면 오히려 반대쪽으로 움직여야 해서 기준 비중에 고정되어(뷰 방향 유지)" if held
-           else "상한·섹터 예산 같은 제약 때문에" if not kinds or "other" in kinds
+    why = ("다른 뷰와 함께 최적화하면 오히려 반대쪽으로 움직여야 해서 기준 비중에 고정되어(뷰 방향 유지)" if held or kinds == {"hold"}
+           else "상한·섹터 예산 같은 제약 때문에" if not kinds or "other" in kinds or "hold" in kinds
            else f"종목당 상한({cap:.0%})에 묶여 있어" if kinds == {"cap"}
            else f"최소 비중({fl:.0%})에 묶여 더 줄일 수 없어" if kinds == {"floor"}
            else f"종목당 상한({cap:.0%})이나 최소 비중({fl:.0%})에 묶여 있어")  # fmt: skip
@@ -1175,6 +1199,11 @@ def view_stuck_note(R, p: dict[str, Any] | None) -> str | None:
     bw = {t: float(x) for t, x in (p.get("weights") or {}).items()}
     sw = {**bw, **{t: bw.get(t, 0.0) - float(d) for t, d in (p.get("delta_vs_baseline") or {}).items()}}  # 기준 = BL − 차이
     cap = float(R["request"]["constraints"].get("max_weight_per_stock") or 1.0)
+    # 모든 종목이 종목당 상한에 걸려 있으면(투자할 돈 = 상한 합) 어떤 뷰도 비중을 못 바꾼다 — walk-forward 카드(capped_note_ko)와 같은 이유로
+    # (062: 6종목 × 10% 인 시작일 BL 다섯 개가 '상한·섹터 예산 같은 제약 때문' 이라고 썼는데 섹터는 30% 로 상한 50% 와 멀었다)
+    held_w = [x for x in sw.values() if x > 1e-9]
+    if held_w and all(abs(x - cap) < 1e-4 for x in held_w) and max(abs(bw.get(t, 0.0) - x) for t, x in sw.items()) < 0.0005:
+        return f"모든 종목이 종목당 상한({cap:.0%})에 걸려 있어 뉴스 뷰 {len(views)}개가 비중을 바꿀 수 없었습니다 (기준 비중과 같음)"
     n, stuck, kinds = _stuck_views(views, bw, sw, cap, _floor(R))
     holds = {str(x).split(":", 1)[1] for x in p.get("active_constraints") or [] if str(x).startswith("view_direction_hold:")}
     held = bool(stuck) and set(stuck) <= holds
@@ -1199,7 +1228,7 @@ def news_effect(R) -> dict[str, Any] | None:
     cap = float(R["request"]["constraints"].get("max_weight_per_stock") or 1.0)
     bw, sw = bl.get("weights_by_date") or {}, (base or {}).get("weights_by_date") or {}
     capped_days = {d for d, v in views.items() if v and d in bw and d in sw and all(abs(x - cap) < 1e-4 for x in sw[d].values() if x > 1e-9)
-                   and max((abs(bw[d].get(t, 0.0) - x) for t, x in sw[d].items()), default=0.0) <= 1e-4}  # fmt: skip
+                   and max((abs(bw[d].get(t, 0.0) - x) for t, x in sw[d].items()), default=0.0) < 0.0005}  # fmt: skip
     capped = len(capped_days)
     capped_note = (f"뉴스 뷰가 있던 {n_dates}개 날짜 중 {capped}개는 모든 종목이 종목당 상한({cap:.0%})에 걸려 있어 뷰가 비중을 바꿀 수 없었습니다 (기준 비중과 같음)"
                    if capped else None)  # fmt: skip
@@ -1209,14 +1238,14 @@ def news_effect(R) -> dict[str, Any] | None:
     for d, vs in views.items():
         if not vs or d not in bw or d not in sw or d in capped_days:
             continue
-        k, st, kd = _stuck_views(vs, bw[d], sw[d], cap, _floor(R))
+        k, st, kd = _stuck_views(vs, bw[d], sw[d], cap, _floor(R), set((bl.get("holds_by_date") or {}).get(d) or []))
         n_stuck, kinds = n_stuck + k, kinds | kd
         for t, c in st.items():
             stuck[t] = stuck.get(t, 0) + c
     if n_stuck:
         part = _stuck_note_ko(R, n_views, n_stuck, stuck, kinds, cap)
         capped_note = f"{capped_note}. {part}" if capped_note else part
-    moved = sum(1 for d, v in views.items() if v and d in bw and d in sw and max((abs(bw[d].get(t, 0.0) - x) for t, x in {**sw[d], **{k: 0.0 for k in bw[d] if k not in sw[d]}}.items()), default=0.0) > 1e-4)
+    moved = sum(1 for d, v in views.items() if v and d in bw and d in sw and max((abs(bw[d].get(t, 0.0) - x) for t, x in {**sw[d], **{k: 0.0 for k in bw[d] if k not in sw[d]}}.items()), default=0.0) >= 0.0005)
     return {"disabled": False, "bl_id": bl["id"], "bl_label_ko": pf_label(bl), "base_id": base["id"] if base else None, "base_label_ko": pf_label(base) if base else None,
             "n_dates_capped": capped, "capped_note_ko": capped_note,
             "bl_cagr": bh["cagr"], "base_cagr": base["headline"]["cagr"] if base else None, "diff_cagr": round((bh["cagr"] or 0) - (base["headline"]["cagr"] or 0), 6) if base else None,

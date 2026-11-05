@@ -126,7 +126,17 @@ def generate_views(
                     opposite.append(key[0][0])
                     warnings.append(f"{sid}: opposite views on {key} dropped (conflicting directions)")
                 else:
-                    warnings.append(f"{sid}: duplicate view {key} dropped")
+                    # 같은 방향의 중복이면 근거만 남은 뷰에 합친다 — 세트 설명이 빠진 뷰의 기사를 근거로 들었다 (065: SYF 오름 둘 중 하나를 빼서
+                    # 'Roto-Rooter 제휴 확대' 기사가 설명에는 있고 근거 목록에는 없었다). 그 뷰 종목에 붙은 근거만
+                    if prev is not None:
+                        lg = {*prev["long"], *prev.get("short", [])}
+                        extra = [str(i).strip() for i in v.get("evidence_ids", []) if str(i).strip() in known_ev and owner.get(str(i).strip(), set()) & lg
+                                 and str(i).strip() not in prev.get("evidence_ids", [])]  # fmt: skip
+                        if extra:
+                            prev["evidence_ids"] = [*prev.get("evidence_ids", []), *extra]
+                            kinds_ = {"disclosure" if i.startswith("dc") else "news" for i in prev["evidence_ids"]}
+                            prev["evidence_type"] = "mixed" if len(kinds_) > 1 else next(iter(kinds_))
+                    warnings.append(f"{sid}: duplicate view {key} dropped" + (" (evidence merged)" if prev is not None and v.get("evidence_ids") else ""))
                 continue
             seen.add(key)
             if set(v["long"]) & set(v.get("short", [])):

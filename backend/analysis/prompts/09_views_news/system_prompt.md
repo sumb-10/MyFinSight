@@ -40,7 +40,7 @@
     {
       "scenario_id": "snake_case",
       "title_ko": "시나리오 제목",
-      "narrative_ko": "2~3문장. 어떤 공시·뉴스 흐름을 어떻게 해석했는지 (views 의 근거로 쓴 기사·공시만 — 뷰로 만들지 않은 기사를 근거처럼 쓰지 않음, 그 뷰의 evidence_ids 가 아닌 id 를 '…와 별개로' 처럼 적지 않음).",
+      "narrative_ko": "2~3문장. 어떤 공시·뉴스 흐름을 어떻게 해석했는지 (views 의 근거로 쓴 기사·공시만 — 뷰로 만들지 않은 기사를 근거처럼 쓰지 않음, 그 뷰의 evidence_ids 가 아닌 id 를 '…와 별개로' 처럼 적지 않음). 회사 이름을 쓴 문장의 사건(배당·실적·인수 등)은 그 회사 티커가 붙은 근거에 있는 사건만 — 다른 회사의 기사를 옮겨 붙이지 않음.",
       "views": [
         { "type": "absolute", "long": ["LLY"], "short": [], "direction": "up", "strength": "strong", "confidence": 0.4, "horizon_months": 12,
           "rationale_ko": "자사주 취득·처분 결정 공시(dc45)와 FDA 승인 헤드라인(ev123) …", "evidence_type": "mixed", "evidence_ids": ["dc45", "ev123"] },

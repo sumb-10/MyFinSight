@@ -155,8 +155,10 @@ def build_results(
                       "metric_backtest": rank_bt.get(t, {}).get("metric_value") if reselected else None,
                       "metric_backtest_fact_id": rank_bt.get(t, {}).get("metric_fact_id") if reselected else None})  # fmt: skip
     reason_ko = {"sector_preference": "섹터 선호(순위가 더 낮은 다른 섹터 종목에 자리를 내줌)", "rank_beyond_n": "순위 밖", "metric_missing": "지표 자료 없음",
+                 "no_dividend": "최근 12개월 배당 확인 안 됨 (배당 기업 테마)",
+                 "sector_preference_lower": "섹터 선호(같은 섹터 종목이 많아 순위가 더 낮은 다른 섹터 종목을 먼저 뽑음)",
                  "metric_missing (eps<=0 or no financials)": "지표 자료 없음(적자 또는 재무 자료 없음)"}  # fmt: skip
-    order = {"sector_preference": 0, "metric_out_of_range": 1, "rank_beyond_n": 2}
+    order = {"sector_preference": 0, "sector_preference_lower": 0, "metric_out_of_range": 1, "no_dividend": 1, "rank_beyond_n": 2}
     rej = sorted(sel["rejected"], key=lambda r: order.get(str(r["reason"]).split("(")[0], 3))
     def _reason(r: dict[str, Any]) -> str:
         if r["reason"].startswith("metric_out_of_range("):  # 'roe_ttm=-0.1572, 범위 >0 ≤10' → 'ROE -15.7%, 자격선 0% 초과 1,000% 이하' (009)
@@ -241,12 +243,13 @@ def build_results(
         # 필수 포함은 지표·자격선과 관계없이 담기므로 따로 적는다 (018: 지표 없는 필수 포함까지 '지표 계산 가능' 으로 셌다;
         # 025: '(필수 포함 2개 포함)' 을 서술이 빠뜨려 '지표를 계산할 수 있는 17개' 라고 썼다 → 지표 없는 필수 포함은 개수를 나눠 적는다)
         # 필수 포함은 지표와 관계없이 따로 센다 — 공지(…자격선 안 6개(필수 포함 2개 별도))와 같은 나눔 (038)
-        {"stage": "with_metric", "label_ko": f"선정 지표({M_KO.get(met, met)}) 계산 가능·자격선 안 {sel['summary']['n_with_metric'] - n_forced}개"
+        {"stage": "with_metric", "label_ko": ("배당을 확인했고 " if sel["summary"].get("n_no_dividend") else "")
+                                             + f"선정 지표({M_KO.get(met, met)}) 계산 가능·자격선 안 {sel['summary']['n_with_metric'] - n_forced}개"
                                              + (f" + 필수 포함 {n_forced}개" + (f"(그중 지표 없음·자격선 밖 {len(forced_off)}개: {', '.join(forced_off)})" if forced_off else "") if n_forced else ""),
          "count": sel["summary"]["n_with_metric"]},  # fmt: skip
         # 섹터 분산은 실제로 순위를 바꿨을 때만 적는다 (015·017: 섹터 상한 100%·한 섹터 12종목인데 '섹터 분산 적용' 이라고 했다)
         {"stage": "selected_now", "label_ko": f"최종 선정 ({sel['summary']['as_of']}"
-                                              + (", 섹터 분산으로 순위 일부 조정" if any(r.get("reason") == "sector_preference" for r in sel.get("rejected") or []) else "") + ")",
+                                              + (", 섹터 분산으로 순위 일부 조정" if any(r.get("reason") in ("sector_preference", "sector_preference_lower") for r in sel.get("rejected") or []) else "") + ")",
          "count": sel["summary"]["n_selected"]},  # fmt: skip
         {"stage": "selected_backtest", "label_ko": (f"백테스트용 재선정 ({spec['period']['as_of']}" + (", 넓은 테마라 그날 후보 전체에서" if not tag.get("theme_filter_applied", True) else "") + ")" if reselected
                                                      else f"백테스트에 쓴 목록 ({spec['period']['as_of']}부터 · 분석 기준일 목록 그대로, 시작일 재선정 없음)"),

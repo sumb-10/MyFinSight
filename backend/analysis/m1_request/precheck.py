@@ -20,7 +20,7 @@ from backend.analysis.m2_data.market_data import MarketData
 from backend.analysis.m3_selection.classify import classify, is_broad_theme
 from backend.analysis.m3_selection.retrieve import retrieve
 from backend.analysis.m3_selection.screen import screen
-from backend.analysis.m4_portfolio.spec import MAX_START_SHIFTS, dropped_by, next_shift_day, selectable_at, shift_window_ok
+from backend.analysis.m4_portfolio.spec import MAX_START_SHIFTS, dropped_by, next_shift_day, selectable_at, shift_window_ok, theme_passed
 from backend.analysis.schemas.selection import Tagging
 from backend.analysis.settings import AnalysisSettings
 from backend.pipeline.descriptor import Descriptor
@@ -90,7 +90,8 @@ def precheck(normalized: dict[str, Any], intent: dict[str, Any], desc: Descripto
         return out
     day0 = cal[0].date()
     passed = list(tag.passed_tickers)
-    bx = {"broad": not getattr(tag, "theme_filter_applied", True), "excluded": [r.ticker for r in tag.excluded_by_theme]}  # 07 과 같은 규칙 (넓은 테마는 그날 후보 전체)
+    bx = {"broad": not getattr(tag, "theme_filter_applied", True), "excluded": [r.ticker for r in tag.excluded_by_theme],
+          "theme_ok": theme_passed(tag)}  # 07 과 같은 규칙 (넓은 테마는 그날 후보 전체, 배당 테마는 기준일 판정으로 배당 확인)
     c0, t0, s0, _f0 = selectable_at(md, day0, desc, intent, cons, passed, rid, **bx)
     out["start"] = {**_summary(day0, c0, t0, s0, invest), "dropped_by": dropped_by(now["tickers"], c0, s0)}
     n_start = len(s0.selected)

@@ -346,7 +346,7 @@ def test_round17_decisions_fossil_utilities_news_minimum_broad_start_pool(monkey
     monkeypatch.setattr(S, "_exclude_keyword_hits", lambda desc, kws: {"D": {"oil"}, "A": {"oil"}})
     monkeypatch.setattr(S, "mcap_warnings", lambda *a, **k: [])
 
-    def fake_screen(view, desc, tag_, it, cons, request_id):
+    def fake_screen(view, desc, tag_, it, cons, request_id, theme_ok=()):
         seen["pool"] = list(tag_.passed_tickers)
         return NS(summary={}, warnings=[]), []
 
@@ -441,3 +441,12 @@ def test_mirrored_relative_views_and_duplicate_sets_are_dropped(monkeypatch):
                                    n_sets=2, views_per_set=4, stage_tag="t")  # fmt: skip
     assert [[(v["type"], v["long"]) for v in s_["views"]] for s_ in sets] == [[("absolute", ["A"])]]  # 상대 뷰 쌍은 빠지고, 같아진 두 번째 세트도 빠짐
     assert "서로 반대인 상대 뷰" in sets[0]["narrative_ko"] and any("mirrored" in w for w in warns) and any("same views as set" in w for w in warns)
+
+
+def test_share_classes_of_one_company_share_a_key():
+    """063: GOOGL 을 뺐는데 GOOG 가 선정됐다 — 제외 종목과 같은 회사 키의 다른 주식 클래스도 뺀다(키 규칙은 주식 클래스 묶음과 같다)."""
+    from backend.analysis.m3_selection.retrieve import _share_class_key
+
+    a = _share_class_key({"name": "Alphabet Inc. (Class A)", "yfinance_symbol": "GOOGL"})
+    c = _share_class_key({"name": "Alphabet Inc. (Class C)", "yfinance_symbol": "GOOG"})
+    assert a == c == "alphabet" and _share_class_key({"name": "Apple Inc.", "yfinance_symbol": "AAPL"}) != a

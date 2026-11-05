@@ -471,6 +471,9 @@ def test_matched_plan_respects_stock_floor():
     assert c2 is None and raw2 is None
     w = from_text("11_backtest", "matched variant skipped for equal_weight: stocks below floor 30% would be needed to bring max drawdown within 15.0% (base invested 100%, cash cap 70%, 9 runs)")
     assert w.code == "matched_floor" and w.level == "user" and "30%" in w.message_ko and "15.0%" in w.message_ko
+    assert w.message_ko.startswith("동일비중: ") and "이 구성의 낙폭 맞춤안" in w.message_ko  # 어느 구성의 맞춤안인지 (064)
+    wf = from_text("11_backtest", "matched variant skipped for wf_bl_news: stocks below floor 30% would be needed to bring max drawdown within 15.0% (base invested 90%, cash cap 60%, 9 runs)")
+    assert wf.message_ko.startswith("walk-forward 뉴스 뷰 BL: ") and wf.details["key"] != w.details["key"]  # 구성이 다르면 합치지 않는다
 
 
 def test_capacity_notice_names_the_binding_cap_and_total_cash():
@@ -1336,7 +1339,8 @@ def test_sector_preference_marks_only_names_that_would_have_made_the_cut(monkeyp
     sel, _ = screen(SimpleNamespace(as_of=dt.date(2025, 6, 25)), desc, tagging, intent, cons, request_id="r")
     reasons = {r.ticker: r.reason for r in sel.rejected}
     assert sorted(s.ticker for s in sel.selected) == ["A1", "A2", "B1"]
-    assert reasons == {"A3": "sector_preference", "A4": "rank_beyond_n", "A5": "rank_beyond_n"}
+    # A4·A5 는 상위 3개 밖이지만 순위가 더 낮은 B1 이 뽑혔으니 '순위 밖' 이 아니다 (063) — 공지의 '자리를 내준' 종목에는 넣지 않는다 (008)
+    assert reasons == {"A3": "sector_preference", "A4": "sector_preference_lower", "A5": "sector_preference_lower"}
     w = from_text("05_selection", next(x for x in sel.warnings if x.startswith("sector count preference")))
     assert "A3" in w.message_ko and "A4" not in w.message_ko and "(B1)" in w.message_ko
 
@@ -2077,3 +2081,27 @@ def test_shortfall_question_names_trading_value_and_market_cap_floors(monkeypatc
     st = svc.start("국내 자동차 고배당", overrides={"constraints.min_avg_daily_volume_usd": 5_000_000, "constraints.min_market_cap_usd": 10_000_000_000})
     why = st.question.why_ko
     assert "테마 관련 종목 12개 중 6개는 최근 거래대금이 최소 거래대금(500만 달러)에 못 미쳐, 2개는 시가총액이 최소 시가총액(100억 달러)에 못 미쳐 빠졌습니다." in why
+
+
+def test_feasibility_question_is_asked_again_when_its_numbers_change(monkeypatch, svc_factory):
+    """064: 종목 수를 18개로 줄인 뒤 선정 기준을 고배당으로 바꿔 15개만 남았는데, 같은 필드라 다시 묻지 않아 18개 요청에 15종목으로 실행됐다.
+    숫자가 바뀐 점검 질문은 다시 묻고, 같은 문장은 다시 묻지 않는다."""
+    from backend.tests.analysis.test_dialog import _intent
+
+    import backend.analysis.m1_request.dialog as DG
+
+    def fake(n):
+        return {"signature": f"x{n}", "basis": "after_classification", "min": 27, "target": 30, "short_now": True, "short_at_start": False, "capacity_short": False,
+                "as_of": {"n_selected": n, "n_with_metric": n, "n_candidates": n, "n_matched": 40, "capacity": 0.8, "invest": 0.8, "sector_counts": {"Energy": n},
+                          "cap_needed": None, "by_filter": {}},
+                "start": None, "feasible_start": None, "start_impossible": False}  # fmt: skip
+
+    seq = [fake(18), fake(15), fake(15)]
+    monkeypatch.setattr(DG, "run_precheck", lambda *a, **kw: seq.pop(0) if len(seq) > 1 else seq[0])
+    svc, _store, _llm = svc_factory([_intent([])] * 5)
+    st = svc.start("미국 에너지 고배당")
+    q1 = st.question
+    assert q1.field == "constraints.num_holdings" and "18개로" in q1.question_ko
+    st = svc.answer(st.request_id, q1.seq, option_value=q1.options[0].value)
+    q2 = st.question
+    assert q2 is not None and q2.field == "constraints.num_holdings" and "15개로" in q2.question_ko  # 숫자가 바뀌어 다시 묻는다

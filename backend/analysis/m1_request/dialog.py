@@ -634,9 +634,14 @@ class DialogService:
     def _pick_question(self, doc: AnalysisRequestDoc, proposals: list[QuestionProposal], req: dict[str, Any]) -> QuestionProposal | None:
         askable = set(self.s.dialog.askable_fields)
         asked = {q.field for q in doc.questions}
+        asked_text = {(q.field, q.question_ko) for q in doc.questions}
         valid: list[QuestionProposal] = []
         for p in proposals[: self.s.dialog.max_proposals_per_turn * 2]:
-            if p.field not in askable or p.field in asked:
+            if p.field not in askable:
+                continue
+            # 실행 전 점검 질문은 다른 답 때문에 숫자가 바뀌었으면 다시 묻는다 — 같은 문장은 다시 묻지 않는다
+            # (064: 종목 수를 18개로 줄인 뒤 선정 기준을 고배당으로 바꿔 15개만 남았는데, 같은 필드라 묻지 않아 18개 요청에 15종목으로 실행)
+            if p.field in asked and not (p.kind == "feasibility" and (p.field, p.question_ko) not in asked_text):
                 continue
             ok_opts = []
             for o in p.options:
