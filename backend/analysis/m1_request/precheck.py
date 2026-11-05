@@ -104,6 +104,13 @@ def precheck(normalized: dict[str, Any], intent: dict[str, Any], desc: Descripto
             _c, _t, s1, _f = selectable_at(md, day, desc, intent, cons, passed, rid)
             if len(s1.selected) >= nh_min:
                 years = int((as_of - day).days / 365.25 * 10) / 10  # 내림: 반올림하면 새 시작일이 이 날보다 앞서 다시 부족할 수 있다
+                # 내림한 기간이 실제로 만드는 시작일(derive 와 같은 식)에서 다시 센다 (040: '2024-03-04 로 옮겨 2.5년' 인데 2.5년을 고르면 2024-04-09 부터였다)
+                start2 = as_of - dt.timedelta(days=int(round(years * 365.25)))
+                later = [d.date() for d in cal if d.date() >= start2]
+                if later and later[0] != day:
+                    _c2, _t2, s2, _f2 = selectable_at(md, later[0], desc, intent, cons, passed, rid)
+                    if len(s2.selected) >= nh_min:
+                        day, s1 = later[0], s2
                 out["feasible_start"] = {"date": str(day), "n_with_metric": len(s1.selected), "n_selected": len(s1.selected), "years": years}
                 break
     return out

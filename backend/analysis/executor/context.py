@@ -30,6 +30,7 @@ class RunContext:
     bt_req: BacktestRequest | None = None
     allow_fewer_at_start: bool = False  # 대화에서 '기간 유지(시작 때 종목 적어도 됨)' 를 고른 경우 (overrides._allow_fewer_at_start)
     start_shift_ok: bool = True  # 시작일 이동 동의 (정책 결정 4). 대화로 확정된 실행은 overrides._start_shift_ok 가 있어야 True, 개발 CLI 는 기본 True
+    answered_fields: tuple[str, ...] = ()  # 대화에서 사용자가 답한 질문의 필드 (그 필드의 '표현할 수 없는 의도' 충돌은 답으로 정해졌다, 039)
     cancel_check: Callable[[], bool] = lambda: False
     outputs: dict[str, Any] = field(default_factory=dict)
     facts: list[dict[str, Any]] = field(default_factory=list)

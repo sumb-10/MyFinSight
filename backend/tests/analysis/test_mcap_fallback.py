@@ -240,3 +240,39 @@ def test_estimate_age_is_measured_from_the_share_count_date(gap):
     _repo, md, _desc = gap
     view = md.view(AS_OF)
     assert "MSFT" not in view.market_cap_usd(["MSFT"]) and view.market_cap_estimated(["MSFT", "AVGO"]) == {"AVGO": T0}
+
+
+# ───────────────────────── 주식수 이상값 (047) ─────────────────────────
+def test_mcap_guard_fixes_unit_and_double_split_errors_only():
+    """047: 팀 DB 의 GOOGL 2022-07-27 ~ 10-26 주식수가 분할(20:1)을 두 번 반영해 20배 → 시가총액 28.9조 달러, 시총비중 87%.
+    2015년 이후 51종목에 주식수가 1000배(단위)·분할 비율만큼 틀린 구간이 있다. 직전 400일 중앙값과 비교해 그 두 모양만 고친다.
+    실제 주식수 변화(합병 7.7배)와, 고친 값이 회사 크기로 말이 안 되는 경우(틀린 값이 기간 대부분인 ECHO)는 그대로 둔다."""
+    from sqlalchemy import delete
+
+    repo = open_repository("sqlite://", clock=lambda: AT)
+    seed_repository(repo)
+    names = ["NVDA", "AMD", "AVGO", "MSFT"]
+    with repo.engine.begin() as conn:
+        conn.execute(delete(T.valuation_daily).where(T.valuation_daily.c.asset_id.in_([f"US-{t}" for t in names])))
+    split_day, err_from = EST_DAY - dt.timedelta(days=60), EST_DAY - dt.timedelta(days=30)
+    rows = []
+    for i in range(120):
+        d = EST_DAY - dt.timedelta(days=119 - i)
+        late = d >= err_from
+        sf = 4.0 if d < split_day else 1.0  # NVDA 4:1 분할 (분할 전 행은 실제 종가 = close × 4, 실제 주식수 = 1e9 / 4)
+        rows += [_vrow("NVDA", d, 100.0, sf=sf, shares=1e9 / sf * (4 if late else 1)),  # 분할 뒤 공시 주식수에 분할을 또 곱함 → 4배
+                 _vrow("AMD", d, 100.0, shares=1e9 * (1e-3 if late else 1)),  # 천 주 단위로 들어간 분기 → 1/1000
+                 _vrow("AVGO", d, 100.0, shares=1e9 * (7.7 if late else 1)),  # 합병으로 실제 7.7배
+                 _vrow("MSFT", d, 100.0, shares=1e9 * (1 if late else 1e-3))]  # 틀린 값(1/1000)이 기간 대부분 → 고치면 1억 달러
+    repo.upsert_valuation(rows)
+    view = MarketData(repo, AnalysisSettings()).view(AS_OF)
+    mc = view.market_cap_usd(names)
+    assert mc["NVDA"] == pytest.approx(1e11) and mc["AMD"] == pytest.approx(1e11)  # 중앙값 주식수 1e9 × 종가 100
+    assert mc["AVGO"] == pytest.approx(7.7e11) and mc["MSFT"] == pytest.approx(1e11)  # 그대로
+    rep = view.market_cap_repaired(names)
+    assert set(rep) == {"NVDA", "AMD"} and rep["NVDA"] == pytest.approx(4.0) and rep["AMD"] == pytest.approx(1e-3)
+    assert view.valuation(names).loc["NVDA", "market_cap_source"] == "repaired"
+    # 자료 품질 표에 한국어로 남긴다
+    _panel, q = view.panel(["NVDA", "AMD"], EST_DAY - dt.timedelta(days=5), AS_OF, required=["SPY"], benchmarks=["SPY"])
+    note = next(w for w in q.warnings if "주식수가 잘못 들어간" in w)
+    assert "2건" in note and f"AMD {EST_DAY} 1/1000" in note and f"NVDA {EST_DAY} 4배" in note

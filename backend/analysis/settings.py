@@ -28,6 +28,17 @@ class MarketSettings:
     valuation_max_staleness_days: int = 10
     # 시가총액이 빈 날의 대체: 그날 이하 마지막으로 주식수가 있던 행이 이만큼(달력일) 안이면 그 주식수 × 그날 종가 (2026-11 정책: 최소 시가총액은 하드 필터)
     mcap_fallback_max_days: int = 730
+    # 시가총액 이상값: 그날 시가총액 ÷ 종가(주식수)가 직전 이만큼(달력일) 중앙값의 1000배·1/1000배(단위 오류)이거나 그 기간 분할 비율과 같으면(분할을 두 번 반영)
+    # 중앙값 주식수 × 그날 종가로 고친다 (047: GOOGL 2022-08 시가총액 28.9조 달러, 시총비중 87%). 허용 오차는 자사주 매입 등으로 1년 사이 주식수가
+    # 몇 % 바뀌는 만큼 (PKG: 중앙값 대비 960배) — 단위 오류는 1000배 ±25%, 분할 비율은 ±10%. 최소 행 수
+    mcap_guard_window_days: int = 400
+    mcap_guard_unit_tol: float = 0.25
+    mcap_guard_split_tol: float = 0.10
+    mcap_guard_min_rows: int = 20
+    # 고친 값이 이 범위(USD) 밖이면 고치지 않는다: 중앙값 기간 자체가 틀린 경우(오류가 반년 넘게 이어진 뒤 바른 값이 돌아온 GRMN 2017-02,
+    # 상장 초기 행이 단위 오류인 PSKY 2025-11, 분기 보고서만 천 주 단위라 틀린 값이 더 많은 ECHO 2026-03 — 고치면 340억 → 3,400만 달러)에
+    # 바른 값을 틀린 쪽으로 '고치지' 않게. 2015년 이후 팀 DB 의 주식수 급변 51종목을 모두 대조해 이 범위로 잘못 고치는 경우가 없음을 확인 (2026-11-05)
+    mcap_guard_plausible_usd: tuple[float, float] = (2e8, 5e12)
     descriptor_universe: str = "ALL"
     descriptor_dir: str | None = None  # None -> backend/data/processed (build_descriptor.py 산출물)
     # 재무 지표(PER·ROE·배당) 자료가 시작되는 날 (docs/데이터_현황.md). 저PER·퀄리티·고배당 백테스트는 이 날 이후만 가능

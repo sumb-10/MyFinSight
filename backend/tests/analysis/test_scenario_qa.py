@@ -1379,7 +1379,7 @@ def test_explain_prompt_uses_metric_rank_and_marks_forced():
 
     explain(sel, tagging, intent, Llm(), facts=[])
     lines = {ln.split(" | ")[1]: ln.split(" | ")[0] for ln in seen["user"].splitlines() if " | " in ln and not ln.startswith("##")}
-    assert lines == {"VRTX": "3 (필수 포함)", "JNJ": "1", "PFE": "2"}
+    assert lines == {"VRTX": "– (필수 포함)", "JNJ": "1", "PFE": "2"}  # 042: 필수 포함은 순위를 매기지 않는다
     assert "pharma biotech" in seen["user"]
 
 
@@ -2012,7 +2012,7 @@ def test_round11_collect_and_report_texts(monkeypatch):
     ex = [{"ticker": t, "name": n, "theme_ko": "화석연료"} for t, n in [("AEE", "Ameren"), ("ATO", "Atmos"), ("CMS", "CMS"), ("CNP", "CenterPoint"), ("D", "Dominion"), ("DTE", "DTE")]]
     assert C._ex_theme_ko(ex) == " · 제외 테마(화석연료)로 뺌 6개: Ameren, Atmos, CMS, CenterPoint, Dominion 외 1개" and C._ex_theme_ko([]) == ""
     nw = RP._shown_news_window({"window": ["2023-07-17", "2023-07-31"], "by_source": {"GOOGLE_RSS": 62, "NAVER_NEWS": 3}, "by_event_type": {"buyback": 4}})
-    assert nw["by_source"] == {"구글 뉴스": 62, "네이버 뉴스": 3} and nw["by_event_type"] == {"자사주 취득·처분 결정": 4} and nw["window"] == ["2023-07-17", "2023-07-30"]
+    assert nw["article_sources"] == {"구글 뉴스": 62, "네이버 뉴스": 3} and "by_source" not in nw and "DART" in nw["disclosure_source_note"]  # 038: 기사 출처라고 밝힘 and nw["by_event_type"] == {"자사주 취득·처분 결정": 4} and nw["window"] == ["2023-07-17", "2023-07-30"]
     R = {"intent": {"interpretation": {"summary_ko": "투자 비율 85%를 배분합니다."}}, "request": {"constraints": {"min_cash_ratio": 0.15, "num_holdings": {"target": 10, "min": 7}}}}
     monkeypatch.setattr(RP.B, "current_composition", lambda R_, c: ({"A": 0.446}, 0.554, "낙폭 맞춤안"))
     assert RP._subtitle_ko(R, "dd_match_inverse_volatility") == "요청: 투자 비율 85%를 배분합니다."

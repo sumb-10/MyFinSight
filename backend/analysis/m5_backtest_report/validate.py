@@ -58,6 +58,8 @@ def target_window_ratio(index, target_years: float, target: float, td: int):
 
     w = int(round(target_years * float(td)))
     idx = np.asarray(index, dtype=float)
+    if w - 5 <= len(idx) - 1 < w:  # 휴장일 때문에 며칠 모자라면 같은 길이로 본다 (038: 3년을 다 돌렸는데 1행 모자라 '창이 투자기간보다 짧아' 라고 했다)
+        w = len(idx) - 1
     if w < 5 or len(idx) - 1 < w:
         return None
     ann = (idx[w:] / idx[:-w]) ** (1.0 / target_years) - 1.0

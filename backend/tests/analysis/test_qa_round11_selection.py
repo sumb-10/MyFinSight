@@ -182,3 +182,10 @@ def test_dividend_cards_do_not_call_the_yield_a_12_month_return():
 def test_momentum_cards_keep_the_12_month_return_wording():
     """모멘텀 선정(return_12m_1m)에서는 '12개월 수익률' 이 맞는 이름 → 건드리지 않는다."""
     assert _explain("return_12m_1m", CARD)["per_ticker"][0]["rationale_ko"] == CARD
+
+
+def test_cards_drop_words_pointing_at_hidden_inputs():
+    """030 '입력된 관련 뉴스', 033 '제공된 모멘텀', 043 '주어진 뉴스에는' — 사용자가 보지 못하는 입력을 가리키는 말만 지운다 ('주어진 기간' 같은 말은 그대로)."""
+    card = f"주어진 뉴스에는 사업 내용이 없고 제공된 자료로 보면 배당이 높습니다 [{CCI_FACT}]. 주어진 기간 동안 꾸준했습니다 [{CCI_FACT}]."
+    text = _explain("dividend_yield_ttm", card)["per_ticker"][0]["rationale_ko"]
+    assert text == f"뉴스에는 사업 내용이 없고 자료로 보면 배당이 높습니다 [{CCI_FACT}]. 주어진 기간 동안 꾸준했습니다 [{CCI_FACT}]."

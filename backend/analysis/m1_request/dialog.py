@@ -30,6 +30,7 @@ from backend.analysis.m2_data.market_data import MarketData
 from backend.analysis.m3_selection.intent import build_messages, interpret
 from backend.analysis.m1_request import revision
 from backend.analysis.schemas.dialog import AnalysisRequestDoc, DialogMessage, DialogState, DialogSummary, Question, QuestionProposal, RevisionDraft
+from backend.analysis.common.capacity import cap_cause_ko, cap_limits
 from backend.analysis.schemas.request import UNIVERSE_MARKET
 from backend.analysis.settings import AnalysisSettings
 
@@ -38,6 +39,16 @@ KIND_ORDER = {"feasibility": 0, "missing": 1, "conflict": 2, "ambiguous": 3, "pr
 # 점검 결과로 만든 질문(feasibility: 섹터 상한·종목 수·시작일)보다 먼저 묻는다 — 점검은 지금 조건의 예상 선정 종목으로 계산하기 때문 (024)
 SELECTION_FIELDS = frozenset({"strategy_preference.template", "constraints.universe", "natural_language.idea", "constraints.exclude_sectors",
                               "constraints.exclude_themes", "constraints.exclude_tickers", "constraints.must_include_tickers"})  # fmt: skip
+
+
+def _few_why_ko(counts: dict[str, int], stock_cap: float, sector_cap: float, cash: float) -> str:
+    """후보가 모자랄 때 '그대로 진행' 하면 왜·얼마나 현금이 남는지 — 실제로 묶는 상한으로 (039: 8종목이 모두 금융이라 섹터 상한 40% 가 막는데
+    '종목당 상한(10%) 때문 (예: 8종목 × 10% = 80% 투자)' 라고 해, 최소 현금 20% 를 빼면 남는 현금이 없는 것처럼 읽혔다)."""
+    lim = cap_limits(counts, stock_cap, sector_cap, 1.0 - cash)
+    cause = cap_cause_ko(lim, stock_cap, sector_cap, clause=True)
+    if not cause:
+        return f"후보 수가 최소 종목 수에 못 미치지만, 지금 상한 안에서도 투자 비율 {1 - cash:.0%}는 모두 배분할 수 있습니다."
+    return f"그대로 진행하면 {cause} 현금이 {1 - lim['cap_room']:.0%}" + (f"(요청한 최소 현금 {cash:.0%} 포함)" if cash > 1e-9 else "") + " 남습니다."
 
 
 def _dicts(messages: list[Any]) -> list[dict[str, str]]:
@@ -412,9 +423,9 @@ class DialogService:
             opts.append({"value": "proceed", "label_ko": "그대로 진행 (현금이 남을 수 있음)", "patch": {"_ack_few_candidates": True}})
             out.append(QuestionProposal(
                 field="constraints.num_holdings", kind="feasibility", priority=1,
-                question_ko=(f"분석 기준일에 선정할 수 있는 종목(테마·선정 기준 통과)이 {n_now}개로, 최소 종목 수 {nh_min}개(목표 {nh['target']}개)에 못 미칩니다. 어떻게 할까요?"),
+                question_ko=(f"분석 기준일에 선정할 수 있는 종목(테마·선정 기준 통과, 필수 포함 포함)이 {n_now}개로, 최소 종목 수 {nh_min}개(목표 {nh['target']}개)에 못 미칩니다. 어떻게 할까요?"),
                 options=opts, allow_free_text=False,
-                why_ko=f"후보가 모자라면 종목당 상한({stock_cap:.0%}) 때문에 현금이 남습니다 (예: {max(n_now, 1)}종목 × {stock_cap:.0%} = {min(1.0, max(n_now, 1) * stock_cap):.0%} 투자).",
+                why_ko=_few_why_ko(now.get("sector_counts") or {"": max(n_now, 1)}, stock_cap, sector_cap, cash),
             ))  # fmt: skip
             return out  # 후보 부족이 먼저 — 창 축소 질문은 이게 풀린 뒤에
         st = precheck.get("start") or {}

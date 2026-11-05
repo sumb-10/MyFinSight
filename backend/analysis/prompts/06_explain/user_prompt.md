@@ -4,7 +4,7 @@
 
 설명 수준: {{explanation_level}} / 스크린 지표: {{metric}} ({{direction}}) / 기준일: {{as_of}}
 
-## 선정 종목 (지표 순위 | ticker | name | sector | metric | theme confidence | 판정 테마 | 분류 근거)
+## 선정 종목 (지표 순위 | ticker | name | sector | metric | theme confidence | 판정 테마 | 분류 근거 | 회사 소개)
 
 ```
 {{selected_block}}

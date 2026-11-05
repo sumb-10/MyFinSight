@@ -49,7 +49,8 @@ def explain(
     llm: LlmClient,
     *,
     facts: list[dict[str, Any]],
-    news: EvidenceWindow | None = None, warnings_ko: list[str] | None = None) -> dict[str, Any]:
+    news: EvidenceWindow | None = None, warnings_ko: list[str] | None = None, summaries: dict[str, str] | None = None) -> dict[str, Any]:
+    """summaries = 종목별 회사 소개(후보 단계의 기업 개요). 넓은 테마는 분류 근거가 '넓은 테마라 …' 로 바뀌어 사업 설명이 없었다 (046 VMRK '사업 내용 확인 안 됨')."""
     it = intent.model_dump(mode="json") if isinstance(intent, IntentSpec) else intent
     reason = {r.ticker: r.reason_ko for r in tagging.tagged}
     # 판정 테마는 의도의 한국어 테마 이름으로 (013: theme_ko 는 제외 테마만 알아 'us high dividend income' 을 넘겼고, 설명이 없는 테마 '미국 고배당 소득' 을 지어냈다)
@@ -63,7 +64,8 @@ def explain(
 
     # 순위 = 선정 종목 안의 지표 순위 (선정 순서가 아니라). 필수 포함 종목은 선정 순서상 맨 앞이라 '첫 순위' 라고 썼다 (010 VRTX, 실제 5위).
     # 지표 자료가 없는 필수 포함 종목은 순위가 없다('–'): 꼴찌 순위를 주면 '순위를 매기지 못했다' 는 공지와 어긋난다
-    mrank = {x.ticker: i + 1 for i, x in enumerate(sorted((x for x in sel.selected if math.isfinite(_mk(x))), key=_mk))}
+    # 필수 포함도 순위를 매기지 않는다 — 리포트 선정 표와 같게 (042: 후보 120개 중 꼴찌인 필수 포함 JNJ 가 '순위 20위' 로 읽혔다)
+    mrank = {x.ticker: i + 1 for i, x in enumerate(sorted((x for x in sel.selected if math.isfinite(_mk(x)) and not x.forced), key=_mk))}
     fact_ids = {f["id"] for f in facts}
     by_ticker_facts: dict[str, list[dict[str, Any]]] = {}
     for f in facts:
@@ -83,9 +85,11 @@ def explain(
             recs = [r for r in news.disclosures if r["evidence_id"] in set(news.by_ticker_dc[s.ticker][:5])]
             dl = (f" / 공시({(news.end - news.dc_start).days if news.dc_start else 0}일): " + ", ".join(f"{k} {n}건" for k, n in counts.items()) + "; "
                   + "; ".join(f"[{r['evidence_id']}] {_dc_date(r)} {r['event_label_ko']} ({r['title'][:50]})" for r in recs))
-        mv = M.display_metric(s.metric_name, s.metric_value)
+        # PER 은 소수 둘째 자리까지 (041: 12.41 과 12.37 이 둘 다 '12.4배' 로 보여 '공동 열여섯 번째' 라고 썼다)
+        mv = f"{float(s.metric_value):.2f}배" if s.metric_name == "pe_ttm" and s.metric_value is not None and math.isfinite(float(s.metric_value)) else M.display_metric(s.metric_name, s.metric_value)
         rk = (str(mrank[s.ticker]) if s.ticker in mrank else "–") + (" (필수 포함)" if s.forced else "")
-        lines.append(f"{rk} | {s.ticker} | {s.name} | {s.sector} | {mv} | {s.theme_confidence} | {themes.get(s.ticker, '')} | {reason.get(s.ticker, '')} | 근거: {fl}{nl}{dl}")
+        lines.append(f"{rk} | {s.ticker} | {s.name} | {s.sector} | {mv} | {s.theme_confidence} | {themes.get(s.ticker, '')} | {reason.get(s.ticker, '')} | "
+                     f"{((summaries or {}).get(s.ticker) or '')[:200]} | 근거: {fl}{nl}{dl}")  # fmt: skip
     system, user = load_prompts(
         STAGE, summary_ko=it["interpretation"]["summary_ko"], explanation_level=it["report_settings"]["explanation_level"],
         metric=M.METRIC_KO.get(sel.summary["metric"], sel.summary["metric"]), direction=sel.summary["direction"], as_of=sel.summary["as_of"], selected_block="\n".join(lines),
@@ -107,9 +111,9 @@ def explain(
                 raise ValueError(f"{row['ticker']}: rationale must cite at least one given id like [fin:...] or [ev123]")
 
     ans = llm.complete_json(STAGE, messages_from_prompts(system, user), validator=_check)
-    # 사용자가 보지 못하는 입력을 가리키는 말은 지운다 (030 '입력된 관련 뉴스 제목은', 033 '제공된 모멘텀만으로' — 06 규칙만으로는 새었다)
+    # 사용자가 보지 못하는 입력을 가리키는 말은 지운다 (030 '입력된 관련 뉴스 제목은', 033 '제공된 모멘텀만으로', 043 '주어진 뉴스에는' — 06 규칙만으로는 새었다)
     if isinstance(ans.get("per_ticker"), list):
-        ans = {**ans, "per_ticker": [{**r, "rationale_ko": re.sub(r"(?:제공된|입력된)\s+|제시된\s+(?=(?:모멘텀|지표|자료|정보|근거|수치|숫자|목록|헤드라인|뉴스|데이터))", "", r["rationale_ko"])} if isinstance(r.get("rationale_ko"), str) else r
+        ans = {**ans, "per_ticker": [{**r, "rationale_ko": re.sub(r"(?:제공된|입력된)\s+|(?:제시된|주어진)\s+(?=(?:모멘텀|지표|자료|정보|근거|수치|숫자|목록|헤드라인|뉴스|데이터))", "", r["rationale_ko"])} if isinstance(r.get("rationale_ko"), str) else r
                                      for r in ans["per_ticker"]]}  # fmt: skip
     if sel.summary.get("metric") == "dividend_yield_ttm" and isinstance(ans.get("per_ticker"), list):  # 모멘텀 선정(return_12m_1m)의 '12개월 수익률' 은 맞는 이름 (027)
         ans = {**ans, "per_ticker": [{**r, "rationale_ko": _dividend_wording(r["rationale_ko"])} if isinstance(r.get("rationale_ko"), str) else r

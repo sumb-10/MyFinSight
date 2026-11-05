@@ -57,17 +57,27 @@ def metric_rank(rows: dict[str, dict[str, Any]], asc: bool) -> dict[str, int]:
     return {t: i + 1 for i, t in enumerate(sorted(rows, key=k)) if math.isfinite(k(t))}
 
 
-RULE_KO = {"gics_match": "산업 분류", "keyword_match": "키워드", "example_match": "예시 종목"}
+RULE_KO = {"gics_match": "산업 분류로", "keyword_match": "키워드로", "example_match": "예시 종목으로"}
 
 
 def _matched_label_ko(stats: dict[str, Any]) -> str:
     """깔때기 '테마 관련 종목' 칸에 실제로 찾은 방법별 수 (037: 후보 4개가 모두 분석 모델이 든 예시 종목이었는데 'GICS·키워드·예시 종목 검색' 이라
     S&P 500 전체를 뒤져 4개만 찾은 것처럼 읽혔다). 한 종목이 여러 방법에 걸릴 수 있다."""
     br = stats.get("by_rule") or {}
-    how = [f"{v} {br[k]}" for k, v in RULE_KO.items() if br.get(k)]
+    # 숫자는 그 방법으로 걸린 종목 수다 (044: '산업 분류 19, 키워드 18' 을 서술이 '산업 분류 19개·키워드 18개를 사용해 찾았다' 로 읽었다)
+    how = [f"{v} {br[k]}개" for k, v in RULE_KO.items() if br.get(k)]
     if not how:
         return "테마 관련 종목 (GICS·키워드·예시 종목 검색)"
-    return "테마 관련 종목 (찾은 방법: " + ", ".join(how) + ("개, 한 종목이 여러 방법에 걸릴 수 있음)" if len(how) > 1 else "개)")
+    return "테마 관련 종목 (" + ", ".join(how) + " 걸린 종목" + (", 한 종목이 여러 방법에 걸릴 수 있음)" if len(how) > 1 else ")")
+
+
+def _theme_fail_ko(tag: dict[str, Any], desc: Any, k: int = 5) -> str:
+    """테마 판정에서 떨어진 종목 (제외 테마와 따로) — 깔때기 수가 맞게 (043: 57 − 제외 테마 17 = 40 인데 39 로, PWR 1개가 어디에도 없었다)."""
+    passed, ex = set(tag.get("passed_tickers") or []), {r["ticker"] for r in tag.get("excluded_by_theme") or []}
+    fail = [(desc.by_ticker(r["ticker"]) or {}).get("name", r["ticker"]) for r in tag.get("tagged") or [] if r["ticker"] not in passed and r["ticker"] not in ex]
+    if not fail or not tag.get("theme_filter_applied", True):
+        return ""
+    return f" · 테마에 해당하지 않는다고 판정된 {len(fail)}개: {', '.join(fail[:k])}" + (f" 외 {len(fail) - k}개" if len(fail) > k else "")
 
 
 def _ex_theme_ko(rows: list[dict[str, Any]], k: int = 5) -> str:
@@ -121,8 +131,11 @@ def build_results(
     rank_bt = {s["ticker"]: s for s in spec["selection"]["table"]}
     asc = sel["summary"].get("direction") == "asc"
 
-    mr_now, mr_bt = metric_rank(rank_now, asc), metric_rank(rank_bt, asc)
     forced_now = {s["ticker"] for s in sel["selected"] if s.get("forced")}
+    # 필수 포함은 순위와 관계없이 담기므로 순위를 매기지 않는다 (042: 후보 120개 중 꼴찌인 JNJ 가 선정 20개 안에서 '순위 20위' 로 보였다)
+    must = forced_now | set(req["constraints"].get("must_include_tickers") or [])
+    mr_now = metric_rank({t: r for t, r in rank_now.items() if t not in must}, asc)
+    mr_bt = metric_rank({t: r for t, r in rank_bt.items() if t not in must}, asc)
     tickers = sorted(set(rank_now) | set(rank_bt), key=lambda t: (t not in rank_bt, rank_bt.get(t, rank_now.get(t, {})).get("rank", 99)))
     table = []
     for t in tickers:
@@ -206,18 +219,26 @@ def build_results(
         n_by[k] = n_by.get(k, 0) + 1
     cand_label = ("후보 조건 통과 (빠짐: " + ", ".join(f"{k} {n}개" for k, n in sorted(n_by.items(), key=lambda x: -x[1])) + ")" if n_by
                   else "후보 조건 통과 (시가총액·거래대금·제외 조건)")  # fmt: skip
+    # 조건을 못 채웠지만 필수 포함이라 남은 종목을 밝힌다 (038: 거래대금 미달인 이마트·CJ제일제당이 '후보 조건 통과 9' 안에 섞였다)
+    min_adv, min_mc = cons.get("min_avg_daily_volume_usd"), cons.get("min_market_cap_usd")
+    below = [c.get("name") or c["ticker"] for c in cand.get("candidates") or [] if c.get("forced")
+             and ((min_adv and (c.get("adv_usd") or 0) < float(min_adv)) or (min_mc and (c.get("market_cap_usd") or 0) < float(min_mc)))]  # fmt: skip
+    if below:
+        cand_label += f" · 그중 조건을 못 채웠지만 필수 포함으로 넣은 {len(below)}개({', '.join(below[:3])}{' 등' if len(below) > 3 else ''})"
     met = sel["summary"]["metric"]
     forced_off = [s["ticker"] for s in sel["selected"] if s.get("forced") and not M.eligible(met, s.get("metric_value"))]
+    n_forced = int(sel["summary"].get("n_forced") or 0)
     funnel = [
         {"stage": "universe", "label_ko": "투자 가능 종목 (" + " ∪ ".join(req["constraints"]["universe"]) + ")", "count": descriptor_info.get("n_stocks", len(D.tickers(desc)))},
         {"stage": "matched", "label_ko": _matched_label_ko(cand["stats"]), "count": cand["stats"].get("n_matched", cand["stats"]["n_candidates"])},
         {"stage": "candidates", "label_ko": cand_label, "count": cand["stats"]["n_candidates"]},
         {"stage": "theme_passed", "label_ko": (f"테마 해당 판정 (분석 모델, 신뢰도 ≥ {tag['min_confidence']})" if tag.get("theme_filter_applied", True)
-                                               else "제외 테마 판정 (넓은 테마라 테마 해당 여부로는 거르지 않음)") + _ex_theme_ko(ex_theme), "count": len(tag["passed_tickers"])},
+                                               else "제외 테마 판정 (넓은 테마라 테마 해당 여부로는 거르지 않음)") + _ex_theme_ko(ex_theme) + _theme_fail_ko(tag, desc), "count": len(tag["passed_tickers"])},
         # 필수 포함은 지표·자격선과 관계없이 담기므로 따로 적는다 (018: 지표 없는 필수 포함까지 '지표 계산 가능' 으로 셌다;
         # 025: '(필수 포함 2개 포함)' 을 서술이 빠뜨려 '지표를 계산할 수 있는 17개' 라고 썼다 → 지표 없는 필수 포함은 개수를 나눠 적는다)
-        {"stage": "with_metric", "label_ko": f"선정 지표({M_KO.get(met, met)}) 계산 가능·자격선 안 {sel['summary']['n_with_metric'] - len(forced_off)}개"
-                                             + (f" + 지표 없음·자격선 밖이지만 필수 포함 {len(forced_off)}개({', '.join(forced_off)})" if forced_off else ""),
+        # 필수 포함은 지표와 관계없이 따로 센다 — 공지(…자격선 안 6개(필수 포함 2개 별도))와 같은 나눔 (038)
+        {"stage": "with_metric", "label_ko": f"선정 지표({M_KO.get(met, met)}) 계산 가능·자격선 안 {sel['summary']['n_with_metric'] - n_forced}개"
+                                             + (f" + 필수 포함 {n_forced}개" + (f"(그중 지표 없음·자격선 밖 {len(forced_off)}개: {', '.join(forced_off)})" if forced_off else "") if n_forced else ""),
          "count": sel["summary"]["n_with_metric"]},  # fmt: skip
         # 섹터 분산은 실제로 순위를 바꿨을 때만 적는다 (015·017: 섹터 상한 100%·한 섹터 12종목인데 '섹터 분산 적용' 이라고 했다)
         {"stage": "selected_now", "label_ko": f"최종 선정 ({sel['summary']['as_of']}"

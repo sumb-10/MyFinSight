@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 import math
+import re
 from typing import Any
 
 from backend.analysis.common.llm import LlmClient, messages_from_prompts
@@ -88,9 +89,13 @@ def generate_views(
     sets: list[dict[str, Any]] = []
     known = set(tickers)
     known_ev = evidence.ids
+    owner: dict[str, set[str]] = {}  # 근거 id → 그 근거가 붙은 종목들
+    for r in [*evidence.records, *(evidence.disclosures or [])]:
+        owner.setdefault(str(r.get("evidence_id")), set()).add(r.get("ticker"))
     for s_ in ans.get("sets", []):
         seen: set = set()
         views = []
+        opposite: list[str] = []  # 오름·내림이 함께 나와 둘 다 뺀 종목 (설명 문장에 덧붙인다)
         sid = s_.get("scenario_id")
         for v in s_.get("views", []):
             legs = list(v.get("long", [])) + list(v.get("short", []))
@@ -103,7 +108,14 @@ def generate_views(
                 continue
             key = (tuple(sorted(v["long"])), tuple(sorted(v.get("short", []))))
             if key in seen:
-                warnings.append(f"{sid}: duplicate view {key} dropped")
+                # 같은 종목에 방향이 반대인 뷰가 또 있으면 둘 다 뺀다 — 먼저 나온 것만 남기면 순서가 결론을 정했다 (045: COIN 오름(0.25)·내림(0.30) 중 약한 오름이 남음)
+                prev = next((x for x in views if (tuple(sorted(x["long"])), tuple(sorted(x.get("short", [])))) == key), None)
+                if prev is not None and v.get("type") == "absolute" and str(v.get("direction") or "").lower() != str(prev.get("direction") or "").lower():
+                    views.remove(prev)
+                    opposite.append(key[0][0])
+                    warnings.append(f"{sid}: opposite views on {key} dropped (conflicting directions)")
+                else:
+                    warnings.append(f"{sid}: duplicate view {key} dropped")
                 continue
             seen.add(key)
             if set(v["long"]) & set(v.get("short", [])):
@@ -117,8 +129,8 @@ def generate_views(
                 warnings.append(f"{sid}: confidence {c} clipped to [{ps.confidence_floor}, {max_conf}]")
                 v["confidence"] = min(max(c, ps.confidence_floor), max_conf)
             _quantify(v, mm, tickers, ps, warnings, sid)
-            v.setdefault("horizon_months", 12)
-            v.setdefault("rationale_ko", "")
+            v["horizon_months"] = _horizon_months(v.get("horizon_months"), warnings, sid)
+            v["rationale_ko"] = plain_view_ko(v.get("rationale_ko") or "")
             ids, missing = [], []
             for raw_id in v.get("evidence_ids", []):
                 eid = str(raw_id).strip()
@@ -133,6 +145,12 @@ def generate_views(
                     missing.append(raw_id)
             if missing:
                 warnings.append(f"{sid}: unknown evidence ids {missing} removed")
+            # 근거는 그 뷰의 종목에 붙은 뉴스·공시여야 한다 (043: AEP 에 붙은 'PNW(태평양 북서부) 겨울 정전' 기사만으로 Pinnacle West(PNW) 내림 뷰를 만들었다)
+            legs = {*v["long"], *v.get("short", [])}
+            foreign = [i for i in ids if owner.get(i) and not (owner[i] & legs)]
+            if foreign:
+                warnings.append(f"{sid}: evidence {foreign} belongs to other tickers, removed from view {key}")
+                ids = [i for i in ids if i not in foreign]
             if not ids:
                 warnings.append(f"{sid}: view {key} dropped (no valid evidence)")
                 continue
@@ -153,10 +171,35 @@ def generate_views(
             warnings.append(f"{sid}: {len(views)} views, truncated to {views_per_set}")
             views = views[:views_per_set]
         if views:
-            sets.append({**s_, "views": views})
+            # 설명은 LLM 이 뷰를 빼기 전에 쓴 것이라 뺀 뷰를 '반영했다' 고 말한다 (045 재실행: COIN 오름·내림을 둘 다 뺐는데 '상반된 신호로 반영했습니다')
+            note = f" 같은 종목({', '.join(opposite)})에 오름·내림 뷰가 함께 나와 그 종목의 두 뷰는 반영하지 않았습니다." if opposite else ""
+            sets.append({**s_, "views": views, **({"narrative_ko": (s_.get("narrative_ko") or "").rstrip() + note} if note else {})})
     if len(sets) != n_sets:
         warnings.append(f"{len(sets)} sets returned, expected {n_sets}")
     return sets, warnings
+
+
+_VIEW_EN = ((re.compile(r"(?<![A-Za-z])confidence(?![A-Za-z])\s*", re.I), "신뢰도"), (re.compile(r"(?<![A-Za-z])headlines?(?![A-Za-z])\s*", re.I), "헤드라인"))  # 둘 다 모음으로 끝나 뒤 조사(를·는·가)는 그대로 맞다
+
+
+def _horizon_months(raw: Any, warnings: list[str], sid: Any) -> int:
+    """뷰 기간은 형식상 1~60개월 (뷰 숫자는 연 수익률이라 계산에는 쓰지 않는다). 투자기간 15년을 그대로 적어 180개월이 되면
+    형식 검사에서 10 단계 전체가 멈췄다 (045) → 잘라 넣고 경고만."""
+    try:
+        hm = int(raw if raw is not None else 12)
+    except (TypeError, ValueError):
+        hm = 12
+    if not 1 <= hm <= 60:
+        warnings.append(f"{sid}: view horizon_months {hm} clipped to [1, 60]")
+        hm = min(max(hm, 1), 60)
+    return hm
+
+
+def plain_view_ko(text: str) -> str:
+    """뷰 설명의 영어 필드 이름·낱말을 한국어로 (039: '…평가(ev1566019)를 반영해 confidence를 제한합니다', '실적 headline만으로')."""
+    for pat, ko in _VIEW_EN:
+        text = pat.sub(ko, text)
+    return text
 
 
 def _quantify(v: dict[str, Any], mm: dict[str, Any], tickers: list[str], ps, warnings: list[str], sid: Any) -> None:

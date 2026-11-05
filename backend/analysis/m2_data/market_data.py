@@ -89,6 +89,8 @@ class _Cache:
     valuation: dict[tuple[dt.date, frozenset[str]], pd.DataFrame] = field(default_factory=dict)
     shares: dict[tuple[dt.date, str], dict[str, Any] | None] = field(default_factory=dict)  # (d, asset_id) → 시가총액 대체용 마지막 주식수 행 (없음도 기억)
     price_repairs: list[tuple[str, dt.date, float, float]] = field(default_factory=list)  # repair_adj_spikes 가 고친 (종목, 날짜, 원래 계수, 고친 계수)
+    imp_median: dict[tuple[dt.date, str], dict[str, Any] | None] = field(default_factory=dict)  # (d, asset_id) → 시가총액 이상값 검사용 주식수 중앙값 (없음도 기억)
+    mcap_repairs: dict[tuple[str, dt.date], float] = field(default_factory=dict)  # (종목, 행 날짜) → 고치기 전 시가총액 ÷ 중앙값 시가총액
     news: dict[tuple, EvidenceWindow] = field(default_factory=dict)
 
 
@@ -348,6 +350,12 @@ class MarketDataView:
         if fixed:  # 자료 품질 표에 남긴다 (예전에는 '이상 없음' 으로 보였다)
             ex = ", ".join(f"{t} {d}" for t, d in fixed[:3])
             report.warnings.append(f"배당 보정이 하루~며칠 빠진 수정주가 {len(fixed)}건을 앞뒤 계수로 이어 붙였습니다 (예: {ex}).")
+        lo = start - dt.timedelta(days=self.s.market.valuation_max_staleness_days)
+        mfix = sorted((t, d, r) for (t, d), r in self.md._c.mcap_repairs.items() if t in set(all_t) and lo <= d <= end)
+        if mfix:  # 시가총액비중·최소 시가총액에 쓴 값을 고쳤다 (047: GOOGL 2022-08 시가총액이 20배)
+            ex = ", ".join(f"{t} {d} {r:.0f}배" if r >= 1 else f"{t} {d} 1/{1 / r:.0f}" for t, d, r in mfix[:3])
+            report.warnings.append(f"주식수가 잘못 들어간 시가총액 {len(mfix)}건(분할을 두 번 반영했거나 단위가 1000배 다름)은 직전 "
+                                   f"{self.s.market.mcap_guard_window_days}일 중앙값 주식수 × 그날 종가로 고쳐 썼습니다 (예: {ex}).")  # fmt: skip
         return clean, report
 
     def _carry_market_holidays(self, wide: pd.DataFrame, start: dt.date, end: dt.date) -> pd.DataFrame:
@@ -395,11 +403,15 @@ class MarketDataView:
         rows = self.md.repo.get_valuation_asof(list(ids), d, max_staleness_days=self.s.market.valuation_max_staleness_days)
         est = self._mcap_fallback(rows, d)
         fx = self.fx_on_or_before(d).rate
+        fix = self._mcap_guard(rows, d, fx)
         recs = []
         for aid, r in rows.items():
             t = ids[aid]
             krw = (r.get("currency") or self.md.currency_of(t)) == "KRW"
             mcap, src, basis = r.get("market_cap"), "valuation", r["date"]
+            if aid in fix:
+                mcap, src = fix[aid][0], "repaired"
+                self.md._c.mcap_repairs[(t, _d(r["date"]))] = fix[aid][1]
             if mcap is None:
                 mcap, basis = est.get(aid, (None, None))
                 src = "estimated" if mcap is not None else None
@@ -418,11 +430,12 @@ class MarketDataView:
                     "market_cap_usd": (mcap / fx if krw else mcap) if mcap is not None else None,
                     "market_cap_source": src,
                     "market_cap_basis_date": basis,
+                    "market_cap_ratio": fix[aid][1] if aid in fix else None,
                     "fin_disclosed_at": r.get("fin_disclosed_at"),
                 }
             )
         cols = ["ticker", "asset_id", "date", "currency", "per", "pbr", "roe_ttm", "dividend_yield", "eps_ttm",
-                "shares_outstanding", "market_cap_usd", "market_cap_source", "market_cap_basis_date", "fin_disclosed_at"]  # fmt: skip
+                "shares_outstanding", "market_cap_usd", "market_cap_source", "market_cap_basis_date", "market_cap_ratio", "fin_disclosed_at"]  # fmt: skip
         df = pd.DataFrame(recs, columns=cols).set_index("ticker").reindex(tickers)
         self.md._c.valuation[key] = df
         return df
@@ -455,6 +468,48 @@ class MarketDataView:
                 continue
             out[aid] = (float(rows[aid]["close"]) * float(s["shares_outstanding"]) * float(s.get("split_factor") or 1.0), basis)
         return out
+
+    def _mcap_guard(self, rows: dict[str, dict[str, Any]], d: dt.date, fx: float) -> dict[str, tuple[float, float]]:
+        """주식수가 틀린 시가총액 행 {asset_id: (고친 시가총액, 원래 ÷ 중앙값 비율)}. 기준 = 직전 mcap_guard_window_days 의 시가총액 ÷ 종가 중앙값
+        (종가가 분할 보정이라 맞는 자료면 분할 앞뒤로 같다). 틀린 것으로 보는 경우는 두 가지뿐이다:
+        1000배·100만배(또는 그 역수) — 주식수 단위 오류 (PKG·AJG·CMG 등), 그 기간 정방향 분할 비율만큼 큼 — 분할을 두 번 반영 (GOOGL 20배·NFLX 7배·SHW 3배).
+        합병·채무 출자전환 같은 실제 주식수 변화(KDP 7.7배·PCG 3.7배)는 이 두 모양이 아니라 그대로 둔다. 분할 계수가 분사·감자도 담는 경우
+        (NI·HPQ 분사 뒤 0.4배, 한국 종목)는 분할 규칙에서 뺀다 (미국 종목의 정방향 분할만). 고친 값이 회사 크기로 말이 안 되면 고치지 않는다. d 뒤는 읽지 않는다."""
+        need = [aid for aid, r in rows.items() if (r.get("market_cap") or 0) > 0 and (r.get("close") or 0) > 0]
+        reader = getattr(self.md.repo, "get_implied_shares_median", None)  # 리더가 없는 저장소(테스트용 가짜)는 검사하지 않는다
+        if not need or reader is None:
+            return {}
+        m = self.s.market
+        c = self.md._c.imp_median
+        ask = [aid for aid in need if (d, aid) not in c]
+        if ask:
+            got = reader(ask, d, window_days=m.mcap_guard_window_days)
+            c.update({(d, aid): got.get(aid) for aid in ask})
+        out: dict[str, tuple[float, float]] = {}
+        for aid in need:
+            ref = c.get((d, aid))
+            if not ref or not (ref.get("median") or 0) > 0 or int(ref.get("n") or 0) < m.mcap_guard_min_rows:
+                continue
+            r = rows[aid]
+            close = float(r["close"])
+            ratio = float(r["market_cap"]) / close / float(ref["median"])
+            k = round(float(np.log10(ratio)) / 3)
+            unit = k != 0 and abs(ratio / 1000.0**k - 1) <= m.mcap_guard_unit_tol
+            sf = float(r.get("split_factor") or 0)
+            krw = (r.get("currency") or "") == "KRW"
+            split = float(ref.get("max_sf") or 0) / sf if sf > 0 and not krw else 0.0  # 그 기간 정방향 분할 비율 (분할 전 행의 계수가 더 크다)
+            double = split >= 1.5 and abs(ratio / split - 1) <= m.mcap_guard_split_tol
+            fixed = float(ref["median"]) * close
+            lo, hi = m.mcap_guard_plausible_usd
+            if (unit or double) and lo <= (fixed / fx if krw else fixed) <= hi:
+                out[aid] = (fixed, ratio)
+        return out
+
+    def market_cap_repaired(self, tickers: Sequence[str]) -> dict[str, float]:
+        """주식수 이상값이라 고친 종목 → 고치기 전 시가총액 ÷ 고친 시가총액 (market_cap_usd 와 같은 기준일·캐시)."""
+        v = self.valuation(tickers)
+        rep = v.loc[v["market_cap_source"] == "repaired", "market_cap_ratio"]
+        return {t: float(x) for t, x in rep.items()}
 
     def shares_outstanding(self, tickers: Sequence[str]) -> dict[str, float]:
         v = self.valuation(tickers)["shares_outstanding"]

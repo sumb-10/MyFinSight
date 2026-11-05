@@ -145,7 +145,8 @@ def test_explain_rows_follow_metric_rank_with_unranked_forced_last():
 
     explain(sel, SimpleNamespace(tagged=[]), {"interpretation": {"summary_ko": "s"}, "report_settings": {"explanation_level": "beginner"}}, Llm(), facts=[])
     rows = [ln.split(" | ")[:2] for ln in seen["user"].splitlines() if " | " in ln and not ln.startswith("##")]
-    assert rows == [["1", "AAPL"], ["2", "NVDA"], ["3", "TXN"], ["4 (필수 포함)", "MSFT"], ["5", "AMZN"], ["– (필수 포함)", "MUST"]]
+    # 042: 필수 포함은 지표가 있어도 순위를 매기지 않는다 (순위와 관계없이 담았으므로) — 순위 있는 종목 뒤에
+    assert rows[:4] == [["1", "AAPL"], ["2", "NVDA"], ["3", "TXN"], ["4", "AMZN"]] and sorted(map(tuple, rows[4:])) == [("– (필수 포함)", "MSFT"), ("– (필수 포함)", "MUST")]
 
 
 def test_next_rebalance_hit_leaves_short_final_window_pending():

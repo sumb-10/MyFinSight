@@ -64,6 +64,9 @@ def build_market_model(
     est = view.market_cap_estimated(tk) if hasattr(view, "market_cap_estimated") else {}
     if est:  # 시가총액이 빈 종목은 직전 주식수 × 그날 종가 추정치로 비중을 정했다 (후보 필터와 같은 값)
         notes.append(f"cap_weights use estimated market cap (last known shares × close) for {sorted(est)}")
+    rep = view.market_cap_repaired(tk) if hasattr(view, "market_cap_repaired") else {}
+    if rep:  # 주식수 이상값(분할 두 번 반영·단위 1000배)을 중앙값 주식수로 고친 종목 (047: GOOGL 20배라 시총비중 87%)
+        notes.append(f"cap_weights use repaired market cap (median shares × close; raw was " + ", ".join(f"{t} ×{r:.3g}" for t, r in sorted(rep.items())) + ")")
     tol = req["risk"]["risk_tolerance"]
     dd_tol = float(req["risk"].get("max_drawdown_tolerance") or ps.delta_dd_ref_tol)
     dd_mult = drawdown_delta_multiplier(dd_tol, ps)  # 라운드 5: 허용 낙폭이 작을수록 위험회피 ↑ (낙폭을 합격 기준 대신 구성 입력으로)

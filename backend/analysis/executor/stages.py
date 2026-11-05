@@ -63,12 +63,29 @@ def st_request(ctx: RunContext) -> str:
 TEMPLATE_KO = {"low_per": "저PER", "quality": "퀄리티(ROE)", "momentum": "모멘텀", "low_volatility": "저변동성", "high_dividend": "고배당"}
 
 
+def _drop_answered_conflicts(ctx: RunContext) -> None:
+    """대화에서 사용자가 직접 답한 필드의 '필드로 표현할 수 없는 의도'(idea_value 없음) 충돌은 뺀다 — 답으로 이미 정해졌다
+    (039: '시작 때 6종목·투자 60%' 를 골라 그대로 적용됐는데, 의도 해석이 이를 충돌로 적어 카드가 '별도로 반영하지 않습니다' 라고 했다)."""
+    answered_fields = getattr(ctx, "answered_fields", ())
+    if not answered_fields or not ctx.intent:
+        return
+    interp = ctx.intent.get("interpretation") or {}
+
+    def answered(f: str) -> bool:
+        return any(f == a or f.startswith(a + ".") or a.startswith(f + ".") for a in answered_fields)
+
+    keep = [c for c in interp.get("conflicts") or [] if not (c.get("idea_value") is None and answered(str(c.get("field") or "")))]
+    if len(keep) != len(interp.get("conflicts") or []):
+        interp["conflicts"] = keep
+
+
 def st_intent(ctx: RunContext) -> str:
     if ctx.intent is not None:
         # 대화에서 확정된 의도를 다시 쓰되, 코드 규칙(제외 테마의 GICS 정리)은 지금 규칙으로 다시 적용한다 — 예전 의도면 '성인 산업' 이 미디어 업종 전체를 뺐다 (013)
         ctx.outputs["02_intent"] = ctx.intent
         ctx.warn_all("02_intent", clean_exclude_rules(ctx.intent.get("exclude_theme_rules") or [])
                      + broaden_industry_agnostic((ctx.intent.get("interpretation") or {}).get("themes") or []))  # fmt: skip  (037)
+        _drop_answered_conflicts(ctx)
         return "대화에서 확정된 의도 재사용 (LLM 호출 없음)"
     spec, warns, _ = interpret(ctx.request, ctx.desc, ctx.llm, ctx.settings)
     out = spec.model_dump(mode="json")
@@ -129,7 +146,8 @@ def st_explain(ctx: RunContext) -> str:
     notes_ko = [_render(w) for w in _merge(ctx.warnings_of("05_selection") + ctx.warnings_of("03_candidates")) if w.level == "user"]
     facts05 = ctx.outputs.get("_facts_05", ctx.facts)
     out = explain(sel, Tagging.model_validate(ctx.out("04_tagging")), ctx.out("02_intent"), ctx.llm,
-                  facts=[f for f in facts05 if f["ticker"] in {s.ticker for s in sel.selected}], news=win, warnings_ko=notes_ko)  # fmt: skip
+                  facts=[f for f in facts05 if f["ticker"] in {s.ticker for s in sel.selected}], news=win, warnings_ko=notes_ko,
+                  summaries={c["ticker"]: c.get("company_summary") or "" for c in (ctx.outputs.get("03_candidates") or {}).get("candidates") or []})  # fmt: skip
     ctx.outputs["06_selection_explained"] = out
     return f"기업별 근거 {len(out.get('per_ticker', []))}개"
 

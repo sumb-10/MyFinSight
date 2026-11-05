@@ -16,7 +16,8 @@ import pandas as pd
 from backend.analysis.m5_backtest_report import backtest_metrics as M
 
 MAX_CASH = 0.95
-BASE_LABEL_BL = "뉴스 반영 BL"
+# 날짜별(walk-forward) BL 이라고 이름에 적는다 (047: '뉴스 반영 BL 기준 맞춤안' 이 같은 뉴스 BL 인 정적 선택안 bl_03 을 바탕으로 한 것처럼 읽혔다)
+BASE_LABEL_BL = "walk-forward 뉴스 뷰 BL"
 
 
 def seed_cash_ratio(index_values, target: float) -> float:

@@ -101,6 +101,10 @@ def screen(
         return t.upper() in forced
 
     pool.sort(key=lambda x: (not is_forced(x[0]), (x[1] if direction == "asc" else -x[1]) if math.isfinite(x[1]) else float("inf")))
+    # 섹터 선호는 섹터 상한 때문에 현금이 남지 않게 하려는 것 — 순위대로 고른 상위 n 개로도 상한 안에서 다 배분되면 쓰지 않는다
+    # (043: 리츠 21 + 유틸리티 9 로 45% + 45% = 90% 를 다 담을 수 있었는데 섹터당 15개로 잘라 변동성 큰 ES·NRG·CEG 가 저변동성 요청에 들어왔다)
+    if capacity(Counter(sector_of(t)[0] for t, _ in pool[:n])) >= investable - 1e-9:
+        sector_pref = max(sector_pref, n)
     selected: list[Selected] = []
     sec_count: Counter = Counter()
     deferred: list[tuple[str, float]] = []

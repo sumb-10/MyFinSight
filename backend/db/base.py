@@ -256,6 +256,12 @@ class ExtendedRepository(MarketDataRepository, Protocol):
         """종목별 d 이하에서 주식수가 있는 마지막 valuation_daily 행 {date, shares_outstanding, split_factor, currency} (시가총액 공백 대체용)."""
         ...
 
+    def get_implied_shares_median(
+        self, asset_ids: Sequence[str], d: date, *, window_days: int = 400
+    ) -> dict[str, dict[str, Any]]:
+        """종목별 [d − window_days, d] valuation_daily 의 시가총액 ÷ 종가 중앙값 {median, n, max_sf, min_sf} (시가총액 이상값 검사용)."""
+        ...
+
     def constituents_at(
         self, index: IndexCode | str, d: date
     ) -> tuple[date | None, list[IndexConstituent], list[str]]:

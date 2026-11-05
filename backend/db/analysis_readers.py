@@ -204,6 +204,47 @@ class AnalysisReadersMixin:
 
         return self._read("주식수(기준일 이하)", run)  # type: ignore[attr-defined]
 
+    def get_implied_shares_median(
+        self, asset_ids: Sequence[str], d: date, *, window_days: int = 400
+    ) -> dict[str, dict[str, Any]]:
+        """종목별 [d − window_days, d] 행의 시가총액 ÷ 종가(분할 보정 종가라 분할 앞뒤로 같은 값) 중앙값과 행 수, 그 기간의 분할 계수 최대·최소.
+
+        팀 DB 는 한 분기 동안 주식수가 1000배(단위)·분할 비율만큼(분할을 두 번 반영) 틀린 구간이 있다 (2022-07-27 ~ 10-26 GOOGL 20배 등).
+        d 뒤 행은 읽지 않는다 (선견 없음).
+        """
+        v = T.valuation_daily
+        lo = d - timedelta(days=window_days)
+        ids = sorted(set(asset_ids))
+        imp = v.c.market_cap / v.c.close
+
+        def run(conn: Any) -> dict[str, dict[str, Any]]:
+            out: dict[str, dict[str, Any]] = {}
+            pg = conn.dialect.name == "postgresql"  # 중앙값은 PostgreSQL 이 계산, 그 밖(시험용 SQLite)은 행을 읽어 파이썬으로
+            for part in _chunks(ids):
+                cond = (v.c.asset_id.in_(part), v.c.date <= d, v.c.date >= lo, v.c.market_cap.is_not(None), v.c.close > 0)
+                if pg:
+                    q = (select(v.c.asset_id, func.percentile_cont(0.5).within_group(imp).label("med"), func.count().label("n"),
+                                func.max(v.c.split_factor).label("max_sf"), func.min(v.c.split_factor).label("min_sf"))
+                         .where(*cond).group_by(v.c.asset_id))  # fmt: skip
+                    for r in conn.execute(q):
+                        out[r.asset_id] = {"median": None if r.med is None else float(r.med), "n": int(r.n),
+                                           "max_sf": None if r.max_sf is None else float(r.max_sf), "min_sf": None if r.min_sf is None else float(r.min_sf)}  # fmt: skip
+                    continue
+                vals: dict[str, list[float]] = defaultdict(list)
+                sfs: dict[str, list[float]] = defaultdict(list)
+                for r in conn.execute(select(v.c.asset_id, imp.label("imp"), v.c.split_factor).where(*cond)):
+                    vals[r.asset_id].append(float(r.imp))
+                    if r.split_factor is not None:
+                        sfs[r.asset_id].append(float(r.split_factor))
+                for aid, xs in vals.items():
+                    xs.sort()
+                    k = len(xs)
+                    out[aid] = {"median": xs[k // 2] if k % 2 else (xs[k // 2 - 1] + xs[k // 2]) / 2, "n": k,
+                                "max_sf": max(sfs[aid]) if sfs[aid] else None, "min_sf": min(sfs[aid]) if sfs[aid] else None}  # fmt: skip
+            return out
+
+        return self._read("주식수 중앙값(기준일 이하)", run)  # type: ignore[attr-defined]
+
     def constituents_at(
         self, index: IndexCode | str, d: date
     ) -> tuple[date | None, list[IndexConstituent], list[str]]:
