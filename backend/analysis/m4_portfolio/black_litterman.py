@@ -89,6 +89,7 @@ def build_bl(
             mu = pi.copy()
             warnings.append(f"set {k}: BL optimizer failed, baseline weights kept ({next(x for x in active if x.startswith('optimizer_failed'))})")
         d = w - wb
+        w_out, cash_out = P.weights_out(tk, w)
         pv = ("뉴스 뷰 비중 최적화가 수렴하지 않아 기준 비중을 유지했습니다 (뷰 미반영)." if failed
               else s.get("narrative_ko", "") + "\n" + "\n".join("- " + view_summary(v) for v in s["views"]))
         ports.append(Portfolio(
@@ -101,7 +102,7 @@ def build_bl(
                             "expected_return_annual": v["expected_return_annual"], "confidence": v["confidence"],
                             "rationale_ko": v.get("rationale_ko", ""), "evidence_type": v.get("evidence_type", "news"),
                             "evidence_ids": v.get("evidence_ids", [])} for v in s["views"]],
-            weights={t: round(float(x), 6) for t, x in zip(tk, w, strict=True)}, cash_weight=round(1 - float(w.sum()), 6),
+            weights=w_out, cash_weight=cash_out,
             delta_vs_baseline={t: round(float(x), 6) for t, x in zip(tk, d, strict=True)},
             posterior_returns={t: round(float(x), 6) for t, x in zip(tk, mu, strict=True)},
             ex_ante=P.ex_ante_stats(w, mu, cov), sector_weights=P.sector_weights(w, sec_name), active_constraints=[label(x) for x in active],

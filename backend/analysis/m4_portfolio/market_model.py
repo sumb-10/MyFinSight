@@ -117,9 +117,10 @@ def build_market_model(
     for tpl in ps.templates:
         w = weights[tpl]
         name_ko, rule_ko = ps.template_names_ko[tpl]
+        w_out, cash_out = P.weights_out(tk, w)
         ports.append({
             "id": tpl, "kind": "template", "name_ko": name_ko, "rule_ko": rule_ko,
-            "weights": {t: round(float(x), 6) for t, x in zip(tk, w, strict=True)}, "cash_weight": round(1 - float(w.sum()), 6),
+            "weights": w_out, "cash_weight": cash_out,
             "ex_ante": P.ex_ante_stats(w, pi, mm["cov"]), "sector_weights": P.sector_weights(w, sec_name),
             "constraints_applied": [label(c) for c in applied_by[tpl]],
         })  # fmt: skip

@@ -274,6 +274,13 @@ def ex_ante_stats(w, mu, cov) -> dict[str, float]:
             "effective_n": round(1 / ss, 3) if ss > 0 else 0.0}  # fmt: skip
 
 
+def weights_out(tickers, w) -> tuple[dict[str, float], float]:
+    """저장하는 비중(소수 6자리 내림)과 그 합으로 센 현금. 반올림하면 종목마다의 올림이 쌓여 합이 투자 가능 비율을 넘었다
+    (041 최종 재실행: 25종목 합 0.85001 → 현금 14.999% < 최소 현금 15%). 내림은 현금을 많아야 종목 수 × 0.0001%p 늘린다."""
+    out = {t: max(0.0, float(np.floor(float(x) * 1e6 + 1e-6)) / 1e6) for t, x in zip(tickers, w, strict=True)}
+    return out, round(1.0 - sum(out.values()), 6)
+
+
 def sector_weights(w, sector_names) -> dict[str, float]:
     out: dict[str, float] = {}
     for wi, s in zip(w, sector_names, strict=True):

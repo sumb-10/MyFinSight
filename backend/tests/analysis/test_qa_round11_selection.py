@@ -189,3 +189,38 @@ def test_cards_drop_words_pointing_at_hidden_inputs():
     card = f"주어진 뉴스에는 사업 내용이 없고 제공된 자료로 보면 배당이 높습니다 [{CCI_FACT}]. 주어진 기간 동안 꾸준했습니다 [{CCI_FACT}]."
     text = _explain("dividend_yield_ttm", card)["per_ticker"][0]["rationale_ko"]
     assert text == f"뉴스에는 사업 내용이 없고 자료로 보면 배당이 높습니다 [{CCI_FACT}]. 주어진 기간 동안 꾸준했습니다 [{CCI_FACT}]."
+
+
+def test_unknown_citation_after_retry_is_stripped_not_fatal():
+    """000 최종 재실행: BMY 카드가 근거 ID ev1858785 를 ev1878791 로 잘못 옮기고 재시도에서도 같아 실행 전체가 멈췄다.
+    처음 답은 되돌려 다시 받고(그대로), 재시도 답에서도 모르는 ID 면 그 ID 만 지우고 기록한다."""
+    from backend.analysis.errors import LlmOutputError
+    from backend.analysis.m3_selection.explain import explain
+    from backend.analysis.schemas.selection import Selected
+
+    sel = SimpleNamespace(request_id="r", summary={"metric": "dividend_yield_ttm", "direction": "desc", "as_of": "2025-02-12"},
+                          selected=[Selected(ticker="CCI", name="Crown Castle", sector="Real Estate", sector_code="60", rank=1, metric_name="dividend_yield_ttm", metric_value=0.0686)])  # fmt: skip
+    bad = f"배당수익률이 높습니다 [{CCI_FACT}]. 소송 보도가 있습니다 [ev999]."
+
+    class RetryLlm:  # LlmClient.complete_json 처럼: 검증 → 실패하면 한 번 다시 → 또 실패하면 LlmOutputError
+        def __init__(self, answers):
+            self.answers = list(answers)
+
+        def complete_json(self, stage, messages, validator=None):
+            for i, card in enumerate(self.answers):
+                ans = {"portfolio_summary_ko": "요약", "per_ticker": [{"ticker": "CCI", "rationale_ko": card}]}
+                try:
+                    validator(ans)
+                    return ans
+                except ValueError as e:
+                    if i == len(self.answers) - 1:
+                        raise LlmOutputError(str(e)) from e
+            raise AssertionError
+
+    facts = [{"id": CCI_FACT, "ticker": "CCI", "metric": "dividend_yield_ttm", "value": 0.0686}]
+    it = {"interpretation": {"summary_ko": "s"}, "report_settings": {"explanation_level": "beginner"}}
+    out = explain(sel, SimpleNamespace(tagged=[]), it, RetryLlm([bad, bad]), facts=facts)
+    assert out["per_ticker"][0]["rationale_ko"] == f"배당수익률이 높습니다 [{CCI_FACT}]. 소송 보도가 있습니다." and out["citation_fixes"] == {"CCI": ["ev999"]}
+    good = f"배당수익률이 높습니다 [{CCI_FACT}]."
+    out = explain(sel, SimpleNamespace(tagged=[]), it, RetryLlm([bad, good]), facts=facts)  # 재시도에서 고치면 그대로
+    assert out["per_ticker"][0]["rationale_ko"] == good and "citation_fixes" not in out

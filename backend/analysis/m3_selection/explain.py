@@ -97,8 +97,12 @@ def explain(
     )  # fmt: skip
     allowed = fact_ids | news_ids
     tickers = {s.ticker for s in sel.selected}
+    attempt = [0]
+    unknown: dict[str, list[str]] = {}
 
     def _check(a: dict[str, Any]) -> None:
+        attempt[0] += 1
+        unknown.clear()
         if not isinstance(a.get("per_ticker"), list) or not a.get("portfolio_summary_ko"):
             raise ValueError("need portfolio_summary_ko and per_ticker[]")
         for row in a["per_ticker"]:
@@ -106,11 +110,22 @@ def explain(
                 raise ValueError(f"unknown ticker {row.get('ticker')!r} in per_ticker")
             bad = [c for c in CITE_RE.findall(row.get("rationale_ko", "")) if c not in allowed]
             if bad:
-                raise ValueError(f"{row['ticker']}: unknown citation ids {bad}; cite only the given ids")
+                # 재시도 답에서도 모르는 ID 면 실행을 멈추지 않고 그 ID 만 지운다 (000 재실행: BMY 카드가 ev1858785 를 ev1878791 로 잘못 옮겨
+                # 두 번 다 거절돼 실행 전체가 멈췄다). 처음 답은 그대로 되돌려 다시 받는다.
+                if attempt[0] == 1:
+                    raise ValueError(f"{row['ticker']}: unknown citation ids {bad}; cite only the given ids")
+                unknown[row["ticker"]] = bad
             if allowed and not CITE_RE.search(row.get("rationale_ko", "")):
                 raise ValueError(f"{row['ticker']}: rationale must cite at least one given id like [fin:...] or [ev123]")
 
     ans = llm.complete_json(STAGE, messages_from_prompts(system, user), validator=_check)
+    if unknown and isinstance(ans.get("per_ticker"), list):
+        def _strip(text: str, ids: list[str]) -> str:
+            return re.sub(r"\s*\[(?:" + "|".join(map(re.escape, ids)) + r")\]", "", text)
+
+        ans = {**ans, "per_ticker": [{**r, "rationale_ko": _strip(r["rationale_ko"], unknown[r["ticker"]])} if r.get("ticker") in unknown else r
+                                     for r in ans["per_ticker"]],
+               "citation_fixes": {t: ids for t, ids in unknown.items()}}  # fmt: skip
     # 사용자가 보지 못하는 입력을 가리키는 말은 지운다 (030 '입력된 관련 뉴스 제목은', 033 '제공된 모멘텀만으로', 043 '주어진 뉴스에는' — 06 규칙만으로는 새었다)
     if isinstance(ans.get("per_ticker"), list):
         ans = {**ans, "per_ticker": [{**r, "rationale_ko": re.sub(r"(?:제공된|입력된)\s+|(?:제시된|주어진)\s+(?=(?:모멘텀|지표|자료|정보|근거|수치|숫자|목록|헤드라인|뉴스|데이터))", "", r["rationale_ko"])} if isinstance(r.get("rationale_ko"), str) else r

@@ -23,6 +23,9 @@ from backend.schemas.market import FxRate, IndexCode, IndexConstituent
 from backend.schemas.market_ext import DisclosureRecord, NewsRecord
 
 _CHUNK = 500
+# 가격 행은 종목당 수백~수천 행이라 묶음을 작게: 500종목 × 6.5년(약 80만 행)을 한 문장으로 물으면 팀 DB 가 느린 날 문장 시간 제한(5분)에
+# 걸려 실행이 01 단계에서 멈췄다 (2026-11-05 최종 재실행 021·022 — 같은 조회가 평소 20초)
+_PRICE_CHUNK = 100
 
 
 def _chunks(items: Sequence[Any], size: int = _CHUNK) -> Iterable[Sequence[Any]]:
@@ -115,7 +118,7 @@ class AnalysisReadersMixin:
 
         def run(conn: Any) -> list[Any]:
             out: list[Any] = []
-            for part in _chunks(wanted):
+            for part in _chunks(wanted, _PRICE_CHUNK):
                 q = select(*(p.c[c] for c in PRICE_BAR_COLS)).where(
                     p.c.ticker.in_(part), p.c.date >= start, p.c.date <= end
                 )

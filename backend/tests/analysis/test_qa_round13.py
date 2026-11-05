@@ -291,3 +291,16 @@ def test_round16_financing_filings_and_scaled_walkforward_deltas():
     f = RP._top_delta_facts(R, "dd_match_wf_bl_news")
     assert f["top_delta_by_date"] == {d: ["A +2.5%p", "B -2.5%p"]} and "주식 비율로 줄인 차이" in f["top_delta_note"]
     assert "top_delta_note" not in RP._top_delta_facts(R, "equal_weight")
+
+
+def test_stored_weights_never_eat_into_minimum_cash():
+    """041 최종 재실행: walk-forward 동일비중 25종목을 소수 6자리로 반올림해 합이 0.85001 → 현금 14.999% < 최소 현금 15%. 내림으로 저장한다."""
+    import numpy as np
+
+    from backend.analysis.m4_portfolio.math import weights_out
+
+    w = np.array([1.0] * 22 + [0.6, 0.6, 0.6])
+    w = w / w.sum() * 0.85
+    out, cash = weights_out([f"T{i}" for i in range(25)], w)
+    assert sum(out.values()) <= 0.85 + 1e-12 and cash >= 0.15 and cash - 0.15 < 25e-6
+    assert weights_out(["A", "B"], np.array([0.034, -1e-17])) == ({"A": 0.034, "B": 0.0}, 0.966)
