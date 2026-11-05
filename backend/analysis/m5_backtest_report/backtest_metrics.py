@@ -109,8 +109,10 @@ def drawdown_episodes(idx, min_depth=-0.05, top=3):
         eps.append((seg.min(), start, seg.idxmin(), None))
     eps = [e for e in eps if e[0] <= min_depth]
     eps.sort(key=lambda e: e[0])
+    # 기간 끝까지 회복되지 않은 하락은 깊이 순위 밖이어도 넣는다 — 빠지면 서술이 '다른 하락도 회복됐다' 고 썼다 (057: −5.1% 진행 중 하락이 4번째라 잘림)
+    keep = eps[:top] + [e for e in eps[top:] if e[3] is None]
     return [{"depth": _r(e[0]), "peak_date": str((idx[: e[1]].idxmax()).date()), "trough_date": str(e[2].date()),
-             "recovery_date": str(e[3].date()) if e[3] is not None else None} for e in eps[:top]]  # fmt: skip
+             "recovery_date": str(e[3].date()) if e[3] is not None else None} for e in keep]  # fmt: skip
 
 
 def var_cvar(mr, q=0.05):

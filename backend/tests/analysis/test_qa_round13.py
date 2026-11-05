@@ -256,7 +256,7 @@ def test_start_shortfall_reason_names_the_real_filters():
     from types import SimpleNamespace as NS
 
     from backend.analysis.m1_request.dialog import _start_why_ko
-    from backend.analysis.m1_request.precheck import _dropped_by
+    from backend.analysis.m4_portfolio.spec import dropped_by as _dropped_by
 
     cand = NS(filtered_out=[NS(ticker="AEP", reason="min_market_cap_usd"), NS(ticker="D", reason="min_market_cap_usd(estimated)")],
               candidates=[NS(ticker="AMT"), NS(ticker="NEE")])  # fmt: skip
@@ -281,7 +281,8 @@ def test_round16_financing_filings_and_scaled_walkforward_deltas():
     assert event_type_of({**sec, "items": "1.01,9.01"}) == "material_agreement"
     assert event_type_of({**sec, "source": "DART", "items": "1.01,2.03"}) == "material_agreement"
     d = "2024-01-02"
-    R = {"portfolio": {"walkforward": {"portfolios": [{"id": "wf_bl_news", "kind": "black_litterman", "weights_by_date": {d: {"A": 0.40, "B": 0.30}}},
+    R = {"portfolio": {"walkforward": {"portfolios": [{"id": "wf_bl_news", "kind": "black_litterman", "weights_by_date": {d: {"A": 0.40, "B": 0.30}},
+                                                      "views_by_date": {d: [{"long": ["A"], "short": ["B"]}]}},
                                                      {"id": "wf_equal_weight", "kind": "template", "weights_by_date": {d: {"A": 0.35, "B": 0.35}}}]},
                        "targets": {"baseline": {"id": "equal_weight"}}},
          "backtest": {"portfolios": [{"id": "dd_match_wf_bl_news", "kind": "matched", "base_id": "wf_bl_news", "name_ko": "낙폭 맞춤안",
@@ -291,6 +292,9 @@ def test_round16_financing_filings_and_scaled_walkforward_deltas():
     f = RP._top_delta_facts(R, "dd_match_wf_bl_news")
     assert f["top_delta_by_date"] == {d: ["A +2.5%p", "B -2.5%p"]} and "주식 비율로 줄인 차이" in f["top_delta_note"]
     assert "top_delta_note" not in RP._top_delta_facts(R, "equal_weight")
+    # 059: 그날 뷰가 걸리지 않은 종목의 변화는 재배분이라고 표시
+    R["portfolio"]["walkforward"]["portfolios"][0]["views_by_date"] = {d: [{"long": ["A"], "short": []}]}
+    assert RB.walkforward_top_deltas(R) == {d: ["A +5.0%p", "B -5.0%p (그날 뷰 없음, 재배분)"]}
 
 
 def test_stored_weights_never_eat_into_minimum_cash():
@@ -371,3 +375,69 @@ def test_round17_ties_lookahead_labels_and_small_texts():
     R = {"selection": {"backtest_reselected": False, "backtest_as_of": {"diff_vs_original": {"added": [], "removed": []}, "table": [{"ticker": "A"}, {"ticker": "B"}]}}}
     t = RB.diff_table(R)
     assert t["title_ko"] == "백테스트에 쓴 종목 목록" and "시작일 재선정 없음" in t["note_ko"] and t["rows"][0]["v"] == "A, B"
+
+
+def test_round18_mirrored_views_drawdown_clip_and_texts():
+    """057: 같은 세트에 'A > B' 와 'B > A' — 둘 다 뺀다, 세트가 똑같으면 하나만. 진행 중 하락은 깊이 순위 밖이어도 남긴다.
+    056: '선정 사유는 다음과 같습니다: A · B', '[한국어 문장]'. 060: 맞춤안 KPI 는 바탕 구성의 뷰 적중률."""
+    import pandas as pd
+
+    from backend.analysis.m5_backtest_report.backtest_metrics import drawdown_episodes
+    from backend.analysis.m5_backtest_report.report import _plain_llm
+
+    idx = pd.Series([100, 80, 100, 85, 100, 90, 100, 92, 100, 95], index=pd.date_range("2024-01-01", periods=10, freq="D"), dtype=float)
+    eps = drawdown_episodes(idx, top=3)
+    assert len(eps) == 4 and eps[-1]["recovery_date"] is None and eps[-1]["depth"] == -0.05  # 4번째(진행 중)도 남긴다
+    assert _plain_llm("선정 사유는 다음과 같습니다: 후보 16개 중 1위 · 목표수익 충족.") == "선정 사유는 후보 16개 중 1위, 목표수익 충족."
+    assert _plain_llm("차이가 컸습니다. [원인을 단정할 수는 없습니다.] 근거 [ev12].") == "차이가 컸습니다. 원인을 단정할 수는 없습니다. 근거 [ev12]."
+
+
+def test_mirrored_relative_views_and_duplicate_sets_are_dropped(monkeypatch):
+    """057: 2종목 세트마다 'A > B'·'B > A' 가 함께 있어 서로를 지우면서 적중 1·빗나감 1 을 늘 만들었고, 다섯 세트가 똑같았다."""
+    import datetime as dt
+    from types import SimpleNamespace
+
+    import pandas as pd
+
+    from backend.analysis.m4_portfolio import views as V
+    from backend.analysis.settings import AnalysisSettings
+
+    recs = [{"evidence_id": f"ev{i}", "ticker": t, "published_at": "2024-12-30", "title": "t", "source": "s", "language": "en", "publisher": "p"}
+            for i, t in ((1, "A"), (2, "B"))]  # fmt: skip
+
+    class Ev:
+        ids = {"ev1", "ev2"}
+        records = recs
+        disclosures = []
+        by_ticker = {"A": [recs[0]], "B": [recs[1]]}
+        start = end = dt.date(2025, 1, 1)
+        dc_start = None
+
+        def has_evidence(self, t):
+            return t in ("A", "B")
+
+        def disclosure_lines(self):
+            return []
+
+    def view(t, long, short=(), d="up", e="ev1"):
+        return {"type": t, "long": list(long), "short": list(short), "direction": d, "strength": "weak", "confidence": 0.2, "evidence_ids": [e]}
+
+    set1 = [view("absolute", ["A"]), view("relative", ["A"], ["B"]), view("relative", ["B"], ["A"], e="ev2")]
+    ans = {"sets": [{"scenario_id": "s1", "title_ko": "t", "narrative_ko": "n", "views": set1},
+                    {"scenario_id": "s2", "title_ko": "t", "narrative_ko": "n", "views": [view("absolute", ["A"])]}]}  # fmt: skip
+
+    class Llm:
+        def complete_json(self, *a, **k):
+            import copy
+
+            return copy.deepcopy(ans)
+
+    monkeypatch.setattr(V, "load_prompts", lambda *a, **k: ("s", "u"))
+    mm = {"tickers": ["A", "B"], "implied_returns": {"A": 0.1, "B": 0.08}, "ann_vol": {"A": 0.3, "B": 0.2}, "cov": [[0.09, 0.02], [0.02, 0.04]],
+          "cap_weights": {"A": 0.5, "B": 0.5}, "delta": 2.5, "tau": 0.05}  # fmt: skip
+    view_ = SimpleNamespace(as_of=dt.date(2025, 1, 1), adj_close=lambda *a, **k: pd.DataFrame())
+    intent = {"interpretation": {"summary_ko": "s", "themes": []}, "news_tilt": {"max_view_confidence": 0.5}}
+    sets, warns = V.generate_views(view_, ["A", "B"], mm, {"A": 0.5, "B": 0.5}, intent, SimpleNamespace(by_ticker=lambda t: {"name": t}), AnalysisSettings(), Llm(), Ev(),
+                                   n_sets=2, views_per_set=4, stage_tag="t")  # fmt: skip
+    assert [[(v["type"], v["long"]) for v in s_["views"]] for s_ in sets] == [[("absolute", ["A"])]]  # 상대 뷰 쌍은 빠지고, 같아진 두 번째 세트도 빠짐
+    assert "서로 반대인 상대 뷰" in sets[0]["narrative_ko"] and any("mirrored" in w for w in warns) and any("same views as set" in w for w in warns)

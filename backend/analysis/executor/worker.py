@@ -35,6 +35,22 @@ from backend.analysis.settings import AnalysisSettings
 log = logging.getLogger(__name__)
 
 
+def _answered_fields(doc: Any) -> tuple[str, ...]:
+    """대화에서 답으로 정해진 필드: 질문 필드 + 고른 보기의 patch 가 바꾼 필드. '투자 비율 …를 모두 배분' 보기(상한·종목 수 patch)는 투자 비율도 정한다
+    (058: 종목 수 질문의 답 '…투자 비율 100%를 모두 배분' 을 의도 해석이 최소 현금 충돌로 다시 적어 카드가 남았다)."""
+    out: list[str] = []
+    for q in doc.questions or []:
+        if not getattr(q, "answered_at", None):
+            continue
+        out.append(q.field)
+        opt = next((o for o in getattr(q, "options", None) or [] if getattr(o, "label_ko", None) == getattr(q, "answer", None)), None)
+        keys = [k for k in (getattr(opt, "patch", None) or {}) if not str(k).startswith("_")]
+        out += keys
+        if any(k in ("constraints.num_holdings", "constraints.max_weight_per_stock", "constraints.max_weight_per_sector") for k in keys) and "배분" in (q.answer or ""):
+            out.append("constraints.min_cash_ratio")
+    return tuple(dict.fromkeys(out))
+
+
 def execute_run(entry_run_id: str, *, repo: Any, store: JsonStore, settings: AnalysisSettings, queue: Queue, llm=None) -> str:
     """큐에서 claim 된 실행 하나를 끝까지. 돌려주는 값 = 최종 상태."""
     reqs = RequestStore(store)
@@ -54,7 +70,7 @@ def execute_run(entry_run_id: str, *, repo: Any, store: JsonStore, settings: Ana
                      bt_req=bt_req, allow_fewer_at_start=bool(doc.overrides.get("_allow_fewer_at_start")), no_reselect=bool(doc.overrides.get("_no_reselect")),
                      shift_cannot_help=bool(doc.overrides.get("_shift_cannot_help")),
                      start_shift_ok=bool(doc.overrides.get("_start_shift_ok")),  # 묻고 동의한 경우에만 시작일을 옮긴다 (1종목 이하는 자동)
-                     answered_fields=tuple(q.field for q in doc.questions if q.answered_at),
+                     answered_fields=_answered_fields(doc),
                      cancel_check=lambda: queue.is_cancel_requested(entry_run_id))  # fmt: skip
     outcome = run(ctx, on_step=db_step_hook(repo, entry_run_id))
     status = outcome.status

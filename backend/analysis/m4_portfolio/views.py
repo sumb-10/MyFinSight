@@ -96,6 +96,7 @@ def generate_views(
         seen: set = set()
         views = []
         opposite: list[str] = []  # 오름·내림이 함께 나와 둘 다 뺀 종목 (설명 문장에 덧붙인다)
+        mirrored: list[str] = []  # 'A > B' 와 'B > A' 가 함께 나와 둘 다 뺀 상대 뷰 쌍
         sid = s_.get("scenario_id")
         for v in s_.get("views", []):
             legs = list(v.get("long", [])) + list(v.get("short", []))
@@ -107,6 +108,16 @@ def generate_views(
                 warnings.append(f"{sid}: view dropped, malformed legs long={v.get('long')} short={v.get('short')}")
                 continue
             key = (tuple(sorted(v["long"])), tuple(sorted(v.get("short", []))))
+            mirror = (key[1], key[0])
+            if v.get("type") == "relative" and mirror in seen:
+                # 'A > B' 와 'B > A' 는 서로를 지워 사전 기대로 돌아가면서 적중 1·빗나감 1 을 늘 만든다 → 둘 다 뺀다 (057: 2종목 세트마다 양방향 상대 뷰)
+                prev = next((x for x in views if (tuple(sorted(x["long"])), tuple(sorted(x.get("short", [])))) == mirror), None)
+                if prev is not None:
+                    views.remove(prev)
+                    mirrored.append(f"{'·'.join(key[0])} > {'·'.join(key[1])}")
+                    warnings.append(f"{sid}: mirrored relative views on {key} dropped (conflicting directions)")
+                    seen.add(key)
+                    continue
             if key in seen:
                 # 같은 종목에 방향이 반대인 뷰가 또 있으면 둘 다 뺀다 — 먼저 나온 것만 남기면 순서가 결론을 정했다 (045: COIN 오름(0.25)·내림(0.30) 중 약한 오름이 남음)
                 prev = next((x for x in views if (tuple(sorted(x["long"])), tuple(sorted(x.get("short", [])))) == key), None)
@@ -174,10 +185,19 @@ def generate_views(
         if views:
             # 설명은 LLM 이 뷰를 빼기 전에 쓴 것이라 뺀 뷰를 '반영했다' 고 말한다 (045 재실행: COIN 오름·내림을 둘 다 뺐는데 '상반된 신호로 반영했습니다')
             note = f" 같은 종목({', '.join(opposite)})에 오름·내림 뷰가 함께 나와 그 종목의 두 뷰는 반영하지 않았습니다." if opposite else ""
+            if mirrored:
+                note += f" 서로 반대인 상대 뷰({', '.join(mirrored)} 와 그 반대)가 함께 나와 둘 다 반영하지 않았습니다."
             rel = sum(1 for v in views if v.get("type") == "relative" and set(opposite) & {*v.get("long", []), *v.get("short", [])})
             if note and rel:  # 남은 상대 뷰는 반영된다 — 그 종목 비중이 왜 움직였는지 (055: 메리츠 오름·내림을 뺐는데 '…> 메리츠' 상대 뷰 둘이 비중을 줄였다)
                 note += f" 그 종목이 걸린 상대 뷰 {rel}개는 반영했습니다."
-            sets.append({**s_, "views": views, **({"narrative_ko": (s_.get("narrative_ko") or "").rstrip() + note} if note else {})})
+            sig = tuple(sorted((tuple(x["long"]), tuple(x.get("short", [])), str(x.get("direction") or "")) for x in views))
+            dup = next((x.get("scenario_id") for x in sets if x.get("_sig") == sig), None)
+            if dup is not None:  # 앞 세트와 뷰가 똑같은 세트는 같은 대안이 둘로 보이게 할 뿐이다 (057: 2종목이라 다섯 세트가 모두 같았다)
+                warnings.append(f"{sid}: same views as set {dup} -> dropped")
+                continue
+            sets.append({**s_, "views": views, "_sig": sig, **({"narrative_ko": (s_.get("narrative_ko") or "").rstrip() + note} if note else {})})
+    for x in sets:
+        x.pop("_sig", None)
     if len(sets) != n_sets:
         warnings.append(f"{len(sets)} sets returned, expected {n_sets}")
     return sets, warnings
@@ -252,12 +272,14 @@ def _quantify(v: dict[str, Any], mm: dict[str, Any], tickers: list[str], ps, war
         q = prior + k * _spread_vol(v, mm, tickers)
         lo, hi = ps.abs_return_range  # 상대 뷰도 사전 차이가 음수일 수 있어 절대 뷰 범위로 자른다 (부호가 아니라 이동 방향이 뜻)
     if not (lo <= q <= hi):
-        warnings.append(f"{sid}: view {v['long']} return {q:.4f} clipped to [{lo}, {hi}]")
-        q = min(max(q, lo), hi)
-        # 자른 값이 사전 기대를 넘어가면 방향이 뒤집힌다 (026 검토: 사전 기대가 이미 +100% 근처) → 사전 기대에 멈춰 뷰를 중립으로
-        if (q < prior if direction == "up" else q > prior):
-            warnings.append(f"{sid}: view {v['long']} clipped past its prior {prior:.4f}; kept at the prior (no tilt)")
-            q = prior
+        # 범위로 자르는 것은 이동 폭을 줄일 때만 쓴다. 사전 기대가 이미 범위 밖이면 범위 쪽으로 자르는 것이 이동을 키우거나(060: '약' 상대 뷰
+        # VLO > BE 가 사전 −101% 에서 −50% 로 +51%p, SNDK 내림이 +148% 에서 +100% 로 −48%p) 방향을 뒤집는다(026·060 MRVL) → 그때는 강도만큼만 옮긴다
+        qc = min(max(q, lo), hi)
+        if (qc - prior) * (q - prior) > 0 and abs(qc - prior) <= abs(q - prior):
+            warnings.append(f"{sid}: view {v['long']} return {q:.4f} clipped to [{lo}, {hi}]")
+            q = qc
+        else:
+            warnings.append(f"{sid}: view {v['long']} prior {prior:.4f} outside [{lo}, {hi}]; kept the strength step ({q - prior:+.4f}) without clipping")
     v["direction"], v["strength"] = direction, strength
     v["prior_return"], v["expected_return_annual"] = round(prior, 6), round(q, 6)
 

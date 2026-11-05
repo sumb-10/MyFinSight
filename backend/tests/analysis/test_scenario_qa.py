@@ -1921,13 +1921,21 @@ def test_build_bl_keeps_view_direction_and_labels_the_hold(monkeypatch):
 
 
 def test_view_clip_never_reverses_direction():
-    """026 검토: 절대 뷰 범위(+100%)로 자를 때 사전 기대가 이미 그보다 크면 '오름' 뷰가 사전 기대보다 낮아져 내림 뷰가 된다 → 사전 기대에 멈춘다."""
+    """026 검토: 절대 뷰 범위(+100%)로 자를 때 사전 기대가 이미 그보다 크면 '오름' 뷰가 사전 기대보다 낮아져 내림 뷰가 된다.
+    060: 범위 쪽으로 자르는 것이 이동을 키우기도 했다('약' 뷰가 +51%p) → 사전 기대가 범위 밖이면 자르지 않고 강도만큼만 옮긴다."""
     mm, _ = _mm()
-    mm = {**mm, "implied_returns": {**mm["implied_returns"], "T3": 1.2}}
+    mm = {**mm, "implied_returns": {**mm["implied_returns"], "T3": 1.2, "T1": -1.0}}
+    step = lambda t, s_: PS.view_strength_k[s_] * mm["ann_vol"][t]  # noqa: E731
     w: list[str] = []
     v = {"type": "absolute", "long": ["T3"], "short": [], "direction": "up", "strength": "strong"}
     _quantify(v, mm, mm["tickers"], PS, w, "s")
-    assert v["expected_return_annual"] == pytest.approx(1.2) and any("kept at the prior" in x for x in w)
+    assert v["expected_return_annual"] == pytest.approx(1.2 + step("T3", "strong")) and any("kept the strength step" in x for x in w)  # 방향 그대로, 강도만큼
+    v = {"type": "absolute", "long": ["T3"], "short": [], "direction": "down", "strength": "weak"}
+    _quantify(v, mm, mm["tickers"], PS, w, "s")
+    assert v["expected_return_annual"] == pytest.approx(1.2 - step("T3", "weak"))  # 범위(100%)까지 끌어내려 이동을 키우지 않는다
+    v = {"type": "absolute", "long": ["T1"], "short": [], "direction": "up", "strength": "weak"}
+    _quantify(v, mm, mm["tickers"], PS, w, "s")
+    assert v["expected_return_annual"] == pytest.approx(-1.0 + step("T1", "weak"))  # 사전 −100% 에서 −50% 로 끌어올리지 않는다
 
 
 def test_market_model_window_names_the_late_listing_and_report_shows_actual_days():

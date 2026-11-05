@@ -248,7 +248,7 @@ def build_results(
         {"stage": "selected_now", "label_ko": f"최종 선정 ({sel['summary']['as_of']}"
                                               + (", 섹터 분산으로 순위 일부 조정" if any(r.get("reason") == "sector_preference" for r in sel.get("rejected") or []) else "") + ")",
          "count": sel["summary"]["n_selected"]},  # fmt: skip
-        {"stage": "selected_backtest", "label_ko": (f"백테스트용 재선정 ({spec['period']['as_of']})" if reselected
+        {"stage": "selected_backtest", "label_ko": (f"백테스트용 재선정 ({spec['period']['as_of']}" + (", 넓은 테마라 그날 후보 전체에서" if not tag.get("theme_filter_applied", True) else "") + ")" if reselected
                                                      else f"백테스트에 쓴 목록 ({spec['period']['as_of']}부터 · 분석 기준일 목록 그대로, 시작일 재선정 없음)"),
          "count": len(spec["selection"]["tickers"])},  # fmt: skip
     ]  # fmt: skip

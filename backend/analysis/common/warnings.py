@@ -52,6 +52,7 @@ CATALOG: dict[str, tuple[Level, str]] = {
     "must_include_no_metric": ("user", "필수 포함 종목 {tickers}은(는) 선정 지표 자료가 없어{why} 순위를 매기지 못했지만 요청에 따라 포함했습니다."),
     "must_include_off_theme": ("user", "필수 포함 종목 {tickers}은(는) 테마 판정을 통과하지 못했지만 요청에 따라 포함했습니다."),
     "must_include_excluded_theme": ("user", "필수 포함 종목 {tickers}은(는) 제외 테마({theme})에 해당하지만 요청에 따라 포함했습니다."),
+    "broad_start_pool": ("user", "넓은 테마라 그날 후보 {n}개 전체에서 그날 지표로 다시 골랐습니다. 분석 모델이 판정하지 않은 종목은 제외 테마를 키워드로만 걸렀습니다{dropped}."),
     "utility_not_fossil": ("user", "화석연료 제외는 석유·가스·석탄을 생산·정제·운송하는 회사에 적용했습니다. 전기·가스를 공급하는 유틸리티 {tickers}은(는) 빼지 않았습니다."),
     # 필수 포함은 후보 단계의 최소 시가총액·거래대금 필터를 건너뛴다(정책) — 건너뛴 사실은 알린다 (018: 시작일 033780.KS 시가총액 76억 달러 < 최소 100억 달러인데 공지가 없었다)
     "must_include_below_filters": ("user", "필수 포함 종목 {tickers}은(는) 후보 조건을 채우지 못했지만({detail}) 요청에 따라 포함했습니다."),
@@ -114,6 +115,7 @@ _LEGACY: list[tuple[re.Pattern[str], str, tuple[str, ...]]] = [
     (re.compile(r"^must_include (\S+): insufficient price history"), "must_include_short_history", ("tickers",)),
     (re.compile(r"^(\S+): must_include matches excluded theme (.+?) -> "), "must_include_excluded_theme", ("tickers", "theme")),
     (re.compile(r"^(\S+): utility kept despite excluded theme "), "utility_not_fossil", ("tickers",)),
+    (re.compile(r"^broad start pool (\d+) candidates; exclusion keywords dropped (\d+) unchecked names \[([^\]]*)\]"), "broad_start_pool", ("n", "k", "names")),
     (re.compile(r"^must_include (\S+): below candidate filters \((.*)\), kept"), "must_include_below_filters", ("tickers", "detail")),  # 아래 포괄 규칙보다 먼저
     (re.compile(r"^must_include (\S+): "), "must_include_forced", ("tickers",)),
     (re.compile(r"^(\S+): must_include but not in theme"), "must_include_off_theme", ("tickers",)),
@@ -213,6 +215,10 @@ def from_text(stage: str, text: str, *, dates: list[str] | None = None) -> Warni
         if code == "no_portfolio_passed":
             found = re.findall(r"'(R\d+b?)': (\d+)", kw.get("rules", ""))
             kw["rules"] = ", ".join(f"{RULE_KO.get(r, r)}({r}) {n}개" for r, n in found) or kw.get("rules", "")
+        if code == "broad_start_pool":  # 키워드로 뺀 종목이 있으면 이름과 수 (060)
+            names = [x.strip().strip("'\"") for x in kw.get("names", "").split(",") if x.strip()]
+            k = int(kw.get("k") or 0)
+            kw["dropped"] = (f" — 그렇게 뺀 {k}개: {', '.join(names[:5])}" + (f" 외 {k - len(names[:5])}개" if k > len(names[:5]) else "")) if k else ""
         if code == "sector_preference_skipped":  # 시작일 재선정은 20개 넘게 빠지기도 한다 → 앞 5개 + '외 N개'
             names = [x.strip().strip("'\"") for x in kw.get("tickers", "").split(",") if x.strip()]
             kw["tickers"] = ", ".join(names[:5]) + (f" 외 {len(names) - 5}개" if len(names) > 5 else "")

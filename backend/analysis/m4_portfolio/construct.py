@@ -109,6 +109,8 @@ def construct(
         res.warnings.append(f"{view.as_of}: {res.fallback_reason_ko}")
         return res
     wb = {t: res.baseline_weights[t] for t in tk}
+    # 세트당 뷰 수는 서로 다른 뷰의 수(절대 n + 상대 n(n−1)/2)를 넘지 않게 — 2종목이면 3개뿐인데 4개를 요구해 같은 상대 뷰를 양방향으로 채웠다 (057)
+    per_set = min(per_set, len(tk) + len(tk) * (len(tk) - 1) // 2)
     sets, w = generate_views(view, tk, model, wb, intent, desc, settings, llm, ev, n_sets=n_sets, views_per_set=per_set,
                              stage_tag=stage_tag or f"09_views_news_{view.as_of}")  # fmt: skip
     res.warnings += w

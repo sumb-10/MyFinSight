@@ -20,7 +20,7 @@ from backend.analysis.m2_data.market_data import MarketData
 from backend.analysis.m3_selection.classify import classify, is_broad_theme
 from backend.analysis.m3_selection.retrieve import retrieve
 from backend.analysis.m3_selection.screen import screen
-from backend.analysis.m4_portfolio.spec import MAX_START_SHIFTS, next_shift_day, selectable_at, shift_window_ok
+from backend.analysis.m4_portfolio.spec import MAX_START_SHIFTS, dropped_by, next_shift_day, selectable_at, shift_window_ok
 from backend.analysis.schemas.selection import Tagging
 from backend.analysis.settings import AnalysisSettings
 from backend.pipeline.descriptor import Descriptor
@@ -47,22 +47,6 @@ def _summary(day: Any, cand: Any, tag: Any, sel: Any, invest: float) -> dict[str
             "tickers": [s.ticker for s in sel.selected], "capacity": sm.get("weight_capacity"), "invest": round(invest, 4),
             "sector_counts": sm.get("sector_counts") or {}, "cap_needed": (sel.infeasibility or {}).get("cap_needed_for_target"),
             "by_filter": dict(cand.stats.get("by_filter") or {}), "metric": sm.get("metric")}  # fmt: skip
-
-
-def _dropped_by(now_tickers: list[str], cand: Any, sel: Any) -> dict[str, int]:
-    """기준일 선정 종목 중 그날 고를 수 없는 종목의 사유별 수 (07 의 removed_reasons 와 같은 규칙).
-    049: 대화가 '상장 전이거나 재무 지표가 없던 종목' 이라고만 했는데, 실제로는 9개 중 8개가 그날 시가총액이 최소 시가총액(500억 달러)에 못 미쳤다."""
-    f_out = {f.ticker: f.reason for f in getattr(cand, "filtered_out", None) or []}
-    cset = {c.ticker for c in getattr(cand, "candidates", None) or []}
-    rej = {r.ticker: r.reason for r in sel.rejected}
-    picked = {x.ticker for x in sel.selected}
-    out: dict[str, int] = {}
-    for t in now_tickers:
-        if t in picked:
-            continue
-        code = str(f_out.get(t) or ("not_in_candidates" if t not in cset else rej.get(t, "not_selected"))).split("(")[0].split(":")[0].strip()
-        out[code] = out.get(code, 0) + 1
-    return out
 
 
 def precheck(normalized: dict[str, Any], intent: dict[str, Any], desc: Descriptor, md: MarketData, settings: AnalysisSettings,
@@ -108,7 +92,7 @@ def precheck(normalized: dict[str, Any], intent: dict[str, Any], desc: Descripto
     passed = list(tag.passed_tickers)
     bx = {"broad": not getattr(tag, "theme_filter_applied", True), "excluded": [r.ticker for r in tag.excluded_by_theme]}  # 07 과 같은 규칙 (넓은 테마는 그날 후보 전체)
     c0, t0, s0, _f0 = selectable_at(md, day0, desc, intent, cons, passed, rid, **bx)
-    out["start"] = {**_summary(day0, c0, t0, s0, invest), "dropped_by": _dropped_by(now["tickers"], c0, s0)}
+    out["start"] = {**_summary(day0, c0, t0, s0, invest), "dropped_by": dropped_by(now["tickers"], c0, s0)}
     n_start = len(s0.selected)
     out["short_at_start"] = n_start < nh_min
     first2: dict[str, Any] | None = None  # 1종목 이하일 때 07 이 자동으로 옮겨 갈 날 (2종목 이상이 되는 첫 날)

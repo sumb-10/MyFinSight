@@ -128,6 +128,18 @@ def _chosen_news_use(R: dict[str, Any], chosen: str, p: dict[str, Any]) -> dict[
     return {"chosen_uses_news_views": uses, "chosen_current_label": label, "chosen_news_note_ko": note, "recommended_forward_id": rec_id}
 
 
+def _theme_search_ko(R: dict[str, Any]) -> str | None:
+    """테마 관련 종목을 찾은 방법을 코드가 문장으로 (051·054: '찾는 방법은 산업 분류 64개, 키워드 58개' — 방법·키워드 수처럼 읽힘,
+    056: '합계와 중복되지 않습니다' 처럼 뜻이 뒤집힘). 서술은 이 문장을 그대로 쓴다."""
+    st = R["selection"].get("candidates_summary") or {}
+    br = st.get("by_rule") or {}
+    parts = [f"{lab} {int(br[k])}개" for k, lab in (("gics_match", "산업 분류로"), ("keyword_match", "키워드로"), ("example_match", "예시 종목으로")) if br.get(k)]
+    n = st.get("n_matched")
+    if not parts or n is None:
+        return None
+    return f"{', '.join(parts)} 종목이 걸렸고, 여러 방법에 함께 걸린 종목을 한 번만 세면 테마 관련 종목은 {int(n)}개입니다."
+
+
 def _stuck_fact(R: dict[str, Any], p: dict[str, Any]) -> dict[str, Any]:
     """비중을 바꾸지 못한 뷰 안내 — 없으면 키를 넘기지 않는다 (빈 값을 보고 '없었다' 고 쓰지 않게)."""
     n = B.view_stuck_note(R, p)
@@ -136,6 +148,10 @@ def _stuck_fact(R: dict[str, Any], p: dict[str, Any]) -> dict[str, Any]:
 
 def _news_effect_display(ne: dict[str, Any] | None) -> dict[str, Any] | None:
     """뉴스 효과 숫자를 보이는 자리수로 맞춘다 (013: 14.2% vs 14.0% 를 '0.3%p 높았다' 고 써서 보이는 숫자끼리 맞지 않았다)."""
+    if ne and not ne.get("disabled") and ne.get("hit_next_rb") is None and "hit_next_rb" in ne:
+        # 값을 비운 이유를 넘긴다 — null 키만 넘기면 '제공되지 않았습니다' 라고 썼다 (058)
+        ne = {k: v for k, v in ne.items() if k != "hit_next_rb"}
+        ne["hit_next_rb_note"] = "뷰가 비중을 바꾼 날이 없어 다음 리밸런싱까지 적중률은 따지지 않음"
     if not ne or ne.get("disabled") or ne.get("bl_cagr") is None or ne.get("base_cagr") is None:
         return ne
     a, b = round(ne["bl_cagr"] * 100, 1), round(ne["base_cagr"] * 100, 1)
@@ -550,6 +566,7 @@ def facts_for_narrate(R: dict[str, Any], chosen: str, interp: dict[str, Any]) ->
                           "theme_filter_applied": R["selection"].get("tagging_summary", {}).get("theme_filter_applied", True),
                           "excluded_examples": R["selection"]["as_of_now"]["rejected_examples"],
                           "excluded_by_theme": R["selection"].get("excluded_by_theme") or [],  # 테마에는 해당하지만 제외 테마로 뺀 종목 (024)
+                          **({"theme_search_ko": ts} if (ts := _theme_search_ko(R)) else {}),
                           "diff": {k: v for k, v in R["selection"]["backtest_as_of"]["diff_vs_original"].items() if k != "removed_reasons"},
                           # 시작일 재선정을 하지 않았으면 그 사실 (054: '두 날짜의 PER 이 같다' — 시작일 값은 기준일 값의 복사본이었다)
                           **({"backtest_reselected": False, "backtest_list_note_ko": B.LOOKAHEAD_KO} if R["selection"].get("backtest_reselected") is False else {}),
@@ -670,10 +687,22 @@ _PROMPT_TALK = re.compile(r"(?:제공된|입력된|라벨에 적힌 대로)\s+|(
 _HANJA = str.maketrans({"投": "투", "資": "자", "收": "수", "益": "익", "率": "율", "期": "기", "間": "간", "株": "주", "價": "가", "額": "액", "金": "금"})
 
 
+# '…는 다음과 같습니다: A · B · C.' — 지시문 투 머리말 + 코드 사유 문자열 그대로 (056, Q-124 와 같은 금지)
+_LEAD_IN = re.compile(r"(은|는)?\s*다음과\s*같습니다\s*[:：]\s*([^.]*(?:\.\d[^.]*)*\.?)")
+# 인용 id 가 아닌 한국어 문장을 감싼 대괄호 (056: '[뉴스 뷰의 반영 결과만으로 … 없습니다.]' 가 편집 메모처럼 보였다)
+_BRACKET_KO = re.compile(r"\[([^\[\]]*[가-힣][^\[\]]*)\]")
+
+
+def _lead_in_fix(m: re.Match) -> str:
+    return (m.group(1) or "") + " " + m.group(2).replace(" · ", ", ")
+
+
 def _plain_llm(obj: Any) -> Any:
     """LLM 문장에서 입력을 가리키는 말만 지운다 (나머지 문장은 그대로). 딕셔너리·목록 안의 문자열 모두."""
     if isinstance(obj, str):
-        return _PROMPT_TALK.sub("", obj).translate(_HANJA)
+        out = _PROMPT_TALK.sub("", obj).translate(_HANJA)
+        out = _LEAD_IN.sub(_lead_in_fix, out)
+        return _BRACKET_KO.sub(r"\1", out)
     if isinstance(obj, list):
         return [_plain_llm(x) for x in obj]
     if isinstance(obj, dict):

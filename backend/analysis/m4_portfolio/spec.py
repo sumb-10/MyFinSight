@@ -41,6 +41,35 @@ def shift_window_ok(end: dt.date, day: dt.date, total_days: int) -> bool:
     return (end - day).days >= max(MIN_REMAINING_DAYS, int(total_days * 0.5))
 
 
+# 시작일에 빠지는 사유 (코드 → 한국어). {mc} = 최소 시가총액. 실행 전 점검·대화 질문·07 자동 이동 공지가 같이 쓴다
+START_DROP_KO = {"min_market_cap_usd": "그날 시가총액이 최소 시가총액({mc})에 못 미침", "market_cap_missing": "그날 시가총액 자료 없음",
+                 "min_avg_daily_volume_usd": "그날 거래대금이 최소 거래대금에 못 미침", "insufficient_price_history": "상장 전이거나 가격 이력 부족",
+                 "not_in_candidates": "그날 후보 검색에 없음(상장 전이거나 조건 밖)", "metric_missing": "그날 선정 지표 자료 없음",
+                 "metric_out_of_range": "그날 선정 지표가 자격선 밖", "rank_beyond_n": "그날 순위 밖", "sector_preference": "그날 섹터 선호로 밀림"}  # fmt: skip
+
+
+def dropped_by(now_tickers: list[str], cand: Any, sel: Any) -> dict[str, int]:
+    """기준일 선정 종목 중 그날 고를 수 없는 종목의 사유별 수 (07 의 removed_reasons 와 같은 규칙).
+    049: 대화가 '상장 전이거나 재무 지표가 없던 종목' 이라고만 했는데, 실제로는 9개 중 8개가 그날 시가총액이 최소 시가총액(500억 달러)에 못 미쳤다."""
+    f_out = {f.ticker: f.reason for f in getattr(cand, "filtered_out", None) or []}
+    cset = {c.ticker for c in getattr(cand, "candidates", None) or []}
+    rej = {r.ticker: r.reason for r in sel.rejected}
+    picked = {x.ticker for x in sel.selected}
+    out: dict[str, int] = {}
+    for t in now_tickers:
+        if t in picked:
+            continue
+        code = str(f_out.get(t) or ("not_in_candidates" if t not in cset else rej.get(t, "not_selected"))).split("(")[0].split(":")[0].strip()
+        out[code] = out.get(code, 0) + 1
+    return out
+
+
+def dropped_ko(by: dict[str, int], cons: dict[str, Any]) -> str:
+    """'그날 선정 지표 자료 없음 5개, 그날 거래대금이 … 3개' (많은 순)."""
+    mc = usd_ko(cons.get("min_market_cap_usd"))
+    return ", ".join(f"{START_DROP_KO.get(k, k).format(mc=mc)} {n}개" for k, n in sorted(by.items(), key=lambda x: -x[1]))
+
+
 def selectable_at(md: MarketData, day: dt.date, desc: Descriptor, intent: dict[str, Any], cons: dict[str, Any], passed: list[str], request_id: str,
                   *, added: tuple[str, ...] = (), removed: frozenset[str] | set[str] = frozenset(), broad: bool = False,
                   excluded: Iterable[str] = ()) -> tuple[Any, Tagging | None, Selection, list[dict[str, Any]]]:  # fmt: skip
@@ -52,6 +81,7 @@ def selectable_at(md: MarketData, day: dt.date, desc: Descriptor, intent: dict[s
     view_bt = md.view(day)
     cand = retrieve(view_bt, desc, intent, cons, request_id=request_id, max_candidates=None)  # 04 통과 집합과의 교집합이 최종이라 상한을 두지 않는다
     cset = {c.ticker for c in cand.candidates}
+    hit: set[str] = set()
     if broad:
         unseen = cset - set(passed) - set(excluded)
         hit = {t for r in intent.get("exclude_theme_rules") or [] for t in _exclude_keyword_hits(desc, r.get("keywords", [])) if t in unseen}
@@ -65,6 +95,8 @@ def selectable_at(md: MarketData, day: dt.date, desc: Descriptor, intent: dict[s
     sel.summary["n_candidates"] = len(cand.candidates)
     # 그날 후보 단계의 시가총액 경고(자료 없어 뺀 종목·추정한 종목)를 기준일 테마 통과 종목만으로 → 07 이 'screen@날짜:' 를 달아 시작일 공지가 된다
     sel.warnings += mcap_warnings(cand, cons, md.s.market.mcap_fallback_max_days, only=None if broad else passed)
+    if broad:  # 그날 후보 전체에서 골랐고, 판정을 받지 않은 종목은 제외 키워드로만 걸렀다는 사실을 공지로 (060: 시작일 후보 465개가 리포트 어디에도 없었다)
+        sel.warnings.append(f"broad start pool {len(cset)} candidates; exclusion keywords dropped {len(hit)} unchecked names {sorted(hit)[:8]}")
     return cand, tag, sel, facts
 
 
@@ -191,7 +223,11 @@ def build_backtest_spec(
             if consent:
                 warnings.append(f"백테스트 시작일 {first_try} 에는 테마 후보 중 선정 가능한 종목이 최소 종목 수({nh_min})보다 적어 시작을 {as_of} 로 옮김 ({tries}개월 뒤, 선정 {n_sel}종목)")
             else:
-                warnings.append(f"백테스트 시작일 {first_try} 에는 선정 가능한 종목이 {n_first}개뿐이라 시작을 {as_of} 로 자동으로 옮김 ({tries}개월 뒤, 선정 {n_sel}종목)")
+                # 왜 그날 1개뿐이었는지 (057: 남은 1개는 필수 포함이고 나머지 은행은 그날 PER 자료가 없었는데 이유가 어디에도 없었다)
+                why_ = dropped_ko(dropped_by([s.ticker for s in selection.selected], first[0], first[2]), req["constraints"])
+                forced_ = [x.ticker for x in first[2].selected if x.forced]
+                warnings.append(f"백테스트 시작일 {first_try} 에는 선정 가능한 종목이 {n_first}개뿐이라 시작을 {as_of} 로 자동으로 옮김 ({tries}개월 뒤, 선정 {n_sel}종목)"
+                                + (f" — 그날 빠진 사유: {why_}" if why_ else "") + (f" (남은 {len(forced_)}개는 필수 포함 종목)" if forced_ and len(forced_) == n_first else ""))  # fmt: skip
             cal = cal[cal >= pd.Timestamp(as_of)]
             bw = bw.model_copy(update={"start_date": as_of})
         if n_sel < nh_min:

@@ -24,6 +24,7 @@ from backend.analysis.m1_request.conditions import condition_rows
 from backend.analysis.m1_request.derive import derive
 from backend.analysis.m1_request.history import context_package
 from backend.analysis.m1_request.precheck import precheck as run_precheck
+from backend.analysis.m4_portfolio.spec import dropped_ko
 from backend.analysis.m1_request.validate import hard_errors, label
 from backend.analysis.m2_data import descriptor as D
 from backend.analysis.m2_data.metrics import METRIC_SHORT_KO
@@ -96,21 +97,12 @@ def parse_period(text: str, *, today: dt.date, max_years: float = 20.0) -> dict[
 
 
 
-# 시작일에 빠지는 사유 (precheck._dropped_by 의 코드 → 한국어). {mc} = 최소 시가총액
-_START_DROP_KO = {"min_market_cap_usd": "그날 시가총액이 최소 시가총액({mc})에 못 미침", "market_cap_missing": "그날 시가총액 자료 없음",
-                  "min_avg_daily_volume_usd": "그날 거래대금이 최소 거래대금에 못 미침", "insufficient_price_history": "상장 전이거나 가격 이력 부족",
-                  "not_in_candidates": "그날 후보 검색에 없음(상장 전이거나 조건 밖)", "metric_missing": "그날 선정 지표 자료 없음",
-                  "metric_out_of_range": "그날 선정 지표가 자격선 밖", "rank_beyond_n": "그날 순위 밖", "sector_preference": "그날 섹터 선호로 밀림"}  # fmt: skip
-
-
 def _start_why_ko(st: dict[str, Any], cons: dict[str, Any]) -> str:
     """시작일 종목이 적은 이유를 실제 사유별 수로 (049: '상장 전이거나 재무 지표가 없던 종목' 이라고 했는데 실제는 최소 시가총액이 8개를 뺐다)."""
     by = st.get("dropped_by") or {}
     if not by:
         return "과거에는 상장 전이거나 재무 지표가 없던 종목이 있어 시작일에 뽑을 수 있는 종목이 적을 수 있습니다."
-    mc = usd_ko(cons.get("min_market_cap_usd"))
-    parts = [f"{_START_DROP_KO.get(k, k).format(mc=mc)} {n}개" for k, n in sorted(by.items(), key=lambda x: -x[1])]
-    return f"분석 기준일 선정 종목 중 {sum(by.values())}개를 시작일에는 고를 수 없습니다: {', '.join(parts)}."
+    return f"분석 기준일 선정 종목 중 {sum(by.values())}개를 시작일에는 고를 수 없습니다: {dropped_ko(by, cons)}."
 
 class DialogService:
     def __init__(self, store: JsonStore, repo: Any, md: MarketData, llm: LlmClient, settings: AnalysisSettings) -> None:
@@ -440,6 +432,9 @@ class DialogService:
                 k = int(bf.get(key) or 0)
                 if k > 0 and float(cons.get(key) or 0) > 0:
                     parts.append((k, f"{k}개는 {lab}({usd_ko(cons.get(key))})에 못 미쳐"))
+            k_mc = int(bf.get("market_cap_missing") or 0)  # 시가총액 자료가 없어 최소 시가총액을 확인할 수 없는 종목 (057: KB금융이 빠진 이유가 질문에 없었다)
+            if k_mc > 0 and float(cons.get("min_market_cap_usd") or 0) > 0:
+                parts.append((k_mc, f"{k_mc}개는 시가총액 자료가 없어"))
             if not parts:
                 return ""
             parts.sort(key=lambda x: -x[0])
@@ -455,7 +450,9 @@ class DialogService:
                 opts.append({"value": f"shrink_{n_now}", "label_ko": lab, "patch": sp})
             opts.append({"value": "widen_theme", "label_ko": "테마를 넓혀 다시 해석 (인접 산업 포함)",
                          "clarification": f"[테마 넓히기] 테마에 맞는 후보가 {n_now}개뿐이라 인접 산업·관련 업종까지 넓혀 해석해 주세요"})
-            opts.append({"value": "proceed", "label_ko": "그대로 진행 (현금이 남을 수 있음)", "patch": {"_ack_few_candidates": True}})
+            # 지금 상한으로 다 담기면 현금이 남지 않는다 — 보기 문구가 같은 질문의 설명과 어긋났다 (059: '100% 모두 배분할 수 있습니다' 인데 '현금이 남을 수 있음')
+            full = cap_limits(now.get("sector_counts") or {"": max(n_now, 1)}, stock_cap, sector_cap, 1.0 - cash).get("kind") is None
+            opts.append({"value": "proceed", "label_ko": "그대로 진행 (종목 수만 최소보다 적음)" if full else "그대로 진행 (현금이 남을 수 있음)", "patch": {"_ack_few_candidates": True}})
             out.append(QuestionProposal(
                 field="constraints.num_holdings", kind="feasibility", priority=1,
                 question_ko=(f"분석 기준일에 선정할 수 있는 종목(테마·선정 기준 통과, 필수 포함 포함)이 {n_now}개로, 최소 종목 수 {nh_min}개(목표 {nh['target']}개)에 못 미칩니다. 어떻게 할까요?"),
