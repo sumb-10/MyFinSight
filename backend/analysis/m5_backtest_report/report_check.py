@@ -157,8 +157,15 @@ def check(doc: dict[str, Any], R: dict[str, Any], settings: AnalysisSettings) ->
                 bad = [i for i in b["ids"] if i not in idx]
                 if bad:
                     res.err("code", f"{sec['id']}: evidence_ref has unknown ids {bad[:5]}")
-    # 시장 분석 문단(14c): 뉴스·공시 근거가 하나라도 있으면 인용해야 한다
-    news_ids = [k for k in idx if k.startswith(("ev", "dc"))]
+    # 시장 분석 문단(14c): 시장 분석에 넘긴 뉴스·공시 근거가 하나라도 있으면 인용해야 한다 — 색인 전체가 아니라 넘긴 것으로
+    # (라운드 21: 공시를 뉴스 뷰 창으로 좁히자 기업 설명(06)용 공시만 있는 실행이 '근거가 있는데 인용 안 함' 으로 실패했다)
+    from backend.analysis.m5_backtest_report.report import _asof_news
+
+    try:
+        _w, _n, _d = _asof_news(R)
+        news_ids = [x["id"] for x in [*_n, *_d]]
+    except (KeyError, TypeError):
+        news_ids = [k for k in idx if k.startswith(("ev", "dc"))]
     market_paras = [t for sid, t, src in paras3 if sid == "market" and src == "14c"]
     if news_ids and market_paras and not any(CITE_RE.search(t) for t in market_paras):
         res.err("14c", "market: paragraphs must cite at least one evidence id (news available)")

@@ -310,7 +310,39 @@ def infeasibility_callout(R):
              for when, sel in (("백테스트 시작일", bt_sel), ("분석 기준일", now)) if sel.get("sector_overflow")]  # fmt: skip
     if parts:
         return {"type": "callout", "tone": "info", "title_ko": "섹터 상한이 비중을 누른 부분", "text_ko": " ".join(parts)}
-    return None
+    note = _cap_squeeze_note(R)
+    return {"type": "callout", "tone": "info", "title_ko": "섹터 상한이 비중을 누른 부분", "text_ko": note} if note else None
+
+
+def _any_bl(R) -> bool:
+    """뉴스 뷰 BL 구성을 하나라도 만들었나 (시작일 세트·walk-forward·분석 기준일 세트)."""
+    pf = R.get("portfolio") or {}
+    return bool(any(x.get("kind") == "black_litterman" for x in (pf.get("targets") or {}).get("portfolios") or [])
+                or any(x.get("kind") == "black_litterman" for x in (pf.get("walkforward") or {}).get("portfolios") or [])
+                or (pf.get("forward") or {}).get("portfolios"))  # fmt: skip
+
+
+def _cap_squeeze_note(R) -> str | None:
+    """섹터 선호를 쓰지 않았어도(순위대로 다 담겨 Q-189 로 건너뜀) 지금 구성에서 섹터 상한이 비중을 누를 수 있다 — 그 사실 (072: '동일비중' 인데
+    산업재 10종목만 3.5%(다른 종목 6.0%), 맞춤안으로 줄여 1.21% vs 2.07% — 아무 설명이 없었다)."""
+    try:
+        chosen, _ = chosen_portfolio_id(R)
+        p = find(R, chosen)
+    except (KeyError, StopIteration, TypeError):
+        return None
+    matched = p.get("kind") == "matched"
+    base = str(p.get("base_id") or chosen) if matched else chosen
+    core = base[3:] if base.startswith("wf_") else base
+    t = next((x for x in ((R["portfolio"].get("forward") or {}).get("templates") or []) if x.get("id") == core), None)
+    secs = [str(c).split(":", 1)[1] for c in (t or {}).get("constraints_applied") or [] if str(c).startswith("sector_cap:")]
+    counts = (R["selection"]["as_of_now"].get("summary") or {}).get("sector_counts") or {}
+    cap = float(R["request"]["constraints"].get("max_weight_per_sector") or 1.0)
+    parts = [f"{sector_ko(sc)} 종목이 {counts[sc]}개라 섹터 상한 {cap:.0%}를 나눠 가져(종목당 약 {cap / counts[sc]:.1%}) 같은 규칙인데도 다른 섹터 종목보다 비중이 낮습니다"
+             for sc in secs if counts.get(sc)]  # fmt: skip
+    if not parts:
+        return None
+    return (f"분석 기준일({R['selection']['as_of_now']['as_of']}) 구성({NAMES.get(core, core)}): " + "; ".join(parts) + "."
+            + (" 낙폭 맞춤안은 이 비중을 주식 비율만큼 함께 줄입니다." if matched else ""))  # fmt: skip
 
 
 # ───────────────────────── 구성 ─────────────────────────
@@ -453,9 +485,11 @@ def contribution_bar(R, chosen):
     p = find(R, chosen)
     items = [{"label": t, "value": v} for t, v in sorted(p["ticker_contribution"].items(), key=lambda x: -(x[1] or 0)) if v is not None]
     resid = ((p.get("metrics") or {}).get("composition") or {}).get("ticker_contribution_residual")
-    if resid is not None and abs(resid) >= 0.0005:
-        items.append({"label": "거래비용 등", "value": resid})
     period = (p.get("headline") or {}).get("period_return")
+    shown = sum(float(x["value"]) for x in items)
+    # 잔차가 작아도 보이는 합(소수 첫째 자리)을 바꾸면 막대로 보인다 (072: 잔차 -0.046%p 를 빼 막대 합 -6.1% 인데 '기간 수익률 -6.2% 와 같습니다')
+    if resid is not None and (abs(resid) >= 0.0005 or (period is not None and round(shown * 100, 1) != round(float(period) * 100, 1))):
+        items.append({"label": "거래비용 등", "value": resid})
     return {"type": "bar", "title_ko": "종목별 수익 기여 (기간 전체)", "items": items, "format": "pp",
             **({"note_ko": f"막대를 모두 더하면 기간 수익률 {period * 100:+.1f}% 와 같습니다 (현금은 수익 0%라 기여 0)."} if period is not None else {})}
 
@@ -868,7 +902,9 @@ def parameters_table(R):
             {"k": "거래일 달력", "v": "평가는 종목·비교지수 시장 거래일의 합집합(휴장 시장은 직전 종가), 리밸런싱·적립 매매는 보유 종목 시장이 모두 연 날"},
             {"k": "공분산 추정", "v": f"구성일 이전 거래일 수익률, {SHRINK_KO.get(pp['shrinkage'], pp['shrinkage'])} 수축 — 백테스트 시작일 구성: {_lookback_ko(R, mm.get('lookback'), pp)}"
                                     + (f" / 분석 기준일 구성: {_lookback_ko(R, flb, pp)}" if (flb := ((R['portfolio'].get('forward') or {}).get('market_model') or {}).get('lookback')) else "")},
-            {"k": "Black-Litterman", "v": f"τ={pp['tau']}, 위험회피 δ: {dtxt}, 뷰 신뢰도 하한 {pp['confidence_floor']}, 뉴스 창 {R['parameters']['news']['window_days']}일"},
+            # 뉴스 뷰 BL 을 하나도 만들지 않았으면 δ 를 적지 않는다 — 규칙 4개는 δ 를 쓰지 않는다 (072·069: 뉴스 끔인데 '위험회피 δ: 시장 내재 δ …')
+            {"k": "Black-Litterman", "v": (f"τ={pp['tau']}, 위험회피 δ: {dtxt}, 뷰 신뢰도 하한 {pp['confidence_floor']}, 뉴스 창 {R['parameters']['news']['window_days']}일"
+                                           if _any_bl(R) else ("만들지 않음 (뉴스 반영 끔)" if not (R["intent"].get("news_tilt") or {}).get("enabled") else "만들지 않음 (뉴스 뷰 없음)"))},
             {"k": "백테스트", "v": f"거래비용 {pb['commission_bps']}bp, 무위험수익률 {pb['risk_free_rate']:.0%}, 소수 주식 {'허용' if not pb['integer_positions'] else '불허'}, 점검 시점 {({'rebalance': '리밸런싱일마다', 'monthly': '리밸런싱일 + 매월 말'}).get(pb['checkpoint_freq'], pb['checkpoint_freq'])}"},  # 설정 원값 'rebalance' 를 그대로 적었다 (070)
             {"k": "종목 사전", "v": f"{desc.get('file', '-')} (구성종목 스냅샷 {desc.get('snapshot_date', '-')}, {desc.get('n_stocks', '-')}종목)"},
             {"k": "분석 모델", "v": f"{R['parameters']['llm']['model']} ({R['parameters']['llm']['mode']} 모드; 의도 해석·보충 질문·테마 분류·뉴스 뷰·서술)"}]  # fmt: skip
@@ -1047,7 +1083,6 @@ def companies(R, chosen) -> dict[str, Any]:
               else f"비중은 백테스트 시작일({R['selection']['backtest_as_of']['as_of']}) 목표 비중입니다.")
     expl = {r["ticker"]: r for r in ((R["selection"].get("explained") or {}).get("per_ticker") or [])}
     idx = R["evidence_index"]
-    by_ticker: dict[str, dict[str, int]] = {}
     now = str(R["selection"]["as_of_now"]["as_of"])
     # 리포트가 말하는 분석 기준일 뉴스 창(현재 구성 뉴스 뷰의 창)으로 센다 — 기업 설명(06)용 창은 공시를 90일·더 많은 종류로 모아 같은 기준일에 따로 있다
     # (066·067: 카드는 PSKY 공시 8건인데 '공시 창 … 공시 11건(8종목)'). 그 창이 없으면 기준일 창의 근거 전체 (062: walk-forward 날짜 창은 섞지 않는다)
@@ -1055,15 +1090,16 @@ def companies(R, chosen) -> dict[str, Any]:
     fw_nw = (pf.get("forward") or {}).get("news_window") or {}
     view_w = next((w for w in pf.get("news_windows") or [] if str(w.get("as_of")) == now and fw_nw
                    and w.get("window") == fw_nw.get("window") and w.get("disclosure_window") == fw_nw.get("disclosure_window")), None)  # fmt: skip
+    ids_by: dict[str, dict[str, set[str]]] = {}
     if view_w is not None:
         for key, kind in (("tickers", "news"), ("tickers_dc", "disclosure")):
             for t, ids in (view_w.get(key) or {}).items():
-                by_ticker.setdefault(t, {"news": 0, "disclosure": 0})[kind] = len(ids or [])
+                ids_by.setdefault(t, {"news": set(), "disclosure": set()})[kind] |= set(ids or [])
     else:
-        for e in idx.values():
+        for i, e in idx.items():
             if e["kind"] in ("news", "disclosure") and str(e.get("window_as_of") or now) == now:
                 for t in e.get("tickers", []):
-                    by_ticker.setdefault(t, {"news": 0, "disclosure": 0})[e["kind"]] += 1
+                    ids_by.setdefault(t, {"news": set(), "disclosure": set()})[e["kind"]].add(i)
     items = []
     broad_off = (R["selection"].get("tagging_summary") or {}).get("theme_filter_applied", True)  # False = 넓은 테마
     for t in R["selection"]["table"]:
@@ -1078,7 +1114,9 @@ def companies(R, chosen) -> dict[str, Any]:
                       "in_selection_now": t["in_selection_now"], "rank_now": t["rank_now"], "metric_now": t["metric_now"], "in_backtest": t["in_backtest"],
                       "rank_bt": t["rank_backtest"], "metric_bt": t["metric_backtest"], "fact_id": t.get("metric_fact_id"),
                       "rationale_ko": _paragraphs(rat), "evidence_ids": list(dict.fromkeys(cited)),
-                      "n_news": by_ticker.get(tk, {}).get("news", 0), "n_disclosures": by_ticker.get(tk, {}).get("disclosure", 0)})  # fmt: skip
+                      # 카드 글이 인용한 근거도 센다 — 기업 설명은 공시 90일 창으로 써서 '0건 공시' 인데 공시를 인용했다 (073 INTC)
+                      "n_news": len((ids_by.get(tk) or {}).get("news", set()) | {c for c in cited if c.startswith("ev")}),
+                      "n_disclosures": len((ids_by.get(tk) or {}).get("disclosure", set()) | {c for c in cited if c.startswith("dc")})})  # fmt: skip
     items.sort(key=lambda x: (x["weight"] is None, -(x["weight"] or 0), x["rank_now"] if x["rank_now"] is not None else 99))
     m = R["selection"]["metric"]
     return {"type": "companies", "title_ko": "선정 종목과 기업별 근거", "metric": m, "metric_ko": METRIC_SHORT_KO.get(m, m), "direction": R["selection"]["direction"],
@@ -1189,8 +1227,16 @@ def _stuck_views(views, bw: dict[str, float], sw: dict[str, float], cap: float, 
             kinds.add(kind)
             for t in legs:
                 stuck[t] = stuck.get(t, 0) + 1
-                if by_ticker is not None:  # 종목마다 묶은 경계 (이유가 섞이면 종목별로 적는다, 066)
-                    by_ticker.setdefault(t, set()).add(kind)
+                if by_ticker is not None:  # 종목마다 그 종목이 닿은 경계 (이유가 섞이면 종목별로 적는다, 066)
+                    # 뷰 하나의 이유를 다리마다 붙이면 틀린다 — 오른 쪽은 상한, 내린 쪽은 최소 비중을 본다
+                    # (071: 'GOOGL > GDDY' 의 'both' 를 둘 다에 붙여 GoDaddy(1%)에 '종목당 상한 25%', Alphabet(25%)에 '최소 비중 1%')
+                    if t in holds:
+                        leg = "hold"
+                    elif t in ups:
+                        leg = "cap" if abs(bw.get(t, 0.0) - cap) < 1e-4 else "other"
+                    else:
+                        leg = "floor" if floor > 0 and bw.get(t, 0.0) <= floor + 1e-4 else "other"
+                    by_ticker.setdefault(t, set()).add(leg)
     return n, stuck, kinds
 
 
@@ -1204,9 +1250,9 @@ def _stuck_note_ko(R, n_views: int, n_stuck: int, stuck: dict[str, int], kinds: 
     order = [t for t, _ in sorted(stuck.items(), key=lambda x: -x[1])[:3]]
     top = [f"{names.get(t) or t}" for t in order]
     fl = _floor(R)
-    lab = {"hold": "뷰 방향 유지", "cap": f"종목당 상한 {cap:.0%}", "floor": f"최소 비중 {fl:.0%}", "both": f"종목당 상한 {cap:.0%}·최소 비중 {fl:.0%}"}
+    lab = {"hold": "뷰 방향 유지", "cap": f"종목당 상한 {cap:.0%}", "floor": f"최소 비중 {fl:.0%}"}
     generic = "상한·섹터 예산 같은 제약"
-    each = {t: generic if "other" in by_ticker[t] else "·".join(lab[k] for k in ("hold", "cap", "floor", "both") if k in by_ticker[t])
+    each = {t: generic if "other" in by_ticker[t] else "·".join(lab[k] for k in ("hold", "cap", "floor") if k in by_ticker[t])
             for t in order if by_ticker and by_ticker.get(t)}  # fmt: skip
     if not held and len(set(each.values())) > 1:
         # 이유가 섞이면 종목마다 따로 (066: DIS 는 '뷰 방향 유지', EBAY 는 최소 비중 1% 인데 하나라도 'other' 면 모두 '상한·섹터 예산' 이라고 썼다)
@@ -1269,10 +1315,13 @@ def news_effect(R) -> dict[str, Any] | None:
     stuck: dict[str, int] = {}
     n_stuck, kinds = 0, set()
     per: dict[str, set[str]] = {}
+    # '뷰 방향 유지' 경계는 10w 구성에만 있다 — 백테스트 결과에는 옮겨지지 않아 늘 비어 있었다 (073·075: Q-272 가 실제 실행에서 한 번도 안 보였다)
+    wf10 = next((x for x in ((R.get("portfolio") or {}).get("walkforward") or {}).get("portfolios") or [] if x.get("id") == bl["id"]), {})
+    holds_by_date = wf10.get("holds_by_date") or bl.get("holds_by_date") or {}
     for d, vs in views.items():
         if not vs or d not in bw or d not in sw or d in capped_days:
             continue
-        k, st, kd = _stuck_views(vs, bw[d], sw[d], cap, _floor(R), set((bl.get("holds_by_date") or {}).get(d) or []), by_ticker=per)
+        k, st, kd = _stuck_views(vs, bw[d], sw[d], cap, _floor(R), set(holds_by_date.get(d) or []), by_ticker=per)
         n_stuck, kinds = n_stuck + k, kinds | kd
         for t, c in st.items():
             stuck[t] = stuck.get(t, 0) + c

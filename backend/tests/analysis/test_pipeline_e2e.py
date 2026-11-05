@@ -223,7 +223,7 @@ def test_disclosures_flow_into_results_and_report(e2e):
     assert dc_docs and all(e.event_label_ko and e.available_on for e in dc_docs)
     facts = facts_for_market(R)
     assert facts["disclosures"] and facts["event_summary"] and "[dc45]" in facts["citation_rule"]
-    assert all(set(d) >= {"id", "ticker", "available_on", "event", "form"} for d in facts["disclosures"])
+    assert all(set(d) >= {"id", "ticker", "date", "event", "form"} for d in facts["disclosures"])  # 날짜는 하나(접수일, 071)
     # 검증: 기준일 이후에 이용 가능해진 공시를 인용하면 오류, 기준일 이전이면 통과
     dc_id = next(iter(dcs))
     ok = json.loads(json.dumps(ctx.outputs["14_report"]))

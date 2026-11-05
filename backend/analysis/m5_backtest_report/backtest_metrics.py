@@ -242,11 +242,15 @@ def composition_metrics(sec_w: pd.DataFrame, asset_px: pd.DataFrame, targets: di
             # 허용 폭(상한 × (1 + drift_tol))을 넘은 날도 따로 (031: 상한 10% 를 넘은 747일과 허용 폭 12.5% 를 넘은 90일을 한 문장에 묶어 서술이 '12.5% 를 747일 넘었다' 고 읽었다)
             "days_above_stock_tol": int((w > max_stock * (1 + drift_tol) + noise).any(axis=1).sum()),
             "days_above_sector_tol": int((sec_w_t > max_sector * (1 + drift_tol) + noise).any(axis=1).sum()) if len(sec_max) else 0,
+            # 종목(섹터)마다 상한을 넘은 날 — '어느 한 종목이라도 넘은 날' 을 한 종목의 날 수로 옮기지 않게 (071: 621일을 GOOGL 의 날로 썼다, GOOGL 은 285일·META 406일)
+            "days_above_stock_cap_by": {str(c): int(k) for c in cols if (k := int((w[c] > max_stock + noise).sum()))},
+            "days_above_sector_cap_by": {str(c): int(k) for c in sec_w_t.columns if (k := int((sec_w_t[c] > max_sector + noise).sum()))} if len(sec_max) else {},
             "n_days": int(len(w)), **cash_floor(sec_w, min_cash, noise),
             "ticker_contribution": {c: _r(contrib[c]) for c in cols}, "ticker_contribution_residual": _r(resid),
             "ticker_total_return": {c: _r(asset_px[c].iloc[-1] / asset_px[c].iloc[0] - 1) for c in cols},
-            "breaches": sorted({f"stock_cap:{c}" for c in cols if (w[c] > max_stock * (1 + drift_tol)).any()}
-                               | {f"sector_cap:{s}" for s in sec_w_t.columns if (sec_w_t[s] > max_sector * (1 + drift_tol)).any()})}  # fmt: skip
+            # 허용 폭 초과도 같은 잡음 기준으로 (071: META 는 31.25% 를 0.049%p 만 넘었는데 '허용 폭을 넘은 종목(GOOGL, META)' — 29일은 모두 GOOGL)
+            "breaches": sorted({f"stock_cap:{c}" for c in cols if (w[c] > max_stock * (1 + drift_tol) + noise).any()}
+                               | {f"sector_cap:{s}" for s in sec_w_t.columns if (sec_w_t[s] > max_sector * (1 + drift_tol) + noise).any()})}  # fmt: skip
 
 
 def trading_metrics(tx: pd.DataFrame, turnover: pd.Series, rebal_dates, values: pd.Series, commission_bps: float):
@@ -375,6 +379,13 @@ def view_diagnostics_next_window(views_by_date, asset_px: pd.DataFrame, rb_dates
 
 
 # ───────────────────────── all ─────────────────────────
+# 결과에 남기는 구성 지표 — 새 지표는 여기에도 넣어야 저장된다 (라운드 21: 종목별 상한 초과 날 수를 계산했는데 이 목록에 없어 버려졌다)
+COMPOSITION_KEYS = ("effective_n", "hhi", "top3_contribution_share", "sector_weights_avg", "max_weight_drift", "max_sector_drift", "breaches", "ticker_contribution_residual",
+                    "max_stock_weight", "max_stock_weight_ticker", "max_sector_weight", "max_sector_weight_sector", "days_above_stock_cap",
+                    "days_above_sector_cap", "days_above_stock_tol", "days_above_sector_tol", "days_above_stock_cap_by", "days_above_sector_cap_by", "n_days",
+                    "min_cash_weight", "min_cash_date", "days_cash_below_min")  # fmt: skip
+
+
 def compute_all(raw, bench_idx, asset_px, targets, sectors, rebal_dates, rf, target_return, max_stock, max_sector, xirr_fn,
                 settings: BacktestSettings, baseline_idx=None, views=None, implied=None, as_of=None, end=None, targets_by_date=None, min_cash: float = 0.0):  # fmt: skip
     """min_cash = 요청한 최소 현금 비율 (0 이면 '최소 현금보다 낮았던 날' 을 세지 않는다)."""
@@ -399,10 +410,7 @@ def compute_all(raw, bench_idx, asset_px, targets, sectors, rebal_dates, rf, tar
         "vs_benchmark": relative_to(idx, bench_idx, rf, td),
         "vs_baseline": None,
         # ticker_contribution_residual = 기간 수익률 − Σ 종목 기여 (수수료·적립일 처리). 종목→값 dict 에 가짜 종목으로 넣으면 보고서·해석이 종목으로 읽어서 여기 둔다
-        "composition": {k: comp[k] for k in ["effective_n", "hhi", "top3_contribution_share", "sector_weights_avg", "max_weight_drift", "max_sector_drift", "breaches", "ticker_contribution_residual",
-                                             "max_stock_weight", "max_stock_weight_ticker", "max_sector_weight", "max_sector_weight_sector", "days_above_stock_cap",
-                                             "days_above_sector_cap", "days_above_stock_tol", "days_above_sector_tol", "n_days",
-                                             "min_cash_weight", "min_cash_date", "days_cash_below_min"]},
+        "composition": {k: comp[k] for k in COMPOSITION_KEYS},
         "trading": trading_metrics(raw["transactions"], raw["turnover"], rebal_dates, values, settings.commission_bps),
         "stability": rolling_metrics(idx, rf, td),
     }  # fmt: skip

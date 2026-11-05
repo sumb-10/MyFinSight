@@ -131,7 +131,9 @@ def st_selection(ctx: RunContext) -> str:
     ctx.warn_all("05_selection", list(sel.warnings))
     if not sel.selected:
         raise ValueError("no ticker selected: cannot continue")
-    return f"선정 {len(sel.selected)}개 ({sel.summary['metric']})"
+    from backend.analysis.m2_data.metrics import METRIC_SHORT_KO
+
+    return f"선정 {len(sel.selected)}개 ({METRIC_SHORT_KO.get(sel.summary['metric'], sel.summary['metric'])} 순)"  # 실행 기록에 'roe_ttm' 이 보였다 (072)
 
 
 def st_explain(ctx: RunContext) -> str:

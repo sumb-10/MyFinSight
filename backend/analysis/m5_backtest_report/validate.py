@@ -94,6 +94,10 @@ def _drift_msg_ko(kind: str, comp: dict[str, Any], cap: float, drift_tol: float,
     no_line = cap * (1 + drift_tol) >= 1 - 1e-9  # 허용 폭이 100% 이상이면 이 점검은 걸릴 수 없다
     lim = f"상한의 {1 + drift_tol:g}배" + ("" if no_line else f", {cap * (1 + drift_tol):.1%}")  # 100% 이상이면 숫자는 뜻이 없다 (021: '106.2%')
     above = f"상한 {_cap_pct(cap)}를 넘은 {subj} 있던 날이 {when}"
+    by = comp.get(f"days_above_{kind}_cap_by") or {}
+    if len(by) > 1:  # 어느 한 종목이라도 넘은 날이라 종목마다 따로 적는다 (071: 621일을 GOOGL 의 날로 옮겼다)
+        top_by = sorted(by.items(), key=lambda x: -x[1])[:3]
+        above += " (" + ", ".join(f"{k if kind == 'stock' else sector_ko(k)} {d}일" for k, d in top_by) + (" 등" if len(by) > 3 else "") + ")"
     if over:
         tol_days = comp.get(f"days_above_{kind}_tol")
         if tol_days is None:  # 허용 폭을 넘은 날 수가 없는 예전 결과: 예전 문구

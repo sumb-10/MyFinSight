@@ -447,6 +447,12 @@ class DialogService:
                 sp = shrink_patch(n_now, now.get("sector_counts"))
                 ups = ups_ko(sp)
                 lab = f"종목 수를 {n_now}개로 줄이고" + (f" {'·'.join(ups)}로 올려" if ups else "") + f" 투자 비율 {1 - cash:.0%}를 모두 배분"
+                # 백테스트 시작일 구성도 그 상한으로 다 담기는지 — 아니면 보기에 적는다 (074: '…85%를 모두 배분' 을 골랐는데 시작일 7종목 × 10% = 70%; Q-278 과 같은 문제)
+                st_counts = {k: int(v) for k, v in (((precheck.get("start") or {}).get("sector_counts")) or {}).items()}
+                if st_counts:
+                    st_at = min(1.0 - cash, sum(min(k * sp["constraints.max_weight_per_stock"], sp["constraints.max_weight_per_sector"]) for k in st_counts.values()))
+                    if st_at < (1.0 - cash) - 0.005:
+                        lab += f" (백테스트 시작일 구성은 {st_at:.0%}까지만)"
                 opts.append({"value": f"shrink_{n_now}", "label_ko": lab, "patch": sp})
             opts.append({"value": "widen_theme", "label_ko": "테마를 넓혀 다시 해석 (인접 산업 포함)",
                          "clarification": f"[테마 넓히기] 테마에 맞는 후보가 {n_now}개뿐이라 인접 산업·관련 업종까지 넓혀 해석해 주세요"})

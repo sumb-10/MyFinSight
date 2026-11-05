@@ -203,14 +203,15 @@ def test_drift_rules_state_the_real_max_weight_against_cap_and_tolerance():
     r5b, r4b = ck["R5b"], ck["R4b"]
     assert r5b["status"] == "info" and r5b["ok"] and r5b["value"] == pytest.approx(0.66) and r5b["threshold"] == pytest.approx(0.75)
     assert r5b["message_ko"] == "리밸런싱 사이 최대 섹터 비중 66.0%(정보기술) — 상한 60%를 넘은 섹터가 있던 날이 5거래일 중 3일 있었지만 허용 폭(상한의 1.25배, 75.0%) 안"
-    assert r4b["message_ko"] == "리밸런싱 사이 최대 종목 비중 40.0%(C) — 상한 35%를 넘은 종목이 있던 날이 5거래일 중 5일 있었지만 허용 폭(상한의 1.25배, 43.8%) 안"
+    # 어느 한 종목이라도 넘은 날이라 종목별 날 수를 함께 (071·073: 621일을 GOOGL 의 날로 옮겼다)
+    assert r4b["message_ko"] == "리밸런싱 사이 최대 종목 비중 40.0%(C) — 상한 35%를 넘은 종목이 있던 날이 5거래일 중 5일 (C 4일, A 1일) 있었지만 허용 폭(상한의 1.25배, 43.8%) 안"
     # 허용 폭을 넘으면 예전처럼 ok=False (정보 규칙) + 넘은 종목
     w2 = w.copy()
     w2.loc[idx[2], "A"] = 0.45
     _, ck2 = _comp_and_checks(w2, 0.35, 0.80)
     assert not ck2["R4b"]["ok"] and ck2["R4b"]["status"] == "info" and ck2["R4b"]["message_ko"] == (
         # 031: 상한을 넘은 날과 허용 폭을 넘은 날을 따로 센다 (예전 문구 '…5일이고 허용 폭도 넘음' 을 서술이 '허용 폭을 넘은 날 5일' 로 읽었다)
-        "리밸런싱 사이 최대 종목 비중 45.0%(A) — 상한 35%를 넘은 종목이 있던 날이 5거래일 중 5일, 허용 폭(상한의 1.25배, 43.8%)을 넘은 종목이 있던 날은 1일 (A). 리밸런싱 주기를 줄이면 완화됩니다")
+        "리밸런싱 사이 최대 종목 비중 45.0%(A) — 상한 35%를 넘은 종목이 있던 날이 5거래일 중 5일 (C 4일, A 1일), 허용 폭(상한의 1.25배, 43.8%)을 넘은 종목이 있던 날은 1일 (A). 리밸런싱 주기를 줄이면 완화됩니다")
     assert ck2["R5b"]["message_ko"] == "리밸런싱 사이 최대 섹터 비중 75.0%(정보기술) — 상한 80% 안에 머묾"
     # 최대 비중이 없는 예전 결과는 예전 문구
     from backend.analysis.m5_backtest_report.validate import _drift_msg_ko

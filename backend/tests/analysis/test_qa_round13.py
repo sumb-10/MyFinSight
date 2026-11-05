@@ -216,7 +216,8 @@ def test_round15_047_stuck_views_listing_market_and_labels():
     p2 = {**p, "views_applied": [*p["views_applied"], {"type": "relative", "long": ["GOOGL"], "short": ["INTU0"], "direction": "up"}]}
     # 상대 뷰의 약한 쪽은 종목당 상한 탓이 아니다 — 이유가 섞이면 종목마다 따로 적는다 (066)
     note2 = RB.view_stuck_note(R, p2)
-    assert "Microsoft: 종목당 상한 15%" in note2 and "Alphabet: 상한·섹터 예산 같은 제약" in note2
+    # 종목마다 그 종목이 닿은 경계 — Alphabet 은 두 뷰 모두 오른 쪽이라 상한, 상대 뷰의 약한 쪽(INTU0)만 일반 이유 (071)
+    assert "Microsoft: 종목당 상한 15%" in note2 and "Alphabet: 종목당 상한 15%" in note2 and "INTU0: 상한·섹터 예산 같은 제약" in note2
     assert RB.view_stuck_note(R, {**p, "views_applied": p["views_applied"][2:]}) is None
     assert RP._stuck_fact(R, p) == {"views_not_moving_ko": RB.view_stuck_note(R, p)} and RP._stuck_fact(R, {"views_applied": []}) == {}
     assert RP._LISTED_KO["US"].startswith("미국 시장 상장")

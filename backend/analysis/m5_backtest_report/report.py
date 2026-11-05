@@ -64,7 +64,8 @@ def cash_breakdown(R: dict[str, Any], p: dict[str, Any]) -> dict[str, Any]:
         cause = cap_cause_ko(cap_limits(cnt, a, b, 1 - mc), a, b, clause=True)
         out["cash_by_caps_cause_ko"] = f"백테스트 시작일 구성은 {cause} 남은 몫" if cause else None
     out["basis_ko"] = "백테스트 구성(시작일에 고른 종목) 기준 — 지금 구성(allocation_now)의 현금과 다를 수 있음"  # 011: 백테스트 2종목·현금 50% 를 지금 포트폴리오처럼 썼다
-    out["note_ko"] = "현금 = 사용자 최소 현금 + 상한 때문에 배분하지 못한 몫(원인은 cash_by_caps_cause_ko) + 낙폭 맞춤으로 더 줄인 몫 (없는 항목은 null)"
+    # '더 줄인 몫' 이 현금을 줄였다고 읽혔다 — 주식을 줄여 현금을 더 넣은 것이다 (072: '낙폭 맞춤으로 더 줄인 62.2%' 와 '추가한 62.2%' 가 한 리포트에)
+    out["note_ko"] = "현금 = 사용자 최소 현금 + 상한 때문에 배분하지 못한 몫(원인은 cash_by_caps_cause_ko) + 낙폭 맞춤으로 주식을 줄여 더 넣은 현금 (없는 항목은 null)"
     return out
 
 
@@ -256,7 +257,22 @@ def _asof_news(R: dict[str, Any]) -> tuple[str, list[dict[str, Any]], list[dict[
 
     news = [{"id": k, **v} for k, v in idx.items() if v.get("kind") == "news" and ok(v)]
     discl = [{"id": k, **v} for k, v in idx.items() if v.get("kind") == "disclosure" and ok(v)]
+    # 공시는 리포트가 말하는 분석 기준일 공시 창(현재 구성 뉴스 뷰의 창)만 — 기업 설명(06)용 90일 공시가 같은 기준일 창에 섞여 있었다
+    # (074: 시장 분석 '공시 기간 05-29~08-14 … 73건' vs 같은 리포트 '공시 창 07-04~08-17, 52건')
+    view_dc = _view_window_ids(R, "tickers_dc")
+    if view_dc is not None:
+        discl = [d for d in discl if d["id"] in view_dc]
     return win, news, discl
+
+
+def _view_window_ids(R: dict[str, Any], key: str) -> set[str] | None:
+    """현재 구성 뉴스 뷰 창의 근거 id (key = 'tickers' 뉴스 / 'tickers_dc' 공시). 그 창을 찾지 못하면 None."""
+    pf = R.get("portfolio") or {}
+    fw = (pf.get("forward") or {}).get("news_window") or {}
+    now = str(((R.get("selection") or {}).get("as_of_now") or {}).get("as_of") or "")
+    w = next((x for x in pf.get("news_windows") or [] if fw and str(x.get("as_of")) == now
+              and x.get("window") == fw.get("window") and x.get("disclosure_window") == fw.get("disclosure_window")), None)  # fmt: skip
+    return {i for ids in (w.get(key) or {}).values() for i in ids or []} if w is not None else None
 
 
 def _win_of(R: dict[str, Any]) -> list[str] | None:
@@ -319,6 +335,16 @@ def _partial_years_note(R: dict[str, Any], p: dict[str, Any]) -> str | None:
     else:
         parts = ([f"{ys[0]}년은 {start}부터"] if cut_start else []) + ([f"{ys[-1]}년은 {end}까지"] if cut_end else [])
     return (" · ".join(parts) + "의 일부 기간 수익률 (한 해 전체가 아님)") if parts else None
+
+
+def _filtered_names_ko(R: dict[str, Any], k: int = 8) -> str | None:
+    """후보 검색에서 빠진 종목을 '이름(사유)' 로 — 사유별 묶음(candidates_filtered)의 예시를 그대로 (사유는 짧게)."""
+    rows = R["selection"].get("candidates_filtered") or []
+    out = [f"{name}: {str(r.get('reason_ko') or '').split(' (')[0]}" for r in rows for name in (r.get("examples") or [])]
+    if not out:
+        return None
+    n = sum(int(r.get("count") or 0) for r in rows)
+    return " / ".join(out[:k]) + (f" / … 모두 {n}개" if n > len(out[:k]) else "")
 
 
 def _infeasibility_fact(R: dict[str, Any]) -> dict[str, Any] | None:
@@ -545,11 +571,12 @@ def facts_for_market(R: dict[str, Any]) -> dict[str, Any]:
     for x in news:
         n_by_ticker[x["ticker"]] = n_by_ticker.get(x["ticker"], 0) + 1
     picked = _balanced_news(news, held, 60)
-    discl = [{"id": v["id"], "ticker": (v.get("tickers") or [""])[0], "available_on": v.get("available_on"), "filed_at": v.get("filed_at"), "event": v.get("event_label_ko"),
+    # 공시 날짜는 하나로 (접수일, 근거 패널과 같은 날짜) — 기간은 접수일로, 예시는 공개일(다음 날)로 써서 '09-11 실적 발표 공시' 가 근거의 09-10 과 어긋났다 (071)
+    discl = [{"id": v["id"], "ticker": (v.get("tickers") or [""])[0], "date": v.get("filed_at") or v.get("available_on"), "event": v.get("event_label_ko"),
               "form": v.get("form"), "items": v.get("items"), "title": v.get("title"), "source": v.get("source")} for v in discl_all]  # fmt: skip
-    discl.sort(key=lambda x: (x["available_on"] or ""), reverse=True)
+    discl.sort(key=lambda x: (x["date"] or ""), reverse=True)
     nd = sorted(x["published_at"] or "" for x in news)
-    dd = sorted(x["filed_at"] or x["available_on"] or "" for x in discl)
+    dd = sorted(x["date"] or "" for x in discl)
     event_summary: dict[str, dict[str, int]] = {}
     for d_ in discl:
         event_summary.setdefault(d_["ticker"], {})
@@ -625,6 +652,8 @@ def facts_for_narrate(R: dict[str, Any], chosen: str, interp: dict[str, Any]) ->
                        "conflicts": B.conflicts_view(R), "risk_params": R["intent"]["risk_params"], "constraints": {r["k"]: r["v"] for r in B.constraints_table(R)["rows"]}},
             "selection": {"metric": R["selection"]["metric"], "metric_ko": M.METRIC_KO.get(R["selection"]["metric"], R["selection"]["metric"]), "funnel": R["selection"]["funnel"],
                           "candidates_filtered": R["selection"].get("candidates_filtered") or [],  # 테마 관련 종목 중 시가총액·거래대금 등으로 빠진 사유·예
+                          # 이름마다 사유를 괄호로 붙인 한 줄 — 사유가 다른 두 종목을 한 구절로 이어 'Walmart와 같은 회사의 다른 주식인 Alphabet C' 로 읽혔다 (073)
+                          **({"candidates_filtered_ko": cf} if (cf := _filtered_names_ko(R)) else {}),
                           "table": [{**t, "sector": sector_ko(t.get("sector")),
                                      "metric_now_display": (M.display_metric(R["selection"]["metric"], t.get("metric_now")) if t.get("in_selection_now") else "분석 기준일 목록에 없음"),
                                      "metric_backtest_display": (M.display_metric(R["selection"]["metric"], t.get("metric_backtest")) if t.get("in_backtest") else "백테스트 시작일 목록에 없음")}

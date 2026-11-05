@@ -12,7 +12,7 @@ EVENT_LABEL_KO: dict[str, str] = {
     # 사건 (SEC 8-K item · DART 키워드)
     "earnings": "실적 발표", "bankruptcy": "부도·회생", "restatement": "재무제표 재작성", "control_change": "최대주주·경영권 변경",
     "acquisition_disposition": "자산·지분 취득/처분", "material_agreement": "주요 계약", "agreement_termination": "계약 해지",
-    "debt_acceleration": "채무 조기상환 요구", "restructuring": "구조조정", "impairment": "손상차손", "delisting_notice": "상장폐지·관리종목 통지", "delisting": "상장폐지 신고", "deregistration": "등록 철회", "late_filing": "보고서 제출 지연",
+    "debt_acceleration": "채무 조기상환 요구", "restructuring": "구조조정", "impairment": "손상차손", "delisting_notice": "상장폐지·관리종목 통지", "listing_notice": "상장 관련 통지(상장 이전 포함)", "delisting": "상장폐지 신고", "deregistration": "등록 철회", "late_filing": "보고서 제출 지연",
     "auditor_change": "감사인 변경", "executive_change": "임원 변경", "cybersecurity": "사이버 보안 사건", "debt_obligation": "채무·보증 부담",
     "unregistered_equity_sale": "비등록 주식 매각", "rights_modification": "주주 권리 변경", "charter_amendment": "정관 변경", "shareholder_vote": "주주 의결",
     "reg_fd": "공정공시(Reg FD)", "other_event": "기타 중요 사건", "fiscal_year_change": "회계연도 변경", "ethics_waiver": "윤리규정 예외",
@@ -52,6 +52,12 @@ def event_type_of(rec: dict[str, Any]) -> str | None:
         items = {x.strip() for x in str(rec.get("items") or "").split(",")}
         if "2.03" in items:
             return "debt_obligation"
+    # SEC 8-K 3.01 은 상장 기준 미달 통지와 자발적 상장 이전(NYSE ↔ 나스닥)을 함께 다룬다 — 공시만으로는 구별할 수 없어 중립 종류로 두고 뷰 근거로 쓰지 않는다
+    # (075: Shopify 의 나스닥 이전 8-K 를 '상장폐지·관리종목 통지' 로 읽어 'FTNT > SHOP' 뷰의 근거가 됐다)
+    if et == "delisting_notice" and (rec.get("source") or "").upper().startswith("SEC"):
+        items = {x.strip() for x in str(rec.get("items") or "").split(",")}
+        if "3.01" in items:
+            return "listing_notice"
     return et
 
 

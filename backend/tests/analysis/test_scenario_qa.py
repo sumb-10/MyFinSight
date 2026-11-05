@@ -1047,7 +1047,8 @@ def test_qa003_trading_halt_is_not_delisting_notice():
     assert event_type_of(old) == "trading_halt" == C.dart_event(QA003_HALT)[0]  # 새 규칙과 같은 판정
     for name in ("관리종목지정(매매거래정지)", "주권매매거래정지(상장폐지사유발생)"):
         assert event_type_of({**old, "form": name, "title": name}) == "delisting_notice"
-    assert event_type_of({"source": "SEC_EDGAR", "form": "8-K", "items": "3.01", "title": "8-K", "event_type": "delisting_notice"}) == "delisting_notice"
+    # SEC 8-K 3.01 은 상장 기준 통지와 자발적 상장 이전을 함께 다뤄 구별할 수 없다 → 중립 '상장 관련 통지', 뷰 근거 아님 (075: Shopify 나스닥 이전)
+    assert event_type_of({"source": "SEC_EDGAR", "form": "8-K", "items": "3.01", "title": "8-K", "event_type": "delisting_notice"}) == "listing_notice"
     assert event_type_of({**old, "event_type": "merger_split"}) == "merger_split"
     ds = DisclosureSettings()  # 절차상 정지는 뷰 근거·90일 요약 허용 목록에 없다 (악재 사건으로 쓰지 않음)
     assert "trading_halt" not in ds.event_types and "trading_halt" not in ds.summary_extra_event_types
@@ -2011,7 +2012,7 @@ def test_news_effect_explains_views_on_pinned_stocks():
     assert ne["capped_note_ko"].startswith("뉴스 뷰 3개 중 2개는 뷰가 걸린 종목(KT·KT&G)이 종목당 상한(15%)에 묶여 있어")
     # '내림' 쪽(상대 뷰의 약한 쪽·절대 내림)은 종목당 상한이 막지 못한다 → 일반 이유 (036 MCD·SBUX, 037 JNJ)
     views["2024-01-02"][1] = {"type": "relative", "long": ["033780.KS"], "short": ["030200.KS"]}
-    assert "상한·섹터 예산 같은 제약 때문에" in news_effect(R)["capped_note_ko"]
+    assert "(KT: 상한·섹터 예산 같은 제약, KT&G: 종목당 상한 15%)" in news_effect(R)["capped_note_ko"]  # 약한 쪽(KT)만 일반 이유 (071)
     views["2024-01-02"][1] = {"type": "absolute", "direction": "down", "long": ["033780.KS"], "short": []}
     assert "(KT: 종목당 상한 15%, KT&G: 상한·섹터 예산 같은 제약)" in news_effect(R)["capped_note_ko"]  # 이유가 섞이면 종목마다 (066)
 

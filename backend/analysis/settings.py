@@ -121,7 +121,8 @@ class DisclosureSettings:
         "fair_disclosure", "cybersecurity",
     )
     # 90일 요약 건수에만 넣는 정기·절차 공시 (뷰 근거 아님)
-    summary_extra_event_types: tuple[str, ...] = ("quarterly_report", "annual_report", "semiannual_report", "investor_relations", "reg_fd", "other_event", "voluntary_disclosure")
+    summary_extra_event_types: tuple[str, ...] = ("quarterly_report", "annual_report", "semiannual_report", "investor_relations", "reg_fd", "other_event", "voluntary_disclosure",
+                                                  "listing_notice")  # SEC 8-K 3.01: 상장 기준 통지·상장 이전 — 구별할 수 없어 뷰 근거가 아님 (075)
     # 명시 제외: derivative_offering(증권사 ELS 잡음 7.3만), offering_document, major_holder, proxy, related_party, shareholder_meeting, exhibits_only,
     # trading_halt(거래소의 절차상 매매거래 정지·해제 — 악재 신호가 아니고 같은 날의 본 공시가 사건이다)
 
