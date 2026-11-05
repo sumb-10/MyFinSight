@@ -66,7 +66,7 @@ CATALOG: dict[str, tuple[Level, str]] = {
     "backtest_start_shifted": ("user", "{text}"),
     "fewer_holdings_at_start": ("user", "{text}"),
     "backtest_start_clamped": ("user", "{text}"),  # 요청한 백테스트 시작이 재무 지표 자료 시작 전이라 뒤로 옮김 (사용자가 기간을 다시 정할 수 있음)
-    "selection_lookahead": ("user", "백테스트 시작일에 종목을 다시 고르지 않고 현재 선정 종목을 그대로 썼습니다 (선정 시점의 선견 편향이 있을 수 있습니다)."),
+    "selection_lookahead": ("user", "백테스트 시작일에 종목을 다시 고르지 않고 분석 기준일 선정 목록을 과거에도 그대로 썼습니다. 지금 알려진 정보로 고른 목록이라 과거 성과가 실제보다 좋게 보일 수 있습니다."),
     "ticker_dropped_history": ("user", "{tickers}은(는) 백테스트 시작일 이전 가격 이력이 부족해 백테스트에서 제외했습니다."),
     "added_tickers_ignored": ("user", "추가 요청 종목 {tickers}은(는) 유니버스에 없어 반영하지 못했습니다."),
     "model_dropped": ("user", "{tickers}은(는) 추정 창 안 수익률 자료가 부족해 시장모형과 비중에서 제외했습니다."),

@@ -29,8 +29,8 @@ from backend.pipeline.descriptor import Descriptor
 def signature(normalized: dict[str, Any], intent: dict[str, Any], *, reselect: bool = True, classified: bool = True) -> str:
     d = normalized["derived"]
     c = normalized["constraints"]
-    # v3: 최소 시가총액 자료가 없으면 제외(정책 결정 7) — 예전 규칙으로 센 점검 결과를 다시 쓰지 않게. v4: 시작일에 빠지는 사유(dropped_by)
-    src = {"v": 4, "as_of": str(d["as_of"]), "bt_start": str(d["backtest_start"]), "metric": (intent.get("screen") or {}).get("metric"),
+    # v3: 최소 시가총액 자료가 없으면 제외(정책 결정 7) — 예전 규칙으로 센 점검 결과를 다시 쓰지 않게. v4: 시작일에 빠지는 사유(dropped_by). v5: start_impossible
+    src = {"v": 5, "as_of": str(d["as_of"]), "bt_start": str(d["backtest_start"]), "metric": (intent.get("screen") or {}).get("metric"),
            "themes": [{k: t.get(k) for k in ("gics_codes", "keywords", "example_tickers", "label_ko", "description_ko")} for t in (intent.get("interpretation") or {}).get("themes", [])],
            "rules": intent.get("exclude_theme_rules"), "reselect": reselect, "classified": classified,
            "cons": {k: c.get(k) for k in ("universe", "num_holdings", "exclude_tickers", "exclude_sectors", "exclude_themes", "must_include_tickers",
@@ -111,6 +111,7 @@ def precheck(normalized: dict[str, Any], intent: dict[str, Any], desc: Descripto
     out["start"] = {**_summary(day0, c0, t0, s0, invest), "dropped_by": _dropped_by(now["tickers"], c0, s0)}
     n_start = len(s0.selected)
     out["short_at_start"] = n_start < nh_min
+    first2: dict[str, Any] | None = None  # 1종목 이하일 때 07 이 자동으로 옮겨 갈 날 (2종목 이상이 되는 첫 날)
     if n_start < nh_min and now["n_selected"] >= nh_min:  # 07 과 같은 이동 규칙으로 최소 종목 수를 채우는 첫 날
         total_days, day = max(1, (as_of - day0).days), day0
         for _ in range(MAX_START_SHIFTS):
@@ -119,6 +120,8 @@ def precheck(normalized: dict[str, Any], intent: dict[str, Any], desc: Descripto
                 break
             day = nxt
             _c, _t, s1, _f = selectable_at(md, day, desc, intent, cons, passed, rid, **bx)
+            if first2 is None and len(s1.selected) >= 2:
+                first2 = {"date": str(day), "n_selected": len(s1.selected)}
             if len(s1.selected) >= nh_min:
                 years = int((as_of - day).days / 365.25 * 10) / 10  # 내림: 반올림하면 새 시작일이 이 날보다 앞서 다시 부족할 수 있다
                 # 내림한 기간이 실제로 만드는 시작일(derive 와 같은 식)에서 다시 센다 (040: '2024-03-04 로 옮겨 2.5년' 인데 2.5년을 고르면 2024-04-09 부터였다)
@@ -130,4 +133,6 @@ def precheck(normalized: dict[str, Any], intent: dict[str, Any], desc: Descripto
                         day, s1 = later[0], s2
                 out["feasible_start"] = {"date": str(day), "n_with_metric": len(s1.selected), "n_selected": len(s1.selected), "years": years}
                 break
+    # 시작일 종목이 1개 이하인데 창 안에서 2종목 이상이 되는 날도 없으면 07 이 멈춘다 → 대화가 미리 대안을 묻는다 (054: 질문 없이 실행해 07 에서 실패)
+    out["start_impossible"] = n_start <= 1 and first2 is None and out["feasible_start"] is None and now["n_selected"] >= nh_min
     return out

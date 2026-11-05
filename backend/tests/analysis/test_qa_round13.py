@@ -353,3 +353,21 @@ def test_round17_decisions_fossil_utilities_news_minimum_broad_start_pool(monkey
     assert seen["pool"] == ["A", "B"]  # 테마 판정이 있는 테마: 기준일 통과 종목만 (그대로)
     S.selectable_at(md, dt.date(2023, 1, 3), None, it2, {}, ["A", "B"], "r", broad=True, excluded=["E"])
     assert seen["pool"] == ["A", "B", "C"]  # 넓은 테마: 그날 후보 전체 − 기준일 제외 판정(E) − 판정 없이 제외 키워드가 맞은 D (A 는 기준일 판정을 통과)
+
+
+def test_round17_ties_lookahead_labels_and_small_texts():
+    """055: MDD 0.300550 vs 0.300551 이 반올림 경계에서 갈려 같은 성과 14개 중 사용자 기준 비중이 졌다 → 허용 오차 단계.
+    054: 시작일 재선정 없이 지금 목록으로 평가했는데 '백테스트용 재선정'·시작일 PER(기준일 값 복사)이 나왔다. 052: 원화 합 10,000,006원,
+    뷰 설명의 남의 기사 id. 055: '매월 250 USD'(250.50)."""
+    from backend.analysis.m4_portfolio.views import _strip_unlisted_ids
+    from backend.analysis.m5_backtest_report import report_blocks as RB
+    from backend.analysis.m5_backtest_report.validate import tie_levels
+
+    lv = tie_levels({"bl_02": 0.300550, "market_cap": 0.300551, "eq": 0.300549, "x": 0.31}, 5e-5, higher_first=False)
+    assert lv["bl_02"] == lv["market_cap"] == lv["eq"] == 0 and lv["x"] == 1
+    lv = tie_levels({"a": 0.335931, "b": 0.335930, "c": 0.30}, 5e-5, higher_first=True)
+    assert lv["a"] == lv["b"] == 0 and lv["c"] == 1
+    assert _strip_unlisted_ids("섀시 모듈 공급 보도(ev2691369와 별개로 공급 내용을 다룬 ev2691378)", {"ev2691378"}) == "섀시 모듈 공급 보도(공급 내용을 다룬 ev2691378)"
+    R = {"selection": {"backtest_reselected": False, "backtest_as_of": {"diff_vs_original": {"added": [], "removed": []}, "table": [{"ticker": "A"}, {"ticker": "B"}]}}}
+    t = RB.diff_table(R)
+    assert t["title_ko"] == "백테스트에 쓴 종목 목록" and "시작일 재선정 없음" in t["note_ko"] and t["rows"][0]["v"] == "A, B"

@@ -245,8 +245,20 @@ def dd_bucket(mdd: float, tol: float, size: float) -> int:
     return int(math.ceil(max(0.0, abs(mdd) - tol) / size - 1e-9)) if size > 0 else int(abs(mdd) > tol)
 
 
+def tie_levels(vals: dict[str, float], tol: float, *, higher_first: bool) -> dict[str, int]:
+    """값이 tol 안으로 붙은 것끼리 같은 단계 (단계의 첫 값 기준). 소수 4자리 반올림은 경계에서 1e-6 차이를 다른 값으로 갈랐다
+    (055: 14개 후보가 같은 비중·성과인데 MDD 0.300550 vs 0.300551 이 0.3005 / 0.3006 으로 갈려 사용자 기준 비중이 졌다)."""
+    out: dict[str, int] = {}
+    lvl, first = -1, None
+    for k, v in sorted(vals.items(), key=lambda x: -x[1] if higher_first else x[1]):
+        if first is None or abs(v - first) > tol:
+            lvl, first = lvl + 1, v
+        out[k] = lvl
+    return out
+
+
 def rank_key(row: dict[str, Any], st: dict[str, str], *, integrity_failed: bool, tol: float, bucket_size: float, cautious: bool,
-             baseline_id: str | None = None) -> tuple:  # fmt: skip
+             baseline_id: str | None = None, levels: dict[str, tuple[int, int]] | None = None) -> tuple:  # fmt: skip
     """추천 순위 키 (작을수록 좋음): 무결성 실패 → 목표수익 미달 → 비교지수 열위 → 허용 낙폭 초과 구간 → (보수 성향) 낙폭 맞춤안 우선 → Sharpe 높음 → 낙폭 작음
     → (동점) 사용자가 고른 기준 비중 쪽.
     R2/R3 는 'pass' 만 충족으로 본다 (정보로 바뀐 짧은 창은 모두 같은 등급).
@@ -255,13 +267,17 @@ def rank_key(row: dict[str, Any], st: dict[str, str], *, integrity_failed: bool,
     mdd = abs(row.get("max_drawdown") or 0.0)
     sharpe = row.get("sharpe")
     mine = bool(baseline_id) and (row.get("id") in (baseline_id, f"wf_{baseline_id}") or row.get("base_id") in (baseline_id, f"wf_{baseline_id}"))
+    # levels(후보 전체로 센 Sharpe·낙폭 단계)가 있으면 그것으로, 없으면 예전처럼 반올림 (하나만 볼 때)
+    sh_key, mdd_key = levels[row["id"]] if levels and row.get("id") in levels else (-round(sharpe if sharpe is not None else -9.0, 4), round(mdd, 4))
     return (bool(integrity_failed), st.get("R2") != "pass", st.get("R3") != "pass", dd_bucket(mdd, tol, bucket_size),
-            not (cautious and row.get("kind") == "matched"), -round(sharpe if sharpe is not None else -9.0, 4), round(mdd, 4), not mine)  # fmt: skip
+            not (cautious and row.get("kind") == "matched"), sh_key, mdd_key, not mine)  # fmt: skip
 
 
 def verdict_for(*, mdd: float, tol: float, st: dict[str, str], base_invested: float, min_invested: float, name_ko: str,
-                n_holdings: int | None = None, min_holdings: int | None = None, cause_ko: str | None = None) -> dict[str, Any]:  # fmt: skip
+                n_holdings: int | None = None, min_holdings: int | None = None, cause_ko: str | None = None, lookahead: bool = False) -> dict[str, Any]:  # fmt: skip
     cautions = []
+    if lookahead:  # 시작일 재선정 없이 지금 목록으로 과거를 평가 — 초록 '추천' 만 보이면 초보자가 성과를 그대로 믿는다 (054)
+        cautions.append("시작일 재선정 없이 지금 목록으로 평가(성과가 실제보다 좋게 보일 수 있음)")
     if mdd > tol + 1e-9:
         cautions.append(f"허용 낙폭 초과 ({mdd - tol:.1%}p)")
     if st.get("R2") == "warn":
@@ -344,9 +360,13 @@ def validate(res: dict[str, Any], targets: dict[str, Any], intent: dict[str, Any
     cands = [t for t in table if t["kind"] != "benchmark"]
     base = next(t for t in table if t["id"] == targets["baseline"]["id"])
 
+    lv_s = tie_levels({t["id"]: (t["sharpe"] if t["sharpe"] is not None else -9.0) for t in cands}, 5e-5, higher_first=True)
+    lv_m = tie_levels({t["id"]: abs(t.get("max_drawdown") or 0.0) for t in cands}, 5e-5, higher_first=False)
+    levels = {i: (lv_s[i], lv_m[i]) for i in lv_s}
+
     def key(t):
         return rank_key(t, by_id.get(t["id"], {}), integrity_failed=t["id"] in failed_ids, tol=tol_user, bucket_size=bs.dd_excess_bucket, cautious=cautious,
-                        baseline_id=targets["baseline"]["id"])  # fmt: skip
+                        baseline_id=targets["baseline"]["id"], levels=levels)  # fmt: skip
 
     ranked = sorted(cands, key=key)
     best = ranked[0]
@@ -363,7 +383,8 @@ def validate(res: dict[str, Any], targets: dict[str, Any], intent: dict[str, Any
             counts[sector_of(t)] = counts.get(sector_of(t), 0) + 1
     cause = insufficient_cause(base_p, crit, counts) if base_invested < bs.min_invested_for_recommendation - 1e-4 else None
     verdict = verdict_for(mdd=mdd_b, tol=tol_user, st=st, base_invested=base_invested, min_invested=bs.min_invested_for_recommendation, name_ko=best["name_ko"],
-                          n_holdings=n_hold, min_holdings=int(crit.get("min_holdings") or 0), cause_ko=cause)  # fmt: skip
+                          n_holdings=n_hold, min_holdings=int(crit.get("min_holdings") or 0), cause_ko=cause,
+                          lookahead=((targets.get("backtest_spec") or {}).get("selection") or {}).get("source") == "original")  # fmt: skip
     # 사유: 사실만 (정보 규칙은 '만족'으로 세지 않고, 음수 Sharpe 에 '가장 높음'이라 쓰지 않는다)
     parts = [f"후보 {len(cands)}개 중 1위"]  # ' · ' 로 이어 붙이므로 마침표를 찍지 않는다 ('1위. ·' 문장부호 중복)
     tgt = crit["target_annual_return"]
@@ -383,7 +404,7 @@ def validate(res: dict[str, Any], targets: dict[str, Any], intent: dict[str, Any
         # 순위 키와 같은 반올림(소수 4자리)으로 동점을 센다 (049: 후보 14개의 Sharpe 가 0.388246~0.388249 로 같고 사용자가 고른 기준 비중이 1위였는데
         # 'Sharpe 0.39로 가장 높음' 이라고 했다)
         same = [t for t in cands if key(t)[:-1] == key(best)[:-1]]  # 마지막 키(사용자 기준 비중)만 다른 후보
-        n_sh = sum(1 for t in cands if t["sharpe"] is not None and round(t["sharpe"], 4) == round(s, 4))
+        n_sh = sum(1 for t in cands if t["sharpe"] is not None and lv_s.get(t["id"]) == lv_s.get(best["id"]))
         if len(same) > 1:
             mine = not key(best)[-1]
             parts.append(f"Sharpe {s:.2f} — 성과가 같은 후보 {len(same)}개 중 " + ("사용자가 고른 기준 비중이라 1위" if mine else "하나"))
@@ -400,7 +421,7 @@ def validate(res: dict[str, Any], targets: dict[str, Any], intent: dict[str, Any
             # 해당하는 조건만 적고, 이 규칙이 실제로 1위를 바꿨을 때만 쓴다 (F14·N-B1-1: 예전에는 둘 중 하나만 해당해도 둘 다 적고, 순위가 같아도 적었다)
             why = cautious_reason_ko(req)
             plain = min(cands, key=lambda t: rank_key(t, by_id.get(t["id"], {}), integrity_failed=t["id"] in failed_ids, tol=tol_user,
-                                                       bucket_size=bs.dd_excess_bucket, cautious=False, baseline_id=targets["baseline"]["id"]))  # fmt: skip
+                                                       bucket_size=bs.dd_excess_bucket, cautious=False, baseline_id=targets["baseline"]["id"], levels=levels))  # fmt: skip
             if plain["id"] != best["id"]:
                 parts.append(f"{why} 성향이라 같은 조건이면 낙폭 맞춤안을 우선했습니다 (이 규칙이 없으면 {plain['name_ko']})")
     parts.append(f"CAGR {best['cagr']:.1%}, 최종 평가금액 {best['final_value_usd']:,.0f} USD.")

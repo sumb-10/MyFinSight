@@ -51,7 +51,8 @@ def execute_run(entry_run_id: str, *, repo: Any, store: JsonStore, settings: Ana
     if doc.overrides.get("_backtest_request"):
         bt_req = BacktestRequest.model_validate(doc.overrides["_backtest_request"])
     ctx = RunContext(run_id=entry_run_id, request=req, repo=repo, md=md, llm=llm, settings=settings, run_dir=rdir, intent=doc.intent,
-                     bt_req=bt_req, allow_fewer_at_start=bool(doc.overrides.get("_allow_fewer_at_start")),
+                     bt_req=bt_req, allow_fewer_at_start=bool(doc.overrides.get("_allow_fewer_at_start")), no_reselect=bool(doc.overrides.get("_no_reselect")),
+                     shift_cannot_help=bool(doc.overrides.get("_shift_cannot_help")),
                      start_shift_ok=bool(doc.overrides.get("_start_shift_ok")),  # 묻고 동의한 경우에만 시작일을 옮긴다 (1종목 이하는 자동)
                      answered_fields=tuple(q.field for q in doc.questions if q.answered_at),
                      cancel_check=lambda: queue.is_cancel_requested(entry_run_id))  # fmt: skip

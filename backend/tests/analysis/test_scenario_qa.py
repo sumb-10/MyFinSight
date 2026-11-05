@@ -615,7 +615,10 @@ def test_report_money_uses_start_fx_for_paid_amounts(e2e_results):
     chosen = R["validation"]["recommended"]["id"]
     rows = RB.allocation_table(R, chosen)["rows"]
     init = R["portfolio"]["backtest_spec"]["capital"]["initial_amount_usd"]
-    assert sum(r["krw"] for r in rows) == pytest.approx(init * 1300.0, rel=1e-6)
+    krw0 = R["portfolio"]["backtest_spec"]["capital"].get("initial_amount_krw")
+    # 052 이후: 원화는 원화 원금 × 비중 (시작일 환율로 바꾼 원금과 같고, 반올림 때문에 합이 원금과 어긋나지 않는다). 원화 원금이 없으면 시작일 환율
+    assert sum(r["krw"] for r in rows) == pytest.approx(krw0 if krw0 else init * 1300.0, rel=1e-6)
+    assert sum(r["krw"] for r in rows) != pytest.approx(init * 1500.0, rel=1e-3)  # 기준일 환율이 아니다
 
 
 def test_collect_keeps_delta_floor_for_formula(e2e_results):
@@ -2019,3 +2022,50 @@ def test_round11_collect_and_report_texts(monkeypatch):
     monkeypatch.setattr(RP.B, "current_composition", lambda R_, c: ({f"T{i}": 0.085 for i in range(10)}, 0.15, "역변동성비중"))
     assert RP._subtitle_ko(R, "inverse_volatility") == "투자 비율 85%를 배분합니다."
     assert RP._holdings_vs_request(R, "inverse_volatility") == "지금 구성은 10종목으로 목표 10개와 같고, 최소 7개보다 3개 많습니다."
+
+
+def test_impossible_start_asks_for_an_alternative(monkeypatch, svc_factory):
+    """054: 시작일(2022-09-26)에 고를 종목이 0개(2022~2023 국내 은행 PER 자료 없음)이고 옮겨도 2종목 이상이 되는 날이 없는데 질문 없이 실행해 07 에서 실패.
+    실행 전에 묻고, '지금 선정 목록으로 과거를 평가' 를 고르면 시작일 재선정을 끈다 (그 뒤 점검은 시작일을 보지 않는다)."""
+    from backend.analysis.common.store import RequestStore
+    from backend.tests.analysis.test_dialog import _intent
+
+    import backend.analysis.m1_request.dialog as DG
+
+    calls = []
+    fake = {"signature": "x", "basis": "after_classification", "min": 7, "target": 12, "short_now": False, "short_at_start": True, "capacity_short": False,
+            "as_of": {"n_selected": 7, "n_with_metric": 7, "n_candidates": 8, "capacity": 1.0, "invest": 1.0, "sector_counts": {"Financials": 7}, "cap_needed": None},
+            "start": {"date": "2022-09-26", "n_selected": 0, "n_with_metric": 0, "n_candidates": 6, "metric": "pe_ttm",
+                      "dropped_by": {"metric_missing": 5, "min_avg_daily_volume_usd": 2}},
+            "feasible_start": None, "start_impossible": True}  # fmt: skip
+
+    def pre(*a, **kw):
+        calls.append(kw.get("reselect"))
+        return fake if kw.get("reselect", True) else {**fake, "short_at_start": False, "start": None, "start_impossible": False}
+
+    monkeypatch.setattr(DG, "run_precheck", pre)
+    svc, store, _llm = svc_factory([_intent([])] * 4)
+    st = svc.start("국내 은행 저PER")
+    q = st.question
+    assert q is not None and q.field == "horizon.backtest_years" and "2종목 이상을 고를 수 있는 날이 없습니다" in q.question_ko and "실행이 멈춥니다" in q.question_ko
+    assert q.options[0].value == "no_reselect" and "지금 선정 목록(7종목)" in q.options[0].label_ko and q.options[1].value == "change_metric"
+    assert "그날 선정 지표 자료 없음 5개" in q.why_ko
+    st = svc.answer(st.request_id, q.seq, option_value="no_reselect")
+    assert RequestStore(store).load(st.request_id).overrides.get("_no_reselect") is True and calls[-1] is False
+
+
+def test_shortfall_question_names_trading_value_and_market_cap_floors(monkeypatch, svc_factory):
+    """052: 후보 12개 중 6개가 최소 거래대금, 2개가 최소 시가총액으로 빠졌는데 질문 설명은 시가총액 2개만 적었다."""
+    from backend.tests.analysis.test_dialog import _intent
+
+    import backend.analysis.m1_request.dialog as DG
+
+    fake = {"signature": "x", "basis": "after_classification", "min": 17, "target": 20, "short_now": True, "short_at_start": False, "capacity_short": False,
+            "as_of": {"n_selected": 3, "n_with_metric": 3, "n_candidates": 3, "n_matched": 12, "capacity": 0.3, "invest": 0.95, "sector_counts": {"Consumer Discretionary": 3},
+                      "cap_needed": None, "by_filter": {"min_avg_daily_volume_usd": 6, "min_market_cap_usd": 2, "keyword_weak": 1}},
+            "start": None, "feasible_start": None, "start_impossible": False}  # fmt: skip
+    monkeypatch.setattr(DG, "run_precheck", lambda *a, **kw: fake)
+    svc, _store, _llm = svc_factory([_intent([])] * 3)
+    st = svc.start("국내 자동차 고배당", overrides={"constraints.min_avg_daily_volume_usd": 5_000_000, "constraints.min_market_cap_usd": 10_000_000_000})
+    why = st.question.why_ko
+    assert "테마 관련 종목 12개 중 6개는 최근 거래대금이 최소 거래대금(500만 달러)에 못 미쳐, 2개는 시가총액이 최소 시가총액(100억 달러)에 못 미쳐 빠졌습니다." in why

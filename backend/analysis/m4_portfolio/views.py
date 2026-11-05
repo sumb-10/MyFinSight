@@ -158,6 +158,7 @@ def generate_views(
                 warnings.append(f"{sid}: absolute view on {v['long'][0]} without news/disclosure evidence dropped")
                 continue
             v["evidence_ids"] = ids
+            v["rationale_ko"] = _strip_unlisted_ids(v.get("rationale_ko") or "", set(ids))
             if len(ids) == 1 and float(v["confidence"]) > ps.single_evidence_max_confidence:
                 warnings.append(f"{sid}: single-evidence view confidence {v['confidence']} clipped to {ps.single_evidence_max_confidence}")
                 v["confidence"] = ps.single_evidence_max_confidence
@@ -173,6 +174,9 @@ def generate_views(
         if views:
             # 설명은 LLM 이 뷰를 빼기 전에 쓴 것이라 뺀 뷰를 '반영했다' 고 말한다 (045 재실행: COIN 오름·내림을 둘 다 뺐는데 '상반된 신호로 반영했습니다')
             note = f" 같은 종목({', '.join(opposite)})에 오름·내림 뷰가 함께 나와 그 종목의 두 뷰는 반영하지 않았습니다." if opposite else ""
+            rel = sum(1 for v in views if v.get("type") == "relative" and set(opposite) & {*v.get("long", []), *v.get("short", [])})
+            if note and rel:  # 남은 상대 뷰는 반영된다 — 그 종목 비중이 왜 움직였는지 (055: 메리츠 오름·내림을 뺐는데 '…> 메리츠' 상대 뷰 둘이 비중을 줄였다)
+                note += f" 그 종목이 걸린 상대 뷰 {rel}개는 반영했습니다."
             sets.append({**s_, "views": views, **({"narrative_ko": (s_.get("narrative_ko") or "").rstrip() + note} if note else {})})
     if len(sets) != n_sets:
         warnings.append(f"{len(sets)} sets returned, expected {n_sets}")
@@ -193,6 +197,18 @@ def _horizon_months(raw: Any, warnings: list[str], sid: Any) -> int:
         warnings.append(f"{sid}: view horizon_months {hm} clipped to [1, 60]")
         hm = min(max(hm, 1), 60)
     return hm
+
+
+_ID_TOKEN = re.compile(r"(?<![A-Za-z0-9])(?:ev|dc)\d+(?!\d)")  # 한글도 \w 라 \b 로는 'ev123와' 를 못 가른다
+
+
+def _strip_unlisted_ids(text: str, keep: set[str]) -> str:
+    """뷰 설명 안의 근거 id 중 그 뷰의 근거(evidence_ids)가 아닌 것을 지운다 (052: '섀시 모듈 공급 보도(ev2691369와 별개로 … ev2691378)' —
+    ev2691369 는 무관한 기사이고 리포트 근거 목록에도 없어 찾아볼 수 없었다)."""
+    out = re.sub(r"(?<![A-Za-z0-9])((?:ev|dc)\d+)(?:와|과)\s*별개로\s*", lambda m: m.group(0) if m.group(1) in keep else "", text)
+    out = re.sub(r"\[?(?<![A-Za-z0-9])((?:ev|dc)\d+)(?!\d)\]?(?:와|과|,)?\s*", lambda m: m.group(0) if m.group(1) in keep else "", out)
+    out = re.sub(r"\(\s*\)", "", out)
+    return re.sub(r"\s{2,}", " ", out).strip()
 
 
 def plain_view_ko(text: str) -> str:

@@ -9,7 +9,7 @@ import math
 import re
 from typing import Any
 
-from backend.analysis.common.labels import theme_ko
+from backend.analysis.common.labels import sector_ko, theme_ko
 from backend.analysis.common.llm import LlmClient, messages_from_prompts
 from backend.analysis.common.prompts import load_prompts
 from backend.analysis.m2_data.news import EvidenceWindow
@@ -88,10 +88,13 @@ def explain(
         # PER 은 소수 둘째 자리까지 (041: 12.41 과 12.37 이 둘 다 '12.4배' 로 보여 '공동 열여섯 번째' 라고 썼다)
         mv = f"{float(s.metric_value):.2f}배" if s.metric_name == "pe_ttm" and s.metric_value is not None and math.isfinite(float(s.metric_value)) else M.display_metric(s.metric_name, s.metric_value)
         rk = (str(mrank[s.ticker]) if s.ticker in mrank else "–") + (" (필수 포함)" if s.forced else "")
-        lines.append(f"{rk} | {s.ticker} | {s.name} | {s.sector} | {mv} | {s.theme_confidence} | {themes.get(s.ticker, '')} | {reason.get(s.ticker, '')} | "
+        # 섹터는 한국어 이름으로 (053: 카드에 'Communication Services 섹터', 055: 요약에 'Financials' 가 그대로 나왔다)
+        lines.append(f"{rk} | {s.ticker} | {s.name} | {sector_ko(s.sector)} | {mv} | {s.theme_confidence} | {themes.get(s.ticker, '')} | {reason.get(s.ticker, '')} | "
                      f"{((summaries or {}).get(s.ticker) or '')[:200]} | 근거: {fl}{nl}{dl}")  # fmt: skip
+    # 요청 요약에서 백테스트 시작 조건 문장은 뺀다 — 06 이 그것을 요청으로 읽었다 (055: '시작 시점에는 6종목을 골라…' 를 보고 '요청은 6종목이지만 7개가 담겼다')
+    summary = " ".join(x for x in re.split(r"(?<=[.!?다])\s+", str(it["interpretation"]["summary_ko"]).strip()) if x and not re.search(r"백테스트|시작\s*(?:시점|때)", x))
     system, user = load_prompts(
-        STAGE, summary_ko=it["interpretation"]["summary_ko"], explanation_level=it["report_settings"]["explanation_level"],
+        STAGE, summary_ko=summary or it["interpretation"]["summary_ko"], explanation_level=it["report_settings"]["explanation_level"],
         metric=M.METRIC_KO.get(sel.summary["metric"], sel.summary["metric"]), direction=sel.summary["direction"], as_of=sel.summary["as_of"], selected_block="\n".join(lines),
         warnings_block="\n".join(f"- {w}" for w in (warnings_ko if warnings_ko is not None else [])) or "- 없음",  # 한국어 공지만 (영어 개발 문구는 LLM 에 주지 않음)
     )  # fmt: skip

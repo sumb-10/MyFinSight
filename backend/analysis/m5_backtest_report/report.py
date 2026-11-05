@@ -362,7 +362,10 @@ def facts_for_interpret(R: dict[str, Any], chosen: str) -> dict[str, Any]:
                              # 변화 자료가 없으면 키째 넘기지 않는다 (023·046: 빈 자료를 보고 '직전 리밸런싱 대비 변화 자료는 확인할 수 없지만' 이라고 썼다, 050: 빈 top_delta_by_date)
                              **_top_delta_facts(R, chosen),
                              **_wf_changes_facts(R, chosen, "weight_changes_by_date = "),
-                             "results": [{"id": x["id"], "label": x["name_ko"], "headline": x["headline"]} for x in bt["portfolios"] if x.get("mode") == "walkforward"]}
+                             # 뷰가 비중을 한 번도 못 바꿨으면 '다음 리밸런싱까지' 적중률을 넘기지 않는다 (055: 카드는 비우는데 14a 가 이 표의 37.5% 를 옮겼다)
+                             "results": [{"id": x["id"], "label": x["name_ko"],
+                                          "headline": {**x["headline"], **({"view_hit_ratio_next_rb": None} if B.views_moved(R, x) is False else {})}}
+                                         for x in bt["portfolios"] if x.get("mode") == "walkforward"]}
                             if R["portfolio"].get("walkforward") else None),
             "selection_infeasibility": R["selection"]["backtest_as_of"].get("infeasibility"), "sector_overflow": R["selection"]["backtest_as_of"].get("sector_overflow"),
             "baseline": {"id": base["id"], "headline": base["headline"], "money": base["money"]}, "comparison": B.comparison_table(R)["rows"],
@@ -548,6 +551,8 @@ def facts_for_narrate(R: dict[str, Any], chosen: str, interp: dict[str, Any]) ->
                           "excluded_examples": R["selection"]["as_of_now"]["rejected_examples"],
                           "excluded_by_theme": R["selection"].get("excluded_by_theme") or [],  # 테마에는 해당하지만 제외 테마로 뺀 종목 (024)
                           "diff": {k: v for k, v in R["selection"]["backtest_as_of"]["diff_vs_original"].items() if k != "removed_reasons"},
+                          # 시작일 재선정을 하지 않았으면 그 사실 (054: '두 날짜의 PER 이 같다' — 시작일 값은 기준일 값의 복사본이었다)
+                          **({"backtest_reselected": False, "backtest_list_note_ko": B.LOOKAHEAD_KO} if R["selection"].get("backtest_reselected") is False else {}),
                           # 시작일 목록에서 빠진 종목과 그날 사유 (candidates_filtered 는 분석 기준일 후보 단계 사유라 시작일 설명에 쓰면 틀린다, 011)
                           "backtest_start_removed": R["selection"]["backtest_as_of"].get("removed_reasons_ko") or [],
                           "backtest_only_reasons": R["selection"]["backtest_as_of"].get("backtest_only_reasons_ko") or [],  # 시작일 목록에만 있던 종목의 기준일 사유
@@ -561,7 +566,8 @@ def facts_for_narrate(R: dict[str, Any], chosen: str, interp: dict[str, Any]) ->
                              "templates_note": "est_vol_at_start = 백테스트 시작일에 과거 자료로 추정한 예상 변동성 (백테스트 실현 변동성이 아님), top_weight_at_start = 백테스트 시작일 구성의 가장 큰 종목 비중 (지금 구성 아님, 045)",
                              # 시작일에 뉴스 뷰가 없으면 BL 파라미터가 비어 'max_tilt 가 정해져 있지 않다' 고 썼다 → 해당 없음을 밝힌다
                              # 뉴스를 껐으면 그 이유로 (027: 뉴스 끔인데 '시작일에 뉴스 뷰가 없어' 라고 써 뉴스를 찾았는데 없던 것처럼 읽혔다)
-                             "max_tilt": R["portfolio"]["targets"]["parameters"].get("max_tilt_per_stock") or ("해당 없음 (백테스트 시작일에 뉴스 뷰가 없어 BL 구성을 만들지 않음)"
+                             # 표시 문자열 %p 로 (052: 0.1066… 을 '종목당 최대 10.67% 조정 폭' 으로 옮겨 상대 10.67% 처럼 읽혔다)
+                             "max_tilt": (f"{float(mt_) * 100:.2f}%p" if (mt_ := R["portfolio"]["targets"]["parameters"].get("max_tilt_per_stock")) else None) or ("해당 없음 (백테스트 시작일에 뉴스 뷰가 없어 BL 구성을 만들지 않음)"
                                                                                                               if R["intent"]["news_tilt"]["enabled"] else "해당 없음 (뉴스 반영을 꺼서 BL 구성을 만들지 않음)"),
                              "news_tilt_enabled": R["intent"]["news_tilt"]["enabled"], "start_views": _shown_views(R["portfolio"]["views"]),
                              "scenarios": [{"id": s["id"], "title": s.get("title_ko"), "narrative": (s.get("portfolio_view") or "").split("\n")[0], "views": [v["summary_ko"] for v in s["views_applied"]],
@@ -779,7 +785,8 @@ def build_doc(R: dict[str, Any], *, interp: dict[str, Any], narr: dict[str, Any]
         {"id": "companies", "title_ko": "기업별 투자 근거", "blocks": nz(
             {"type": "paragraphs", "items": narr["selection_ko"], "src": "14b"}, B.funnel(R), inf,
             {"type": "callout", "tone": "info", "title_ko": "선정 지표", "text_ko": _metric_note(metric)},
-            B.companies(R, chosen), *_group([B.excluded_table(R), B.diff_table(R)], "제외된 종목과 재선정 차이"))},
+            B.companies(R, chosen), *_group([B.excluded_table(R), B.diff_table(R)], "제외된 종목과 재선정 차이" if R["selection"].get("backtest_reselected") is not False
+                                            else "제외된 종목과 백테스트 목록"))},
         {"id": "construction", "title_ko": "포트폴리오 구성과 운용", "blocks": nz(
             {"type": "paragraphs", "items": narr["construction_ko"], "src": "14b"}, B.weights_compare(R), B.scenario_cards(R),
             B.delta_bar(R, bl_for_bar) if bl_for_bar else None, B.allocation_table(R, chosen),

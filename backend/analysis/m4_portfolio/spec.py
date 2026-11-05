@@ -88,6 +88,8 @@ def build_backtest_spec(
     bt_req: BacktestRequest | None = None,
     allow_fewer_at_start: bool = False,
     start_shift_ok: bool = True,
+    no_reselect: bool = False,
+    shift_cannot_help: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """(BacktestSpec dict, extras). extras = {"candidates_bt", "tagging_bt", "selection_bt", "facts_bt"} (재선정 시).
 
@@ -105,6 +107,8 @@ def build_backtest_spec(
         warnings.append(f"request_id mismatch: {bt_req.request_id} vs {req['request_id']}")
     d0, d1 = dt.date.fromisoformat(str(d["price_data_start"])), dt.date.fromisoformat(str(d["price_data_end"]))
     bw = bt_req.backtest
+    if no_reselect:  # 시작일에 고를 종목이 없어 대화에서 '지금 선정 목록으로 과거를 평가' 를 고름 (054: 2022~2023 국내 은행 PER 자료 없음) — 선견 공지가 붙는다
+        bw = bw.model_copy(update={"reselect_at_start": False})
     if bw.end_date > d1:
         warnings.append(f"backtest end_date {bw.end_date} clamped to data end {d1}")
         bw = bw.model_copy(update={"end_date": d1})
@@ -194,7 +198,7 @@ def build_backtest_spec(
             if n_now < nh_min:
                 why = "기준일에도 최소 종목 수에 못 미쳐 시작일을 옮기지 않고"
             elif allow_fewer_at_start:
-                why = "요청대로 백테스트 기간을 유지해"
+                why = "시작일을 옮겨도 최소 종목 수를 채울 수 없어 요청대로 기간을 유지해" if shift_cannot_help else "요청대로 백테스트 기간을 유지해"
             elif not start_shift_ok:  # 동의를 '받지 않은' 것 — 질문 자체가 없었을 수도 있다 (011: 묻지 않았는데 '동의하지 않아' 라고 썼다)
                 why = ("1종목 이하라 2종목 이상이 되는 날까지만 자동으로 옮겼고, 최소 종목 수를 채우는 날까지 옮기는 데는 동의를 받지 않아"
                        if as_of != first_try else "최소 종목 수를 채우는 날까지 시작일을 옮기는 데 동의를 받지 않아 기간을 유지하고")

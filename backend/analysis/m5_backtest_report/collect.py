@@ -129,6 +129,9 @@ def build_results(
     reason = {r["ticker"]: r for r in tag["tagged"]}
     rank_now = {s["ticker"]: s for s in sel["selected"]}
     rank_bt = {s["ticker"]: s for s in spec["selection"]["table"]}
+    # 시작일 재선정을 하지 않았으면(대화에서 '지금 목록으로 과거를 평가') 시작일 표의 지표·순위·인용은 분석 기준일 값의 복사본이다 → 시작일 값처럼 보이지 않게 비운다
+    # (054: 2022-09-26 칸에 2025-09-24 PER·순위·인용이 그대로 있어 서술이 '두 날짜의 PER 이 같다' 고 썼다)
+    reselected = spec["selection"].get("source") != "original"
     asc = sel["summary"].get("direction") == "asc"
 
     forced_now = {s["ticker"] for s in sel["selected"] if s.get("forced")}
@@ -148,8 +151,9 @@ def build_results(
                       "themes": r.get("themes", []), "theme_confidence": r.get("confidence"), "theme_reason_ko": r.get("reason_ko"),
                       "in_selection_now": t in rank_now, "rank_now": mr_now.get(t), "forced": t in forced_now, "metric_now": rank_now.get(t, {}).get("metric_value"),
                       "metric_fact_id": rank_now.get(t, {}).get("metric_fact_id"),
-                      "in_backtest": t in rank_bt, "rank_backtest": mr_bt.get(t), "metric_backtest": rank_bt.get(t, {}).get("metric_value"),
-                      "metric_backtest_fact_id": rank_bt.get(t, {}).get("metric_fact_id")})  # fmt: skip
+                      "in_backtest": t in rank_bt, "rank_backtest": mr_bt.get(t) if reselected else None,
+                      "metric_backtest": rank_bt.get(t, {}).get("metric_value") if reselected else None,
+                      "metric_backtest_fact_id": rank_bt.get(t, {}).get("metric_fact_id") if reselected else None})  # fmt: skip
     reason_ko = {"sector_preference": "섹터 선호(순위가 더 낮은 다른 섹터 종목에 자리를 내줌)", "rank_beyond_n": "순위 밖", "metric_missing": "지표 자료 없음",
                  "metric_missing (eps<=0 or no financials)": "지표 자료 없음(적자 또는 재무 자료 없음)"}  # fmt: skip
     order = {"sector_preference": 0, "metric_out_of_range": 1, "rank_beyond_n": 2}
@@ -244,9 +248,12 @@ def build_results(
         {"stage": "selected_now", "label_ko": f"최종 선정 ({sel['summary']['as_of']}"
                                               + (", 섹터 분산으로 순위 일부 조정" if any(r.get("reason") == "sector_preference" for r in sel.get("rejected") or []) else "") + ")",
          "count": sel["summary"]["n_selected"]},  # fmt: skip
-        {"stage": "selected_backtest", "label_ko": f"백테스트용 재선정 ({spec['period']['as_of']})", "count": len(spec["selection"]["tickers"])},
+        {"stage": "selected_backtest", "label_ko": (f"백테스트용 재선정 ({spec['period']['as_of']})" if reselected
+                                                     else f"백테스트에 쓴 목록 ({spec['period']['as_of']}부터 · 분석 기준일 목록 그대로, 시작일 재선정 없음)"),
+         "count": len(spec["selection"]["tickers"])},  # fmt: skip
     ]  # fmt: skip
     selection = {"funnel": funnel, "metric": sel["summary"]["metric"], "direction": sel["summary"]["direction"], "candidates_summary": cand["stats"],
+                 "backtest_reselected": reselected,
                  "candidates_filtered": filtered_summary,
                  "excluded_by_theme": ex_theme,
                  "tagging_summary": {"n_tagged": len(tag["tagged"]), "n_passed": len(tag["passed_tickers"]), "n_excluded_by_theme": len(tag["excluded_by_theme"]),

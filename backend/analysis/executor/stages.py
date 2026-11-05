@@ -155,7 +155,8 @@ def st_explain(ctx: RunContext) -> str:
 def st_backtest_spec(ctx: RunContext) -> str:
     spec, extras = build_backtest_spec(ctx.md, ctx.request, ctx.out("02_intent"), Tagging.model_validate(ctx.out("04_tagging")),
                                        Selection.model_validate(ctx.out("05_selection")), ctx.desc, ctx.settings, bt_req=ctx.bt_req,
-                                       allow_fewer_at_start=ctx.allow_fewer_at_start, start_shift_ok=ctx.start_shift_ok)  # fmt: skip
+                                       allow_fewer_at_start=ctx.allow_fewer_at_start, start_shift_ok=ctx.start_shift_ok,
+                                       no_reselect=getattr(ctx, "no_reselect", False), shift_cannot_help=getattr(ctx, "shift_cannot_help", False))  # fmt: skip
     if extras.get("candidates_bt"):  # 시작일 재선정 후보에서도 필수 포함이 건너뛴 후보 조건을 알린다 (018: 033780.KS 는 기준일엔 통과, 시작일엔 시가총액 미달)
         notes = _forced_filter_notes(extras["candidates_bt"], ctx.request["constraints"], set(spec["selection"]["tickers"]))
         spec["warnings"] += [f"screen@{spec['period']['as_of']}: {w}" for w in notes]

@@ -26,6 +26,7 @@ from backend.analysis.m1_request.history import context_package
 from backend.analysis.m1_request.precheck import precheck as run_precheck
 from backend.analysis.m1_request.validate import hard_errors, label
 from backend.analysis.m2_data import descriptor as D
+from backend.analysis.m2_data.metrics import METRIC_SHORT_KO
 from backend.analysis.m2_data.market_data import MarketData
 from backend.analysis.m3_selection.intent import build_messages, interpret
 from backend.analysis.m1_request import revision
@@ -350,7 +351,7 @@ class DialogService:
         try:  # 실행 전 점검 (LLM 없음): 후보 수·지표 보유 수를 기준일·백테스트 시작일에서 센다 (서명이 같으면 재사용)
             btr = (doc.overrides.get("_backtest_request") or {}).get("backtest") or {}
             doc.precheck = run_precheck(normalized, intent, desc, self.md, self.s, previous=doc.precheck, llm=self.llm,
-                                        reselect=btr.get("reselect_at_start", True) is not False)  # fmt: skip  (재선정을 껐으면 시작일 부족을 묻지 않는다, F24)
+                                        reselect=btr.get("reselect_at_start", True) is not False and not doc.overrides.get("_no_reselect"))  # fmt: skip  (재선정을 껐으면 시작일 부족을 묻지 않는다, F24·054)
         except Exception as e:  # noqa: BLE001 — 점검은 보조 정보
             doc.precheck = None
             doc.warnings.append(f"precheck skipped: {e}")
@@ -431,11 +432,18 @@ class DialogService:
             return [f"종목당 상한 {cap:.0%}" for _ in [0] if cap > stock_cap + 1e-9] + [f"섹터당 상한 {scap:.0%}" for _ in [0] if scap > sector_cap + 1e-9]
 
         def mcap_note(summ: dict[str, Any]) -> str:
-            """최소 시가총액이 테마 관련 종목을 얼마나 뺐는지 (048: 61개 중 45개가 500억 달러 미만이었는데 질문은 테마 넓히기만 권했다)."""
-            k = int((summ.get("by_filter") or {}).get("min_market_cap_usd") or 0)
-            if k <= 0 or float(cons.get("min_market_cap_usd") or 0) <= 0:
+            """사용자가 정한 최소 시가총액·최소 거래대금이 테마 관련 종목을 얼마나 뺐는지 (048: 61개 중 45개가 500억 달러 미만이었는데 질문은 테마 넓히기만 권했다,
+            052: 12개 중 6개가 거래대금으로 빠졌는데 시가총액 2개만 적었다)."""
+            bf = summ.get("by_filter") or {}
+            parts = []
+            for key, lab in (("min_avg_daily_volume_usd", "최근 거래대금이 최소 거래대금"), ("min_market_cap_usd", "시가총액이 최소 시가총액")):
+                k = int(bf.get(key) or 0)
+                if k > 0 and float(cons.get(key) or 0) > 0:
+                    parts.append((k, f"{k}개는 {lab}({usd_ko(cons.get(key))})에 못 미쳐"))
+            if not parts:
                 return ""
-            return f" 테마 관련 종목 {summ.get('n_matched')}개 중 {k}개는 시가총액이 최소 시가총액({usd_ko(cons.get('min_market_cap_usd'))})에 못 미쳐 빠졌습니다."
+            parts.sort(key=lambda x: -x[0])
+            return f" 테마 관련 종목 {summ.get('n_matched')}개 중 " + ", ".join(p for _, p in parts) + " 빠졌습니다."
 
         n_now = int(min(now.get("n_with_metric", 0), now.get("n_candidates", 0)))
         if precheck.get("short_now") and "_ack_few_candidates" not in overrides:
@@ -457,13 +465,31 @@ class DialogService:
             return out  # 후보 부족이 먼저 — 창 축소 질문은 이게 풀린 뒤에
         st = precheck.get("start") or {}
         n_start = int(min(st.get("n_with_metric", 0), st.get("n_candidates", 0)))
-        if precheck.get("short_at_start") and not precheck.get("short_now") and "_allow_fewer_at_start" not in overrides:  # 기준일부터 부족하면 위 질문이 다룬다 (07 도 옮기지 않음)
+        if precheck.get("start_impossible") and "_no_reselect" not in overrides:
+            # 시작일 종목이 1개 이하이고 창 안에서 2종목 이상이 되는 날도 없으면 07 이 멈춘다 → 실행 전에 대안을 묻는다
+            # (054: 2022~2023 국내 은행 PER 자료가 없어 질문 없이 실행했다가 07 에서 실패. 사용자 결정: 실행할 수 없으면 대안을 제시)
+            metric = METRIC_SHORT_KO.get(str(st.get("metric") or ""), "선정 지표")
+            out.append(QuestionProposal(
+                field="horizon.backtest_years", kind="feasibility", priority=1,
+                question_ko=(f"백테스트 시작일({st.get('date')})에 선정할 수 있는 종목이 {n_start}개이고, 시작일을 옮겨도 2종목 이상을 고를 수 있는 날이 없습니다. "
+                             "답하지 않으면 실행이 멈춥니다. 어떻게 할까요?"),
+                options=[{"value": "no_reselect", "label_ko": f"지금 선정 목록({int(now.get('n_selected') or 0)}종목)으로 과거를 평가 — 시작일에 다시 고르지 않음 "
+                                                              "(지금 정보로 고른 목록이라 과거 성과가 실제보다 좋게 보일 수 있음)", "patch": {"_no_reselect": True}},
+                         {"value": "change_metric", "label_ko": "선정 기준을 바꿔 다시 해석",
+                          "clarification": f"[선정 기준 바꾸기] 백테스트 시작일({st.get('date')})에 {metric} 자료가 있는 종목이 없어 과거를 평가할 수 없습니다. 과거 자료가 있는 다른 선정 기준으로 해석해 주세요"}],
+                allow_free_text=False, why_ko=_start_why_ko(st, cons),
+            ))  # fmt: skip
+            return out
+        if precheck.get("short_at_start") and not precheck.get("short_now") and "_allow_fewer_at_start" not in overrides and "_no_reselect" not in overrides:  # 기준일부터 부족하면 위 질문이 다룬다 (07 도 옮기지 않음)
             opts = []
             if n_start >= 2:
                 # 종목이 적으면 종목·섹터 상한 때문에 백테스트 내내 현금이 남는다 → 고르기 전에 보이게 (002: '기간 유지' 를 골라 현금 50% 로 평가됐는데 질문에는 없었다)
                 cap_st = st.get("capacity")
                 cash_note = (f" — 상한 때문에 백테스트에서는 투자금의 {float(cap_st):.0%}만 투자" if cap_st is not None and float(cap_st) < (1.0 - cash) - 0.005 else "")
-                opts.append({"value": "keep_window", "label_ko": f"백테스트 기간을 유지하고 시작 때 선정 가능한 {n_start}종목으로 평가{cash_note}", "patch": {"_allow_fewer_at_start": True}})
+                # 옮겨도 최소 종목 수를 못 채우면 그 사실도 실행에 넘긴다 — 리포트가 '다른 기간을 검토' 를 권하지 않게 (051)
+                fs0 = precheck.get("feasible_start")
+                opts.append({"value": "keep_window", "label_ko": f"백테스트 기간을 유지하고 시작 때 선정 가능한 {n_start}종목으로 평가{cash_note}",
+                             "patch": {"_allow_fewer_at_start": True, **({} if fs0 else {"_shift_cannot_help": True})}})
             fs = precheck.get("feasible_start")
             if fs and float(fs.get("years") or 0) >= 1.0:
                 opts.append({"value": f"shorten_{fs['years']}", "label_ko": f"백테스트 기간을 {fs['years']:g}년으로 줄임 ({fs['date']}부터는 {fs['n_with_metric']}종목)",
