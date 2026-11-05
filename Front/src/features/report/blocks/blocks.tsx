@@ -8,6 +8,9 @@ import { ChartFrame } from "../ChartFrame"
 import { useReport } from "../context"
 import { CompanyList } from "../CompanyList"
 import { RebalanceTimeline } from "../RebalanceTimeline"
+import { kpiName } from "../wording"
+import { prefTerms } from "../../../lib/tendency"
+import { holdingColor } from "../colors"
 
 const card = "rounded-xl border border-slate-200 bg-white p-5"
 const h3 = "mb-3 text-base font-semibold text-slate-900"
@@ -49,10 +52,10 @@ export function Paragraphs({ items, tone }: { items: string[]; tone?: "lead" }) 
 export function KpiCards({ kpis, ids }: { kpis: Kpi[]; ids: string[] }) {
   const sel = ids.map((id) => kpis.find((k) => k.id === id)).filter(Boolean) as Kpi[]
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       {sel.map((k) => (
         <div key={k.id} className={card}>
-          <div className="text-xs font-medium text-slate-500">{k.label_ko}</div>
+          <div className="text-xs font-medium text-slate-500">{kpiName(k).name}{kpiName(k).sub ? ` (${kpiName(k).sub})` : ""}</div>
           <div className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{fmt(k.value, k.format)}</div>
           {k.note_ko && <div className="mt-1 text-xs text-slate-500">{k.note_ko}</div>}
         </div>
@@ -72,7 +75,7 @@ export function DataTable({ b }: { b: TableBlock }) {
     <div className={card}>
       {b.title_ko && <h3 className={h3}>{b.title_ko}</h3>}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] border-collapse text-sm">
+        <table className={`w-full border-collapse text-sm ${b.columns.length > 4 ? "min-w-[720px]" : ""}`}>
           <thead>
             <tr className="border-b border-slate-200 text-left text-xs font-semibold text-slate-500">
               {b.columns.map((c) => <th key={c.key} className="px-2 py-2 whitespace-nowrap">{c.label_ko}</th>)}
@@ -88,7 +91,7 @@ export function DataTable({ b }: { b: TableBlock }) {
                     return <td key={c.key} className="px-2 py-2">{href ? <a href={href} target="_blank" rel="noreferrer" className="text-blue-700 underline underline-offset-2">원문</a> : "–"}</td>
                   }
                   if (ctx && isCite(v)) return <td key={c.key} className="px-2 py-2"><button type="button" onClick={() => ctx.onCite(v as string)} className="font-mono text-xs text-blue-700 hover:underline" aria-label={`근거 ${v} 보기`}>[{ctx.label(v as string)}]</button></td>
-                  return <td key={c.key} className={`px-2 py-2 ${num ? "tabular-nums whitespace-nowrap text-right" : "text-slate-700"}`}>{c.format === "text" || c.format === undefined ? String(v ?? "–") : fmt(v, c.format)}</td>
+                  return <td key={c.key} className={`px-2 py-2 ${num ? "tabular-nums whitespace-nowrap text-right" : "text-slate-700"}`}>{c.format === "text" || c.format === undefined ? prefTerms(String(v ?? "–")) : fmt(v, c.format)}</td>
                 })}
               </tr>
             ))}
@@ -108,11 +111,11 @@ export function Donut({ b }: { b: DonutBlock }) {
   const items = rest.length ? [...top, { label: `기타 ${rest.length}종목`, value: rest.reduce((s, x) => s + x.value, 0) }] : top
   const order = top.map((x) => x.label)
   const total = sorted.reduce((s, x) => s + x.value, 0)
-  const color = (label: string) => (label.startsWith("기타") ? OTHER_COLOR : colorOf(label, order))
+  const color = (label: string) => (label.startsWith("기타") ? OTHER_COLOR : holdingColor(label, order))  // 투자 금액 카드와 같은 종목 색
   return (
     <div className={card}>
       <h3 className={h3}>{b.title_ko}</h3>
-      <div className="flex items-center gap-6">
+      <div className="flex flex-wrap items-center gap-6">
         <div className="h-52 w-52 shrink-0" role="img" aria-label={`${b.title_ko} 도넛`}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
@@ -208,20 +211,29 @@ export function BarItems({ b }: { b: BarBlock }) {
   )
 }
 
+/** 선정 과정: 단계 번호(「1단계」…) + 막대 + 종목 수 + 단계 이름. 아래에 「제외된 종목」과 「재선정」이 무엇인지 짧게 구분한다. */
 export function Funnel({ b }: { b: FunnelBlock }) {
   const max = Math.max(...b.items.map((x) => x.count))
+  const final = b.items.find((x) => x.label_ko.startsWith("최종 선정"))
+  const re = b.items.find((x) => x.label_ko.startsWith("백테스트용 재선정"))
   return (
     <div className={card}>
       <h3 className={h3}>선정 과정</h3>
-      <ol className="space-y-2">
+      <ol className="space-y-2" aria-label="선정 단계">
         {b.items.map((x, i) => (
           <li key={i} className="flex items-center gap-3 text-sm">
-            <span className="w-8 text-right text-xs text-slate-400">{i + 1}</span>
-            <div className="h-6 rounded bg-blue-600/80" style={{ width: `${Math.max(4, (x.count / max) * 100)}%`, maxWidth: "60%" }} />
-            <span className="tabular-nums font-semibold">{x.count}</span><span className="text-slate-700">{x.label_ko}</span>
+            <span className="w-12 shrink-0 whitespace-nowrap text-right text-xs font-semibold text-slate-500">{i + 1}단계</span>
+            <div className="h-6 shrink-0 rounded bg-blue-600/80" style={{ width: `${Math.max(4, (x.count / max) * 100)}%`, maxWidth: "45%" }} />
+            <span className="shrink-0 tabular-nums font-semibold">{x.count}</span><span className="min-w-0 text-slate-700">{x.label_ko}</span>
           </li>
         ))}
       </ol>
+      {(final || re) && (
+        <dl className="mt-4 grid grid-cols-1 gap-3 border-t border-slate-100 pt-4 text-xs leading-5 md:grid-cols-2">
+          {final && <div><dt className="font-semibold text-slate-800">선정에서 제외된 종목</dt><dd className="mt-0.5 text-slate-600">테마에는 해당하지만 분석 기준일에 적용한 선정 조건(선정 지표 계산 가능 여부·지표 순위·섹터 분산)을 거쳐 최종 목록에 들지 못한 종목입니다. 제외 이유가 있는 경우 아래 「제외된 종목과 재선정 차이」에 있습니다.</dd></div>}
+          {re && <div><dt className="font-semibold text-slate-800">과거 시점 기준으로 종목 다시 선정 (재선정)</dt><dd className="mt-0.5 text-slate-600">과거 성과를 계산하려고, 백테스트 시작일 당시 알 수 있던 자료만으로 같은 선정 규칙을 다시 적용해 고른 목록입니다. 미래 정보를 쓰지 않기 위한 절차이며, 분석 기준일 목록을 고친다는 뜻은 아닙니다.</dd></div>}
+        </dl>
+      )}
     </div>
   )
 }
@@ -240,11 +252,11 @@ export function Cards({ b }: { b: CardsBlock }) {
   return (
     <div>
       {b.title_ko && <h3 className={h3}>{b.title_ko}</h3>}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {b.items.map((c, i) => (
-          <div key={i} className={card}>
+          <div key={i} className={`${card} min-w-0`}>
             <div className="font-semibold text-slate-900">{c.title_ko}</div>
-            <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-700"><CitedText text={c.text_ko} /></p>
+            <p className="mt-2 whitespace-pre-line break-words text-sm leading-6 text-slate-700"><CitedText text={c.text_ko} /></p>
             {c.meta.length > 0 && <dl className="mt-3 space-y-1 text-xs text-slate-600">{c.meta.map((m) => { const ids = m.label_ko === "근거" && ctx ? cite(m.value) : []; return <div key={m.label_ko} className="flex gap-2"><dt className="shrink-0 font-medium">{m.label_ko}</dt><dd>{ids.length ? ids.map((id) => <button key={id} type="button" onClick={() => ctx!.onCite(id)} className="mr-1 font-bold text-blue-700 hover:underline" aria-label={`근거 ${id} 보기`}>[{ctx!.label(id)}]</button>) : m.value}</dd></div> })}</dl>}
           </div>
         ))}
@@ -257,7 +269,7 @@ export function Glossary({ items }: { items: { term: string; explain_ko: string 
   return (
     <div className={card}>
       <h3 className={h3}>용어 풀이</h3>
-      <dl className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">{items.map((g) => <div key={g.term}><dt className="font-semibold text-slate-900">{g.term}</dt><dd className="text-slate-700 leading-6"><CitedText text={g.explain_ko} /></dd></div>)}</dl>
+      <dl className="grid grid-cols-1 gap-x-8 gap-y-3 text-sm md:grid-cols-2">{items.map((g) => <div key={g.term}><dt className="font-semibold text-slate-900">{g.term}</dt><dd className="text-slate-700 leading-6"><CitedText text={g.explain_ko} /></dd></div>)}</dl>
     </div>
   )
 }
@@ -287,7 +299,7 @@ export function WeightsCompare({ b }: { b: WeightsCompareBlock }) {
           <thead><tr className="border-b border-slate-200 text-left text-xs font-semibold text-slate-500"><th className="px-2 py-2">종목</th><th className="px-2 py-2">섹터</th>{b.columns.map((c) => <th key={c.id} className={`px-2 py-2 text-right whitespace-nowrap ${c.id === b.baseline_id ? "text-blue-700" : ""}`} title={c.rule_ko}>{c.label_ko}{c.id === b.baseline_id ? " (기준)" : ""}</th>)}</tr></thead>
           <tbody>
             {rows.map((r) => <tr key={r.ticker} className="border-b border-slate-100"><td className="px-2 py-1.5 font-medium" title={r.name}>{r.ticker}</td><td className="px-2 py-1.5 text-slate-500">{r.sector}</td>{b.columns.map((c) => <td key={c.id} className="px-2 py-1.5 text-right tabular-nums">{fmt(r.weights[c.id], "pct1")}</td>)}</tr>)}
-            <tr className="border-t border-slate-200 text-slate-600"><td className="px-2 py-1.5">현금</td><td /> {b.columns.map((c) => <td key={c.id} className="px-2 py-1.5 text-right tabular-nums">{fmt(b.cash[c.id] ?? 0, "pct1")}</td>)}</tr>
+            <tr className="border-t border-slate-200 text-slate-600"><td className="px-2 py-1.5">현금</td><td />{b.columns.map((c) => <td key={c.id} className="px-2 py-1.5 text-right tabular-nums">{fmt(b.cash[c.id] ?? 0, "pct1")}</td>)}</tr>
             <tr className="text-xs text-slate-500"><td className="px-2 py-1.5">예상 변동성</td><td />{b.columns.map((c) => <td key={c.id} className="px-2 py-1.5 text-right tabular-nums">{fmt(b.ex_ante[c.id]?.vol, "pct")}</td>)}</tr>
           </tbody>
         </table>
@@ -301,7 +313,7 @@ export function WeightsCompare({ b }: { b: WeightsCompareBlock }) {
 export function RenderBlock({ b, doc }: { b: Block; doc: ReportDoc }) {
   switch (b.type) {
     case "paragraphs": return <Paragraphs items={b.items} tone={b.tone} />
-    case "kpis": return doc.summary ? null : <KpiCards kpis={doc.kpis} ids={b.ids} />  // 대시보드가 있으면 중복이라 그리지 않음
+    case "kpis": return <KpiCards kpis={doc.kpis} ids={b.ids} />  // 상세 섹션은 이 블록 대신 「과거 투자 성과」 맨 위에 KPI 전체를 그린다 (sections.tsx). 다른 곳에 오면 그대로 그린다
     case "table": return <DataTable b={b} />
     case "donut": return <Donut b={b} />
     case "line": case "area": return <LineSeries b={b} doc={doc} />

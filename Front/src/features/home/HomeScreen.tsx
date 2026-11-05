@@ -8,6 +8,11 @@ import { loadUi, saveUi } from "../../state/uiStorage"
 import { Alert, Badge, Button, Card, EmptyState, ErrorState, Loading } from "../../ui"
 import { date, fmt, ko } from "../../lib/format"
 import { DetailConditionsDialog, OVERRIDE_LABELS, overrideText, type Overrides } from "./DetailConditions"
+import { tendencyLabel } from "../../lib/tendency"
+import { reportName } from "../../lib/reportName"
+import { proposedNameOf } from "../../api/proposed"
+import { MockTag } from "../report/proposedView"
+import { useRenameTick } from "../report/ReportName"
 
 export function HomeScreen() {
   const svc = useService()
@@ -17,7 +22,8 @@ export function HomeScreen() {
   const [busy, setBusy] = useState(false)
   const [overrides, setOverrides] = useState<Overrides>(() => (loadUi().prefillOverrides as Overrides | null | undefined) ?? {})
   const [detail, setDetail] = useState(false)
-  const reports = useResource(() => svc.listReports(), [svc])
+  const renamed = useRenameTick()
+  const reports = useResource(() => svc.listReports(), [svc, renamed])
   const [ui, setUi] = useState(() => loadUi())
   useEffect(() => { saveUi({ draftIdea: idea }) }, [idea])
   useEffect(() => { const u = loadUi(); if (u.prefillIdea || u.prefillOverrides) setUi(saveUi({ prefillIdea: null, prefillOverrides: null })) }, [])  // 미리 채운 값(새 요청)은 한 번만 쓴다
@@ -80,7 +86,7 @@ export function HomeScreen() {
             <button onClick={() => navigate({ page: "profile" })} className="text-xs font-semibold text-blue-700">내 투자조건 보기</button>
           </div>
           <div className="mt-5 grid grid-cols-4 gap-3">
-            {[["금액", `${p.capital.initial_amount.toLocaleString("ko-KR")} ${p.capital.currency === "KRW" ? "원" : "USD"}`], ["기간", `${p.horizon.target_years}년`], ["성향", p.diagnosis?.final_tendency ?? ko(p.risk.risk_tolerance)], ["손실 감내 수준", fmt(p.risk.max_drawdown_tolerance, "pct1")]].map(([label, value]) => (
+            {[["금액", `${p.capital.initial_amount.toLocaleString("ko-KR")} ${p.capital.currency === "KRW" ? "원" : "USD"}`], ["기간", `${p.horizon.target_years}년`], ["성향", tendencyLabel({ final: p.diagnosis?.final_tendency, code: p.risk.risk_tolerance })], ["손실 감내 수준", fmt(p.risk.max_drawdown_tolerance, "pct1")]].map(([label, value]) => (
               <div key={label} className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] text-slate-400">{label}</p><p className="mt-1 truncate text-sm font-bold text-slate-800">{value}</p></div>
             ))}
           </div>
@@ -88,6 +94,7 @@ export function HomeScreen() {
             <Badge tone="slate">{p.constraints.universe.map(ko).join(" · ")}</Badge>
             <Badge tone="slate">종목당 최대 {fmt(p.constraints.max_weight_per_stock, "pct1")}</Badge>
             <Badge tone="slate">{ko(p.strategy_preference.template)} · {ko(p.strategy_preference.baseline_weighting)}</Badge>
+            {p.constraints.must_include_tickers.map((t) => <Badge key={`in-${t}`} tone="blue">{t} 필수 포함</Badge>)}
             {p.constraints.exclude_tickers.map((t) => <Badge key={t} tone="red">{t} 제외</Badge>)}
           </div>
         </Card>
@@ -97,7 +104,7 @@ export function HomeScreen() {
             {reports.status === "error" && <p className="text-xs text-red-600">{reports.error}</p>}
             {(reports.data ?? []).slice(0, 4).map((r) => (
               <button key={r.run_id} onClick={() => navigate({ page: "report", reportId: r.report_id ?? r.run_id })} className="flex w-full items-center justify-between rounded-xl p-3 text-left hover:bg-slate-50">
-                <span><span className="block text-sm font-semibold text-slate-800">{r.strategy_name || r.idea}</span><span className="mt-0.5 block text-xs text-slate-400">{date(r.created_at)} · 기준일 {r.as_of}</span></span>
+                <span><span className="block text-sm font-semibold text-slate-800">{reportName(r)}{proposedNameOf(r) && <MockTag />}</span><span className="mt-0.5 block text-xs text-slate-400">{date(r.created_at)} · 기준일 {r.as_of}</span></span>
                 <ChevronRight className="size-4 text-slate-300" />
               </button>
             ))}

@@ -1,12 +1,13 @@
-import { useEffect, useId, useRef, useState } from "react"
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { AlertCircle, AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, FileSearch, Info, Loader2, MoreHorizontal, ShieldCheck, X } from "lucide-react"
 import type { StepStatus } from "../api/types"
 import { ko } from "../lib/format"
 
 export const inputClass = "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
 
-export function Button({ children, variant = "primary", className = "", disabled, onClick, type = "button" }: { children: React.ReactNode; variant?: "primary" | "secondary" | "ghost" | "danger"; className?: string; disabled?: boolean; onClick?: () => void; type?: "button" | "submit" }) {
-  const variants = { primary: "bg-blue-700 text-white border-blue-700 hover:bg-blue-800", secondary: "bg-white text-blue-700 border-blue-200 hover:bg-blue-50", ghost: "bg-transparent text-slate-600 border-transparent hover:bg-slate-100", danger: "bg-white text-red-700 border-red-200 hover:bg-red-50" }
+export function Button({ children, variant = "primary", className = "", disabled, onClick, type = "button" }: { children: React.ReactNode; variant?: "primary" | "secondary" | "neutral" | "ghost" | "danger" | "destructive"; className?: string; disabled?: boolean; onClick?: () => void; type?: "button" | "submit" }) {
+  const variants = { primary: "bg-blue-700 text-white border-blue-700 hover:bg-blue-800", secondary: "bg-white text-blue-700 border-blue-200 hover:bg-blue-50", neutral: "bg-white text-slate-700 border-slate-300 hover:bg-slate-50", ghost: "bg-transparent text-slate-600 border-transparent hover:bg-slate-100", danger: "bg-white text-red-700 border-red-200 hover:bg-red-50", destructive: "bg-red-600 text-white border-red-600 hover:bg-red-700" }
   return (
     <button type={type} disabled={disabled} onClick={onClick} className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}>
       {children}
@@ -207,24 +208,42 @@ export function Pagination({ page, pages, onChange, total, pageSize }: { page: n
 }
 
 /** "더보기 ▾" 메뉴. Escape·바깥 클릭으로 닫힌다. */
-export function Menu({ label = "더보기", items }: { label?: string; items: { label: string; onClick: () => void; disabled?: boolean; icon?: React.ElementType }[] }) {
+/** 더보기 메뉴. 목록은 화면 맨 위층(body)에 띄워 표·카드의 잘림(overflow)이나 고정된 탭 목록에 가려지지 않게 하고,
+ *  버튼 아래 공간이 모자라면 위로 펼친다. 창 크기가 바뀌면 다시 자리 잡고, 화면을 스크롤하면 닫는다. */
+export function Menu({ label = "더보기", items }: { label?: string; items: { label: string; onClick: () => void; disabled?: boolean; icon?: React.ElementType; danger?: boolean }[] }) {
   const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<{ top: number; left: number; up: boolean } | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+  const list = useRef<HTMLUListElement>(null)
   useEffect(() => {
     if (!open) return
     const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false)
-    const click = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    const click = (e: MouseEvent) => { const t = e.target as Node; if (!ref.current?.contains(t) && !list.current?.contains(t)) setOpen(false) }
     window.addEventListener("keydown", key); window.addEventListener("mousedown", click)
     return () => { window.removeEventListener("keydown", key); window.removeEventListener("mousedown", click) }
+  }, [open])
+  useLayoutEffect(() => {
+    if (!open) { setPos(null); return }
+    const place = () => {
+      const r = ref.current?.getBoundingClientRect(), h = list.current?.offsetHeight ?? 0, w = list.current?.offsetWidth ?? 288
+      if (!r) return
+      const up = r.bottom + 4 + h > window.innerHeight - 8 && r.top - 4 - h >= 8
+      setPos({ top: up ? r.top - 4 - h : r.bottom + 4, left: Math.max(8, r.right - w), up })
+    }
+    place()
+    const at = ref.current?.getBoundingClientRect().top
+    // 화면이 움직여 버튼 위치가 바뀌면 닫는다 (버튼을 따라가다 고정된 탭 목록 밑으로 숨지 않게). 위치가 그대로인 스크롤 이벤트는 무시
+    const scroll = () => { const now = ref.current?.getBoundingClientRect().top; if (at != null && now != null && Math.abs(now - at) > 2) setOpen(false) }
+    window.addEventListener("resize", place); window.addEventListener("scroll", scroll, true)
+    return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", scroll, true) }
   }, [open])
   return (
     <div ref={ref} className="relative">
       <Button variant="secondary" onClick={() => setOpen((v) => !v)}><MoreHorizontal className="size-4" />{label}</Button>
-      {open && (
-        <ul role="menu" className="absolute right-0 z-30 mt-1 w-60 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
-          {items.map((it) => <li key={it.label} role="none"><button role="menuitem" type="button" disabled={it.disabled} onClick={() => { setOpen(false); it.onClick() }} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-40">{it.icon && <it.icon className="size-4" />}{it.label}</button></li>)}
-        </ul>
-      )}
+      {open && createPortal(
+        <ul ref={list} role="menu" style={{ top: pos?.top ?? 0, left: pos?.left ?? 0, visibility: pos ? "visible" : "hidden" }} className="fixed z-40 w-72 max-w-[calc(100vw-16px)] overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+          {items.map((it) => <li key={it.label} role="none"><button role="menuitem" type="button" disabled={it.disabled} onClick={() => { setOpen(false); it.onClick() }} className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50 disabled:opacity-40 ${it.danger ? "text-red-700" : "text-slate-700"}`}>{it.icon && <it.icon className="size-4 shrink-0" />}<span className="min-w-0">{it.label}</span></button></li>)}
+        </ul>, document.body)}
     </div>
   )
 }

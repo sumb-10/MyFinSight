@@ -10,11 +10,12 @@ export interface ReportCtx {
   numberOf: (id: string) => string
   openEvidence: (id: string) => void
   openDrawer: (f: DrawerFilter) => void
-  jump: (sectionId: string) => void
+  jump: (sectionId: string, anchor?: string) => void  // anchor: 섹션 안에서 바로 보여 줄 요소 id
   selectedRb: number | null
   setSelectedRb: (seq: number | null) => void
   openCompany: string | null
   setOpenCompany: (ticker: string | null) => void
+  openPanel?: (p: "calc" | "exec") => void
 }
 
 export const ReportContext = createContext<ReportCtx | null>(null)

@@ -1,5 +1,8 @@
 // 브라우저에만 두는 편의 상태 (서버가 진실). 깨져도 화면은 동작해야 하므로 모든 접근을 try/catch 로 감싼다.
-const KEY = "myfinsight.ui.v1"
+import { isMockMode } from "../mocks/mode"
+
+// 목업 모드는 다른 키를 써서, 목업 요청·실행 ID 가 일반 모드의 「진행 중 분석」 등에 섞이지 않게 한다.
+const KEY = isMockMode() ? "myfinsight.mock.ui.v1" : "myfinsight.ui.v1"
 const LEGACY_KEY = "myfinsight.local.v1"
 
 export interface UiState { version: 1; draftIdea?: string; activeRequestId?: string | null; activeRunId?: string | null; lastRoute?: string; legacyImported?: boolean; prefillIdea?: string | null; prefillOverrides?: Record<string, unknown> | null }

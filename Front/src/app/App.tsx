@@ -10,18 +10,26 @@ import { ClarifyScreen } from "../features/analysis/ClarifyScreen"
 import { ConfirmScreen } from "../features/analysis/ConfirmScreen"
 import { RunScreen } from "../features/run/RunScreen"
 import { ReportList } from "../features/report/ReportList"
+import { useRenameTick } from "../features/report/ReportName"
+import { reportName } from "../lib/reportName"
+import { proposedNameOf } from "../api/proposed"
+import { MockTag } from "../features/report/proposedView"
 import { date } from "../lib/format"
+import { isMockMode } from "../mocks/mode"
 
 
 // 차트(recharts)를 쓰는 화면은 따로 묶어 처음 화면이 가볍게 뜨게 한다 (F8 코드 분할).
 const ReportDetail = lazy(() => import("../features/report/ReportDetail").then((m) => ({ default: m.ReportDetail })))
 const ComparisonScreen = lazy(() => import("../features/report/ComparisonScreen").then((m) => ({ default: m.ComparisonScreen })))
+// 목업 모드 표시·개발용 패널: 개발 환경 + ?mock=1 일 때만 불러온다. 환경 조건을 그대로 써야 운영 빌드에서 import 가 빠진다 (mocks/mode.ts 참고).
+const MockChrome = import.meta.env.DEV || import.meta.env.VITE_ENABLE_MOCK === "1" ? lazy(() => import("../mocks/MockChrome")) : null
 const PaperScreen = lazy(() => import("../features/paper/PaperScreen").then((m) => ({ default: m.PaperScreen })))
 
 function Sidebar({ route }: { route: Route }) {
   const svc = useService()
   const { health, reachable } = useHealth()
-  const reports = useResource(() => svc.listReports(), [svc, route.page])
+  const renamed = useRenameTick()
+  const reports = useResource(() => svc.listReports(), [svc, route.page, renamed])
   const items = [
     { label: "홈 · 새 분석", icon: Home, to: { page: "home" } as Route, active: ["home", "clarify", "confirm", "run"].includes(route.page) },
     { label: "분석 리포트", icon: FileText, to: { page: "reports" } as Route, active: ["reports", "report"].includes(route.page) },
@@ -46,7 +54,7 @@ function Sidebar({ route }: { route: Route }) {
         <div className="mt-2 space-y-1">
           {(reports.data ?? []).slice(0, 5).map((r) => (
             <button key={r.run_id} onClick={() => navigate({ page: "report", reportId: r.report_id ?? r.run_id })} className={`w-full rounded-lg px-3 py-2 text-left transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 ${route.page === "report" && route.reportId === (r.report_id ?? r.run_id) ? "bg-blue-50" : ""}`}>
-              <span className="block truncate text-xs font-semibold text-slate-700">{r.strategy_name || r.idea || r.run_id}</span>
+              {proposedNameOf(r) ? <span className="flex min-w-0 items-center text-xs font-semibold text-slate-700"><span className="truncate">{reportName(r)}</span><MockTag /></span> : <span className="block truncate text-xs font-semibold text-slate-700">{reportName(r)}</span>}
               <span className="mt-0.5 block text-[10px] text-slate-400">{date(r.created_at)} · 기준일 {r.as_of}</span>
             </button>
           ))}
@@ -105,11 +113,14 @@ export default function App() {
     navigate({ page: "profile", mode: "setup" })
   }
   return (
+    <>
+    {MockChrome && isMockMode() && <Suspense fallback={null}><MockChrome /></Suspense>}
     <div className="flex min-h-screen min-w-[1180px] bg-slate-50">
       <Sidebar route={route} />
       <main className="min-w-0 flex-1 overflow-x-auto">
         <div className="mx-auto w-full max-w-[1180px] px-10 py-9"><ModeBanner /><Screen route={route} /></div>
       </main>
     </div>
+    </>
   )
 }
