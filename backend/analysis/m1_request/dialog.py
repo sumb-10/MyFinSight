@@ -14,7 +14,7 @@ import re
 from typing import Any
 
 from backend.analysis.common.jsonio import canonical_json, now_iso, sha256_hex
-from backend.analysis.common.labels import sector_counts_ko
+from backend.analysis.common.labels import sector_counts_ko, usd_ko
 from backend.analysis.common.llm import LlmClient
 from backend.analysis.common.store import JsonStore, ProfileStore, RequestStore, new_request_id, new_run_id
 from backend.analysis.errors import Conflict, DialogBlocked, DialogNotReady, NotFound, RequestInvalid
@@ -93,6 +93,23 @@ def parse_period(text: str, *, today: dt.date, max_years: float = 20.0) -> dict[
     n = min(n, max_years)
     return {"start_year": start, "end_year": end, "years": n, "end_date": f"{end}-12-31" if end else None}
 
+
+
+# 시작일에 빠지는 사유 (precheck._dropped_by 의 코드 → 한국어). {mc} = 최소 시가총액
+_START_DROP_KO = {"min_market_cap_usd": "그날 시가총액이 최소 시가총액({mc})에 못 미침", "market_cap_missing": "그날 시가총액 자료 없음",
+                  "min_avg_daily_volume_usd": "그날 거래대금이 최소 거래대금에 못 미침", "insufficient_price_history": "상장 전이거나 가격 이력 부족",
+                  "not_in_candidates": "그날 후보 검색에 없음(상장 전이거나 조건 밖)", "metric_missing": "그날 선정 지표 자료 없음",
+                  "metric_out_of_range": "그날 선정 지표가 자격선 밖", "rank_beyond_n": "그날 순위 밖", "sector_preference": "그날 섹터 선호로 밀림"}  # fmt: skip
+
+
+def _start_why_ko(st: dict[str, Any], cons: dict[str, Any]) -> str:
+    """시작일 종목이 적은 이유를 실제 사유별 수로 (049: '상장 전이거나 재무 지표가 없던 종목' 이라고 했는데 실제는 최소 시가총액이 8개를 뺐다)."""
+    by = st.get("dropped_by") or {}
+    if not by:
+        return "과거에는 상장 전이거나 재무 지표가 없던 종목이 있어 시작일에 뽑을 수 있는 종목이 적을 수 있습니다."
+    mc = usd_ko(cons.get("min_market_cap_usd"))
+    parts = [f"{_START_DROP_KO.get(k, k).format(mc=mc)} {n}개" for k, n in sorted(by.items(), key=lambda x: -x[1])]
+    return f"분석 기준일 선정 종목 중 {sum(by.values())}개를 시작일에는 고를 수 없습니다: {', '.join(parts)}."
 
 class DialogService:
     def __init__(self, store: JsonStore, repo: Any, md: MarketData, llm: LlmClient, settings: AnalysisSettings) -> None:
@@ -408,14 +425,24 @@ class DialogService:
             return {"constraints.num_holdings": {"target": n, "min": n, "max": n}, "constraints.max_weight_per_stock": cap,
                     "constraints.max_weight_per_sector": round(sec_cap, 2)}  # fmt: skip
 
+        def ups_ko(sp: dict[str, Any]) -> list[str]:
+            """보기가 실제로 올리는 상한 (012: 이미 15% 인 종목당 상한을 '15%로 올려' 라고 썼다, 048: 시작일 보기가 섹터 상한 40% → 50% 를 말없이 올렸다)."""
+            cap, scap = sp["constraints.max_weight_per_stock"], sp["constraints.max_weight_per_sector"]
+            return [f"종목당 상한 {cap:.0%}" for _ in [0] if cap > stock_cap + 1e-9] + [f"섹터당 상한 {scap:.0%}" for _ in [0] if scap > sector_cap + 1e-9]
+
+        def mcap_note(summ: dict[str, Any]) -> str:
+            """최소 시가총액이 테마 관련 종목을 얼마나 뺐는지 (048: 61개 중 45개가 500억 달러 미만이었는데 질문은 테마 넓히기만 권했다)."""
+            k = int((summ.get("by_filter") or {}).get("min_market_cap_usd") or 0)
+            if k <= 0 or float(cons.get("min_market_cap_usd") or 0) <= 0:
+                return ""
+            return f" 테마 관련 종목 {summ.get('n_matched')}개 중 {k}개는 시가총액이 최소 시가총액({usd_ko(cons.get('min_market_cap_usd'))})에 못 미쳐 빠졌습니다."
+
         n_now = int(min(now.get("n_with_metric", 0), now.get("n_candidates", 0)))
         if precheck.get("short_now") and "_ack_few_candidates" not in overrides:
             opts = []
             if n_now >= 2:
                 sp = shrink_patch(n_now, now.get("sector_counts"))
-                cap, scap = sp["constraints.max_weight_per_stock"], sp["constraints.max_weight_per_sector"]
-                # 실제로 올리는 상한만 적는다 (012: 이미 15% 인 종목당 상한을 '15%로 올려' 라고 썼다)
-                ups = [f"종목당 상한 {cap:.0%}" for _ in [0] if cap > stock_cap + 1e-9] + [f"섹터당 상한 {scap:.0%}" for _ in [0] if scap > sector_cap + 1e-9]
+                ups = ups_ko(sp)
                 lab = f"종목 수를 {n_now}개로 줄이고" + (f" {'·'.join(ups)}로 올려" if ups else "") + f" 투자 비율 {1 - cash:.0%}를 모두 배분"
                 opts.append({"value": f"shrink_{n_now}", "label_ko": lab, "patch": sp})
             opts.append({"value": "widen_theme", "label_ko": "테마를 넓혀 다시 해석 (인접 산업 포함)",
@@ -425,7 +452,7 @@ class DialogService:
                 field="constraints.num_holdings", kind="feasibility", priority=1,
                 question_ko=(f"분석 기준일에 선정할 수 있는 종목(테마·선정 기준 통과, 필수 포함 포함)이 {n_now}개로, 최소 종목 수 {nh_min}개(목표 {nh['target']}개)에 못 미칩니다. 어떻게 할까요?"),
                 options=opts, allow_free_text=False,
-                why_ko=_few_why_ko(now.get("sector_counts") or {"": max(n_now, 1)}, stock_cap, sector_cap, cash),
+                why_ko=_few_why_ko(now.get("sector_counts") or {"": max(n_now, 1)}, stock_cap, sector_cap, cash) + mcap_note(now),
             ))  # fmt: skip
             return out  # 후보 부족이 먼저 — 창 축소 질문은 이게 풀린 뒤에
         st = precheck.get("start") or {}
@@ -443,7 +470,8 @@ class DialogService:
                              "patch": {"horizon.backtest_years": float(fs["years"])}})
             if n_start >= 2:
                 sp = shrink_patch(n_start, (st.get("sector_counts") or None))
-                opts.append({"value": f"shrink_{n_start}", "label_ko": f"종목 수를 {n_start}개로 줄여 처음부터 끝까지 같은 종목 수로 (상한 {sp['constraints.max_weight_per_stock']:.0%})", "patch": sp})
+                ups = ups_ko(sp)
+                opts.append({"value": f"shrink_{n_start}", "label_ko": f"종목 수를 {n_start}개로 줄여 처음부터 끝까지 같은 종목 수로" + (f" ({'·'.join(ups)}로 올림)" if ups else ""), "patch": sp})
             if fs:
                 tail = f"답하지 않으면 시작일을 {fs['date']}로 옮겨 평가 기간이 {fs['years']:g}년으로 짧아집니다."
             elif n_start <= 1:
@@ -455,7 +483,7 @@ class DialogService:
                     field="horizon.backtest_years", kind="feasibility", priority=1,
                     question_ko=(f"백테스트 시작일({st.get('date')})에 선정할 수 있는 종목이 {n_start}개로 최소 {nh_min}개에 못 미칩니다. {tail} 어떻게 할까요?"),
                     options=opts, allow_free_text=False,
-                    why_ko="과거에는 상장 전이거나 재무 지표가 없던 종목이 있어 시작일에 뽑을 수 있는 종목이 적을 수 있습니다.",
+                    why_ko=_start_why_ko(st, cons),
                 ))  # fmt: skip
         return out
 

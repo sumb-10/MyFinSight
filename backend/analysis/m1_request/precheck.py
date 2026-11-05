@@ -29,8 +29,8 @@ from backend.pipeline.descriptor import Descriptor
 def signature(normalized: dict[str, Any], intent: dict[str, Any], *, reselect: bool = True, classified: bool = True) -> str:
     d = normalized["derived"]
     c = normalized["constraints"]
-    # v3: 최소 시가총액 자료가 없으면 제외(정책 결정 7) — 예전 규칙으로 센 점검 결과를 다시 쓰지 않게
-    src = {"v": 3, "as_of": str(d["as_of"]), "bt_start": str(d["backtest_start"]), "metric": (intent.get("screen") or {}).get("metric"),
+    # v3: 최소 시가총액 자료가 없으면 제외(정책 결정 7) — 예전 규칙으로 센 점검 결과를 다시 쓰지 않게. v4: 시작일에 빠지는 사유(dropped_by)
+    src = {"v": 4, "as_of": str(d["as_of"]), "bt_start": str(d["backtest_start"]), "metric": (intent.get("screen") or {}).get("metric"),
            "themes": [{k: t.get(k) for k in ("gics_codes", "keywords", "example_tickers", "label_ko", "description_ko")} for t in (intent.get("interpretation") or {}).get("themes", [])],
            "rules": intent.get("exclude_theme_rules"), "reselect": reselect, "classified": classified,
            "cons": {k: c.get(k) for k in ("universe", "num_holdings", "exclude_tickers", "exclude_sectors", "exclude_themes", "must_include_tickers",
@@ -47,6 +47,22 @@ def _summary(day: Any, cand: Any, tag: Any, sel: Any, invest: float) -> dict[str
             "tickers": [s.ticker for s in sel.selected], "capacity": sm.get("weight_capacity"), "invest": round(invest, 4),
             "sector_counts": sm.get("sector_counts") or {}, "cap_needed": (sel.infeasibility or {}).get("cap_needed_for_target"),
             "by_filter": dict(cand.stats.get("by_filter") or {}), "metric": sm.get("metric")}  # fmt: skip
+
+
+def _dropped_by(now_tickers: list[str], cand: Any, sel: Any) -> dict[str, int]:
+    """기준일 선정 종목 중 그날 고를 수 없는 종목의 사유별 수 (07 의 removed_reasons 와 같은 규칙).
+    049: 대화가 '상장 전이거나 재무 지표가 없던 종목' 이라고만 했는데, 실제로는 9개 중 8개가 그날 시가총액이 최소 시가총액(500억 달러)에 못 미쳤다."""
+    f_out = {f.ticker: f.reason for f in getattr(cand, "filtered_out", None) or []}
+    cset = {c.ticker for c in getattr(cand, "candidates", None) or []}
+    rej = {r.ticker: r.reason for r in sel.rejected}
+    picked = {x.ticker for x in sel.selected}
+    out: dict[str, int] = {}
+    for t in now_tickers:
+        if t in picked:
+            continue
+        code = str(f_out.get(t) or ("not_in_candidates" if t not in cset else rej.get(t, "not_selected"))).split("(")[0].split(":")[0].strip()
+        out[code] = out.get(code, 0) + 1
+    return out
 
 
 def precheck(normalized: dict[str, Any], intent: dict[str, Any], desc: Descriptor, md: MarketData, settings: AnalysisSettings,
@@ -91,7 +107,7 @@ def precheck(normalized: dict[str, Any], intent: dict[str, Any], desc: Descripto
     day0 = cal[0].date()
     passed = list(tag.passed_tickers)
     c0, t0, s0, _f0 = selectable_at(md, day0, desc, intent, cons, passed, rid)
-    out["start"] = _summary(day0, c0, t0, s0, invest)
+    out["start"] = {**_summary(day0, c0, t0, s0, invest), "dropped_by": _dropped_by(now["tickers"], c0, s0)}
     n_start = len(s0.selected)
     out["short_at_start"] = n_start < nh_min
     if n_start < nh_min and now["n_selected"] >= nh_min:  # 07 과 같은 이동 규칙으로 최소 종목 수를 채우는 첫 날

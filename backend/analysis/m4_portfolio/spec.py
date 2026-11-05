@@ -12,6 +12,7 @@ from typing import Any
 
 import pandas as pd
 
+from backend.analysis.common.labels import usd_ko
 from backend.analysis.errors import DataMissing
 from backend.analysis.m2_data.market_data import MarketData
 from backend.analysis.m3_selection.retrieve import mcap_warnings, retrieve
@@ -252,6 +253,15 @@ def build_backtest_spec(
     benches = [bench] + [b for b in extra_b if b != bench and b in md.assets]
     cal_bt = end_view.trading_days(as_of, bw.end_date, markets=sorted({md.market_of(t) for t in tickers} | {md.market_of(b) for b in benches}))
     sel_src = sel_bt_obj if sel_bt_obj is not None else selection
+    inf = sel_src.infeasibility
+    n_mc = sum(1 for c in removed_why.values() if str(c).startswith("min_market_cap_usd"))
+    if inf and sel_bt_obj is not None and n_mc:
+        # 시작일 종목이 적은 원인이 사용자의 최소 시가총액(그날 시가총액 기준)이면 해결 방법에도 적는다 (049: 빠진 9개 중 8개가 500억 달러 미만이었는데
+        # '종목당 상한을 올리기 / 테마를 넓히기' 만 나왔다)
+        mc = usd_ko(req["constraints"].get("min_market_cap_usd"))
+        why = f"분석 기준일 선정 종목 중 {n_mc}개는 시작일 시가총액이 최소 시가총액({mc})에 못 미쳐 빠졌습니다"
+        inf = {**inf, "note_ko": f"{inf['note_ko']}. {why}" if inf.get("note_ko") else why,
+               "options_ko": [*inf.get("options_ko", []), f"최소 시가총액({mc})을 낮추기"]}  # fmt: skip
     spec = BacktestSpec(
         request_id=req["request_id"],
         period={"start": bw.start_date, "end": bw.end_date, "as_of": as_of, "trading_days": int(len(cal_bt))},
@@ -265,7 +275,7 @@ def build_backtest_spec(
                    "table": [{"ticker": r["ticker"], "name": r["name"], "sector": r["sector"], "rank": r["rank"], "metric_value": r["metric_value"],
                               "metric_fact_id": r.get("metric_fact_id")} for r in rows],  # 시작일 지표의 인용 ID (예전에는 없어 리포트가 기준일 ID 를 붙였다, 003)
                    "diff_vs_original": {"added": sorted(set(tickers) - set(orig)), "removed": sorted(set(orig) - set(tickers)), "removed_reasons": removed_why},
-                   "infeasibility": sel_src.infeasibility, "sector_overflow": sel_src.summary.get("sector_overflow")},
+                   "infeasibility": inf, "sector_overflow": sel_src.summary.get("sector_overflow")},
         warnings=warnings,
     )  # fmt: skip
     return spec.model_dump(mode="json"), extras

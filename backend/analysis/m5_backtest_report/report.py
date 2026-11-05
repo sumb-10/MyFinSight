@@ -280,10 +280,20 @@ def _wf_changes_note(R: dict[str, Any], chosen: str) -> str:
     return f"{name} walk-forward 구성의 리밸런싱일별 직전 대비 큰 변화 (뉴스와 무관). 이 구성은 선택안이 아니라 기준 비중 구성이므로 선택안의 변화라고 쓰지 않는다"
 
 
+def _top_delta_facts(R: dict[str, Any], chosen: str) -> dict[str, Any]:
+    """walk-forward 뉴스 반영 구성의 날짜별 기준 대비 차이 — 비면 키를 넘기지 않는다 (050). 선택안이 그 구성의 낙폭 맞춤안이면 그 주식 비율로 줄인 값과 그 사실 (048)."""
+    td = B.walkforward_top_deltas(R, chosen=chosen)
+    if not td:
+        return {}
+    m = B.matched_on_wf_bl(R, chosen)
+    return {"top_delta_by_date": td, **({"top_delta_note": f"선택안({B.pf_label(m)})의 주식 비율로 줄인 차이 — 타임라인과 같은 값"} if m else {})}
+
+
 def _wf_changes_facts(R: dict[str, Any], chosen: str, prefix: str) -> dict[str, Any]:
     """walk-forward 구성의 날짜별 '직전 대비' 변화 — 뉴스 반영 구성이 있으면(그쪽 변화를 쓴다) 또는 자료가 없으면 아무 키도 넘기지 않는다."""
     wc = {} if B.walkforward_top_deltas(R) else B.walkforward_weight_changes(R, chosen=chosen)
-    if not wc:
+    # 날짜마다 '변화 없음' 이면 알릴 것이 없다 — 넘기면 선택안과 무관하다는 안내까지 문장으로 옮겼다 (050: 동일비중 walk-forward 는 늘 같은 비중)
+    if not wc or all(v == ["변화 없음"] for v in wc.values()):
         return {}
     return {"weight_changes_by_date": wc, "weight_changes_note": prefix + _wf_changes_note(R, chosen), "weight_changes_largest": B.walkforward_largest_changes(R, chosen)}
 
@@ -349,8 +359,8 @@ def facts_for_interpret(R: dict[str, Any], chosen: str) -> dict[str, Any]:
             "walkforward": ({"dates": R["portfolio"]["walkforward"]["dates"], "news_summary": _news_summary(R),
                              "fallback_dates": next((p for p in R["portfolio"]["walkforward"]["portfolios"] if p["kind"] == "black_litterman"), {}).get("fallback_dates", []),
                              "news_bl_omitted_ko": (R["portfolio"]["walkforward"].get("bl_omitted") or {}).get("reason_ko"),  # 뉴스 반영 구성을 만들지 않은 이유 (없으면 BL 후보 자체가 없다)
-                             "top_delta_by_date": B.walkforward_top_deltas(R),
-                             # 변화 자료가 없으면 키째 넘기지 않는다 (023·046: 빈 자료를 보고 '직전 리밸런싱 대비 변화 자료는 확인할 수 없지만' 이라고 썼다)
+                             # 변화 자료가 없으면 키째 넘기지 않는다 (023·046: 빈 자료를 보고 '직전 리밸런싱 대비 변화 자료는 확인할 수 없지만' 이라고 썼다, 050: 빈 top_delta_by_date)
+                             **_top_delta_facts(R, chosen),
                              **_wf_changes_facts(R, chosen, "weight_changes_by_date = "),
                              "results": [{"id": x["id"], "label": x["name_ko"], "headline": x["headline"]} for x in bt["portfolios"] if x.get("mode") == "walkforward"]}
                             if R["portfolio"].get("walkforward") else None),
@@ -385,7 +395,8 @@ def _subtitle_ko(R: dict[str, Any], chosen: str) -> str:
     """머리말 부제 = 요청 해석. 선택안의 주식 비중이 요청 투자 비율과 다르면 '요청:' 을 붙인다
     (027: '투자 비율 85%를 배분합니다' 바로 옆에 '낙폭 맞춤안 (주식 44.6% + 현금 55.4%)' 가 나와 서로 어긋나 보였다)."""
     # 대화가 끝난 뒤의 머리말에 '확인이 필요합니다' 같은 미정 문장은 빼다 (041: 묻지도 않은 유니버스를 '확인이 필요' 로 남겼다)
-    # 백테스트 시작일 조건(대화 보기에서 알린 결과)을 바람처럼 적은 문장도 머리말에서는 뺀다 (044: '백테스트 시작 시에는 … 60%만 운용하길 원합니다' — 사용자가 바란 게 아님)
+    # 백테스트 시작일 조건(대화 보기에서 알린 결과)을 바람처럼 적은 문장도 머리말에서는 뺀다 (044: '백테스트 시작 시에는 … 60%만 운용하길 원합니다' — 사용자가 바란 게 아님).
+    # 사실로 적은 문장은 둔다 — 같은 문장에 필수 포함·제외 조건이 함께 있다 (032 'CVX를 반드시 포함하며, … 백테스트 시작 시점에는 … 11개 종목으로 평가합니다')
     # 확정 요청과 다른 투자기간을 말하는 문장도 뺀다 (045: 아이디어의 '약 15년' 을 머리말에 썼는데 분석은 10년)
     yrs = float((R["request"].get("horizon") or {}).get("target_years") or 0)
 
@@ -396,8 +407,11 @@ def _subtitle_ko(R: dict[str, Any], chosen: str) -> str:
             return x
         return x[: m.start()] + m.group(1) + f"{yrs:g}년" + x[m.end():]
 
+    def start_wish(x: str) -> bool:
+        return bool(re.search(r"백테스트|시작\s*(?:시|때|시점)", x) and re.search(r"원합니다|원하|바랍니다|희망", x))
+
     text = " ".join(fix_horizon(x) for x in re.split(r"(?<=[.!?다])\s+", R["intent"]["interpretation"]["summary_ko"].strip())
-                    if x and not B._PENDING.search(x) and "백테스트 시작" not in x)  # fmt: skip
+                    if x and not B._PENDING.search(x) and not start_wish(x))  # fmt: skip
     cc = B.current_composition(R, chosen)
     want = 1 - float(R["request"]["constraints"].get("min_cash_ratio") or 0)
     if cc and abs((1 - cc[1]) - want) > 0.01:
@@ -561,7 +575,7 @@ def facts_for_narrate(R: dict[str, Any], chosen: str, interp: dict[str, Any]) ->
                                                                          for r in B.allocation_table(R, chosen)["rows"]],
                                         "as_of_now": R["selection"]["as_of_now"]["as_of"], "allocation_now": _allocation_now(R, chosen), "cash_breakdown": cash_breakdown(R, p)},
                              "walkforward": R["portfolio"].get("walkforward") and {"dates": R["portfolio"]["walkforward"]["dates"], "news_summary": _news_summary(R),
-                                                                                   "top_delta_by_date": B.walkforward_top_deltas(R),
+                                                                                   **_top_delta_facts(R, chosen),
                                                                                    "news_bl_capped_note_ko": (B.news_effect(R) or {}).get("capped_note_ko"),
                                                                                    **_wf_changes_facts(R, chosen, "")}},
             "interpretation": {**interp, "window": R["backtest"]["period"]},

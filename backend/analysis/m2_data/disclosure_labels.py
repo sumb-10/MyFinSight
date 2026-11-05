@@ -46,6 +46,12 @@ def event_type_of(rec: dict[str, Any]) -> str | None:
         text = f"{rec.get('form') or ''}{rec.get('title') or ''}".replace(" ", "")
         if _HALT.search(text) and not _DELIST.search(text):
             return "trading_halt"
+    # SEC 8-K 1.01(계약) + 2.03(직접 금융 채무 발생) = 차입·사채·신용공여 계약이다. 수집기는 1.01 을 먼저 봐 '주요 계약' 으로 저장해,
+    # 뷰 LLM 이 판매·공급 계약처럼 읽었다 (048: Vistra 사채 발행 8-K 세 건으로 'VST 오름' 뷰 → 저변동성 요청에서 비중 +2.6%p)
+    if et == "material_agreement" and (rec.get("source") or "").upper().startswith("SEC"):
+        items = {x.strip() for x in str(rec.get("items") or "").split(",")}
+        if "2.03" in items:
+            return "debt_obligation"
     return et
 
 

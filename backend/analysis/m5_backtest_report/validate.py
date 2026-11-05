@@ -380,7 +380,17 @@ def validate(res: dict[str, Any], targets: dict[str, Any], intent: dict[str, Any
     s = best["sharpe"]
     if s is not None:
         top = s >= max(sharpes) - 1e-12
-        parts.append(f"Sharpe {s:.2f}로 가장 높음" if top and s > 0 else (f"Sharpe {s:.2f} (음수, 가장 덜 나쁨)" if top else f"Sharpe {s:.2f}"))
+        # 순위 키와 같은 반올림(소수 4자리)으로 동점을 센다 (049: 후보 14개의 Sharpe 가 0.388246~0.388249 로 같고 사용자가 고른 기준 비중이 1위였는데
+        # 'Sharpe 0.39로 가장 높음' 이라고 했다)
+        same = [t for t in cands if key(t)[:-1] == key(best)[:-1]]  # 마지막 키(사용자 기준 비중)만 다른 후보
+        n_sh = sum(1 for t in cands if t["sharpe"] is not None and round(t["sharpe"], 4) == round(s, 4))
+        if len(same) > 1:
+            mine = not key(best)[-1]
+            parts.append(f"Sharpe {s:.2f} — 성과가 같은 후보 {len(same)}개 중 " + ("사용자가 고른 기준 비중이라 1위" if mine else "하나"))
+        elif top and n_sh > 1:
+            parts.append(f"Sharpe {s:.2f} — 같은 값 {n_sh}개 중 최대낙폭이 가장 작음")
+        else:
+            parts.append(f"Sharpe {s:.2f}로 가장 높음" if top and s > 0 else (f"Sharpe {s:.2f} (음수, 가장 덜 나쁨)" if top else f"Sharpe {s:.2f}"))
     if pb.get("kind") == "matched":
         inv = float(sum(pb["target_weights"].values()))
         base_name = (ports.get(base_id) or {}).get("name_ko") or NAMES_KO.get(base_id, base_id)

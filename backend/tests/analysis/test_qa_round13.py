@@ -100,6 +100,9 @@ def test_round15_report_texts(monkeypatch):
     # 045 재실행: 테마와 기간이 한 문장이면 문장째 빼지 않고 기간만 확정값으로
     R["intent"]["interpretation"]["summary_ko"] = "미국 결제·핀테크 기업 중 수익성을 중시해 투자하고, 투자 기간은 약 15년으로 해석합니다. 마스터카드(MA)는 반드시 포함합니다."
     assert RP._subtitle_ko(R, "x") == "미국 결제·핀테크 기업 중 수익성을 중시해 투자하고, 투자 기간은 10년으로 해석합니다. 마스터카드(MA)는 반드시 포함합니다."
+    # 시작일 조건을 사실로 적은 문장은 둔다 (같은 문장에 필수 포함이 있다 — 032)
+    R["intent"]["interpretation"]["summary_ko"] = "셰브론(CVX)을 반드시 포함하며, 목표 종목 수는 15개이고 백테스트 시작 시점에는 선정 가능한 11개 종목으로 평가합니다."
+    assert RP._subtitle_ko(R, "x") == R["intent"]["interpretation"]["summary_ko"]
     assert RP._plain_llm("投자 기간") == "투자 기간"
     wf = {"portfolios": [{"id": "wf_bl_news", "kind": "black_litterman", "weights_by_date": {}}]}
     assert RP._wf_changes_facts({"portfolio": {"walkforward": wf, "targets": {"baseline": {"id": "equal_weight"}}}, "backtest": {"portfolios": []}}, "x", "") == {}
@@ -226,3 +229,65 @@ def test_round15_047_stuck_views_listing_market_and_labels():
                         "backtest_spec": {"rebalance_rule": {"enabled": True}}}}  # fmt: skip
     tl = RB.timeline(R2, "bl_03")
     assert [len(x["views"]) for x in tl["items"]] == [1, 0] and tl["items"][0]["views"][0]["summary_ko"] == "MSFT 오름"
+
+
+def test_tied_candidates_do_not_claim_the_highest_sharpe():
+    """049: 시작일 5종목 × 상한 10% 라 14개 후보가 모두 같은 비중·성과(Sharpe 0.388246~0.388249)였고 사용자가 고른 기준 비중이 1위였는데
+    추천 사유가 'Sharpe 0.39로 가장 높음'. 순위 키와 같은 반올림으로 동점을 세고 실제로 순위를 정한 규칙을 적는다."""
+    from backend.analysis.m5_backtest_report.validate import validate
+    from backend.analysis.settings import AnalysisSettings
+    from backend.tests.analysis.test_qa_round9_selection import REQ, _intent_answer, _port
+
+    n = 60
+    mine = _port("equal_weight", "template", {"A": 0.5, "B": 0.5}, -0.10, 0.3882461, n, "동일비중")
+    other = _port("market_cap", "template", {"A": 0.5, "B": 0.5}, -0.10, 0.3882489, n, "시가총액비중")
+    bench = {"id": "SPY", "kind": "benchmark", "name_ko": "SPY", "metrics": {"risk": {"max_drawdown": -0.25, "ann_vol": 0.15}, "return": {"cagr": 0.09}},
+             "headline": {"sharpe": 0.4, "final_value_usd": 12_000.0, "view_hit_ratio": None}, "money": {"irr_annual": 0.09}}  # fmt: skip
+    res = {"request_id": "r", "period": {"trading_days": n}, "portfolios": [other, mine], "benchmark": bench, "benchmarks": [bench]}
+    req = {**REQ, "constraints": {**REQ["constraints"], "max_weight_per_stock": 0.5, "max_weight_per_sector": 1.0, "min_cash_ratio": 0.0}}
+    out = validate(res, {"baseline": {"id": "equal_weight"}, "backtest_spec": {"selection": {}}}, _intent_answer([], 10.0), req, {}, lambda t: t, AnalysisSettings())
+    assert out["chosen_id"] == "equal_weight"
+    assert "성과가 같은 후보 2개 중 사용자가 고른 기준 비중이라 1위" in out["recommended"]["reason_ko"] and "가장 높음" not in out["recommended"]["reason_ko"]
+
+
+def test_start_shortfall_reason_names_the_real_filters():
+    """049: 시작일 종목이 5개뿐인 이유를 대화가 '상장 전이거나 재무 지표가 없던 종목' 이라고 했는데, 빠진 9개 중 8개는 그날 시가총액이
+    사용자의 최소 시가총액(500억 달러)에 못 미친 것이었다. 실행 전 점검이 사유별 수를 세고 질문 설명이 그 수를 쓴다."""
+    from types import SimpleNamespace as NS
+
+    from backend.analysis.m1_request.dialog import _start_why_ko
+    from backend.analysis.m1_request.precheck import _dropped_by
+
+    cand = NS(filtered_out=[NS(ticker="AEP", reason="min_market_cap_usd"), NS(ticker="D", reason="min_market_cap_usd(estimated)")],
+              candidates=[NS(ticker="AMT"), NS(ticker="NEE")])  # fmt: skip
+    sel = NS(selected=[NS(ticker="NEE")], rejected=[NS(ticker="AMT", reason="metric_missing (eps<=0 or no financials)")])
+    by = _dropped_by(["AEP", "D", "AMT", "NEE", "XYZ"], cand, sel)
+    assert by == {"min_market_cap_usd": 2, "metric_missing": 1, "not_in_candidates": 1}
+    assert _start_why_ko({"dropped_by": by}, {"min_market_cap_usd": 5e10}) == (
+        "분석 기준일 선정 종목 중 4개를 시작일에는 고를 수 없습니다: 그날 시가총액이 최소 시가총액(500억 달러)에 못 미침 2개, "
+        "그날 선정 지표 자료 없음 1개, 그날 후보 검색에 없음(상장 전이거나 조건 밖) 1개.")
+    assert _start_why_ko({}, {}).startswith("과거에는 상장 전이거나")  # 사유를 모르면 예전 문장
+
+
+def test_round16_financing_filings_and_scaled_walkforward_deltas():
+    """048: Vistra 의 사채 발행 8-K(1.01 + 2.03)를 수집기가 '주요 계약' 으로 저장해 뷰 LLM 이 'VST 오름' 근거로 썼다 → 읽을 때 '채무·보증 부담'.
+    048: 서술의 날짜별 차이가 뉴스 반영 구성(투자 70%) 값이라 바로 아래 맞춤안(주식 35%) 타임라인의 두 배였다 → 같은 비율로 줄인다."""
+    from backend.analysis.m2_data.disclosure_labels import event_type_of
+    from backend.analysis.m5_backtest_report import report as RP
+    from backend.analysis.m5_backtest_report import report_blocks as RB
+
+    sec = {"source": "SEC", "form": "8-K", "event_type": "material_agreement"}
+    assert event_type_of({**sec, "items": "1.01,2.03,9.01"}) == "debt_obligation"
+    assert event_type_of({**sec, "items": "1.01,9.01"}) == "material_agreement"
+    assert event_type_of({**sec, "source": "DART", "items": "1.01,2.03"}) == "material_agreement"
+    d = "2024-01-02"
+    R = {"portfolio": {"walkforward": {"portfolios": [{"id": "wf_bl_news", "kind": "black_litterman", "weights_by_date": {d: {"A": 0.40, "B": 0.30}}},
+                                                     {"id": "wf_equal_weight", "kind": "template", "weights_by_date": {d: {"A": 0.35, "B": 0.35}}}]},
+                       "targets": {"baseline": {"id": "equal_weight"}}},
+         "backtest": {"portfolios": [{"id": "dd_match_wf_bl_news", "kind": "matched", "base_id": "wf_bl_news", "name_ko": "낙폭 맞춤안",
+                                      "weights_by_date": {d: {"A": 0.20, "B": 0.15}}}, {"id": "equal_weight", "kind": "template"}]}}  # fmt: skip
+    assert RB.walkforward_top_deltas(R) == {d: ["A +5.0%p", "B -5.0%p"]}
+    assert RB.walkforward_top_deltas(R, chosen="dd_match_wf_bl_news") == {d: ["A +2.5%p", "B -2.5%p"]}
+    f = RP._top_delta_facts(R, "dd_match_wf_bl_news")
+    assert f["top_delta_by_date"] == {d: ["A +2.5%p", "B -2.5%p"]} and "주식 비율로 줄인 차이" in f["top_delta_note"]
+    assert "top_delta_note" not in RP._top_delta_facts(R, "equal_weight")

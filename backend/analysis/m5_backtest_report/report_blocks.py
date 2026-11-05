@@ -139,7 +139,8 @@ def _pp(x: float) -> str:
 def _delta_ko(pairs) -> str:
     """기준 대비 비중 변화 → 'A +3.3%p, B -1.2%p'. 0.05%p 안은 계산 잡음이라 빼고, 다 빠지면 '변화 없음' (018: 모든 종목이 상한에 걸려 ±0.0%p 가 '주요 변화' 로 보였다)."""
     shown = [f"{t} {x * 100:+.1f}%p" for t, x in pairs if abs(x) >= 0.0005]
-    return ", ".join(shown) or "변화 없음 (종목·섹터 상한에 묶임)"
+    # 이유는 붙이지 않는다 — 어느 상한이 묶었는지는 카드 문장(view_stuck_note)이 뷰마다 적는다 (049: 섹터는 30%·20% 로 상한 50% 에 안 걸렸는데 '종목·섹터 상한에 묶임')
+    return ", ".join(shown) or "변화 없음"
 
 
 def _notes_ko(text: str) -> str:
@@ -223,7 +224,12 @@ def excluded_table(R):
 
 def diff_table(R):
     d = R["selection"]["backtest_as_of"]["diff_vs_original"]
-    rows = [{"k": "백테스트용 재선정에서 추가된 종목", "v": ", ".join(d["added"]) or "없음"}, {"k": "빠진 종목", "v": ", ".join(d["removed"]) or "없음"}]
+    # 빠진 종목은 그날 사유별로 (049: 9개를 사유 없이 나열 — 8개가 그날 시가총액이 최소 시가총액에 못 미친 것이었다)
+    why: dict[str, list[str]] = {}
+    for r in R["selection"]["backtest_as_of"].get("removed_reasons_ko") or []:
+        why.setdefault(r.get("reason_ko") or "", []).append(r["ticker"])
+    removed = " · ".join(f"{', '.join(ts)} ({k})" if k else ", ".join(ts) for k, ts in sorted(why.items(), key=lambda x: -len(x[1]))) if why else ", ".join(d["removed"])
+    rows = [{"k": "백테스트용 재선정에서 추가된 종목", "v": ", ".join(d["added"]) or "없음"}, {"k": "빠진 종목", "v": removed or "없음"}]
     return table("분석 기준일 선정 목록과 백테스트 시작일 재선정 목록의 차이", [("k", "구분", "text"), ("v", "종목", "text")], rows,
                  note="백테스트는 시작일 당시에 알 수 있던 정보만으로 같은 규칙을 다시 적용합니다. 그래서 목록이 달라질 수 있습니다.")  # fmt: skip
 
@@ -322,7 +328,11 @@ def delta_bar(R, pid):
     p = next((x for x in R["portfolio"]["targets"]["portfolios"] if x["id"] == pid), None)
     if not p:
         return None
-    return {"type": "bar", "title_ko": f"{p.get('title_ko') or p['name_ko']}: 기준 비중 대비 변화", "items": [{"label": t, "value": v} for t, v in sorted(p["delta_vs_baseline"].items(), key=lambda x: -x[1])], "format": "pp"}
+    # 0.05%p 안은 계산 잡음 — 다 잡음이면 차트를 그리지 않는다 (049: 움직이지 않은 세트의 차트에 'SO −0.00%p' 같은 막대만 있었다, 카드는 '변화 없음')
+    items = [{"label": t, "value": v} for t, v in sorted(p["delta_vs_baseline"].items(), key=lambda x: -x[1]) if abs(v) >= 0.0005]
+    if not items:
+        return None
+    return {"type": "bar", "title_ko": f"{p.get('title_ko') or p['name_ko']}: 기준 비중 대비 변화", "items": items, "format": "pp"}
 
 
 def sector_bar(R, chosen):
@@ -446,7 +456,9 @@ def validation_tables(R, chosen):
               "warns": ", ".join(f"{c['rule']} {c['name_ko']}" + (" (허용 초과)" if c["status"] == "flag" else "") for c in r["checks"] if c["status"] in ("warn", "flag")) or "-"} for r in R["validation"]["results"]]  # fmt: skip
     # 손실 시 매도·투자 경험 없음이면 같은 조건에서 낙폭 맞춤안을 먼저 둔다 — 이 단계가 빠진 설명은 016 처럼 Sharpe 가 더 낮은 추천과 어긋나 보였다
     cautious = bool((R["validation"].get("criteria") or {}).get("cautious"))
-    order = "목표수익 → 비교지수 → 허용 낙폭 초과 폭 → " + ("같은 조건이면 낙폭 맞춤안 우선(손실 시 매도·투자 경험 없음) → " if cautious else "") + "Sharpe"
+    # 동점 처리까지 적는다 (049: 14개 후보가 모두 같은 성과라 사용자가 고른 기준 비중으로 정해졌는데 설명은 'Sharpe' 에서 끝났다)
+    order = ("목표수익 → 비교지수 → 허용 낙폭 초과 폭 → " + ("같은 조건이면 낙폭 맞춤안 우선(손실 시 매도·투자 경험 없음) → " if cautious else "")
+             + "Sharpe → 최대낙폭 → 사용자가 고른 기준 비중")  # fmt: skip
     t2 = table("전체 포트폴리오 검증 요약", [("name", "포트폴리오", "text"), ("status", "판정", "text"), ("fails", "미통과 항목", "text"), ("warns", "주의·표시 항목", "text")], rows2,
                note=f"추천은 순위({order}) 1위입니다. 미통과는 내부 점검(상한·자료 무결성)에 걸린 경우만 생깁니다.")  # fmt: skip
     return t1, t2
@@ -561,18 +573,28 @@ def walkforward_largest_changes(R, chosen: str | None = None, k: int = 3) -> lis
     return [f"{d} {t} {x * 100:+.1f}%p" for d, t, x in sorted((m for m in moves if abs(m[2]) >= 0.0005), key=lambda m: -abs(m[2]))[:k]]
 
 
-def walkforward_top_deltas(R, k: int = 3) -> dict[str, list[str]]:
-    """walk-forward 뉴스 반영 구성의 날짜별 '기준 비중 대비 큰 변화' (14b 입력: 예전에는 없어서 '비중 변화가 결과에 없다' 고 썼다)."""
+def matched_on_wf_bl(R, chosen: str | None) -> dict[str, Any] | None:
+    """선택안이 walk-forward 뉴스 반영 구성의 낙폭 맞춤안이면 그 포트폴리오 (비중 차이를 그 주식 비율로 줄여 보일 때)."""
+    p = next((x for x in R["backtest"]["portfolios"] if x["id"] == chosen), None) if chosen else None
+    return p if p and p.get("kind") == "matched" and str(p.get("base_id") or "") == "wf_bl_news" else None
+
+
+def walkforward_top_deltas(R, k: int = 3, chosen: str | None = None) -> dict[str, list[str]]:
+    """walk-forward 뉴스 반영 구성의 날짜별 '기준 비중 대비 큰 변화' (14b 입력: 예전에는 없어서 '비중 변화가 결과에 없다' 고 썼다).
+    chosen 이 그 구성의 낙폭 맞춤안이면 타임라인처럼 그날 맞춤안의 주식 비율로 줄인다 (048: 서술은 'AMT -2.0%p' 인데 바로 아래 타임라인은 -1.0%p)."""
     wf = R["portfolio"].get("walkforward") or {}
     ports = {p["id"]: p for p in wf.get("portfolios") or []}
     bl = next((p for p in ports.values() if p.get("kind") == "black_litterman"), None)
     base = ports.get(f"wf_{R['portfolio']['targets']['baseline']['id']}")
     if not bl or not base:
         return {}
+    pw_by = (matched_on_wf_bl(R, chosen) or {}).get("weights_by_date") or {}
     out = {}
     for d, w in (bl.get("weights_by_date") or {}).items():
         b = (base.get("weights_by_date") or {}).get(d) or {}
-        top = sorted(((t, w[t] - b.get(t, 0.0)) for t in w), key=lambda x: -abs(x[1]))[:k]
+        pw = pw_by.get(d)
+        f = (sum(pw.values()) / sum(w.values())) if pw and sum(w.values()) > 0 else 1.0
+        top = sorted(((t, (w[t] - b.get(t, 0.0)) * f) for t in w), key=lambda x: -abs(x[1]))[:k]
         out[d] = [f"{t} {x * 100:+.1f}%p" for t, x in top if abs(x) >= 0.0005] or ["변화 없음(기준 비중)"]
     return out
 
