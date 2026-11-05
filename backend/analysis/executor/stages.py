@@ -388,7 +388,7 @@ def _news_effect_ko(ports: list[dict[str, Any]], base: dict[str, float]) -> str:
     """구성 요약의 뉴스 뷰 효과. '뉴스 뷰 적용' 은 어느 세트든 기준 비중에서 1e-4 넘게 움직였을 때만
     (029: 모든 종목이 상한 10% 라 다섯 세트 모두 기준 비중과 같았는데(차이 최대 1e-6) '뉴스 뷰 적용' 이라고 했다). 10w 의 '비중을 바꾼 날' 과 같은 기준."""
     if not ports:
-        return "기준 비중 유지"
+        return "뉴스 뷰 없음 — 비중 규칙만"  # 069: '기준 비중 유지' 는 추천이 다른 규칙(동일비중)이어도 기준 비중만 쓴 것처럼 읽혔다
 
     def moved(p: dict[str, Any]) -> bool:
         w = p.get("weights") or {}

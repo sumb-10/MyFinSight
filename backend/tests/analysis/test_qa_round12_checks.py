@@ -224,7 +224,7 @@ def test_targets_summary_says_news_views_applied_only_when_a_weight_moved(monkey
     assert _targets_summary(monkeypatch, tmp_path, [*stuck[:4], _bl(5, 0.02)]).endswith("뉴스 반영 구성 5개 (뉴스 뷰 적용)")  # 한 세트라도 1e-4 넘게 움직이면
     # 최적화가 상한에 걸렸다는 기록이 없으면 이유를 지어내지 않는다
     assert _targets_summary(monkeypatch, tmp_path, [_bl(1, 0.0, capped=False)]).endswith("(뉴스 뷰는 있었지만 기준 비중과 같음)")
-    assert _targets_summary(monkeypatch, tmp_path, []) == "비중 규칙 1개 + 뉴스 반영 구성 0개 (기준 비중 유지)"
+    assert _targets_summary(monkeypatch, tmp_path, []) == "비중 규칙 1개 + 뉴스 반영 구성 0개 (뉴스 뷰 없음 — 비중 규칙만)"
 
 
 def test_forward_summary_applies_the_same_rule(monkeypatch, tmp_path):
@@ -238,7 +238,7 @@ def test_forward_summary_applies_the_same_rule(monkeypatch, tmp_path):
         return stages.st_forward(ctx)
 
     assert run([_bl(k, 1e-6) for k in range(1, 6)]) == "기준일 2025-01-14 현재 구성: 비중 규칙 1개 + 뉴스 반영 구성 5개 (뉴스 뷰는 있었지만 상한에 묶여 기준 비중과 같음)"
-    assert run([_bl(1, 0.02)]).endswith("(뉴스 뷰 적용)") and run([]).endswith("뉴스 반영 구성 0개 (기준 비중 유지)")
+    assert run([_bl(1, 0.02)]).endswith("(뉴스 뷰 적용)") and run([]).endswith("뉴스 반영 구성 0개 (뉴스 뷰 없음 — 비중 규칙만)")
 
 
 # ───────────────────────── 031: 시작일 선정 요약의 후보 수 ─────────────────────────

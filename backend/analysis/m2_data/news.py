@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 KR_TITLE_ALIASES: dict[str, tuple[str, ...]] = {
     "035420": ("네이버", "NAVER"), "010120": ("LS ELECTRIC", "LS일렉트릭"), "005380": ("현대차", "현대자동차"), "015760": ("한국전력", "한전"),
     "055550": ("신한금융",), "010950": ("에쓰오일",), "012450": ("한화에어로",), "036460": ("가스공사",), "161390": ("한국타이어",),
-    "034020": ("두산에너빌",), "047810": ("KAI",),
+    "034020": ("두산에너빌",), "047810": ("KAI",), "052690": ("한국전력기술",), "051600": ("한전케이피에스",),
     # 검토에서 빠지던 흔한 제목 표기 (최근 60일 기준 빠진 행 수: SKT 814, DB손보 277, 포스코인터 184, SK이노 141, 카뱅 126 …)
     "017670": ("SKT",), "005830": ("DB손보",), "047050": ("포스코인터",), "096770": ("SK이노",), "323410": ("카뱅",), "064400": ("LG CNS",),
     "361610": ("SKIET",), "018260": ("삼성SDS",), "081660": ("휠라",), "036570": ("엔씨소프트", "엔씨"), "137310": ("SD바이오센서",),
@@ -152,16 +152,33 @@ def title_aliases(md: MarketData, tickers: Sequence[str]) -> dict[str, list[str]
     이름을 모르는 종목·미국 종목은 넣지 않는다 (= 검사하지 않음)."""
     from backend.pipeline.news_labels import KR_NAME_ALIASES, core_name
 
+    def names_of(t: str, a: dict[str, Any]) -> tuple[str, list[str]]:
+        name = core_name(a.get("name"))
+        code = str(a.get("ticker") or t.split(".")[0])
+        names = [name, code, *KR_TITLE_ALIASES.get(code, ()), *KR_NAME_ALIASES.get(code, ())] if name else []
+        names += [s for s in (_GROUP_PREFIX.sub("", name or ""), _HOLDING_SUFFIX.sub("", name or "")) if name and s != name and len(s) >= 3]
+        return code, list(dict.fromkeys(n for n in names if n))
+
+    # 다른 한국 종목 이름이 이 종목 이름을 품고 있으면(한국전력 ⊂ 한국전력기술, 한전 ⊂ 한전KPS·한전기술·대한전선) 제목 검사 전에 그 긴 이름을 지운다
+    # — '!' 를 붙여 넘긴다 (069: 한전기술 기사 '한국전력기술, AI 리더십…' 이 한국전력 뉴스로 들어갔다)
+    kr = getattr(md, "_kr_title_names", None)
+    if kr is None:
+        kr = [names_of(t, a) for t, a in md.assets.items() if md.market_of(t) == "KR"]
+        try:
+            md._kr_title_names = kr  # type: ignore[attr-defined]
+        except AttributeError:
+            pass
     out: dict[str, list[str]] = {}
     for t in tickers:
         a = md.assets.get(t) or {}
-        name = core_name(a.get("name"))
-        if not name or md.market_of(t) != "KR":
+        if not core_name(a.get("name")) or md.market_of(t) != "KR":
             continue
-        code = str(a.get("ticker") or t.split(".")[0])
-        names = [name, code, *KR_TITLE_ALIASES.get(code, ()), *KR_NAME_ALIASES.get(code, ())]
-        names += [s for s in (_GROUP_PREFIX.sub("", name), _HOLDING_SUFFIX.sub("", name)) if s != name and len(s) >= 3]
-        out[a.get("asset_id") or md.asset_id(t)] = list(dict.fromkeys(names))
+        code, names = names_of(t, a)
+        mine = {n.lower() for n in names}
+        hangul = [n for n in names if re.search(r"[가-힣]", n)]
+        shadows = sorted({m for c, ms in kr if c != code for m in ms
+                          if m.lower() not in mine and any(n in m and n != m for n in hangul)})  # fmt: skip
+        out[a.get("asset_id") or md.asset_id(t)] = names + [f"!{m}" for m in shadows]
     return out
 
 

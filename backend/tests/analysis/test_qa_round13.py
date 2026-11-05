@@ -214,7 +214,9 @@ def test_round15_047_stuck_views_listing_market_and_labels():
          "weights": {"MSFT": 0.15, "GOOGL": 0.15, "ADBE": 0.05, "INTU": 0.1}, "delta_vs_baseline": {"MSFT": 0.0, "GOOGL": 0.0, "ADBE": -0.05, "INTU": 0.05}}
     assert RB.view_stuck_note(R, p) == "뉴스 뷰 3개 중 2개는 뷰가 걸린 종목(Microsoft·Alphabet)이 종목당 상한(15%)에 묶여 있어 그 종목 비중을 바꾸지 못했습니다 (기준 비중과 같음)"
     p2 = {**p, "views_applied": [*p["views_applied"], {"type": "relative", "long": ["GOOGL"], "short": ["INTU0"], "direction": "up"}]}
-    assert "상한·섹터 예산 같은 제약 때문에" in RB.view_stuck_note(R, p2)  # 상대 뷰의 약한 쪽은 종목당 상한 탓이 아니다
+    # 상대 뷰의 약한 쪽은 종목당 상한 탓이 아니다 — 이유가 섞이면 종목마다 따로 적는다 (066)
+    note2 = RB.view_stuck_note(R, p2)
+    assert "Microsoft: 종목당 상한 15%" in note2 and "Alphabet: 상한·섹터 예산 같은 제약" in note2
     assert RB.view_stuck_note(R, {**p, "views_applied": p["views_applied"][2:]}) is None
     assert RP._stuck_fact(R, p) == {"views_not_moving_ko": RB.view_stuck_note(R, p)} and RP._stuck_fact(R, {"views_applied": []}) == {}
     assert RP._LISTED_KO["US"].startswith("미국 시장 상장")

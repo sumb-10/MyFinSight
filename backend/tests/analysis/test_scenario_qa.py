@@ -2013,7 +2013,7 @@ def test_news_effect_explains_views_on_pinned_stocks():
     views["2024-01-02"][1] = {"type": "relative", "long": ["033780.KS"], "short": ["030200.KS"]}
     assert "상한·섹터 예산 같은 제약 때문에" in news_effect(R)["capped_note_ko"]
     views["2024-01-02"][1] = {"type": "absolute", "direction": "down", "long": ["033780.KS"], "short": []}
-    assert "상한·섹터 예산 같은 제약 때문에" in news_effect(R)["capped_note_ko"]
+    assert "(KT: 종목당 상한 15%, KT&G: 상한·섹터 예산 같은 제약)" in news_effect(R)["capped_note_ko"]  # 이유가 섞이면 종목마다 (066)
 
 
 def test_round11_collect_and_report_texts(monkeypatch):

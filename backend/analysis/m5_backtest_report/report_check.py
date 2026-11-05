@@ -84,6 +84,23 @@ def known_numbers(obj: Any, acc: set[float]) -> None:
         acc.add(round(v))
 
 
+def _string_numbers(obj: Any, acc: set[float]) -> None:
+    """문자열 안의 숫자(쉼표·소수 포함)를 그대로 아는 숫자로. LLM 문장이 아닌 코드 문구에만 쓴다."""
+    if isinstance(obj, dict):
+        for v in obj.values():
+            _string_numbers(v, acc)
+    elif isinstance(obj, list):
+        for v in obj:
+            _string_numbers(v, acc)
+    elif isinstance(obj, str):
+        for m in re.finditer(r"\d[\d,]*(?:\.\d+)?", obj):
+            try:
+                v = float(m.group(0).replace(",", ""))
+            except ValueError:
+                continue
+            acc.update({round(v, 2), round(v, 1), round(v)})
+
+
 def paragraphs_src(doc: dict[str, Any]) -> list[tuple[str, str, str]]:
     """(섹션 id, 문장, 출처) — paragraphs 블록과 cards 의 text_ko. 출처는 블록의 `src`(14a/14b/14c/code), 없으면 "code"."""
     out = []
@@ -160,6 +177,8 @@ def check(doc: dict[str, Any], R: dict[str, Any], settings: AnalysisSettings) ->
     known: set[float] = set()
     known_numbers({k: v for k, v in R.items() if k not in ("backtest", "evidence_index")}, known)
     known_numbers({k: v for k, v in R["backtest"].items() if k != "series_dates"}, known)
+    # 코드가 만든 검증 문구·공지 안의 숫자도 아는 숫자다 (067: R2 의 '과거 1년 구간 517개' 를 서술이 옮겼는데 숫자 칸에 없어 '결과에 없는 숫자' 메모가 보였다)
+    _string_numbers([R.get("validation"), R.get("notices")], known)
     for sid, text in paras:
         plain = CITE_RE.sub("", text)
         for m in NUM_RE.finditer(plain):

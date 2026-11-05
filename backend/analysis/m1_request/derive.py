@@ -20,16 +20,30 @@ UNIT_MONTHS = {"1m": 1, "1q": 3, "6m": 6, "1y": 12}
 CALENDAR = {"1m": "month_start", "1q": "quarter_start", "6m": "half_year_start", "1y": "year_start"}
 
 
-def rebalance_rule(rb: dict[str, Any], settings: AnalysisSettings) -> RebalanceRule:
+def rebalance_label_ko(count: int, unit: str, start: dt.date | None = None) -> str:
+    """리밸런싱 규칙 문구. 날짜는 시작일이 속한 기간부터 count 번째 기간마다 그 기간의 첫 거래일이라(backtest_engine.rebalance_dates),
+    시작일을 알면 실제로 리밸런싱하는 달을 적는다 (068: 6개월 × 2 를 '매년 첫 거래일' 이라 했는데 시작이 10월이라 실제로는 매년 7월 1일)."""
+    months = UNIT_MONTHS[unit] * count
+    head = {1: "매월", 3: "분기마다", 6: "반기마다", 12: "매년"}.get(months, f"{months // 12}년마다" if months % 12 == 0 else f"{months}개월마다")
+    tail = " 첫 거래일에 목표 비중으로 리밸런싱"
+    if start is None or months == 1 or (months % 12 and 12 % months):
+        return head + tail
+    step = UNIT_MONTHS[unit]
+    first = ((start.month - 1) // step) * step + 1  # 시작일이 속한 기간의 첫 달
+    if months % 12 == 0:
+        return f"{head} {first}월{tail}"
+    ms = sorted({(first - 1 + k * months) % 12 + 1 for k in range(12 // months)})
+    return f"{head}({'·'.join(str(m) for m in ms)}월){tail}"
+
+
+def rebalance_rule(rb: dict[str, Any], settings: AnalysisSettings, start: dt.date | None = None) -> RebalanceRule:
     count, unit = int(rb["count"]), rb["unit"]
     if count == 0:
         return RebalanceRule(count=0, unit=unit, enabled=False, description_ko="리밸런싱 없음 (매수 후 보유, 적립금은 목표 비중대로 투자)")
     if unit == "2w":
         td = settings.backtest.rebalance_trading_days["2w"] * count
         return RebalanceRule(count=count, unit=unit, enabled=True, trading_days=td, description_ko=f"{td}거래일(약 {2 * count}주)마다 리밸런싱")
-    months = UNIT_MONTHS[unit] * count
-    label = {1: "매월", 3: "분기마다", 6: "반기마다", 12: "매년"}.get(months, f"{months}개월마다")
-    return RebalanceRule(count=count, unit=unit, enabled=True, calendar=CALENDAR[unit], description_ko=f"{label} 첫 거래일에 목표 비중으로 리밸런싱")
+    return RebalanceRule(count=count, unit=unit, enabled=True, calendar=CALENDAR[unit], description_ko=rebalance_label_ko(count, unit, start))
 
 
 def derive(req: UserRequest | dict[str, Any], md: MarketData, settings: AnalysisSettings, *, as_of: dt.date | None = None) -> NormalizedRequest:
@@ -99,7 +113,7 @@ def derive(req: UserRequest | dict[str, Any], md: MarketData, settings: Analysis
     derived = Derived(
         as_of=as_of, fx_rate=rate, fx_date=fx_date, fx_source=fx_src,
         initial_amount_usd=round(r.capital.initial_amount / rate, 2), monthly_contribution_usd=round(r.capital.monthly_contribution / rate, 2),
-        rebalance_rule=rebalance_rule(r.constraints.rebalance.model_dump(), settings),
+        rebalance_rule=rebalance_rule(r.constraints.rebalance.model_dump(), settings, start=bt_start),
         price_data_start=data_start, price_data_end=ceiling, backtest_start=bt_start, backtest_end=as_of, markets=markets, warnings=warnings,
         backtest_fx_rate=bt_rate, backtest_fx_date=bt_fx_date,
         initial_amount_usd_at_backtest_start=round(r.capital.initial_amount / bt_rate, 2),

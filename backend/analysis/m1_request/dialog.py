@@ -537,12 +537,24 @@ class DialogService:
             need = now.get("cap_needed") or round(invest, 2)
             mix = sector_counts_ko(counts)  # 한국어 질문에 GICS 영어 이름(Industrials)을 쓰지 않는다
             cash_left = 1 - float(now["capacity"])
+            # 백테스트 시작일 구성은 섹터 구성이 달라 같은 상한으로도 다 못 담을 수 있다 — 보기에 그 사실을 적고, 시작일까지 다 담는 상한도 보기로
+            # (070: '섹터 상한 45% 로 올려 투자 비율 90% 를 모두 배분' 을 골랐는데 2023 년 시작일 목록은 정보기술 18개라 75% 만 투자됐다 — 60% 가 필요했다)
+            st = (precheck or {}).get("start") or {}
+            st_counts = {k: int(v) for k, v in (st.get("sector_counts") or {}).items()}
+            stock_cap = float(cons.get("max_weight_per_stock", 1.0))
+            st_at = min(invest, sum(min(k * stock_cap, float(need)) for k in st_counts.values())) if st_counts else None
+            short_start = st_at is not None and st_at < invest - 0.005
+            st_need = st.get("cap_needed")
+            options = [{"value": float(need), "label_ko": f"이번 분석에서는 섹터 상한을 {float(need):.0%}로 올려 투자 비율 {invest:.0%}를 모두 배분"
+                        + (f" (백테스트 시작일 구성은 {st_at:.0%}까지만)" if short_start else "")}]  # fmt: skip
+            if short_start and st_need and float(need) + 1e-9 < float(st_need) <= 1.0 + 1e-9:
+                options.append({"value": float(st_need), "label_ko": f"섹터 상한을 {float(st_need):.0%}로 올려 백테스트 시작일 구성까지 투자 비율 {invest:.0%}를 모두 배분"})
+            options.append({"value": cap, "label_ko": f"섹터 상한 {cap:.0%} 유지 (현금 {cash_left:.0%})"})
             out.append(QuestionProposal(  # 배분 가능 비율 부족 = 실행 가능성 문제 → 'feasibility' (시작일 질문보다 먼저 정렬되게, 010)
                 field="constraints.max_weight_per_sector", kind="feasibility", priority=1,
                 question_ko=(f"예상 선정 종목 {now.get('n_selected')}개가 {mix}로 몰려 있어 섹터당 상한 {cap:.0%}로는 {float(now['capacity']):.0%}만 투자되고 "
                              f"현금이 {cash_left:.0%} 남습니다" + (f"(최소 현금 {1 - invest:.0%} 포함)" if invest < 1 - 1e-9 else "") + ". 어떻게 할까요?"),
-                options=[{"value": float(need), "label_ko": f"이번 분석에서는 섹터 상한을 {float(need):.0%}로 올려 투자 비율 {invest:.0%}를 모두 배분"},
-                         {"value": cap, "label_ko": f"섹터 상한 {cap:.0%} 유지 (현금 {cash_left:.0%})"}],
+                options=options,
                 allow_free_text=False,
                 why_ko="섹터 상한은 여러 업종에 나눌 때 쓰는 보호 장치라, 한 업종에 몰린 테마에서는 뜻한 것보다 현금이 많이 남습니다.",
             ))  # fmt: skip

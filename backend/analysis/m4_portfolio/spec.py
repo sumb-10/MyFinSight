@@ -101,6 +101,26 @@ def selectable_at(md: MarketData, day: dt.date, desc: Descriptor, intent: dict[s
     return cand, tag, sel, facts
 
 
+def _mcap_would_help(inf: dict[str, Any], tickers: list[str], desc: Descriptor, cons: dict[str, Any]) -> bool:
+    """최소 시가총액으로 빠진 종목 중 하나라도 섹터 상한에 여유가 있는 섹터(또는 새 섹터)에 속하나 — 그래야 최소 시가총액을 낮추면 투자 비율이 오른다."""
+    counts = {str(k): int(v) for k, v in (inf.get("sector_counts") or {}).items()}
+    stock_cap, sector_cap = float(cons.get("max_weight_per_stock") or 1.0), float(cons.get("max_weight_per_sector") or 1.0)
+    for t in tickers:
+        sec = ((desc.by_ticker(t) or {}).get("gics") or {}).get("sector", {}).get("name_en", "")
+        if counts.get(sec, 0) * stock_cap < sector_cap - 1e-9:
+            return True
+    return False
+
+
+def _rebalance_rule_at(rule: dict[str, Any], start: dt.date) -> dict[str, Any]:
+    """실제 백테스트 시작일로 리밸런싱 문구를 다시 쓴다 — 시작일을 옮기면 리밸런싱하는 달도 바뀐다 (068)."""
+    from backend.analysis.m1_request.derive import rebalance_label_ko
+
+    if not rule.get("enabled", True) or int(rule.get("count") or 0) == 0 or rule.get("unit") == "2w":
+        return rule
+    return {**rule, "description_ko": rebalance_label_ko(int(rule["count"]), rule["unit"], start)}
+
+
 def theme_passed(tagging: Any) -> list[str]:
     """분석 기준일 테마 판정을 통과한 종목 (해당 + 신뢰도 기준 이상)."""
     mc = float(getattr(tagging, "min_confidence", 0.5) or 0.0)
@@ -314,12 +334,15 @@ def build_backtest_spec(
     cal_bt = end_view.trading_days(as_of, bw.end_date, markets=sorted({md.market_of(t) for t in tickers} | {md.market_of(b) for b in benches}))
     sel_src = sel_bt_obj if sel_bt_obj is not None else selection
     inf = sel_src.infeasibility
-    n_mc = sum(1 for c in removed_why.values() if str(c).startswith("min_market_cap_usd"))
-    if inf and sel_bt_obj is not None and n_mc:
+    mc_out = [t for t, c in removed_why.items() if str(c).startswith("min_market_cap_usd")]
+    n_mc = len(mc_out)
+    if inf and sel_bt_obj is not None and n_mc and _mcap_would_help(inf, mc_out, desc, req["constraints"]):
         # 시작일 종목이 적은 원인이 사용자의 최소 시가총액(그날 시가총액 기준)이면 해결 방법에도 적는다 (049: 빠진 9개 중 8개가 500억 달러 미만이었는데
-        # '종목당 상한을 올리기 / 테마를 넓히기' 만 나왔다)
+        # '종목당 상한을 올리기 / 테마를 넓히기' 만 나왔다). 빠진 종목이 모두 이미 섹터 상한이 찬 섹터면 다시 넣어도 투자 비율이 오르지 않으니 적지 않는다
+        # (070: 빠진 6개가 모두 정보기술인데 정보기술은 섹터 상한 45% 가 차 있었다)
         mc = usd_ko(req["constraints"].get("min_market_cap_usd"))
-        why = f"분석 기준일 선정 종목 중 {n_mc}개는 시작일 시가총액이 최소 시가총액({mc})에 못 미쳐 빠졌습니다"
+        # 날짜를 앞에 둔다 — '시작일' 을 빼고 옮기면 지금 종목이 시가총액 미달인 것처럼 읽혔다 (067: 삼양식품은 지금 68억 달러로 23% 보유 중)
+        why = f"백테스트 시작일({as_of})에는 분석 기준일 선정 종목 중 {n_mc}개가 그날 시가총액이 최소 시가총액({mc})에 못 미쳐 시작일 목록에서 빠졌습니다"
         inf = {**inf, "note_ko": f"{inf['note_ko']}. {why}" if inf.get("note_ko") else why,
                "options_ko": [*inf.get("options_ko", []), f"최소 시가총액({mc})을 낮추기"]}  # fmt: skip
     spec = BacktestSpec(
@@ -330,7 +353,7 @@ def build_backtest_spec(
                  "currency": c["currency"], "initial_amount_krw": c["initial_amount"] if c["currency"] == "KRW" else None,
                  "monthly_contribution_krw": c.get("monthly_contribution", 0) if c["currency"] == "KRW" else None,
                  "fx_rate": rate, "fx_date": fx_date, "fx_source": fx_src},
-        rebalance_rule=d["rebalance_rule"], benchmark=bench, extra_benchmarks=extra_b,
+        rebalance_rule=_rebalance_rule_at(d["rebalance_rule"], as_of), benchmark=bench, extra_benchmarks=extra_b,
         selection={"source": source, "metric": selection.summary["metric"], "tickers": tickers,
                    "table": [{"ticker": r["ticker"], "name": r["name"], "sector": r["sector"], "rank": r["rank"], "metric_value": r["metric_value"],
                               "metric_fact_id": r.get("metric_fact_id")} for r in rows],  # 시작일 지표의 인용 ID (예전에는 없어 리포트가 기준일 ID 를 붙였다, 003)

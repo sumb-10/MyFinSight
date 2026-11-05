@@ -259,6 +259,12 @@ def _asof_news(R: dict[str, Any]) -> tuple[str, list[dict[str, Any]], list[dict[
     return win, news, discl
 
 
+def _win_of(R: dict[str, Any]) -> list[str] | None:
+    """분석 기준일 뉴스 창 [시작, 끝] (현재 구성의 뉴스 창)."""
+    w = ((R["portfolio"].get("forward") or {}).get("news_window") or {}).get("window")
+    return list(B.shown_window(w)) if w else None  # 화면의 '뉴스 창 …' 과 같은 표기
+
+
 def _forward_news_note(R: dict[str, Any]) -> str | None:
     """뉴스를 끈 분석의 기준일 구성 설명용 (009: '뉴스 창과 헤드라인 건수가 없고 인용할 evidence id 도 없다' 고 썼는데, 같은 리포트가 기준일 헤드라인을 인용했다)."""
     if (R["intent"].get("news_tilt") or {}).get("enabled"):
@@ -313,6 +319,21 @@ def _partial_years_note(R: dict[str, Any], p: dict[str, Any]) -> str | None:
     else:
         parts = ([f"{ys[0]}년은 {start}부터"] if cut_start else []) + ([f"{ys[-1]}년은 {end}까지"] if cut_end else [])
     return (" · ".join(parts) + "의 일부 기간 수익률 (한 해 전체가 아님)") if parts else None
+
+
+def _infeasibility_fact(R: dict[str, Any]) -> dict[str, Any] | None:
+    """시작일 배분 한도 사실 + 언제의 일인지 + 지금 구성은 얼마나 담는지 (070: 시작일 목록의 75% 한도를 '분석 기준일 선정 종목은 섹터 상한 때문에
+    투자 비율이 제한됐다' 고 써서 다 담는 지금 구성(90%)에 섹터 상한을 올리라고 권했다)."""
+    inf = R["selection"]["backtest_as_of"].get("infeasibility")
+    if not inf:
+        return None
+    bt_day, now_day = R["selection"]["backtest_as_of"]["as_of"], R["selection"]["as_of_now"]["as_of"]
+    invest = 1.0 - float(R["request"]["constraints"].get("min_cash_ratio") or 0.0)
+    cap_now = (R["selection"]["as_of_now"].get("summary") or {}).get("weight_capacity")
+    now = (f"분석 기준일({now_day}) 구성은 투자 비율 {invest:.0%}를 모두 담음 — 지금 구성의 투자 비율이 상한 때문에 제한됐다고 쓰지 않음"
+           if cap_now is not None and float(cap_now) >= invest - 0.005 else
+           f"분석 기준일({now_day}) 구성도 {float(cap_now):.0%}까지만 담음" if cap_now is not None else None)  # fmt: skip
+    return {**inf, "when_ko": f"백테스트 시작일({bt_day}) 선정 종목의 배분 한도", **({"now_ko": now} if now else {})}
 
 
 def _same_top_note(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -417,7 +438,7 @@ def facts_for_interpret(R: dict[str, Any], chosen: str) -> dict[str, Any]:
                                           "headline": {**x["headline"], **({"view_hit_ratio_next_rb": None} if B.views_moved(R, x) is False else {})}}
                                          for x in bt["portfolios"] if x.get("mode") == "walkforward"]}
                             if R["portfolio"].get("walkforward") else None),
-            "selection_infeasibility": R["selection"]["backtest_as_of"].get("infeasibility"), "sector_overflow": R["selection"]["backtest_as_of"].get("sector_overflow"),
+            "selection_infeasibility": _infeasibility_fact(R), "sector_overflow": R["selection"]["backtest_as_of"].get("sector_overflow"),
             "baseline": {"id": base["id"], "headline": base["headline"], "money": base["money"]}, "comparison": B.comparison_table(R)["rows"],
             "validation": {"criteria": val["criteria"], "chosen_checks": (next((r for r in val["results"] if r["id"] == chosen), None) or next((a for a in val.get("alternatives", []) if a["id"] == chosen), {})).get("checks"),
                            "summary": val["summary"], "per_portfolio_status": {r["id"]: r["status"] for r in val["results"]}, "recommended": ({**val["recommended"], "reason_ko": reason_prose_ko(val["recommended"].get("reason_ko"))} if val.get("recommended") else None),
@@ -470,7 +491,10 @@ def _subtitle_ko(R: dict[str, Any], chosen: str) -> str:
                     if x and not B._PENDING.search(x) and not start_wish(x))  # fmt: skip
     cc = B.current_composition(R, chosen)
     want = 1 - float(R["request"]["constraints"].get("min_cash_ratio") or 0)
-    if cc and abs((1 - cc[1]) - want) > 0.01:
+    # 지금 구성의 종목 수가 요청 목표보다 적어도 '요청:' (069: 머리말 '15개를 선정' 인데 선정은 11개)
+    target = int(((R["request"]["constraints"].get("num_holdings") or {}).get("target")) or 0)
+    short = bool(cc) and target > 0 and sum(1 for x in cc[0].values() if x > 1e-6) < target
+    if cc and (abs((1 - cc[1]) - want) > 0.01 or short):
         return f"요청: {text}"
     return text
 
@@ -572,7 +596,10 @@ def facts_for_market(R: dict[str, Any]) -> dict[str, Any]:
             "benchmark": {"label": bench["name_ko"], "cagr": pct(bh.get("cagr")), "period_return": pct(bh.get("period_return")), "max_drawdown": pct(abs(bh.get("max_drawdown") or 0))},
             "news": picked, "news_count_by_ticker": {t: n_by_ticker.get(t, 0) for t in sorted(held)},
             "news_dates": {"from": nd[0], "to": nd[-1], "n": len(news)} if nd else None,
-            "news_note": "news 는 종목마다 돌아가며 고른 최대 60건 — 종목별 전체 건수는 news_count_by_ticker, 기간은 news_dates",
+            # 종목마다 가장 최근 N건까지만 담는다는 사실과 뉴스 창을 같이 (067: 창은 09-24~10-07 인데 종목마다 최근 10건이 10-06~10-07 에 몰려
+            # '헤드라인 관찰 기간은 10-06~10-07 로 한정, 종목별 10건씩' 이라 써서 같은 리포트의 '창 14일·40건' 과 어긋났다)
+            "news_note": (f"news 는 종목마다 돌아가며 고른 최대 60건. 뉴스 창은 {' ~ '.join(_win_of(R) or [])}이고 종목마다 가장 최근 {int(((R.get('parameters') or {}).get('news') or {}).get('per_ticker') or 10)}건까지만 담았다 — "
+                          "news_count_by_ticker 는 그 상한 안의 건수(그 종목 뉴스 전체가 아님), news_dates 는 실제 담긴 기사의 날짜 범위(뉴스 창과 다를 수 있음). 둘을 함께 말할 때 이 차이를 밝힘"),
             "disclosures": discl[:40], "event_summary": event_summary, "disclosure_dates": {"from": dd[0], "to": dd[-1], "n": len(discl)} if dd else None,
             "news_window": f.get("news_window"),
             "forward_views": [v["summary_ko"] for pp in f.get("portfolios", []) for v in pp["views_applied"]]}  # fmt: skip
@@ -630,7 +657,7 @@ def facts_for_narrate(R: dict[str, Any], chosen: str, interp: dict[str, Any]) ->
                                                                                                               if R["intent"]["news_tilt"]["enabled"] else "해당 없음 (뉴스 반영을 꺼서 BL 구성을 만들지 않음)"),
                              "news_tilt_enabled": R["intent"]["news_tilt"]["enabled"], "start_views": _shown_views(R["portfolio"]["views"]),
                              "scenarios": [{"id": s["id"], "title": s.get("title_ko"), "narrative": (s.get("portfolio_view") or "").split("\n")[0], "views": [v["summary_ko"] for v in s["views_applied"]],
-                                            "top_delta": sorted(s["delta_vs_baseline"].items(), key=lambda x: -abs(x[1]))[:3], **_stuck_fact(R, s)} for s in R["portfolio"]["targets"]["portfolios"]],
+                                            "top_delta": B.set_deltas(s, 3), **_stuck_fact(R, s)} for s in R["portfolio"]["targets"]["portfolios"]],
                              # 시작일 배분과 지금 배분을 나눠 이름 붙인다 (005: 시작일 비중을 '최종 구성' 이라 쓰고 소수 '14.6818%' 를 그대로 옮겼다)
                              # 맞춤안이면 무엇을 줄였는지 (046: 뉴스 반영 walk-forward 를 줄인 맞춤안을 '동일비중에 낙폭 맞춤을 적용' 이라고 썼다)
                              "chosen": {"id": chosen, "label": B.pf_label(p), "mode": p.get("mode"), "rebalance_targets_ko": _rebalance_targets_ko(p, _rebalances(R)),
@@ -647,7 +674,7 @@ def facts_for_narrate(R: dict[str, Any], chosen: str, interp: dict[str, Any]) ->
             "forward": ({"as_of": f["as_of"], "news_window": _shown_news_window(f.get("news_window")), "fallback_reason": f.get("fallback_reason_ko"), "news_note_ko": _forward_news_note(R),
                          **_chosen_news_use(R, chosen, p),
                          "portfolios": [{"id": x["id"], "title": x.get("title_ko"), "narrative": (x.get("portfolio_view") or "").split("\n")[0], "views": [v["summary_ko"] for v in x["views_applied"]],
-                                         "evidence_ids": sorted({i for v in x["views_applied"] for i in v.get("evidence_ids", [])}), "top_delta": sorted(x["delta_vs_baseline"].items(), key=lambda y: -abs(y[1]))[:3],
+                                         "evidence_ids": sorted({i for v in x["views_applied"] for i in v.get("evidence_ids", [])}), "top_delta": B.set_deltas(x, 3),
                                          **_stuck_fact(R, x)} for x in f["portfolios"]],
                          "evidence": {i: {"date": e["published_at"], "publisher": e.get("publisher"), "title": e["title"]} for i, e in f["evidence"].items()}} if f else None),
             "data_quality": R.get("data_quality"), "limitations": B.limitations(R), "parameters": {r["k"]: r["v"] for r in B.parameters_table(R)["rows"]}}  # fmt: skip

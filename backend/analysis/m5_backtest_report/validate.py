@@ -131,7 +131,7 @@ def evaluate_checks(p, crit, n_days, expected_rb, sector_of, drift_tol, short_wi
     ok1 = mdd <= tol + 1e-9
     cks.append(check("R1", "최대낙폭", "flag", ok1, mdd, tol,
                      f"최대낙폭 {mdd:.1%} vs 허용 {tol:.1%}" + (f" (같은 기간 {bench_name} {bench_mdd:.1%})" if bench_mdd is not None else "")
-                     + ("" if ok1 else f" — 허용보다 {mdd - tol:.1%}p 큼")))  # fmt: skip
+                     + ("" if ok1 else f" — 허용보다 {gap_pp(mdd - tol)} 큼")))  # fmt: skip
     if bench_mdd is not None:  # 두 낙폭이 같은 때 일어났는지 보지 않으므로 '시장 전체가 빠진 구간' 같은 원인은 말하지 않는다 (009: 시장 반등 뒤 업종 하락이었다)
         cks.append(check("R1b", "비교지수 대비 낙폭", "info", mdd <= bench_mdd, mdd, bench_mdd,
                          f"비교지수보다 낙폭이 {'작음' if mdd <= bench_mdd else '큼'} ({mdd:.1%} vs {bench_mdd:.1%})" + (" — 허용 낙폭은 넘었지만 같은 기간 비교지수의 최대낙폭보다는 작습니다" if (not ok1 and mdd <= bench_mdd) else "")))  # fmt: skip
@@ -250,6 +250,12 @@ def row_of(p, status, extra=None):
             **(extra or {})}  # fmt: skip
 
 
+def gap_pp(x: float) -> str:
+    """낙폭 차이 %p — 0.05%p 아래는 소수 둘째 자리까지 (070: 0.03%p 초과를 '허용보다 0.0%p 큼' 이라고 적었다)."""
+    x = max(0.0, float(x))
+    return f"{x * 100:.2f}%p" if 0 < x < 0.0005 else f"{x:.1%}p"
+
+
 def cautious_reason_ko(req: dict[str, Any]) -> str:
     """보수적으로 다룰 성향 조건 중 실제로 해당하는 것만 (F14: 둘 중 하나만 해당해도 '손실 시 매도·투자 경험 없음' 을 다 적었다)."""
     return " · ".join(x for x, on in (("손실 시 매도", req["risk"].get("loss_reaction") == "sell"),
@@ -295,7 +301,7 @@ def verdict_for(*, mdd: float, tol: float, st: dict[str, str], base_invested: fl
     if lookahead:  # 시작일 재선정 없이 지금 목록으로 과거를 평가 — 초록 '추천' 만 보이면 초보자가 성과를 그대로 믿는다 (054)
         cautions.append("시작일 재선정 없이 지금 목록으로 평가(성과가 실제보다 좋게 보일 수 있음)")
     if mdd > tol + 1e-9:
-        cautions.append(f"허용 낙폭 초과 ({mdd - tol:.1%}p)")
+        cautions.append(f"허용 낙폭 초과 ({gap_pp(mdd - tol)})")
     if st.get("R2") == "warn":
         cautions.append("목표수익 미달")
     if st.get("R3") == "warn":
@@ -412,7 +418,7 @@ def validate(res: dict[str, Any], targets: dict[str, Any], intent: dict[str, Any
         parts.append("목표수익은 창이 짧아 참고만")
     ex = best["excess_cagr"] or 0.0
     parts.append(f"{crit['benchmark']} 대비 초과 CAGR {excess_pp_ko(best.get('cagr'), (((res.get('benchmark') or {}).get('metrics') or {}).get('return') or {}).get('cagr'), ex)}")
-    parts.append(f"최대낙폭 {mdd_b:.1%} vs 허용 {tol_user:.1%}" + (f" (여유 {tol_user - mdd_b:.1%}p)" if mdd_b <= tol_user + 1e-9 else f" ({mdd_b - tol_user:.1%}p 초과)"))
+    parts.append(f"최대낙폭 {mdd_b:.1%} vs 허용 {tol_user:.1%}" + (f" (여유 {gap_pp(tol_user - mdd_b)})" if mdd_b <= tol_user + 1e-9 else f" ({gap_pp(mdd_b - tol_user)} 초과)"))
     sharpes = [t["sharpe"] for t in cands if t["sharpe"] is not None]
     s = best["sharpe"]
     if s is not None:

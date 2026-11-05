@@ -95,10 +95,16 @@ def _name_re(name: str) -> re.Pattern[str]:
 
 def _title_mentions(title: str, names: Iterable[str]) -> bool:
     """제목에 이름 중 하나가 있나. 한글이 든 이름은 띄어쓰기를 무시한 부분 일치
-    (조사가 붙는다: '네이버가')."""
+    (조사가 붙는다: '네이버가'). '!' 로 시작하는 이름은 이 회사 이름을 품은 다른 회사 이름이라 먼저 지운다 (한국전력 ⊂ 한국전력기술)."""
+    names = list(names)
     low = (title or "").lower()
+    for sh in sorted((str(n)[1:].lower() for n in names if str(n or "").startswith("!")), key=len, reverse=True):
+        if sh:
+            low = re.sub(r"\s*".join(map(re.escape, "".join(sh.split()))), " ", low)  # 띄어 쓴 꼴도
     flat = "".join(low.split())
     for n in names:
+        if str(n or "").startswith("!"):
+            continue
         n = " ".join(str(n or "").lower().split())
         if n and ("".join(n.split()) in flat if _HANGUL.search(n) else _name_re(n).search(low)):
             return True
