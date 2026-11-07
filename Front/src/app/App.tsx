@@ -24,6 +24,7 @@ const ReportDetail = lazy(() => import("../features/report/ReportDetail").then((
 const ComparisonScreen = lazy(() => import("../features/report/ComparisonScreen").then((m) => ({ default: m.ComparisonScreen })))
 // 목업 모드 표시·개발용 패널: 개발 환경 + ?mock=1 일 때만 불러온다. 환경 조건을 그대로 써야 운영 빌드에서 import 가 빠진다 (mocks/mode.ts 참고).
 const MockChrome = import.meta.env.DEV || import.meta.env.VITE_ENABLE_MOCK === "1" ? lazy(() => import("../mocks/MockChrome")) : null
+const TutorialScreen = lazy(() => import("../features/tutorial/TutorialScreen").then((m) => ({ default: m.TutorialScreen })))  // 리포트 보는 법 둘러보기 (예시 리포트, 운영 빌드에서도 동작)
 const PaperScreen = lazy(() => import("../features/paper/PaperScreen").then((m) => ({ default: m.PaperScreen })))
 
 export function Sidebar({ route }: { route: Route }) {
@@ -88,6 +89,7 @@ function Screen({ route }: { route: Route }) {
     case "report": return <Suspense fallback={<Loading label="리포트 화면을 여는 중…" />}><ReportDetail reportId={route.reportId} sec={route.sec} company={route.company} rb={route.rb} /></Suspense>
     case "paper": return <Suspense fallback={<Loading />}><PaperScreen paperId={route.paperId} /></Suspense>
     case "comparison": return <Suspense fallback={<Loading />}><ComparisonScreen comparisonId={route.comparisonId} /></Suspense>
+    case "tutorial": return <Suspense fallback={<Loading label="둘러보기를 여는 중…" />}><TutorialScreen /></Suspense>
     case "not-found": return <EmptyState title="페이지를 찾을 수 없습니다" description={`주소 ${route.path} 에 해당하는 화면이 없습니다.`} action={<Button onClick={() => navigate({ page: "home" })}>홈으로</Button>} />
   }
   if (status === "loading") return null
@@ -109,7 +111,7 @@ export default function App() {
   const route = useHashRoute()
   const { profile, status } = useProfile()
   // 프로필이 없으면 처음 설정으로 안내 (프로필 화면·리포트 열람은 허용)
-  if (status === "ready" && !profile && !["profile", "reports", "report", "not-found"].includes(route.page)) {
+  if (status === "ready" && !profile && !["profile", "reports", "report", "tutorial", "not-found"].includes(route.page)) {
     navigate({ page: "profile", mode: "setup" })
   }
   return (

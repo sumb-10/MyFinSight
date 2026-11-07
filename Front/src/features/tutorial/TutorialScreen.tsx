@@ -1,0 +1,53 @@
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { Compass, Home } from "lucide-react"
+import { ServiceContext } from "../../app/providers"
+import { navigate } from "../../app/router"
+import type { ReportDoc } from "../../api/types"
+import { Button, ErrorState, Loading } from "../../ui"
+import { ReportDetail } from "../report/ReportDetail"
+import { Coachmark } from "./Coachmark"
+import { TOUR_STEPS } from "./steps"
+import { createTutorialService, loadTutorialDoc, TUTORIAL_REPORT_ID } from "./tutorialService"
+
+/** 「리포트 보는 법 둘러보기」(#/tutorial): 예시 리포트를 읽기 전용으로 띄우고 코치마크로 7단계를 안내한다.
+ *  실제 서버·목업 서비스와 상관없이 예시 데이터만 쓰고, 쓰기 동작은 모두 막는다. */
+export function TutorialScreen({ load = loadTutorialDoc }: { load?: () => Promise<ReportDoc> }) {
+  const [doc, setDoc] = useState<ReportDoc | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [step, setStep] = useState(0)
+  const [touring, setTouring] = useState(true)
+  const [done, setDone] = useState(false)
+  useEffect(() => {
+    let alive = true
+    load().then((d) => { if (alive) setDoc(d) }, (e) => { if (alive) setErr(e instanceof Error ? e.message : String(e)) })
+    return () => { alive = false }
+  }, [load])
+  const svc = useMemo(() => (doc ? createTutorialService(doc) : null), [doc])
+  const close = useCallback(() => { setTouring(false); setDone(true) }, [])
+  const next = useCallback(() => { if (step >= TOUR_STEPS.length - 1) close(); else setStep((s) => s + 1) }, [step, close])
+  const prev = useCallback(() => setStep((s) => Math.max(0, s - 1)), [])
+  const restart = () => { setStep(0); setDone(false); setTouring(true); window.scrollTo({ top: 0 }) }
+
+  if (err) return <ErrorState title="예시 리포트를 열지 못했습니다" message={err} retry={() => window.location.reload()} />
+  if (!doc || !svc) return <Loading label="예시 리포트를 준비하는 중…" />
+  return (
+    <div className="space-y-5">
+      <div role="note" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950">
+        <p className="flex items-center gap-2 font-semibold"><Compass className="size-4 shrink-0" aria-hidden />예시 데이터로 보는 화면입니다. 실제 분석 결과가 아니며, 버튼을 눌러도 아무것도 실행되지 않습니다.</p>
+        <div className="flex gap-2">
+          {!touring && <Button variant="secondary" onClick={restart}>처음부터 다시 보기</Button>}
+          <Button onClick={() => navigate({ page: "home" })}><Home className="size-4" />내 분석 시작하기</Button>
+        </div>
+      </div>
+      {done && (
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+          둘러보기를 마쳤습니다. 아래 예시 리포트는 자유롭게 펼쳐 볼 수 있습니다. 준비가 되면 「내 분석 시작하기」로 내 투자 아이디어를 분석해 보세요.
+        </div>
+      )}
+      <ServiceContext.Provider value={svc}>
+        <ReportDetail reportId={TUTORIAL_REPORT_ID} readOnly />
+      </ServiceContext.Provider>
+      {touring && <Coachmark steps={TOUR_STEPS} index={step} onPrev={prev} onNext={next} onClose={close} />}
+    </div>
+  )
+}

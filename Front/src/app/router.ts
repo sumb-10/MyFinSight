@@ -11,6 +11,7 @@ export type Route =
   | { page: "report"; reportId: string; sec?: string; company?: string; rb?: number }
   | { page: "paper"; paperId?: string }
   | { page: "comparison"; comparisonId: string }
+  | { page: "tutorial" }
   | { page: "not-found"; path: string }
 
 export const routePath = (r: Route): string => {
@@ -31,6 +32,7 @@ export const routePath = (r: Route): string => {
     }
     case "paper": return r.paperId ? `#/paper/${r.paperId}` : "#/paper"
     case "comparison": return `#/comparisons/${r.comparisonId}`
+    case "tutorial": return "#/tutorial"
     case "not-found": return r.path
   }
 }
@@ -57,6 +59,7 @@ export const parseRoute = (hash: string = window.location.hash): Route => {
   if (a === "reports") return { page: "reports" }
   if (a === "paper") return { page: "paper", paperId: b || undefined }
   if (a === "comparisons" && b) return { page: "comparison", comparisonId: b }
+  if (a === "tutorial") return { page: "tutorial" }
   return { page: "not-found", path: hash }
 }
 

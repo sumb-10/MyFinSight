@@ -169,6 +169,7 @@ function RunView({ runId }: { runId: string }) {
               </div>
             ))}
             {r.status === "running" && current.length === 0 && <p className="text-sm text-slate-600">다음 단계를 준비하고 있습니다.</p>}
+            {active && <button type="button" onClick={() => navigate({ page: "tutorial" })} className="text-sm font-semibold text-blue-700 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500">기다리는 동안 리포트 보는 법 둘러보기</button>}
             {active && (
               <div className="border-t border-slate-100 pt-4">
                 {!confirmCancel ? <Button variant="danger" onClick={() => setConfirmCancel(true)} disabled={busy !== ""}><X className="size-4" />분석 취소</Button>
