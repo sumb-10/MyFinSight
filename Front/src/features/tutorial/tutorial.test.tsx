@@ -55,6 +55,26 @@ describe("리포트 보는 법 둘러보기", () => {
     expect(screen.queryByTestId("coachmark")).toBeNull()
   }, 20000)
 
+  it("둘러보기 중에는 사용자 스크롤을 막고, 끝나면 원래대로 푼다", async () => {
+    show()
+    await tour()
+    const html = document.documentElement
+    expect(html.style.overflow).toBe("hidden")
+    const wheel = new WheelEvent("wheel", { cancelable: true, bubbles: true })
+    window.dispatchEvent(wheel)
+    expect(wheel.defaultPrevented).toBe(true)
+    const pgdn = new KeyboardEvent("keydown", { key: "PageDown", cancelable: true, bubbles: true })
+    window.dispatchEvent(pgdn)
+    expect(pgdn.defaultPrevented).toBe(true)
+    fireEvent.click(screen.getByRole("button", { name: "다음" }))
+    expect(html.style.overflow).toBe("hidden")  // 단계를 넘겨도 잠금 유지
+    fireEvent.click(screen.getByRole("button", { name: "건너뛰기" }))
+    expect(html.style.overflow).toBe("")
+    const wheel2 = new WheelEvent("wheel", { cancelable: true, bubbles: true })
+    window.dispatchEvent(wheel2)
+    expect(wheel2.defaultPrevented).toBe(false)  // 완료 화면에서는 스크롤 가능
+  }, 20000)
+
   it("둘러보기 중에는 모의투자 시작·조건 수정 같은 쓰기 동작을 막는다", async () => {
     show()
     await tour()
