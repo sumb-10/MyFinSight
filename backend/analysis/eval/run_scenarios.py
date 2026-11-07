@@ -156,49 +156,54 @@ def normalize_request(req: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     if tc and tc != "USD":
         notes.append(f"capital.trading_currency {tc} → USD (서비스는 USD 로 계산, 표시만 KRW)")
         req["capital"]["trading_currency"] = "USD"
+    cons = req.get("constraints") or {}
+    for k in ("allow_leverage", "allow_short"):  # 서비스는 레버리지·공매도를 지원하지 않아 프로필 저장이 거부된다 → 나머지 흐름을 시험하려고 끈다
+        if cons.get(k):
+            notes.append(f"constraints.{k} true → false (서비스 미지원: 프로필 저장이 거부되므로 시험을 위해 끔)")
+            cons[k] = False
+    hz = req.get("horizon") or {}
+    if float(hz.get("target_years") or 0) > 10:  # 프로필 설계 범위 1~10년 (schemas/request.py) → 넘으면 저장이 거부된다 (013: 15년)
+        notes.append(f"horizon.target_years {hz['target_years']} → 10 (서비스 범위 1~10년: 프로필 저장이 거부되므로 시험을 위해 줄임)")
+        hz["target_years"] = 10
     return req, notes
 
 
-def run_scenario(name: str, api: Api, env: dict[str, str], policy: str, wait_s: float) -> dict[str, Any]:
-    sc = SCENARIOS[name]
-    req, normalized = normalize_request(load_request(sc["file"]))
-    profile = {k: req[k] for k in PROFILE_KEYS}
-    profile["risk_type_computed"] = req["risk"]["risk_tolerance"]
-    profile["risk_type_overridden"] = False
-    profile["note"] = f"시나리오 {name}"
-    api.ok("PUT", "/profile", profile)
-    overrides: dict[str, Any] = {}
-    start_date = (req.get("horizon") or {}).get("start_date")
-    if start_date:  # 프로필은 기준일을 지우므로(요청마다 정함) 시나리오의 기준일은 이번 요청의 덮어쓰기로 넣는다
-        overrides["horizon.start_date"] = str(start_date)[:10]
-    t0 = time.time()
-    state = api.ok("POST", "/requests", {"idea": req["natural_language"]["idea"], "overrides": overrides})
-    rid = state["request_id"]
-    qa: list[dict[str, Any]] = []
-    state = answer_questions(api, rid, state, policy, qa)
-    if state.get("state") != "ready":
-        return {"name": name, "title_ko": sc["title_ko"], "scenario_file": str(sc["file"]), "normalized": normalized, "overrides": overrides, "request_id": rid,
-                "dialog_state": state.get("state"), "qa": qa, "blocked_reason_ko": state.get("blocked_reason_ko"), "hard_errors": state.get("hard_errors"), "status": "not_confirmed"}  # fmt: skip
-    conf = api.ok("POST", f"/requests/{rid}/confirm")
-    run_id = conf["run_id"]
-    dialog_s = round(time.time() - t0, 1)
+def dialog_cost(t0: dt.datetime, t1: dt.datetime) -> float:
+    """대화 단계 LLM 비용: API 서버가 output/llm_usage_dialog.jsonl 에 남긴 기록 중 [t0, t1] 구간 합 (시나리오 QA 비용 상한 관리)."""
+    from backend.analysis.paths import output_root
+
+    path = output_root() / "llm_usage_dialog.jsonl"
+    if not path.exists():
+        return 0.0
+    lo, hi = t0 - dt.timedelta(seconds=1), t1 + dt.timedelta(seconds=1)
+    tot = 0.0
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            rec = json.loads(line)
+            ts = dt.datetime.fromisoformat(rec["ts"])
+        except (ValueError, KeyError):
+            continue
+        if lo <= ts <= hi:
+            tot += float(rec.get("cost_usd") or 0)
+    return round(tot, 6)
+
+
+def finish_run(api: Api, env: dict[str, str], run_id: str, wait_s: float, out: dict[str, Any]) -> dict[str, Any]:
+    """확정된 실행 하나를 일꾼으로 끝내고 상태·리포트 요약을 out 에 채운다 (새 실행과 --replay 가 같이 쓴다)."""
     t1 = time.time()
     w = subprocess.run([sys.executable, "-m", "backend.analysis.executor.worker", "--once"], cwd=ROOT, env=env, capture_output=True, text=True, timeout=3600)
     run = api.ok("GET", f"/runs/{run_id}")
     if run.get("status") not in TERMINAL and wait_s > 0:  # 다른 일꾼이 돌고 있으면 (rc 2) 그 일꾼이 끝내 줄 때까지 기다린다
         run = wait_for_run(api, run_id, wait_s)
-    run_s = round(time.time() - t1, 1)
-    out: dict[str, Any] = {"name": name, "title_ko": sc["title_ko"], "scenario_file": str(sc["file"]), "normalized": normalized, "overrides": overrides,
-                           "request_id": rid, "run_id": run_id, "qa": qa, "dialog_seconds": dialog_s,
-                           "run_seconds": run_s, "status": run.get("status"), "error": run.get("error"), "worker_rc": w.returncode,
-                           "buckets": [(b["id"], b["status"]) for b in run.get("buckets", [])],
-                           "steps": [{k: st.get(k) for k in ("step", "status", "started_at", "ended_at", "summary", "error_message")} for st in run.get("steps", [])]}  # fmt: skip
+    out.update({"run_id": run_id, "run_seconds": round(time.time() - t1, 1), "status": run.get("status"), "error": run.get("error"), "worker_rc": w.returncode,
+                "buckets": [(b["id"], b["status"]) for b in run.get("buckets", [])],
+                "steps": [{k: st.get(k) for k in ("step", "status", "started_at", "ended_at", "summary", "error_message")} for st in run.get("steps", [])]})  # fmt: skip
     st, doc = api.call("GET", f"/reports/{run_id}")
     if st == 200:
         kp = {k["id"]: k.get("value") for k in doc.get("kpis", []) if isinstance(k, dict) and "id" in k}
         hdr = doc.get("header", {})
-        out.update({"report": True, "chosen_label_ko": hdr.get("chosen_label_ko"), "verdict_ko": hdr.get("verdict_ko") or hdr.get("subtitle_ko"), "kpis": kp,
-                    "as_of": hdr.get("as_of"), "n_evidence": len(doc.get("evidence", {})), "warnings": len(doc.get("warnings", []))})  # fmt: skip
+        out.update({"report": True, "report_error": None, "chosen_label_ko": hdr.get("chosen_label_ko"), "verdict_ko": hdr.get("verdict_ko") or hdr.get("subtitle_ko"),
+                    "kpis": kp, "as_of": hdr.get("as_of"), "n_evidence": len(doc.get("evidence", {})), "warnings": len(doc.get("warnings", []))})  # fmt: skip
         st2, res = api.call("GET", f"/reports/{run_id}/results")
         if st2 == 200:
             v = res.get("validation", {})
@@ -208,21 +213,106 @@ def run_scenario(name: str, api: Api, env: dict[str, str], policy: str, wait_s: 
             out["llm_usage"] = res.get("llm_usage") or (res.get("params") or {}).get("llm_usage")
     else:
         out.update({"report": False, "report_error": doc})
+    # 비용은 실행 폴더 기록으로: 결과 묶음(13)의 llm_usage 는 리포트(14a/14b/14c) 호출 전에 찍혀 리포트 비용이 빠진다 (비용 상한 관리)
+    from backend.analysis.paths import run_dir
+
+    meta, ul = run_dir(run_id) / "run_meta.json", run_dir(run_id) / "llm_usage.jsonl"
+    try:
+        full = json.loads(meta.read_text(encoding="utf-8")).get("llm_usage") if meta.exists() else None
+    except ValueError:
+        full = None
+    if not full and ul.exists():
+        recs = [json.loads(x) for x in ul.read_text(encoding="utf-8").splitlines() if x.strip()]
+        full = {"calls": len(recs), "cost_usd": round(sum(float(r.get("cost_usd") or 0) for r in recs), 6)}
+    if full:
+        out["llm_usage"] = full
+    out["cost_total_usd"] = round(float((out.get("llm_usage") or {}).get("cost_usd") or 0) + float(out.get("dialog_cost_usd") or 0), 6)
     return out
+
+
+def replay_scenario(name: str, api: Api, env: dict[str, str], wait_s: float, out_dir: Path) -> dict[str, Any]:
+    """저장된 확정 요청을 그대로 새 실행으로 큐에 넣는다 (대화 없음). 같은 intent·덮어쓰기라 프롬프트가 같으면 LLM 캐시를 쓴다."""
+    from backend.analysis.common.store import JsonStore, RequestStore, new_run_id
+    from backend.analysis.executor.queue import Queue
+
+    prev = json.loads((out_dir / f"{name}.json").read_text(encoding="utf-8"))
+    rid = prev["request_id"]
+    store = JsonStore()
+    reqs = RequestStore(store)
+    with reqs.locked(rid):
+        doc = reqs.load(rid)
+        if doc.status != "confirmed" or not doc.effective_request:
+            raise RuntimeError(f"{name}: 요청 {rid} 이 확정 상태가 아니라 다시 돌릴 수 없습니다 ({doc.status})")
+        new_id = new_run_id(dt.datetime.now())
+        doc.run_id = new_id
+        # 파생값(derived)은 지금 코드로 다시 계산하게 뺀다 — 대화 당시 값이 남으면 derive 수정(예: 시작일 환율)을 재확인할 수 없다
+        doc.effective_request = {k: v for k, v in (doc.effective_request or {}).items() if k != "derived"}
+        reqs.save(doc)
+    Queue(store).enqueue(new_id, rid, llm_mode=env.get("MYFINSIGHT_LLM"))
+    out = {k: prev.get(k) for k in ("name", "title_ko", "scenario_file", "normalized", "overrides", "request_id", "qa", "dialog_seconds")}
+    out.update({"replay_of": prev.get("run_id"), "dialog_cost_usd": 0.0})
+    return finish_run(api, env, new_id, wait_s, out)
+
+
+# 사용자 결정 (2026-11-04): 백테스트 시작이 2015년 이전인 시나리오는 건너뛴다 (팀 DB 에 한국 시가총액이 2015-05 부터라 QA 범위 밖)
+SKIP_BACKTEST_BEFORE = dt.date(2015, 1, 1)
+
+
+def _skipped(name: str, sc: dict[str, Any], normalized: list[str], start: dt.date, **extra: Any) -> dict[str, Any]:
+    return {"name": name, "title_ko": sc["title_ko"], "scenario_file": str(sc["file"]), "normalized": normalized, "status": "skipped",
+            "skip_reason_ko": f"백테스트 시작({start})이 {SKIP_BACKTEST_BEFORE.year}년 이전이라 건너뜀 (사용자 결정 2026-11-04)", **extra}  # fmt: skip
+
+
+def run_scenario(name: str, api: Api, env: dict[str, str], policy: str, wait_s: float) -> dict[str, Any]:
+    sc = SCENARIOS[name]
+    req, normalized = normalize_request(load_request(sc["file"]))
+    hz = req.get("horizon") or {}
+    if hz.get("start_date"):  # 대화 전에 시나리오 값으로 먼저 거른다 (기본 백테스트 3년)
+        est = dt.date.fromisoformat(str(hz["start_date"])[:10]) - dt.timedelta(days=round(float(hz.get("backtest_years") or 3.0) * 365.25))
+        if est < SKIP_BACKTEST_BEFORE:
+            return _skipped(name, sc, normalized, est)
+    profile = {k: req[k] for k in PROFILE_KEYS}
+    profile["risk_type_computed"] = req["risk"]["risk_tolerance"]
+    profile["risk_type_overridden"] = False
+    profile["note"] = f"시나리오 {name}"
+    api.ok("PUT", "/profile", profile)
+    overrides: dict[str, Any] = {}
+    start_date = (req.get("horizon") or {}).get("start_date")
+    if start_date:  # 프로필은 기준일을 지우므로(요청마다 정함) 시나리오의 기준일은 이번 요청의 덮어쓰기로 넣는다
+        overrides["horizon.start_date"] = str(start_date)[:10]
+    t0, t0_dt = time.time(), dt.datetime.now()
+    state = api.ok("POST", "/requests", {"idea": req["natural_language"]["idea"], "overrides": overrides})
+    rid = state["request_id"]
+    qa: list[dict[str, Any]] = []
+    state = answer_questions(api, rid, state, policy, qa)
+    if state.get("state") != "ready":
+        return {"name": name, "title_ko": sc["title_ko"], "scenario_file": str(sc["file"]), "normalized": normalized, "overrides": overrides, "request_id": rid,
+                "dialog_state": state.get("state"), "qa": qa, "blocked_reason_ko": state.get("blocked_reason_ko"), "hard_errors": state.get("hard_errors"), "status": "not_confirmed",
+                "dialog_cost_usd": (dc := dialog_cost(t0_dt, dt.datetime.now())), "cost_total_usd": dc}  # fmt: skip
+    bt = ((state.get("summary") or {}).get("derived") or {}).get("backtest_start")
+    if bt and dt.date.fromisoformat(str(bt)[:10]) < SKIP_BACKTEST_BEFORE:  # 대화 답으로 기간이 바뀐 경우 (확정하지 않음)
+        return _skipped(name, sc, normalized, dt.date.fromisoformat(str(bt)[:10]), overrides=overrides, request_id=rid, qa=qa,
+                        dialog_cost_usd=dialog_cost(t0_dt, dt.datetime.now()))  # fmt: skip
+    conf = api.ok("POST", f"/requests/{rid}/confirm")
+    run_id = conf["run_id"]
+    dialog_s = round(time.time() - t0, 1)
+    out: dict[str, Any] = {"name": name, "title_ko": sc["title_ko"], "scenario_file": str(sc["file"]), "normalized": normalized, "overrides": overrides,
+                           "request_id": rid, "qa": qa, "dialog_seconds": dialog_s, "dialog_cost_usd": dialog_cost(t0_dt, dt.datetime.now())}  # fmt: skip
+    return finish_run(api, env, run_id, wait_s, out)
 
 
 def to_markdown(rows: list[dict[str, Any]], llm: str) -> str:
     lines = [f"# 시나리오 실행 결과 ({dt.date.today()}, LLM {llm})", "",
-             "| 시나리오 | 상태 | 보충 질문 | 추천 | 선택안 | 통과/주의/미통과 | 근거 수 | 대화 s | 실행 s | run_id |", "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]  # fmt: skip
+             "| 시나리오 | 상태 | 보충 질문 | 추천 | 선택안 | 통과/주의/미통과 | 근거 수 | 대화 s | 실행 s | 비용 $ | run_id |", "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]  # fmt: skip
     for r in rows:
         v = r.get("validation") or {}
         vs = f"{v.get('n_pass', '-')}/{v.get('n_warn', '-')}/{v.get('n_fail', '-')}" if v else "-"
         qa = "; ".join(f"Q{q['seq']} {q['field'].split('.')[-1]} → {q['answer']}" for q in r.get("qa", [])) or "없음"
-        lines.append(f"| {r['title_ko']} | {r.get('status')} | {qa} | {r.get('recommended') or '없음'} | {r.get('chosen_id') or '-'} | {vs} | {r.get('n_evidence', '-')} | {r.get('dialog_seconds', '-')} | {r.get('run_seconds', '-')} | `{r.get('run_id', '-')}` |")  # fmt: skip
+        lines.append(f"| {r['title_ko']} | {r.get('status')} | {qa} | {r.get('recommended') or '없음'} | {r.get('chosen_id') or '-'} | {vs} | {r.get('n_evidence', '-')} | {r.get('dialog_seconds', '-')} | {r.get('run_seconds', '-')} | {r.get('cost_total_usd', '-')} | `{r.get('run_id', '-')}` |")  # fmt: skip
     lines.append("")
     for r in rows:
-        if r.get("error") or r.get("report_error") or r.get("blocked_reason_ko"):
-            lines.append(f"- {r['title_ko']}: {json.dumps(r.get('error') or r.get('report_error') or r.get('blocked_reason_ko'), ensure_ascii=False)[:300]}")
+        if r.get("error") or r.get("report_error") or r.get("blocked_reason_ko") or r.get("skip_reason_ko"):
+            lines.append(f"- {r['title_ko']}: {json.dumps(r.get('error') or r.get('report_error') or r.get('blocked_reason_ko') or r.get('skip_reason_ko'), ensure_ascii=False)[:300]}")
     return "\n".join(lines)
 
 
@@ -237,6 +327,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--collect", action="store_true", help="새로 돌리지 않고 저장된 JSON 의 run_id 로 상태·리포트만 다시 모아 표를 만든다")
     ap.add_argument("--wait-sec", type=float, default=3600, help="다른 일꾼이 돌고 있을 때 실행 완료를 기다리는 최대 시간")
+    ap.add_argument("--replay", action="store_true", help="대화 없이, --out 에 저장된 시나리오 결과의 확정 요청을 새 실행으로 다시 돌린다 (고친 뒤 재확인)")
     a = ap.parse_args(argv)
     if a.files:
         names = []
@@ -261,7 +352,7 @@ def main(argv: list[str] | None = None) -> int:
     proc = ensure_server(api, a.port, env, out_dir / "uvicorn.log")
     rows: list[dict[str, Any]] = []
     saved_profile: dict[str, Any] | None = None  # 시나리오는 프로필을 덮어쓰므로(PUT /profile) 끝나면 사용자의 프로필을 되돌린다
-    if not a.collect:
+    if not (a.collect or a.replay):
         try:
             cur = api.ok("GET", "/profile")["profile"]
             saved_profile = {k: cur[k] for k in (*PROFILE_KEYS, "diagnosis", "risk_type_computed", "risk_type_overridden") if k in cur and cur[k] is not None}
@@ -271,7 +362,9 @@ def main(argv: list[str] | None = None) -> int:
         for name in [s.strip() for s in a.scenarios.split(",") if s.strip()]:
             print(f"── {name} ({SCENARIOS[name]['title_ko']})", flush=True)
             try:
-                if a.collect:
+                if a.replay:
+                    r = replay_scenario(name, api, env, a.wait_sec, out_dir)
+                elif a.collect:
                     prev_p = out_dir / f"{name}.json"
                     r = collect(name, api, json.loads(prev_p.read_text(encoding="utf-8"))) if prev_p.exists() else {"name": name, "title_ko": SCENARIOS[name]["title_ko"], "status": "missing"}
                 else:
@@ -280,7 +373,18 @@ def main(argv: list[str] | None = None) -> int:
                 r = {"name": name, "title_ko": SCENARIOS[name]["title_ko"], "status": "error", "error": f"{type(e).__name__}: {e}"[:400]}
             rows.append(r)
             print(json.dumps({k: r.get(k) for k in ("status", "run_id", "recommended", "chosen_id", "validation", "dialog_seconds", "run_seconds", "error")}, ensure_ascii=False), flush=True)
-            (out_dir / f"{name}.json").write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding="utf-8")
+            dst = out_dir / f"{name}.json"
+            if dst.exists() and not a.collect:  # 다시 돌리면(--replay 포함) 이전 결과를 history 로 옮겨 둔다 (질문·비용 기록 보존)
+                try:
+                    old = json.loads(dst.read_text(encoding="utf-8"))
+                    old_id = old.get("run_id") or old.get("request_id") or f"none_{int(dst.stat().st_mtime)}"
+                    (out_dir / "history").mkdir(exist_ok=True)
+                    hist = out_dir / "history" / f"{name}__{old_id}.json"
+                    if not hist.exists():
+                        hist.write_text(dst.read_text(encoding="utf-8"), encoding="utf-8")
+                except (OSError, ValueError):
+                    pass
+            dst.write_text(json.dumps(r, ensure_ascii=False, indent=2), encoding="utf-8")
     finally:
         if saved_profile is not None:
             try:

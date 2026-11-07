@@ -53,9 +53,25 @@ class Strategy:
     template: str | None
     cash_ratio: float
     name_ko: str
+    target_invested: float | None = None  # 낙폭 맞춤안: 백테스트에서 확인한 주식 비중 (있으면 × (1−c) 대신 이 비중까지 줄인다)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    def blend(self, w: dict[str, float]) -> dict[str, float]:
+        """현금 혼합: 낙폭 맞춤안은 주식 비중을 target_invested 로 (그보다 적게 담긴 구성은 그대로), 옛 현금 혼합안은 × (1 − c).
+        리포트 '현재 구성'(report_blocks.current_composition)과 같은 규칙 — 002: 시작일 기준 구성이 현금 50% 라 c=2% 만 나왔는데
+        기준일의 전액 투자 구성에 × 0.98 을 하면 주식 49% 로 검증한 안을 98% 로 투자하게 됐다."""
+        if self.kind != "cash_blend":
+            return w
+        if self.target_invested is not None:
+            inv = sum(w.values())
+            k = min(1.0, self.target_invested / inv) if inv > 1e-12 else 0.0
+        elif self.cash_ratio > 0:
+            k = 1 - self.cash_ratio
+        else:
+            return w
+        return {t: x * k for t, x in w.items()}
 
 
 def resolve_strategy(strategy_id: str, results: dict[str, Any]) -> Strategy:
@@ -67,14 +83,15 @@ def resolve_strategy(strategy_id: str, results: dict[str, Any]) -> Strategy:
         if blk is None:
             raise NotFound(f"리포트에 낙폭 맞춤안 {sid} 이 없습니다")
         cash_ratio = float(blk.get("cash_ratio") or 0.0)
+        target_inv = 1.0 - float(blk["cash_ratio_total"]) if blk.get("cash_ratio_total") is not None else None
         base = str(blk.get("base_id") or sid[len("dd_match_"):])
         core = base[3:] if base.startswith("wf_") else base
         core = core[4:] if core.startswith("fwd_") else core
         name = blk.get("name_ko") or sid
         if core in TEMPLATES:
-            return Strategy(sid, "cash_blend", core, cash_ratio, name)
+            return Strategy(sid, "cash_blend", core, cash_ratio, name, target_inv)
         if core.startswith("bl"):
-            return Strategy(sid, "cash_blend", None, cash_ratio, name)
+            return Strategy(sid, "cash_blend", None, cash_ratio, name, target_inv)
         raise RequestInvalid(f"낙폭 맞춤안의 기준 비중 {base} 을 알 수 없습니다")
     if sid.startswith("cash_blend_"):
         base = sid[len("cash_blend_"):]
@@ -223,8 +240,8 @@ class PaperService:
                 raise NotFound(f"리포트 현재 구성에 {strategy.template} 비중이 없습니다")
             w = dict(tpl["weights"])
             cash = float(tpl.get("cash_weight") or 0.0)
-        if strategy.kind == "cash_blend" and strategy.cash_ratio > 0:
-            w = {t: x * (1 - strategy.cash_ratio) for t, x in w.items()}
+        if strategy.kind == "cash_blend":
+            w = strategy.blend(w)
             cash = 1.0 - sum(w.values())
         return w, cash
 
@@ -246,12 +263,12 @@ class PaperService:
             if res.bl_portfolios:
                 p = res.bl_portfolios[0]
                 info["views"] = [{"summary_ko": v.get("summary_ko") or v.get("text_ko") or str(v.get("view", "")), "evidence_ids": list(v.get("evidence_ids", [])), "confidence": float(v.get("confidence", 0) or 0)}
-                                 for v in (res.view_sets[0].get("views", []) if res.view_sets else [])]  # fmt: skip
+                                 for v in p.get("views_applied", [])]  # fmt: skip
                 w, cash = dict(p["weights"]), float(p.get("cash_weight") or 0.0)
             else:
                 w, cash = dict(res.baseline_weights), float(res.baseline.get("cash_weight") or 0.0)
-            if strategy.kind == "cash_blend" and strategy.cash_ratio > 0:  # 낙폭 맞춤안(BL 기준): 뷰 비중 × (1−c)
-                w = {t: x * (1 - strategy.cash_ratio) for t, x in w.items()}
+            if strategy.kind == "cash_blend":  # 낙폭 맞춤안(BL 기준): 뷰 비중을 맞춤안의 주식 비중까지
+                w = strategy.blend(w)
                 cash = 1.0 - sum(w.values())
             return w, cash, info
         intent2["news_tilt"]["enabled"] = False
@@ -264,7 +281,7 @@ class PaperService:
             raise DataMissing(f"{view.as_of} 에 {strategy.template} 비중을 만들 수 없습니다")
         w, cash = dict(tpl["weights"]), float(tpl.get("cash_weight") or 0.0)
         if strategy.kind == "cash_blend":
-            w = {t: x * (1 - strategy.cash_ratio) for t, x in w.items()}
+            w = strategy.blend(w)
             cash = 1.0 - sum(w.values())
         return w, cash, info
 

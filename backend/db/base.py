@@ -9,7 +9,7 @@ SQLite 를 모두 지원한다. 만들기는 `open_repository()` 를 쓴다.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime
 from typing import Any, Protocol, runtime_checkable
 
@@ -250,6 +250,18 @@ class ExtendedRepository(MarketDataRepository, Protocol):
         """종목별 d 이하 최신 valuation_daily 행 (per, pbr, roe_ttm, dividend_yield, market_cap, shares_outstanding …)."""
         ...
 
+    def get_shares_asof(
+        self, asset_ids: Sequence[str], d: date, *, max_staleness_days: int = 730
+    ) -> dict[str, dict[str, Any]]:
+        """종목별 d 이하에서 주식수가 있는 마지막 valuation_daily 행 {date, shares_outstanding, split_factor, currency} (시가총액 공백 대체용)."""
+        ...
+
+    def get_implied_shares_median(
+        self, asset_ids: Sequence[str], d: date, *, window_days: int = 400
+    ) -> dict[str, dict[str, Any]]:
+        """종목별 [d − window_days, d] valuation_daily 의 시가총액 ÷ 종가 중앙값 {median, n, max_sf, min_sf} (시가총액 이상값 검사용)."""
+        ...
+
     def constituents_at(
         self, index: IndexCode | str, d: date
     ) -> tuple[date | None, list[IndexConstituent], list[str]]:
@@ -264,8 +276,10 @@ class ExtendedRepository(MarketDataRepository, Protocol):
         *,
         languages: Sequence[str] | None = None,
         per_asset: int | None = None,
+        aliases: Mapping[str, Sequence[str]] | None = None,
     ) -> list[NewsRecord]:
-        """여러 종목 기사, [start, end) 반개구간, 종목별 최신순 per_asset 개."""
+        """여러 종목 기사, [start, end) 반개구간, 종목별 최신순 per_asset 개. 이용자 글(블로그·카페)은 빼고, aliases(asset_id → 회사 이름들)가
+        있는 종목의 한국어 기사는 제목에 그 이름이나 수집 검색어가 있을 때만 (per_asset 은 거른 뒤에 센다)."""
         ...
 
     def get_disclosures_batch(

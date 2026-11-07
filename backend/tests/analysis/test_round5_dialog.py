@@ -19,7 +19,7 @@ def test_feasibility_question_when_candidates_short(svc_factory):
     assert q is not None and q.kind == "feasibility" and q.field == "constraints.num_holdings" and q.field_label_ko == "종목 수"
     assert st.precheck and st.precheck["short_now"] and st.precheck["as_of"]["n_candidates"] < 8
     labels = [o.label_ko for o in q.options]
-    assert any("종목 수를" in x and "상한을" in x for x in labels) and any("테마를 넓혀" in x for x in labels) and any("그대로 진행" in x for x in labels)
+    assert any("종목 수를" in x and "상한" in x for x in labels) and any("테마를 넓혀" in x for x in labels) and any("그대로 진행" in x for x in labels)  # 실제로 올리는 상한만 적는다 (2026-11 QA 012)
     shrink = next(o for o in q.options if o.patch and "constraints.num_holdings" in o.patch)
     n = shrink.patch["constraints.num_holdings"]["target"]
     st = svc.answer(st.request_id, 1, option_value=shrink.value)

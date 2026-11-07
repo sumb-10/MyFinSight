@@ -13,7 +13,7 @@ from typing import Any
 from backend.analysis.settings import AnalysisSettings
 
 from backend.analysis.common.citations import CITE_RE  # 인용 ID 정규식은 한 곳에서
-NUM_RE = re.compile(r"(?:\$\s?)?(-?[\d,]+(?:\.\d+)?)\s*(%p|%|USD|원|달러|일|개|회|종목|배)?")
+NUM_RE = re.compile(r"(?:\$\s?)?(-?[\d,]+(?:\.\d+)?)\s*(%p|%|USD|원|달러|일|개|회(?!계)|종목|배)?")  # 036: '2026 회계연도' 를 2026회로 셌다
 DEV_WORDS = ["샘플", "stub", "mock", "JSON", "파이프라인 내부"]
 
 
@@ -75,13 +75,30 @@ def known_numbers(obj: Any, acc: set[float]) -> None:
         return
     elif isinstance(obj, int | float):
         v = abs(float(obj))
-        if v <= 20:
+        if v <= 1000:  # 비율이면 % 로도 (033: 모멘텀 +3,257.7%(32.58) 를 '결과에 없는 숫자' 로 셌다 — 예전 한도 20)
             acc.add(round(v * 100, 1))
             acc.add(round(v * 100))
             acc.add(round(v * 100, 2))
         acc.add(round(v, 2))
         acc.add(round(v, 1))
         acc.add(round(v))
+
+
+def _string_numbers(obj: Any, acc: set[float]) -> None:
+    """문자열 안의 숫자(쉼표·소수 포함)를 그대로 아는 숫자로. LLM 문장이 아닌 코드 문구에만 쓴다."""
+    if isinstance(obj, dict):
+        for v in obj.values():
+            _string_numbers(v, acc)
+    elif isinstance(obj, list):
+        for v in obj:
+            _string_numbers(v, acc)
+    elif isinstance(obj, str):
+        for m in re.finditer(r"\d[\d,]*(?:\.\d+)?", obj):
+            try:
+                v = float(m.group(0).replace(",", ""))
+            except ValueError:
+                continue
+            acc.update({round(v, 2), round(v, 1), round(v)})
 
 
 def paragraphs_src(doc: dict[str, Any]) -> list[tuple[str, str, str]]:
@@ -140,8 +157,15 @@ def check(doc: dict[str, Any], R: dict[str, Any], settings: AnalysisSettings) ->
                 bad = [i for i in b["ids"] if i not in idx]
                 if bad:
                     res.err("code", f"{sec['id']}: evidence_ref has unknown ids {bad[:5]}")
-    # 시장 분석 문단(14c): 뉴스·공시 근거가 하나라도 있으면 인용해야 한다
-    news_ids = [k for k in idx if k.startswith(("ev", "dc"))]
+    # 시장 분석 문단(14c): 시장 분석에 넘긴 뉴스·공시 근거가 하나라도 있으면 인용해야 한다 — 색인 전체가 아니라 넘긴 것으로
+    # (라운드 21: 공시를 뉴스 뷰 창으로 좁히자 기업 설명(06)용 공시만 있는 실행이 '근거가 있는데 인용 안 함' 으로 실패했다)
+    from backend.analysis.m5_backtest_report.report import _asof_news
+
+    try:
+        _w, _n, _d = _asof_news(R)
+        news_ids = [x["id"] for x in [*_n, *_d]]
+    except (KeyError, TypeError):
+        news_ids = [k for k in idx if k.startswith(("ev", "dc"))]
     market_paras = [t for sid, t, src in paras3 if sid == "market" and src == "14c"]
     if news_ids and market_paras and not any(CITE_RE.search(t) for t in market_paras):
         res.err("14c", "market: paragraphs must cite at least one evidence id (news available)")
@@ -160,6 +184,8 @@ def check(doc: dict[str, Any], R: dict[str, Any], settings: AnalysisSettings) ->
     known: set[float] = set()
     known_numbers({k: v for k, v in R.items() if k not in ("backtest", "evidence_index")}, known)
     known_numbers({k: v for k, v in R["backtest"].items() if k != "series_dates"}, known)
+    # 코드가 만든 검증 문구·공지 안의 숫자도 아는 숫자다 (067: R2 의 '과거 1년 구간 517개' 를 서술이 옮겼는데 숫자 칸에 없어 '결과에 없는 숫자' 메모가 보였다)
+    _string_numbers([R.get("validation"), R.get("notices")], known)
     for sid, text in paras:
         plain = CITE_RE.sub("", text)
         for m in NUM_RE.finditer(plain):

@@ -6,10 +6,13 @@
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, timedelta
+from functools import lru_cache
 from typing import Any
+from urllib.parse import urlparse
 
 import pandas as pd
 from sqlalchemy import func, select
@@ -20,6 +23,9 @@ from backend.schemas.market import FxRate, IndexCode, IndexConstituent
 from backend.schemas.market_ext import DisclosureRecord, NewsRecord
 
 _CHUNK = 500
+# 가격 행은 종목당 수백~수천 행이라 묶음을 작게: 500종목 × 6.5년(약 80만 행)을 한 문장으로 물으면 팀 DB 가 느린 날 문장 시간 제한(5분)에
+# 걸려 실행이 01 단계에서 멈췄다 (2026-11-05 최종 재실행 021·022 — 같은 조회가 평소 20초)
+_PRICE_CHUNK = 100
 
 
 def _chunks(items: Sequence[Any], size: int = _CHUNK) -> Iterable[Sequence[Any]]:
@@ -51,6 +57,84 @@ VALUATION_COLS = (
     "eps_ttm", "per", "bps", "pbr", "roe_ttm", "dps_ttm", "dividend_yield", "fin_period_end", "fin_disclosed_at",
 )  # fmt: skip
 
+# 이용자 글 (블로그·카페·포스트·프리미엄 콘텐츠): 회사 근거가 아니다 (시나리오 003).
+# Google RSS 는 주소가 news.google.com 이라 언론사 칸('Naver Blog'·'네이버 블로그')으로,
+# 그 밖에는 주소의 호스트로 본다
+_UGC_PUBLISHER = re.compile(
+    r"blog|블로그|카페|프리미엄\s?콘텐츠|티스토리|tistory|브런치|brunch"
+    r"|네이버\s?포스트|naver\s?(cafe|post|premium)",
+    re.IGNORECASE,
+)
+# 영어 기사에서 'blog' 는 회사 공지 채널(Cisco Blogs·NVIDIA Blog)이나 업계 매체라 거르지 않는다 → 플랫폼 이름만 (검토: 미국 행 372건이 빠졌다)
+_UGC_PUBLISHER_EN = re.compile(r"blogspot|blogger|tistory|brunch|naver\s?blog|daum\s?blog", re.IGNORECASE)
+_OFFICIAL = re.compile(r"공식|official", re.IGNORECASE)  # '에이피알 공식 블로그' 처럼 회사가 직접 낸 글은 이용자 글이 아니다
+_UGC_HOST = re.compile(
+    r"(^|\.)((blog|post|cafe|contents\.premium)\.naver\.com|(blog|cafe|brunch)\.daum\.net"
+    r"|tistory\.com|brunch\.co\.kr)$"
+)
+_HANGUL = re.compile(r"[가-힣]")
+
+
+def _is_ugc(publisher: str | None, url: str | None, language: str | None = None) -> bool:
+    pub = publisher or ""
+    rx = _UGC_PUBLISHER if (language or "ko") == "ko" else _UGC_PUBLISHER_EN
+    if rx.search(pub) and not _OFFICIAL.search(pub):
+        return True
+    try:
+        host = (urlparse(url or "").hostname or "").lower()
+    except ValueError:  # 깨진 주소
+        return False
+    return bool(_UGC_HOST.search(host))
+
+
+@lru_cache(maxsize=4096)
+def _name_re(name: str) -> re.Pattern[str]:
+    """영문·숫자 이름은 앞뒤가 영문·숫자가 아닐 때만 (KT ≠ KTX, SK ≠ SKT). 띄어쓰기 무시."""
+    return re.compile(r"(?<![a-z0-9])" + re.escape(name).replace(r"\ ", r"\s*") + r"(?![a-z0-9])")
+
+
+# 한글 회사 이름 바로 뒤에 붙으면 다른 상장사가 되는 말 (계열사·자회사: 셀트리온제약, 종근당바이오, 녹십자홀딩스, 현대차증권, 한국전력기술 …).
+# 같은 회사를 뜻하는 꼬리(지주·그룹·금융)는 넣지 않는다 (신한금융지주 = 신한지주)
+_SIBLING_SUFFIX = ("제약", "바이오", "헬스케어", "홀딩스", "웰빙", "생명과학", "기술", "증권", "엔지니어링", "캐피탈", "카드", "생명", "화재", "중공업",
+                   "건설", "케미칼", "리츠", "인베스트먼트", "파트너스", "페이", "뱅크", "게임즈", "모빌리티")  # fmt: skip
+
+
+def _hangul_hit(text: str, name: str) -> bool:
+    """text 에 name 이 다른 회사 이름의 앞부분이 아닌 꼴로 한 번이라도 나오나."""
+    if not name:
+        return False
+    i = text.find(name)
+    while i >= 0:
+        if not text[i + len(name):].startswith(_SIBLING_SUFFIX):
+            return True
+        i = text.find(name, i + 1)
+    return False
+
+
+def _title_mentions(title: str, names: Iterable[str]) -> bool:
+    """제목에 이름 중 하나가 있나. 한글이 든 이름은 띄어쓰기를 무시한 부분 일치
+    (조사가 붙는다: '네이버가'). '!' 로 시작하는 이름은 이 회사 이름을 품은 다른 회사 이름이라 먼저 지운다 (한국전력 ⊂ 한국전력기술)."""
+    names = list(names)
+    low = (title or "").lower()
+    for sh in sorted((str(n)[1:].lower() for n in names if str(n or "").startswith("!")), key=len, reverse=True):
+        if sh:
+            low = re.sub(r"\s*".join(map(re.escape, "".join(sh.split()))), " ", low)  # 띄어 쓴 꼴도
+    flat = "".join(low.split())
+    for n in names:
+        if str(n or "").startswith("!"):
+            continue
+        if _HANGUL.search(str(n or "")):
+            nn = " ".join(str(n).lower().split())
+            # 이름 바로 뒤에 '제약·바이오·홀딩스…' 가 붙으면 다른 상장사다 — 유니버스 밖 계열사라 '!' 목록에도 없다
+            # (077: 셀트리온 뉴스 10건 중 9건이 셀트리온제약 기사였고 그 기사가 뉴스 뷰 근거가 됐다; 종근당바이오·녹십자홀딩스·GC녹십자웰빙도)
+            if _hangul_hit(low, nn) or _hangul_hit(flat, "".join(nn.split())):
+                return True
+            continue
+        n = " ".join(str(n or "").lower().split())
+        if n and ("".join(n.split()) in flat if _HANGUL.search(n) else _name_re(n).search(low)):
+            return True
+    return False
+
 
 class AnalysisReadersMixin:
     """SqlRepository 가 상속. `self._read(what, fn)` 과 `self._asset_ids` 를 쓴다."""
@@ -65,7 +149,7 @@ class AnalysisReadersMixin:
 
         def run(conn: Any) -> list[Any]:
             out: list[Any] = []
-            for part in _chunks(wanted):
+            for part in _chunks(wanted, _PRICE_CHUNK):
                 q = select(*(p.c[c] for c in PRICE_BAR_COLS)).where(
                     p.c.ticker.in_(part), p.c.date >= start, p.c.date <= end
                 )
@@ -124,6 +208,77 @@ class AnalysisReadersMixin:
 
         return self._read("가치평가(기준일)", run)  # type: ignore[attr-defined]
 
+    def get_shares_asof(
+        self, asset_ids: Sequence[str], d: date, *, max_staleness_days: int = 730
+    ) -> dict[str, dict[str, Any]]:
+        """종목별 d 이하에서 shares_outstanding 이 있는 마지막 valuation_daily 행 (d − max_staleness_days 보다 오래된 것은 제외).
+
+        시가총액 공백 구간의 대체용: {date, shares_outstanding, shares_as_of(주식수 자체의 기준일), split_factor, currency}. d 뒤 행은 읽지 않는다 (선견 없음).
+        """
+        v = T.valuation_daily
+        lo = d - timedelta(days=max_staleness_days)
+        ids = sorted(set(asset_ids))
+
+        def run(conn: Any) -> dict[str, dict[str, Any]]:
+            out: dict[str, dict[str, Any]] = {}
+            for part in _chunks(ids):
+                sub = (
+                    select(v.c.asset_id, func.max(v.c.date).label("d"))
+                    .where(v.c.asset_id.in_(part), v.c.date <= d, v.c.date >= lo, v.c.shares_outstanding.is_not(None))
+                    .group_by(v.c.asset_id)
+                    .subquery()
+                )
+                q = select(v.c.asset_id, v.c.date, v.c.shares_outstanding, v.c.shares_as_of, v.c.split_factor, v.c.currency).join(
+                    sub, (sub.c.asset_id == v.c.asset_id) & (sub.c.d == v.c.date)
+                )
+                for r in conn.execute(q):
+                    out[r.asset_id] = {"date": r.date, "shares_outstanding": float(r.shares_outstanding), "shares_as_of": r.shares_as_of,
+                                       "split_factor": None if r.split_factor is None else float(r.split_factor), "currency": r.currency}  # fmt: skip
+            return out
+
+        return self._read("주식수(기준일 이하)", run)  # type: ignore[attr-defined]
+
+    def get_implied_shares_median(
+        self, asset_ids: Sequence[str], d: date, *, window_days: int = 400
+    ) -> dict[str, dict[str, Any]]:
+        """종목별 [d − window_days, d] 행의 시가총액 ÷ 종가(분할 보정 종가라 분할 앞뒤로 같은 값) 중앙값과 행 수, 그 기간의 분할 계수 최대·최소.
+
+        팀 DB 는 한 분기 동안 주식수가 1000배(단위)·분할 비율만큼(분할을 두 번 반영) 틀린 구간이 있다 (2022-07-27 ~ 10-26 GOOGL 20배 등).
+        d 뒤 행은 읽지 않는다 (선견 없음).
+        """
+        v = T.valuation_daily
+        lo = d - timedelta(days=window_days)
+        ids = sorted(set(asset_ids))
+        imp = v.c.market_cap / v.c.close
+
+        def run(conn: Any) -> dict[str, dict[str, Any]]:
+            out: dict[str, dict[str, Any]] = {}
+            pg = conn.dialect.name == "postgresql"  # 중앙값은 PostgreSQL 이 계산, 그 밖(시험용 SQLite)은 행을 읽어 파이썬으로
+            for part in _chunks(ids):
+                cond = (v.c.asset_id.in_(part), v.c.date <= d, v.c.date >= lo, v.c.market_cap.is_not(None), v.c.close > 0)
+                if pg:
+                    q = (select(v.c.asset_id, func.percentile_cont(0.5).within_group(imp).label("med"), func.count().label("n"),
+                                func.max(v.c.split_factor).label("max_sf"), func.min(v.c.split_factor).label("min_sf"))
+                         .where(*cond).group_by(v.c.asset_id))  # fmt: skip
+                    for r in conn.execute(q):
+                        out[r.asset_id] = {"median": None if r.med is None else float(r.med), "n": int(r.n),
+                                           "max_sf": None if r.max_sf is None else float(r.max_sf), "min_sf": None if r.min_sf is None else float(r.min_sf)}  # fmt: skip
+                    continue
+                vals: dict[str, list[float]] = defaultdict(list)
+                sfs: dict[str, list[float]] = defaultdict(list)
+                for r in conn.execute(select(v.c.asset_id, imp.label("imp"), v.c.split_factor).where(*cond)):
+                    vals[r.asset_id].append(float(r.imp))
+                    if r.split_factor is not None:
+                        sfs[r.asset_id].append(float(r.split_factor))
+                for aid, xs in vals.items():
+                    xs.sort()
+                    k = len(xs)
+                    out[aid] = {"median": xs[k // 2] if k % 2 else (xs[k // 2 - 1] + xs[k // 2]) / 2, "n": k,
+                                "max_sf": max(sfs[aid]) if sfs[aid] else None, "min_sf": min(sfs[aid]) if sfs[aid] else None}  # fmt: skip
+            return out
+
+        return self._read("주식수 중앙값(기준일 이하)", run)  # type: ignore[attr-defined]
+
     def constituents_at(
         self, index: IndexCode | str, d: date
     ) -> tuple[date | None, list[IndexConstituent], list[str]]:
@@ -167,10 +322,14 @@ class AnalysisReadersMixin:
         *,
         languages: Sequence[str] | None = None,
         per_asset: int | None = None,
+        aliases: Mapping[str, Sequence[str]] | None = None,
     ) -> list[NewsRecord]:
         """여러 종목의 기사, 발행 시각 [start, end) 반개구간. 종목별 최신순, per_asset 개까지.
 
         인덱스 idx_news_asset_published 를 탄다. 제목이 같은 중복은 종목 안에서 하나만 남긴다.
+        블로그·카페 같은 이용자 글은 늘 뺀다. aliases(asset_id → 회사 이름들)에 있는 종목의
+        한국어 기사는 제목에 그 이름이나 그 기사를 찾은 검색어(옛 사명 포함)가 있을 때만 남긴다
+        (네이버 뉴스 검색은 본문만 맞아도 나와 무관한 기사가 대부분). per_asset 은 거른 뒤에 센다.
         """
         n = T.news
         ids = sorted(set(asset_ids))
@@ -190,6 +349,14 @@ class AnalysisReadersMixin:
                 count: dict[str, int] = defaultdict(int)
                 for r in conn.execute(q):
                     row = r._asdict()
+                    if _is_ugc(row.get("publisher"), row.get("url"), row.get("language")):
+                        continue
+                    names = aliases.get(row["asset_id"]) if aliases else None
+                    if names and row.get("language") == "ko":  # 영어 기사는 그대로
+                        # 수집 검색어는 'HL만도 OR 만도 OR Mando' 처럼 OR 로 묶여 있다 → 나눠서 하나씩 (통째로 비교하면 거의 다 빠졌다: HL만도 8,154건 중 3건만 남음, 검토)
+                        qnames = [q.strip(' "()') for q in re.split(r"\s+OR\s+", row.get("query") or "") if q.strip(' "()')]
+                        if not _title_mentions(row["title"], [*names, *qnames]):
+                            continue
                     key = " ".join(str(row["title"]).lower().split())
                     if key in seen[row["asset_id"]]:
                         continue

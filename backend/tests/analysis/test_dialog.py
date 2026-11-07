@@ -77,10 +77,12 @@ def test_hard_error_gives_fix_not_question(svc_factory):
     svc, store, llm = svc_factory([_intent([])])
     st = svc.start("반도체 분산 투자", overrides={"constraints.num_holdings": {"target": 20, "min": 20, "max": 25}})  # 0.3 × 20 >= 1 OK → 다른 오류 유도
     assert st.state == "asking" and st.question is not None and st.question.kind == "feasibility"  # 라운드 5: 후보(7) < 최소(20) → 실행 전 점검 질문
+    n_calls = len(llm.calls)  # 첫 턴: 의도 해석(02) + 실행 전 점검의 테마 분류(04)
+    assert [c["stage"] for c in llm.calls] == ["02_intent", "04_classify"]
     st2 = svc.start("반도체 분산 투자", overrides={"constraints.max_weight_per_sector": 0.1})  # 섹터 상한 < 종목 상한
     assert st2.state == "asking" and st2.question is None and st2.hard_errors
     assert any("섹터당 상한" in e.message_ko for e in st2.hard_errors)
-    assert llm.calls and len(llm.calls) == 1  # HARD 오류 턴에는 LLM 호출 없음
+    assert len(llm.calls) == n_calls  # HARD 오류 턴에는 LLM 호출 없음
     with pytest.raises(DialogNotReady):
         svc.confirm(st2.request_id)
 
@@ -100,6 +102,7 @@ def test_free_text_and_unaskable_field(svc_factory):
 def test_limit_blocks_and_skip(svc_factory):
     many = [dict(Q_TEMPLATE, field=f, question_ko=f"{f}?") for f in
             ("strategy_preference.template", "strategy_preference.baseline_weighting", "constraints.num_holdings.target", "horizon.backtest_years", "risk.benchmark", "horizon.purpose")]
+    many[1]["options"] = [{"value": "equal_weight", "label_ko": "동일비중"}, {"value": "min_variance", "label_ko": "최소분산"}]
     for q in many[2:]:
         q["options"] = []
         q["allow_free_text"] = True
@@ -108,7 +111,7 @@ def test_limit_blocks_and_skip(svc_factory):
     assert st.turn == 1 and st.max_questions == 2
     st = svc.skip(st.request_id, 1)
     assert st.turn == 2 and st.question.field == "strategy_preference.baseline_weighting"
-    assert st.question.options == []  # momentum/quality 는 baseline_weighting 에 무효 → 선택지가 걸러짐 (자유 입력만)
+    assert [o.value for o in st.question.options] == ["equal_weight", "min_variance"]
     st = svc.answer(st.request_id, 2, option_value="equal_weight")
     # 라운드 5: 질문 상한에 닿아도 막지 않는다 — 남은 항목은 기본값으로 두고 ready, 사유는 blocked_reason_ko 로 보여 준다
     assert st.state == "ready" and "2회" in (st.blocked_reason_ko or "") and "2회" in (RequestStore(store).load(st.request_id).blocked_reason_ko or "")
@@ -153,7 +156,8 @@ def test_sector_cap_conflict_is_asked_by_code_rule(svc_factory):
     """테마가 한 섹터(반도체=IT)인데 섹터 상한 0.8 < 1.0 → LLM 질문이 없어도 코드가 먼저 묻는다. 답하면 상한이 바뀐다."""
     svc, store, llm = svc_factory([_intent([]), _intent([])], sector_rule=True)
     st = svc.start("미국과 한국의 반도체·메모리 기업에 분산 투자하고 싶다")
-    assert st.state == "asking" and st.question.field == "constraints.max_weight_per_sector" and st.question.kind == "conflict"
+    # 점검 기반 질문은 실행 가능성 문제라 'feasibility' (2026-11 QA 010: 시작일 질문보다 먼저 묻기 위해)
+    assert st.state == "asking" and st.question.field == "constraints.max_weight_per_sector" and st.question.kind == "feasibility"
     assert "현금" in st.question.question_ko and [o.value for o in st.question.options] == [1.0, 0.8]
     st = svc.answer(st.request_id, 1, option_value=1.0)
     assert st.state == "ready"
@@ -273,4 +277,13 @@ def test_update_overrides_and_message_turns(svc_factory):
         svc.message(st.request_id, "   ")
     # derived 에 백테스트 시작일 환율이 들어 있다
     d = st.summary.derived
-    assert d["backtest_fx_rate"] and d["initial_amount_usd_at_backtest_start"] and d["backtest_fx_date"] <= d["backtest_start"]
+    assert d["backtest_fx_rate"] and d["initial_amount_usd_at_backtest_start"] and d["backtest_fx_date"] <= d["as_of"]  # 시작일 이후 첫 거래일 환율 (주말 시작이면 시작일보다 늦다)
+
+
+def test_question_with_invalid_options_is_dropped_even_with_free_text(svc_factory):
+    """2026-11 QA (000): LLM 이 보기 2개를 냈는데 하나가 지원하지 않는 값이라 '프로필 기준 유지' 하나만 남은 질문이 그대로 나갔다."""
+    bad = dict(Q_TEMPLATE, field="strategy_preference.baseline_weighting", options=[{"value": "momentum", "label_ko": "모멘텀"}, {"value": "equal_weight", "label_ko": "동일비중"}],
+               allow_free_text=True)  # fmt: skip
+    svc, _store, _llm = svc_factory([_intent([bad, Q_REB])] * 3)
+    st = svc.start("반도체 장기 투자")
+    assert st.question is not None and st.question.field == "constraints.rebalance"

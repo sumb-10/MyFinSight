@@ -26,11 +26,27 @@ class MarketSettings:
     coverage_threshold: float = 0.95  # 품질 판정: 커버리지 0.95 통과, 0.9499 제외
     max_fill_days: int = 1  # 1거래일 결측만 직전값 채움, 2일 이상 연속 결측은 제외
     valuation_max_staleness_days: int = 10
+    # 시가총액이 빈 날의 대체: 그날 이하 마지막으로 주식수가 있던 행이 이만큼(달력일) 안이면 그 주식수 × 그날 종가 (2026-11 정책: 최소 시가총액은 하드 필터)
+    mcap_fallback_max_days: int = 730
+    # 시가총액 이상값: 그날 시가총액 ÷ 종가(주식수)가 직전 이만큼(달력일) 중앙값의 1000배·1/1000배(단위 오류)이거나 그 기간 분할 비율과 같으면(분할을 두 번 반영)
+    # 중앙값 주식수 × 그날 종가로 고친다 (047: GOOGL 2022-08 시가총액 28.9조 달러, 시총비중 87%). 허용 오차는 자사주 매입 등으로 1년 사이 주식수가
+    # 몇 % 바뀌는 만큼 (PKG: 중앙값 대비 960배) — 단위 오류는 1000배 ±25%, 분할 비율은 ±10%. 최소 행 수
+    mcap_guard_window_days: int = 400
+    mcap_guard_unit_tol: float = 0.25
+    mcap_guard_split_tol: float = 0.10
+    mcap_guard_min_rows: int = 20
+    # 고친 값이 이 범위(USD) 밖이면 고치지 않는다: 중앙값 기간 자체가 틀린 경우(오류가 반년 넘게 이어진 뒤 바른 값이 돌아온 GRMN 2017-02,
+    # 상장 초기 행이 단위 오류인 PSKY 2025-11, 분기 보고서만 천 주 단위라 틀린 값이 더 많은 ECHO 2026-03 — 고치면 340억 → 3,400만 달러)에
+    # 바른 값을 틀린 쪽으로 '고치지' 않게. 2015년 이후 팀 DB 의 주식수 급변 51종목을 모두 대조해 이 범위로 잘못 고치는 경우가 없음을 확인 (2026-11-05)
+    mcap_guard_plausible_usd: tuple[float, float] = (2e8, 5e12)
     descriptor_universe: str = "ALL"
     descriptor_dir: str | None = None  # None -> backend/data/processed (build_descriptor.py 산출물)
     # 재무 지표(PER·ROE·배당) 자료가 시작되는 날 (docs/데이터_현황.md). 저PER·퀄리티·고배당 백테스트는 이 날 이후만 가능
     valuation_data_start: dict[str, str] = field(default_factory=lambda: {"US": "2010-04-01", "KR": "2005-06-01"})  # 자료가 "있는" 날이 아니라 종목 수가 충분해지는 날 (미국 PER 168종목, 한국 97종목)
     valuation_templates: tuple[str, ...] = ("low_per", "quality", "high_dividend")
+    # 시가총액 자료가 충분해지는 날 (최소 시가총액 조건이 있으면 이 날 이후만 백테스트, 2026-11 팀 DB 실측: 미국 2010-01 55%·2011-01 84%, 한국 2015-07 95%).
+    # 그 전에는 대체값(직전 주식수)도 없어 모든 종목이 빠진다
+    mcap_data_start: dict[str, str] = field(default_factory=lambda: {"US": "2010-01-04", "KR": "2015-07-01"})
 
 
 @dataclass(frozen=True)
@@ -55,6 +71,10 @@ class PortfolioSettings:
     confidence_floor: float = 0.1
     abs_return_range: tuple[float, float] = (-0.5, 1.0)
     rel_return_range: tuple[float, float] = (0.0, 0.5)
+    # 뷰 수치 변환 (2026-11 시나리오 QA, 논의사항 C1): LLM 은 방향·강도만 내고, 코드가 사전 기대수익(π) 대비로 Q 를 만든다.
+    # 절대 뷰 Q = π_i + 방향 × k × σ_i, 상대 뷰 Q = (π_long − π_short) + k × σ(long − short). k = 강도별 연변동성 배수
+    view_strength_k: dict[str, float] = field(default_factory=lambda: {"weak": 0.10, "medium": 0.20, "strong": 0.35})
+    single_evidence_max_confidence: float = 0.3  # 근거가 1건뿐인 뷰의 신뢰도 상한 (09 프롬프트 규칙을 코드로 강제)
     templates: tuple[str, ...] = ("equal_weight", "market_cap", "inverse_volatility", "min_variance")
     template_names_ko: dict[str, tuple[str, str]] = field(
         default_factory=lambda: {
@@ -78,6 +98,9 @@ class NewsSettings:
     view_sets_at_start: int = 5
     view_sets_at_rebalance: int = 1
     views_per_set: int = 4
+    # 한국어 기사는 제목에 회사 이름(별칭·6자리 코드 포함)이 있어야 근거로 쓴다. 네이버 뉴스 검색은 본문만 맞아도 나와서
+    # 제목에 회사가 나오는 기사가 NAVER 9%·SK하이닉스 8% 뿐이었다 (시나리오 003). False 면 예전처럼 모두 (블로그 등 이용자 글은 늘 뺌)
+    require_title_mention: bool = True
 
 
 @dataclass(frozen=True)
@@ -98,8 +121,10 @@ class DisclosureSettings:
         "fair_disclosure", "cybersecurity",
     )
     # 90일 요약 건수에만 넣는 정기·절차 공시 (뷰 근거 아님)
-    summary_extra_event_types: tuple[str, ...] = ("quarterly_report", "annual_report", "semiannual_report", "investor_relations", "reg_fd", "other_event", "voluntary_disclosure")
-    # 명시 제외: derivative_offering(증권사 ELS 잡음 7.3만), offering_document, major_holder, proxy, related_party, shareholder_meeting, exhibits_only
+    summary_extra_event_types: tuple[str, ...] = ("quarterly_report", "annual_report", "semiannual_report", "investor_relations", "reg_fd", "other_event", "voluntary_disclosure",
+                                                  "listing_notice")  # SEC 8-K 3.01: 상장 기준 통지·상장 이전 — 구별할 수 없어 뷰 근거가 아님 (075)
+    # 명시 제외: derivative_offering(증권사 ELS 잡음 7.3만), offering_document, major_holder, proxy, related_party, shareholder_meeting, exhibits_only,
+    # trading_halt(거래소의 절차상 매매거래 정지·해제 — 악재 신호가 아니고 같은 날의 본 공시가 사건이다)
 
 
 @dataclass(frozen=True)
@@ -123,6 +148,7 @@ class BacktestSettings:
     min_annualize_days: int = 378  # 라운드 5: 1.5년 미만 창은 연환산 KPI 대신 기간 수익률, R2/R7 은 참고
     min_invested_for_recommendation: float = 0.5  # 기준 구성의 투자 비율이 이보다 낮으면 결론 라벨 '구성 불충분'
     dd_excess_bucket: float = 0.05  # 추천 순위: 허용 낙폭 초과분을 이 단위(5%p) 구간으로 감점
+    matched_min_invested: float = 0.30  # 낙폭 맞춤안의 주식 비중 하한 (2026-11 정책 결정 2). 이보다 줄여야 목표 낙폭을 맞추면 맞춤안을 만들지 않고 알린다
     checkpoint_view_diagnostics: bool = False  # 체크포인트마다 뷰 진단을 다시 계산 (화면 미사용 → 기본 끔. 켜면 11 단계가 느려진다)
 
 

@@ -163,7 +163,9 @@ def test_backtest_invariants(e2e):
                     diff = max(abs(c["weights"]["after"][t] - c["weights"]["target"][t]) for t in c["weights"]["target"])
                     assert diff < 0.02, (p["id"], c["date"], diff)
     ids = {p["id"] for p in bt["portfolios"]}
-    assert {"wf_bl_news", "wf_equal_weight", "equal_weight", "market_cap", "inverse_volatility", "min_variance"} <= ids
+    assert {"wf_equal_weight", "equal_weight", "market_cap", "inverse_volatility", "min_variance"} <= ids
+    # 합성 뉴스는 2025-12 에만 있어 walk-forward 리밸런싱일에는 뷰가 없다 → 기준 비중과 같은 뉴스 반영 후보를 만들지 않는다
+    assert "wf_bl_news" not in ids and ctx.outputs["10w_target_paths"]["bl_omitted"]["reason"] == "no_views"
     assert any(p["mode"] == "walkforward" for p in bt["portfolios"])
     assert {b["id"] for b in bt["benchmarks"]} >= {"benchmark_SPY", "benchmark_069500.KS"}  # 한국 종목 포함 → 한국 지수 자동 추가
 
@@ -220,8 +222,8 @@ def test_disclosures_flow_into_results_and_report(e2e):
     dc_docs = [e for e in doc.evidence if e.kind == "disclosure"]
     assert dc_docs and all(e.event_label_ko and e.available_on for e in dc_docs)
     facts = facts_for_market(R)
-    assert facts["disclosures"] and facts["event_summary_90d"] and "[dc45]" in facts["citation_rule"]
-    assert all(set(d) >= {"id", "ticker", "available_on", "event", "form"} for d in facts["disclosures"])
+    assert facts["disclosures"] and facts["event_summary"] and "[dc45]" in facts["citation_rule"]
+    assert all(set(d) >= {"id", "ticker", "date", "event", "form"} for d in facts["disclosures"])  # 날짜는 하나(접수일, 071)
     # 검증: 기준일 이후에 이용 가능해진 공시를 인용하면 오류, 기준일 이전이면 통과
     dc_id = next(iter(dcs))
     ok = json.loads(json.dumps(ctx.outputs["14_report"]))
@@ -310,3 +312,64 @@ def test_compute_to_date_matches_compute_all(e2e):
     if wf and wf["view_diagnostics"]:
         assert all("as_of" in v for v in wf["view_diagnostics"])
     assert all(cp["view_diagnostics_to_date"] == [] for x in bt["portfolios"] for cp in x["checkpoints"])
+
+
+def test_walkforward_target_weights_are_start_date(e2e):
+    """008: walk-forward 안의 target_weights('백테스트 시작일 배분' 표·R9·현금 설명) 는 첫 리밸런싱일 목표여야 한다 (예전에는 마지막 리밸런싱일 비중)."""
+    ctx, _ = e2e
+    wf = [p for p in ctx.outputs["11_backtest_results"]["portfolios"] if p.get("weights_by_date")]
+    assert wf
+    for p in wf:
+        first = p["weights_by_date"][min(p["weights_by_date"])]
+        tw = p["target_weights"]
+        assert set(tw) <= set(first) and all(abs(tw[t] - first[t]) < 1e-6 * max(1.0, sum(first.values())) * 10 for t in tw), p["id"]
+
+
+def test_candidates_funnel_label_names_actual_reasons(e2e):
+    """009: 키워드 약함으로 빠진 5개가 '시가총액·거래대금·제외 조건 통과' 단계에 섞였다 → 라벨이 실제 사유를 적는다."""
+    ctx, _ = e2e
+    R = ctx.outputs["13_results"]
+    lab = next(f["label_ko"] for f in R["selection"]["funnel"] if f["stage"] == "candidates")
+    assert lab.startswith("후보 조건 통과 (")
+    if ctx.outputs["03_candidates"].get("filtered_out"):
+        assert "빠짐: " in lab
+
+
+def test_backtest_start_removed_names_carry_that_day_reasons(e2e):
+    """011: 시작일 목록이 9→2 로 준 이유를 리포트가 기준일 후보 단계 사유로 썼다. 07 이 빠진 종목마다 그날 사유를 남기고, 결과 묶음은 한국어로 옮긴다."""
+    ctx, _ = e2e
+    diff = ctx.outputs["07_backtest_spec"]["selection"]["diff_vs_original"]
+    assert set(diff["removed_reasons"]) == set(diff["removed"])
+    ko = ctx.outputs["13_results"]["selection"]["backtest_as_of"]["removed_reasons_ko"]
+    assert [x["ticker"] for x in ko] == list(diff["removed_reasons"]) and all(x["reason_ko"] for x in ko)
+
+
+def test_delta_cap_note_reaches_parameters_table(e2e):
+    """검토: 결과 묶음의 시장모형 목록이 delta_capped 를 빼서 계산 조건 표의 '상한 8 적용' 이 나올 수 없었다."""
+    import copy
+
+    from backend.analysis.m5_backtest_report.report_blocks import parameters_table
+
+    ctx, _ = e2e
+    R = copy.deepcopy(ctx.outputs["13_results"])
+    mm = R["portfolio"]["market_model"]
+    assert "delta_capped" in mm
+    mm.update(delta=8.0, delta_capped=True)
+    assert any("→ 상한 8 적용 = 8.0" in str(r["v"]) for r in parameters_table(R)["rows"])
+
+
+def test_evidence_window_label_prefers_the_as_of_window(e2e):
+    """검토: 같은 근거가 기준일 창과 walk-forward 날짜 창에 다 들면 나중에 쓴 창 이름이 남아, 시장 분석(기준일 창만 씀)에서 공시가 빠졌다 (008: 실적 공시 12 → 7)."""
+    ctx, _ = e2e
+    R = ctx.outputs["13_results"]
+    as_of = max(str(w.get("as_of")) for w in ctx.news_windows)
+    ids = {r["evidence_id"] for w in ctx.news_windows if str(w.get("as_of")) == as_of for r in [*(w.get("records") or []), *(w.get("disclosures") or [])]}
+    assert ids and all(R["evidence_index"][i]["window_as_of"] == as_of for i in ids)
+
+
+def test_selected_funnel_label_mentions_sector_spreading_only_when_it_changed_the_list(e2e):
+    """015·017: 섹터 상한 100%·한 섹터 종목뿐인데 깔때기가 '섹터 분산 적용' 이라고 했다 → 섹터 선호로 순위가 바뀐 경우에만 적는다."""
+    ctx, _ = e2e
+    lab = next(f["label_ko"] for f in ctx.outputs["13_results"]["selection"]["funnel"] if f["stage"] == "selected_now")
+    changed = any(r.get("reason") == "sector_preference" for r in ctx.outputs["05_selection"].get("rejected") or [])
+    assert lab.startswith("최종 선정 (") and ("섹터 분산" in lab) == changed

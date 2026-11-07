@@ -20,11 +20,23 @@ def _period_key(ts: pd.Timestamp, unit: str):
     return {"1m": (ts.year, ts.month), "1q": (ts.year, (ts.month - 1) // 3), "6m": (ts.year, (ts.month - 1) // 6), "1y": (ts.year,)}[unit]
 
 
-def rebalance_dates(rule: dict, calendar: pd.DatetimeIndex, as_of, settings: BacktestSettings) -> list:
+def _on_or_after(dates, days: pd.DatetimeIndex) -> list:
+    """고른 날마다 그날 이후 첫 매매일. 매매일이 없으면 버리고, 둘이 같은 날로 모이면 하나만 (한 기간 내내 휴장인 경우)."""
+    out = []
+    for d in dates:
+        i = days.searchsorted(d)
+        if i < len(days) and (not out or days[i] != out[-1]):
+            out.append(days[i])
+    return out
+
+
+def rebalance_dates(rule: dict, calendar: pd.DatetimeIndex, as_of, settings: BacktestSettings, tradable: pd.DatetimeIndex | None = None) -> list:
+    """정책 6: 기간 첫 거래일 (2w 는 거래일 수로). tradable(보유 종목 시장이 모두 연 날)을 주면 고른 날을 그날 이후 첫 매매일로 옮긴다 —
+    평가 달력은 비교지수 시장까지 합친 합집합이라, 그대로 고르면 보유 종목 시장의 휴장일에 묵은 가격으로 매매한다 (시나리오 QA 002)."""
     cal = calendar[calendar >= pd.Timestamp(as_of)]
     if not rule.get("enabled", True) or rule["count"] == 0:
-        return [cal[0]]  # buy and hold: 시작일 1회만
-    if rule["unit"] == "2w":
+        out = [cal[0]]  # buy and hold: 시작일 1회만
+    elif rule["unit"] == "2w":
         out = list(cal[:: settings.rebalance_trading_days["2w"] * rule["count"]])
     else:
         firsts, seen = [], set()
@@ -34,16 +46,20 @@ def rebalance_dates(rule: dict, calendar: pd.DatetimeIndex, as_of, settings: Bac
                 seen.add(k)
                 firsts.append(ts)
         out = firsts[:: rule["count"]]
+    if tradable is not None:
+        out = _on_or_after(out, cal.intersection(tradable))
     if len(out) > 1 and out[-1] == cal[-1]:
         out = out[:-1]  # 마지막 날에는 리밸런싱하지 않음 (종료 체크포인트만)
     return out
 
 
-def contribution_dates(calendar: pd.DatetimeIndex, as_of, end, day: int) -> list:
+def contribution_dates(calendar: pd.DatetimeIndex, as_of, end, day: int, tradable: pd.DatetimeIndex | None = None) -> list:
+    """매월 day 일 이후 첫 거래일. tradable 을 주면 그중 보유 종목 시장이 모두 연 날만 (적립 매수도 체결이다)."""
+    days = calendar if tradable is None else calendar.intersection(tradable)
     out, cur = [], (pd.Timestamp(as_of) + pd.offsets.MonthBegin(1))
     while cur <= pd.Timestamp(end):
         target = pd.Timestamp(cur.year, cur.month, min(day, cur.days_in_month))
-        nxt = calendar[(calendar >= target) & (calendar <= pd.Timestamp(end))]
+        nxt = days[(days >= target) & (days <= pd.Timestamp(end))]
         if len(nxt):
             out.append(nxt[0])
         cur = cur + pd.offsets.MonthBegin(1)

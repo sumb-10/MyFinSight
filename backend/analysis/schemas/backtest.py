@@ -81,6 +81,7 @@ class SelectionRow(BaseModel):
     sector: str
     rank: int
     metric_value: float
+    metric_fact_id: str | None = None  # 그 시점 지표의 인용 ID (리포트가 시작일 값에 시작일 ID 를 붙이게)
 
 
 class SelectionSpec(BaseModel):
@@ -88,7 +89,7 @@ class SelectionSpec(BaseModel):
     metric: str
     tickers: list[str] = Field(min_length=1)
     table: list[SelectionRow]
-    diff_vs_original: dict[str, list[str]]
+    diff_vs_original: dict[str, list[str] | dict[str, str]]  # added·removed 목록 + removed_reasons {종목: 그날 사유}
     infeasibility: dict | None = None
     sector_overflow: dict | None = None
 

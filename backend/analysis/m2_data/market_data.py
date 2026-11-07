@@ -32,6 +32,43 @@ MARKET_BENCH = {"US": "primary_benchmark_default", "KR": "kr_benchmark"}
 # 창 첫날이 어느 시장의 휴장일이면 "직전 종가"가 창 안에 없다. 이만큼 앞서 읽어 채운 뒤 잘라낸다.
 log = logging.getLogger(__name__)
 HOLIDAY_LOOKBACK_DAYS = 14
+ADJ_FACTOR_TOL = 0.02  # 수정 계수(adj_close / close)가 이만큼 넘게 움직였다가
+ADJ_SPIKE_MAX_RUN = 5  # 이 거래일 수 안에 원래 계수로 돌아오면, 그 사이만 계수가 잘못된 날로 본다
+
+
+def repair_adj_spikes(bars: pd.DataFrame) -> tuple[pd.DataFrame, list[tuple[str, dt.date, float, float]]]:
+    """수정 계수가 며칠만 튀었다가 앞의 계수로 돌아온 날은 앞의 계수로 이어 붙인다 → (고친 bars, [(종목, 날짜, 원래 계수, 고친 계수)]).
+    팀 DB 는 한국 종목 수정주가를 YFINANCE(배당 보정) 우선, 그날 값이 없으면 KIS(수정주가 = 종가)로 채워, YFINANCE 가 빈 날만 수정주가가
+    누적 배당만큼 튀었다가 돌아왔다 (020: 2022-05-09 우리금융 +34.7% → 다음 날 −26%, 최대낙폭 30% 가 38% 로). 배당락·분할처럼
+    계수가 바뀐 채 유지되는 날은 건드리지 않는다. 종가 자체가 튄 경우(계수는 그대로)는 여기서 다루지 않는다."""
+    if bars is None or bars.empty or not {"close", "adj_close"} <= set(bars.columns):
+        return bars, []
+    out, repairs = bars, []
+    for t, g in bars.groupby("ticker", sort=False):
+        close, adj = g["close"].to_numpy(dtype=float), g["adj_close"].to_numpy(dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            f = adj / close
+        n, i = len(f), 1
+        while i < n:
+            base = f[i - 1]
+            if not (np.isfinite(base) and base > 0 and np.isfinite(f[i])) or abs(f[i] / base - 1) <= ADJ_FACTOR_TOL:
+                i += 1
+                continue
+            j = i
+            while j < n and j - i < ADJ_SPIKE_MAX_RUN and np.isfinite(f[j]) and abs(f[j] / base - 1) > ADJ_FACTOR_TOL:
+                j += 1
+            if j < n and np.isfinite(f[j]) and abs(f[j] / base - 1) <= ADJ_FACTOR_TOL:
+                if out is bars:
+                    out = bars.copy()
+                for k in range(i, j):
+                    out.at[g.index[k], "adj_close"] = close[k] * base
+                    repairs.append((str(t), pd.Timestamp(g["date"].iloc[k]).date(), round(float(f[k]), 6), round(float(base), 6)))
+                i = j + 1
+            else:
+                i += 1  # 계수가 바뀐 채 유지 (배당락·분할) → 그대로
+    if repairs:
+        log.warning("[md] 수정 계수가 잠깐 튄 가격 %d건을 앞의 계수로 이어 붙임 (예: %s)", len(repairs), repairs[:3])
+    return out, repairs
 UNIVERSE_INDEX = {"SP500": IndexCode.SP500, "NASDAQ100": IndexCode.NDX, "KOSPI200": IndexCode.KOSPI200}
 
 
@@ -50,6 +87,10 @@ class _Cache:
     fx: pd.Series | None = None  # index date, value KRW per USD (daily, 원본만)
     fx_range: tuple[dt.date, dt.date] | None = None
     valuation: dict[tuple[dt.date, frozenset[str]], pd.DataFrame] = field(default_factory=dict)
+    shares: dict[tuple[dt.date, str], dict[str, Any] | None] = field(default_factory=dict)  # (d, asset_id) → 시가총액 대체용 마지막 주식수 행 (없음도 기억)
+    price_repairs: list[tuple[str, dt.date, float, float]] = field(default_factory=list)  # repair_adj_spikes 가 고친 (종목, 날짜, 원래 계수, 고친 계수)
+    imp_median: dict[tuple[dt.date, str], dict[str, Any] | None] = field(default_factory=dict)  # (d, asset_id) → 시가총액 이상값 검사용 주식수 중앙값 (없음도 기억)
+    mcap_repairs: dict[tuple[str, dt.date], float] = field(default_factory=dict)  # (종목, 행 날짜) → 고치기 전 시가총액 ÷ 중앙값 시가총액
     news: dict[tuple, EvidenceWindow] = field(default_factory=dict)
 
 
@@ -139,8 +180,8 @@ class MarketData:
             start, end = min(start, lo), max(end, hi)
             want = want | c.tickers_loaded
             log.warning("[md] price reload #%d: +%d tickers, %s~%s (이미 적재한 범위 밖 요청)", c.n_loads + 1, len(want - c.tickers_loaded), start, end)
-        bars = self.repo.get_price_bars(sorted(want), start, end)
-        c.bars, c.bars_range = bars, (start, end)
+        bars, repairs = repair_adj_spikes(self.repo.get_price_bars(sorted(want), start, end))
+        c.bars, c.bars_range, c.price_repairs = bars, (start, end), repairs
         c.tickers_loaded = set(want)  # 자료가 없는 종목도 "요청함" 으로 기억한다 (예전에는 빠져서 매번 전체 재적재)
         c.first_date = {t: _d(d) for t, d in bars.groupby("ticker")["date"].min().items()} if len(bars) else {}
         c.n_loads += 1
@@ -305,6 +346,16 @@ class MarketDataView:
         raw = self._carry_market_holidays(raw, load_start, end)
         raw = raw.loc[raw.index >= pd.Timestamp(start)]
         report, clean = assess(raw, [*required, *benchmarks], raw.index, self.s.market)
+        fixed = sorted({(t, d) for t, d, _f, _b in self.md._c.price_repairs if t in set(all_t) and start <= d <= end})
+        if fixed:  # 자료 품질 표에 남긴다 (예전에는 '이상 없음' 으로 보였다)
+            ex = ", ".join(f"{t} {d}" for t, d in fixed[:3])
+            report.warnings.append(f"배당 보정이 하루~며칠 빠진 수정주가 {len(fixed)}건을 앞뒤 계수로 이어 붙였습니다 (예: {ex}).")
+        lo = start - dt.timedelta(days=self.s.market.valuation_max_staleness_days)
+        mfix = sorted((t, d, r) for (t, d), r in self.md._c.mcap_repairs.items() if t in set(all_t) and lo <= d <= end)
+        if mfix:  # 시가총액비중·최소 시가총액에 쓴 값을 고쳤다 (047: GOOGL 2022-08 시가총액이 20배)
+            ex = ", ".join(f"{t} {d} {r:.0f}배" if r >= 1 else f"{t} {d} 1/{1 / r:.0f}" for t, d, r in mfix[:3])
+            report.warnings.append(f"주식수가 잘못 들어간 시가총액 {len(mfix)}건(분할을 두 번 반영했거나 단위가 1000배 다름)은 직전 "
+                                   f"{self.s.market.mcap_guard_window_days}일 중앙값 주식수 × 그날 종가로 고쳐 썼습니다 (예: {ex}).")  # fmt: skip
         return clean, report
 
     def _carry_market_holidays(self, wide: pd.DataFrame, start: dt.date, end: dt.date) -> pd.DataFrame:
@@ -337,23 +388,33 @@ class MarketDataView:
 
     # ───────────────────────── 가치평가 ─────────────────────────
     def valuation(self, tickers: Sequence[str], *, strict_before: bool | None = None) -> pd.DataFrame:
-        """종목별 기준일 가치평가 (index=ticker): per, pbr, roe_ttm, dividend_yield, market_cap_usd, shares_outstanding, date.
+        """종목별 기준일 가치평가 (index=ticker): per, pbr, roe_ttm, dividend_yield, market_cap_usd, shares_outstanding, date,
+        market_cap_source ('valuation' | 'estimated' | None), market_cap_basis_date (시가총액에 쓴 주식수가 있던 행의 날짜).
 
         valuation_daily 는 그날 종가·그날까지 공시된 재무만 쓰므로, 추정용(strict)에는 as_of−1 행을 쓴다.
+        시가총액이 빈 행은 마지막으로 알려진 주식수로 추정해 채운다 (`_mcap_fallback`) → 최소 시가총액 필터와 시가총액비중이 같은 값을 쓴다.
         """
         d = self._end(None, strict_before)
         tickers = [normalize_ticker(t) for t in tickers]
-        key = (d, frozenset(tickers))
+        key = (d, frozenset(tickers))  # 대체값도 (d, 종목) 과 실행 설정만으로 정해져 같은 키로 둔다
         if key in self.md._c.valuation:
             return self.md._c.valuation[key]
         ids = {self.md.asset_id(t): t for t in tickers}
         rows = self.md.repo.get_valuation_asof(list(ids), d, max_staleness_days=self.s.market.valuation_max_staleness_days)
+        est = self._mcap_fallback(rows, d)
         fx = self.fx_on_or_before(d).rate
+        fix = self._mcap_guard(rows, d, fx)
         recs = []
         for aid, r in rows.items():
             t = ids[aid]
             krw = (r.get("currency") or self.md.currency_of(t)) == "KRW"
-            mcap = r.get("market_cap")
+            mcap, src, basis = r.get("market_cap"), "valuation", r["date"]
+            if aid in fix:
+                mcap, src = fix[aid][0], "repaired"
+                self.md._c.mcap_repairs[(t, _d(r["date"]))] = fix[aid][1]
+            if mcap is None:
+                mcap, basis = est.get(aid, (None, None))
+                src = "estimated" if mcap is not None else None
             recs.append(
                 {
                     "ticker": t,
@@ -367,22 +428,103 @@ class MarketDataView:
                     "eps_ttm": r.get("eps_ttm"),
                     "shares_outstanding": r.get("shares_outstanding"),
                     "market_cap_usd": (mcap / fx if krw else mcap) if mcap is not None else None,
+                    "market_cap_source": src,
+                    "market_cap_basis_date": basis,
+                    "market_cap_ratio": fix[aid][1] if aid in fix else None,
                     "fin_disclosed_at": r.get("fin_disclosed_at"),
                 }
             )
         cols = ["ticker", "asset_id", "date", "currency", "per", "pbr", "roe_ttm", "dividend_yield", "eps_ttm",
-                "shares_outstanding", "market_cap_usd", "fin_disclosed_at"]  # fmt: skip
+                "shares_outstanding", "market_cap_usd", "market_cap_source", "market_cap_basis_date", "market_cap_ratio", "fin_disclosed_at"]  # fmt: skip
         df = pd.DataFrame(recs, columns=cols).set_index("ticker").reindex(tickers)
         self.md._c.valuation[key] = df
         return df
+
+    def _mcap_fallback(self, rows: dict[str, dict[str, Any]], d: dt.date) -> dict[str, tuple[float, dt.date]]:
+        """시가총액이 빈 가치평가 행의 대체값 {asset_id: (종목 통화 시가총액, 주식수 기준일)}. 팀 DB 는 주식수가 빈 구간이 있다 (SCHW 2022-02 ~).
+
+        t0 = d 이하에서 주식수가 있는 마지막 행, 그 주식수의 기준일(shares_as_of)이 최대 mcap_fallback_max_days 전 (d 뒤는 읽지 않음 → 앞쪽 공백(XOM 2026-08 전·BLK 2024-11 전)은 대체 없음).
+        t0 뒤 비율 r 로 분할되면 주식수도 r 배라 실제 종가(d) × S(t0)·r = close(d)·sf(d) × S(t0)·sf(t0)/sf(d) = close(d) × S(t0) × sf(t0)
+        (close = 분할 보정 종가, 실제 종가 = close × split_factor; 두 행의 가격을 같은 때 받았다는 가정 — 팀 DB 이력은 한꺼번에 받았다).
+        그날 종가는 위 가치평가 행의 close (분할 계수와 같은 표) — 그 행이 없으면 추정하지 않는다."""
+        need = [aid for aid, r in rows.items() if r.get("market_cap") is None and r.get("close")]
+        reader = getattr(self.md.repo, "get_shares_asof", None)  # 리더가 없는 저장소(예전 가짜 저장소)는 대체 없음 = 자료 없음
+        if not need or reader is None:
+            return {}
+        c = self.md._c.shares  # 같은 날 후보 검색·선정 지표·시장모형이 종목 집합만 바꿔 다시 부른다 (실행 전 점검은 날마다 반복) → 종목별로 한 번만 묻는다
+        ask = [aid for aid in need if (d, aid) not in c]
+        if ask:
+            got = reader(ask, d, max_staleness_days=self.s.market.mcap_fallback_max_days)
+            c.update({(d, aid): got.get(aid) for aid in ask})
+        out: dict[str, tuple[float, dt.date]] = {}
+        for aid in need:
+            s = c.get((d, aid))
+            if not s or not (s.get("shares_outstanding") or 0) > 0 or _d(s["date"]) > d:
+                continue
+            # 나이는 주식수 자체의 기준일(shares_as_of)로 잰다 — 행 날짜로 재면 팀 DB 가 550일까지 행에 남기는 옛 주식수를 썼다
+            # (2023-11 SCHW: 2022-02 행의 주식수는 2020-07 값이라 1,189일 전 — TD Ameritrade 인수 전이라 29% 낮았고, 공지의 '최대 2년 전' 도 거짓)
+            basis = _d(s.get("shares_as_of") or s["date"])
+            if basis > d or (d - basis).days > self.s.market.mcap_fallback_max_days:
+                continue
+            out[aid] = (float(rows[aid]["close"]) * float(s["shares_outstanding"]) * float(s.get("split_factor") or 1.0), basis)
+        return out
+
+    def _mcap_guard(self, rows: dict[str, dict[str, Any]], d: dt.date, fx: float) -> dict[str, tuple[float, float]]:
+        """주식수가 틀린 시가총액 행 {asset_id: (고친 시가총액, 원래 ÷ 중앙값 비율)}. 기준 = 직전 mcap_guard_window_days 의 시가총액 ÷ 종가 중앙값
+        (종가가 분할 보정이라 맞는 자료면 분할 앞뒤로 같다). 틀린 것으로 보는 경우는 두 가지뿐이다:
+        1000배·100만배(또는 그 역수) — 주식수 단위 오류 (PKG·AJG·CMG 등), 그 기간 정방향 분할 비율만큼 큼 — 분할을 두 번 반영 (GOOGL 20배·NFLX 7배·SHW 3배).
+        합병·채무 출자전환 같은 실제 주식수 변화(KDP 7.7배·PCG 3.7배)는 이 두 모양이 아니라 그대로 둔다. 분할 계수가 분사·감자도 담는 경우
+        (NI·HPQ 분사 뒤 0.4배, 한국 종목)는 분할 규칙에서 뺀다 (미국 종목의 정방향 분할만). 고친 값이 회사 크기로 말이 안 되면 고치지 않는다. d 뒤는 읽지 않는다."""
+        need = [aid for aid, r in rows.items() if (r.get("market_cap") or 0) > 0 and (r.get("close") or 0) > 0]
+        reader = getattr(self.md.repo, "get_implied_shares_median", None)  # 리더가 없는 저장소(테스트용 가짜)는 검사하지 않는다
+        if not need or reader is None:
+            return {}
+        m = self.s.market
+        c = self.md._c.imp_median
+        ask = [aid for aid in need if (d, aid) not in c]
+        if ask:
+            got = reader(ask, d, window_days=m.mcap_guard_window_days)
+            c.update({(d, aid): got.get(aid) for aid in ask})
+        out: dict[str, tuple[float, float]] = {}
+        for aid in need:
+            ref = c.get((d, aid))
+            if not ref or not (ref.get("median") or 0) > 0 or int(ref.get("n") or 0) < m.mcap_guard_min_rows:
+                continue
+            r = rows[aid]
+            close = float(r["close"])
+            ratio = float(r["market_cap"]) / close / float(ref["median"])
+            k = round(float(np.log10(ratio)) / 3)
+            unit = k != 0 and abs(ratio / 1000.0**k - 1) <= m.mcap_guard_unit_tol
+            sf = float(r.get("split_factor") or 0)
+            krw = (r.get("currency") or "") == "KRW"
+            split = float(ref.get("max_sf") or 0) / sf if sf > 0 and not krw else 0.0  # 그 기간 정방향 분할 비율 (분할 전 행의 계수가 더 크다)
+            double = split >= 1.5 and abs(ratio / split - 1) <= m.mcap_guard_split_tol
+            fixed = float(ref["median"]) * close
+            lo, hi = m.mcap_guard_plausible_usd
+            if (unit or double) and lo <= (fixed / fx if krw else fixed) <= hi:
+                out[aid] = (fixed, ratio)
+        return out
+
+    def market_cap_repaired(self, tickers: Sequence[str]) -> dict[str, float]:
+        """주식수 이상값이라 고친 종목 → 고치기 전 시가총액 ÷ 고친 시가총액 (market_cap_usd 와 같은 기준일·캐시)."""
+        v = self.valuation(tickers)
+        rep = v.loc[v["market_cap_source"] == "repaired", "market_cap_ratio"]
+        return {t: float(x) for t, x in rep.items()}
 
     def shares_outstanding(self, tickers: Sequence[str]) -> dict[str, float]:
         v = self.valuation(tickers)["shares_outstanding"]
         return {t: float(x) for t, x in v.items() if pd.notna(x)}
 
     def market_cap_usd(self, tickers: Sequence[str]) -> dict[str, float]:
+        """valuation_daily 시가총액(USD). 빈 날은 마지막 주식수로 추정한 값 (어느 종목인지는 market_cap_estimated)."""
         v = self.valuation(tickers)["market_cap_usd"]
         return {t: float(x) for t, x in v.items() if pd.notna(x)}
+
+    def market_cap_estimated(self, tickers: Sequence[str]) -> dict[str, dt.date]:
+        """시가총액을 주식수 대체로 추정한 종목 → 쓴 주식수의 행 날짜 (market_cap_usd 와 같은 기준일·캐시)."""
+        v = self.valuation(tickers)
+        est = v.loc[v["market_cap_source"] == "estimated", "market_cap_basis_date"]
+        return {t: _d(x) for t, x in est.items()}
 
     # ───────────────────────── 뉴스 ─────────────────────────
     def news_window(

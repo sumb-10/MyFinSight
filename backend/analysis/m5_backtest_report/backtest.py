@@ -14,6 +14,7 @@ import pandas as pd
 
 import bt as btlib
 
+from backend.analysis.errors import DataMissing
 from backend.analysis.m2_data import descriptor as D
 from backend.analysis.m2_data.market_data import MarketData
 from backend.analysis.m2_data.quality import report_summary
@@ -56,7 +57,9 @@ def build_checkpoints(raw, bench_raw, panel, targets, sectors, cp_dates, rb_set,
     bs = settings.backtest
     sw, pos, tx, tv = raw["security_weights"], raw["positions"], raw["transactions"], raw["turnover"]
     idx, values, flows = raw["index"], raw["values"], raw["flows"]
-    cols = [c for c in targets if c in sw.columns]
+    # 첫 날 목표에 없던 종목도 (walk-forward 는 target_weights 가 첫 날 목표라, 나중에 담긴 종목이 체크포인트에서 빠지고 현금으로 보였다)
+    names = list(targets) + [c for v in (targets_by_date or {}).values() for c in v if c not in targets]
+    cols = [c for c in dict.fromkeys(names) if c in sw.columns]
     contrib = flows.copy()
     contrib.iloc[0] = 0.0
     cum_contrib = contrib.cumsum()
@@ -66,9 +69,9 @@ def build_checkpoints(raw, bench_raw, panel, targets, sectors, cp_dates, rb_set,
     for seq, d in enumerate(cp_dates):
         if tbd:
             past = [k for k in sorted(tbd) if k <= d]
-            tgt = pd.Series({c: tbd[past[-1]].get(c, 0.0) for c in cols}) if past else pd.Series(targets)[cols]
+            tgt = pd.Series({c: tbd[past[-1]].get(c, 0.0) for c in cols}) if past else pd.Series(targets, dtype=float).reindex(cols).fillna(0.0)
         else:
-            tgt = pd.Series(targets)[cols]
+            tgt = pd.Series(targets, dtype=float).reindex(cols).fillna(0.0)
         kind = "rebalance" if d in rb_set else ("closing" if d == last else "monthly")
         pos_d = sw.index.get_loc(d)
         before = sw.iloc[pos_d - 1][cols] if pos_d > 0 else None
@@ -117,7 +120,7 @@ def build_checkpoints(raw, bench_raw, panel, targets, sectors, cp_dates, rb_set,
                                         baseline_idx=cfg["baseline_idx"][:d] if cfg["baseline_idx"] is not None else None)  # fmt: skip
             to_date["reliable"] = n_days >= bs.trading_days
             if views and bs.checkpoint_view_diagnostics:
-                vd = M.view_diagnostics(views, panel[:d], as_of, d, implied or {}, bs.view_horizon_days)
+                vd = M.view_diagnostics(views, panel[:d], as_of, d, implied or {}, bs.view_horizon_days, require_full=False)
         out.append({"seq": seq, "date": str(d.date()), "kind": kind, "n_trading_days_to_date": int(n_days),
                     "weights": {"target": {c: _f(tgt[c]) for c in cols}, "before": {c: _f(before[c]) for c in cols} if before is not None else None,
                                 "after": {c: _f(after[c]) for c in cols}, "cash_before": _f(1 - before.sum()) if before is not None else None,
@@ -152,23 +155,44 @@ def build_events(raw, rb_dates, contrib_dates, checkpoints, settings):
 
 
 # ───────────────────────── reusable pieces ─────────────────────────
+def trade_schedule(md: MarketData, spec: dict[str, Any], settings: AnalysisSettings) -> dict[str, Any]:
+    """달력과 매매 일정. 백테스트(prepare)와 walk-forward(10w) 가 이 함수 하나로 날짜를 정한다 (10w 구성일 == 11 리밸런싱일).
+
+    평가 달력(cal) = 종목 시장 ∪ 비교지수 시장 거래일 합집합 — 다른 시장 비교지수도 자기 거래일에 평가한다 (휴장 종목은 직전 종가).
+    매매일(tradable) = 보유 종목 시장이 모두 연 날 (미국+한국 혼합이면 둘 다 연 날). 리밸런싱·적립은 규칙이 고른 날 이후 첫 매매일 —
+    합집합에서 바로 고르면 한국 종목만 든 포트폴리오가 미국 비교지수 때문에 한국 휴장일(2023-10-02 등)에 묵은 가격으로 매매했다 (시나리오 QA 002)."""
+    as_of, end = pd.Timestamp(spec["period"]["as_of"]), pd.Timestamp(spec["period"]["end"])
+    bench, tickers, cap = spec["benchmark"], list(spec["selection"]["tickers"]), spec.get("capital") or {}  # walk-forward 는 리밸런싱일만 쓴다
+    benches = [bench] + [b for b in spec.get("extra_benchmarks", []) if b != bench and b in md.assets]
+    view = md.view(end.date())
+    own = sorted({md.market_of(t) for t in tickers})
+    cal = view.trading_days(as_of.date(), end.date(), markets=sorted({*own, *(md.market_of(b) for b in benches)}))
+    tradable = cal
+    for m in own:
+        tradable = tradable.intersection(view.trading_days(as_of.date(), end.date(), markets=[m]))
+    rb = rebalance_dates(spec["rebalance_rule"], cal, as_of, settings.backtest, tradable=tradable)
+    if len(tradable) == 0 or not rb:  # 보유 종목 시장이 모두 연 날이 하나도 없으면 매수 자체가 없다 → 뒤에서 알 수 없는 오류 대신 이유를 밝혀 멈춤 (검토)
+        raise DataMissing(f"백테스트 기간 {as_of.date()}~{end.date()} 에 보유 종목 시장({', '.join(own)})이 모두 문을 연 날이 없어 매매할 수 없습니다",
+                          details={"code": "NO_COMMON_TRADING_DAYS", "markets": own})  # fmt: skip
+    cd = (contribution_dates(cal, as_of, end, cap["contribution_day"], tradable=tradable)
+          if cap.get("include_contributions") and float(cap.get("monthly_contribution_usd") or 0) > 0 else [])
+    return {"benches": benches, "cal": cal, "tradable": tradable, "rb": rb, "cd": cd}
+
+
 def prepare(md: MarketData, spec: dict[str, Any], req: dict[str, Any], intent: dict[str, Any], mm: dict[str, Any], desc: Descriptor, settings: AnalysisSettings,
             baseline_id: str) -> dict[str, Any]:  # fmt: skip
     """백테스트 실행에 필요한 것 전부: 달력, 품질 통과 패널(USD), 리밸런싱·적립일, 섹터."""
     as_of, end = pd.Timestamp(spec["period"]["as_of"]), pd.Timestamp(spec["period"]["end"])
     bench = spec["benchmark"]
     tickers = list(spec["selection"]["tickers"])
-    benches = [bench] + [b for b in spec.get("extra_benchmarks", []) if b != bench and b in md.assets]
+    sch = trade_schedule(md, spec, settings)  # 달력·리밸런싱일·적립일 (walk-forward 와 같은 함수)
+    benches, cal, rb, cd = sch["benches"], sch["cal"], sch["rb"], sch["cd"]
     view = md.view(end.date())
-    markets = sorted({md.market_of(t) for t in tickers} | {md.market_of(b) for b in benches})
-    cal = view.trading_days(as_of.date(), end.date(), markets=markets)
     panel, quality = view.panel(tickers, as_of.date(), end.date(), required=benches, benchmarks=benches)
     excluded = [t for t in tickers if t not in panel.columns]
     usable = [t for t in tickers if t in panel.columns]
     panel = panel.reindex(cal).ffill()
-    rb = rebalance_dates(spec["rebalance_rule"], cal, as_of, settings.backtest)
     cap = spec["capital"]
-    cd = contribution_dates(cal, as_of, end, cap["contribution_day"]) if cap["include_contributions"] and cap["monthly_contribution_usd"] > 0 else []
     sectors = {t: D.gics_model(desc.by_ticker(t) or {"gics": {}}).sector.name or "Unknown" for t in usable}
     for b in benches:
         sectors[b] = "Benchmark"
@@ -225,22 +249,27 @@ def evaluate(ctx, p, raw, kind, bench_raw, baseline_idx, *, implied_by_date=None
     if views and p.get("views_by_date"):  # walk-forward: 날짜별 진단으로 바꾸고 시작일 기준 진단은 끈다
         wf_vd = walkforward_view_diagnostics(p["views_by_date"], ctx["panel"], ctx["end"], implied_by_date, implied, s.backtest.view_horizon_days)
         views = None
+    tbd = {d: _usable_weights(ctx, w) for d, w in p["weights_by_date"].items()} if p.get("weights_by_date") else None
     res = M.compute_all(raw, bench_raw["index"], ctx["panel"], weights, ctx["sectors"], ctx["rb"], ctx["rf"], ctx["target_return"],
                         cfg["max_stock"], cfg["max_sector"], xirr, s.backtest, baseline_idx=baseline_idx, views=views, implied=implied,
-                        as_of=ctx["as_of"], end=ctx["end"])  # fmt: skip
+                        as_of=ctx["as_of"], end=ctx["end"], targets_by_date=tbd,
+                        min_cash=float(ctx["cons"].get("min_cash_ratio") or 0))  # fmt: skip  (031: 리밸런싱 사이 현금이 최소 현금보다 낮았던 날)
     if wf_vd is not None:
         res["view_diagnostics"] = wf_vd
     nxt: list[dict[str, Any]] = []
     if kind == "black_litterman":  # 라운드 5: 뷰를 세운 날부터 다음 리밸런싱일까지의 적중 (뷰가 실제로 비중을 바꾼 기간)
         vbd = p.get("views_by_date") or ({str(ctx["as_of"].date()): p.get("views_applied") or []} if p.get("views_applied") else {})
-        nxt = M.view_diagnostics_next_window(vbd, ctx["panel"], ctx["rb"], ctx["end"], implied_by_date, implied)
+        # rb[0] 은 첫 매수일이지 '다음' 리밸런싱이 아니다: 시작일이 혼합 포트폴리오 한쪽 시장의 휴장일이라 첫 매수가 하루 밀려도 창이 하루짜리가 되지 않게
+        # 리밸런싱이 없으면 '다음 리밸런싱까지' 가 곧 전체 기간이라 따로 재지 않는다 (037: 3년 전체를 '다음 리밸런싱까지 적중 0%' 로 보였다)
+        nxt = M.view_diagnostics_next_window(vbd, ctx["panel"], ctx["rb"][1:], ctx["end"], implied_by_date, implied) if ctx["rb"][1:] else []
     cps = build_checkpoints(raw, bench_raw, ctx["panel"], weights, ctx["sectors"], ctx["cp_dates"], ctx["rb_set"], ctx["last"], cfg, views, implied,
-                            ctx["as_of"], ctx["end"], s, targets_by_date=p.get("weights_by_date"))  # fmt: skip
+                            ctx["as_of"], ctx["end"], s, targets_by_date=tbd)  # fmt: skip  (품질 제외를 뺀 날짜별 목표: 체결 비중과 같은 기준)
     m = res["metrics"]
-    hits = [v["hit"] for v in res["view_diagnostics"]]
+    hits = [v["hit"] for v in res["view_diagnostics"] if v.get("hit") is not None]  # 12개월이 끝나지 않은 뷰(판정 보류)는 적중률에서 뺀다
+    hits_nx = [v["hit"] for v in nxt if v.get("hit") is not None]  # 종료일에서 잘린 짧은 마지막 창(판정 보류)도 같은 방식으로 뺀다 (020)
     headline = {"final_value_usd": res["money"]["final_value_usd"], "cagr": m["return"]["cagr"], "period_return": m["return"]["total_return"],
                 "excess_cagr": m["vs_benchmark"]["excess_cagr"], "max_drawdown": m["risk"]["max_drawdown"], "sharpe": m["risk_adjusted"]["sharpe"],
-                "view_hit_ratio": _f(np.mean(hits)) if hits else None, "view_hit_ratio_next_rb": _f(np.mean([v["hit"] for v in nxt])) if nxt else None,
+                "view_hit_ratio": _f(np.mean(hits)) if hits else None, "view_hit_ratio_next_rb": _f(np.mean(hits_nx)) if hits_nx else None,
                 "annualized_reliable": len(raw["index"]) - 1 >= s.backtest.min_annualize_days}  # fmt: skip
     contrib = raw["flows"].copy()
     contrib.iloc[0] = 0.0
@@ -287,10 +316,19 @@ def build_matched_blocks(ctx, targets, wf, runs, blocks, primary_raw, baseline_i
         else:
             def run_fn(c, _wbd=base["weights_by_date"], _pid=pid):
                 return run_raw_dynamic(ctx, _pid, {d: MX.scale_weights(w, c) for d, w in _wbd.items()})
+        # 주식 비중 하한 (정책 결정 2): 모든 날짜에서 기준 투자 비율 × (1−c) ≥ 하한 → c ≤ 1 − 하한 / 최소 투자 비율
+        floor = float(ctx["settings"].backtest.matched_min_invested)
+        invs = [float(sum(w.values())) for w in (base["weights_by_date"].values() if mode == "dynamic" else [base["weights"]])]
+        base_inv = min(invs) if invs else 0.0
+        max_cash = 1.0 - floor / base_inv if base_inv > 1e-9 else -1.0
         seed = MX.seed_cash_ratio(braw["index"], target)
-        c, raw, n = MX.solve_cash_ratio(run_fn, seed, target)
+        c, raw, n = MX.solve_cash_ratio(run_fn, seed, target, max_cash=max_cash)
         if c is None:
-            warns.append(f"matched variant skipped for {bid}: no cash ratio up to {MX.MAX_CASH:.0%} brings max drawdown within {target:.1%} ({n} runs)")
+            if max_cash < MX.MAX_CASH - 1e-9:
+                warns.append(f"matched variant skipped for {bid}: stocks below floor {floor:.0%} would be needed to bring max drawdown within {target:.1%} "
+                             f"(base invested {base_inv:.0%}, cash cap {max(0.0, max_cash):.0%}, {n} runs)")  # fmt: skip
+            else:
+                warns.append(f"matched variant skipped for {bid}: no cash ratio up to {MX.MAX_CASH:.0%} brings max drawdown within {target:.1%} ({n} runs)")
             continue
         weights = MX.scale_weights(base["weights"], c)
         inv = float(sum(weights.values()))
@@ -323,7 +361,8 @@ def run_backtest(md: MarketData, targets: dict[str, Any], req: dict[str, Any], i
     wf = walkforward if walkforward and walkforward.get("request_id") == targets["request_id"] else None
     if wf:
         for p in wf["portfolios"]:
-            p["weights"] = p["weights_by_date"][max(p["weights_by_date"])]
+            # target_weights = 시작일(첫 리밸런싱) 목표: 정적 안처럼 '시작일 배분' 표·R9·현금 설명이 시작일을 보게 (예전에는 마지막 리밸런싱일 비중, 008)
+            p["weights"] = dict(p["weights_by_date"][min(p["weights_by_date"])])
             runs[p["id"]] = run_raw_dynamic(ctx, p["id"], p["weights_by_date"])
     bench_blocks = [evaluate(ctx, {"id": r["id"], "name_ko": f"{b} 매수보유 (동일 적립)", "weights": {b: 1.0}}, r, "benchmark", primary_raw, None)
                     for b, r in bench_raws.items()]  # fmt: skip
@@ -355,10 +394,10 @@ def run_backtest(md: MarketData, targets: dict[str, Any], req: dict[str, Any], i
         mode="static_weights" + (" + walkforward" if wf else ""),
         engine={"library": f"bt {btlib.__version__}", "prices": "adj_close USD (dividends reinvested; KRW converted at daily FX)",
                 "commission_bps": bs.commission_bps, "fractional_shares": not bs.integer_positions, "risk_free_rate": ctx["rf"],
-                "contributions": f"monthly flow invested at target weights, first trading day on/after day {ctx['cap']['contribution_day']}",
+                "contributions": f"monthly flow invested at target weights, first day on/after day {ctx['cap']['contribution_day']} when every holding's market is open",
                 "n_contributions": len(ctx["cd"]), "contribution_usd": ctx["amount"], "rebalance_rule": spec["rebalance_rule"],
                 "checkpoint_freq": bs.checkpoint_freq, "capital_fx": {k: ctx["cap"].get(k) for k in ["currency", "fx_rate", "fx_date", "fx_source"]},
-                "benchmarks": ctx["benches"], "execution_rule": spec.get("execution_rule"), "calendar": "union of market trading days (holidays carry the previous close)"},
+                "benchmarks": ctx["benches"], "execution_rule": spec.get("execution_rule"), "calendar": "union of market trading days (holidays carry the previous close); trades only on days every holding's market is open"},
         series_dates=[str(d.date()) for d in ctx["panel"].index], benchmark=bench_blocks[0], benchmarks=bench_blocks, portfolios=blocks,
         ranking=ranking, reproducibility=repro, data_quality=ctx["quality"], warnings=warnings,
     )  # fmt: skip

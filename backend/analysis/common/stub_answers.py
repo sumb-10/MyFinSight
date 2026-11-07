@@ -13,7 +13,7 @@ from backend.analysis.common.llm import Message
 
 _TICKER_LINE = re.compile(r"^([A-Z0-9.\-]+) \| ", re.M)
 _EV_LINE = re.compile(r"^((?:ev|dc)\d+) \| (\S+) \| [^|]* \| [^|]* \| ([A-Z0-9.\-]+) \| ", re.M)  # 뉴스(ev)·공시(dc) 줄: 5번째 칸이 ticker
-_SEL_LINE = re.compile(r"^(\d+) \| ([A-Z0-9.\-]+) \| ([^|]*) \|.*?근거: (.*)$", re.M)
+_SEL_LINE = re.compile(r"^(\d+|–)(?: \(필수 포함\))? \| ([A-Z0-9.\-]+) \| ([^|]*) \|.*?근거: (.*)$", re.M)
 from backend.analysis.common.citations import CITE_RE as _CITE  # noqa: E402
 
 
@@ -50,14 +50,14 @@ def stub_views(messages: Sequence[Message]) -> dict[str, Any]:
     views: list[dict[str, Any]] = []
     if with_news:
         t0 = with_news[0]
-        views.append({"type": "absolute", "long": [t0], "short": [], "expected_return_annual": 0.15, "confidence": 0.3, "horizon_months": 12,
+        views.append({"type": "absolute", "long": [t0], "short": [], "direction": "up", "strength": "medium", "confidence": 0.3, "horizon_months": 12,
                       "rationale_ko": f"stub: {t0} 헤드라인({ev_by_ticker[t0]}) 근거", "evidence_type": "news", "evidence_ids": [ev_by_ticker[t0]]})  # fmt: skip
         others = [t for t in tickers if t != t0]
         if len(with_news) >= 2 and others:
             t1 = with_news[1]
             short = next((t for t in others if t != t1), None)
             if short:
-                views.append({"type": "relative", "long": [t1], "short": [short], "expected_return_annual": 0.05, "confidence": 0.25, "horizon_months": 12,
+                views.append({"type": "relative", "long": [t1], "short": [short], "strength": "weak", "confidence": 0.25, "horizon_months": 12,
                               "rationale_ko": f"stub: {t1} 가 {short} 대비 우위 ({ev_by_ticker[t1]})", "evidence_type": "news", "evidence_ids": [ev_by_ticker[t1]]})  # fmt: skip
     return {"sets": [{"scenario_id": "stub_news", "title_ko": "뉴스 근거 (stub)", "narrative_ko": "stub 모드: 헤드라인이 있는 종목에 작은 뷰를 둔다.", "views": views}]}
 
@@ -68,7 +68,8 @@ def stub_explain(messages: Sequence[Message]) -> dict[str, Any]:
     for m in _SEL_LINE.finditer(u):
         ids = _CITE.findall(m.group(4))
         cite = f"[{ids[0]}]" if ids else ""
-        per.append({"ticker": m.group(2), "rationale_ko": f"stub: 선정 지표 순위 {m.group(1)}위, {m.group(3).strip()} 섹터 {cite}."})
+        rank = "순위 없음" if m.group(1) == "–" else f"{m.group(1)}위"
+        per.append({"ticker": m.group(2), "rationale_ko": f"stub: 선정 지표 순위 {rank}, {m.group(3).strip()} 섹터 {cite}."})
     return {"portfolio_summary_ko": "stub 모드 요약: 테마 후보를 정량 지표로 순위 매겨 고른 목록입니다.", "per_ticker": per, "warnings_ko": []}
 
 

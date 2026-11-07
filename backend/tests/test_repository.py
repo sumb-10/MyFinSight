@@ -132,6 +132,8 @@ def _expected(tickers: list[str], start: date, end: date) -> pd.DataFrame:
         for t in sorted(tickers)
     }
     frame = pd.DataFrame(cols).astype("float64")
+    # 저장소·정규화처럼 date 객체에서 DatetimeIndex 를 만든다 (pandas 3: 문자열 → [us], date → [s])
+    frame.index = pd.to_datetime(frame.index.date)
     frame.index.name = "date"
     return frame
 

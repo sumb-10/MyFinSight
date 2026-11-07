@@ -61,6 +61,12 @@ def build_market_model(
         notes.append(f"market cap missing for {missing_mc}: treated as 0 in market_cap weights")
     capw = P.cap_weights(tk, mcap)
     notes.append("cap_weights use valuation_daily market_cap (shares × close) as of the day before construction, USD converted")
+    est = view.market_cap_estimated(tk) if hasattr(view, "market_cap_estimated") else {}
+    if est:  # 시가총액이 빈 종목은 직전 주식수 × 그날 종가 추정치로 비중을 정했다 (후보 필터와 같은 값)
+        notes.append(f"cap_weights use estimated market cap (last known shares × close) for {sorted(est)}")
+    rep = view.market_cap_repaired(tk) if hasattr(view, "market_cap_repaired") else {}
+    if rep:  # 주식수 이상값(분할 두 번 반영·단위 1000배)을 중앙값 주식수로 고친 종목 (047: GOOGL 20배라 시총비중 87%)
+        notes.append(f"cap_weights use repaired market cap (median shares × close; raw was " + ", ".join(f"{t} ×{r:.3g}" for t, r in sorted(rep.items())) + ")")
     tol = req["risk"]["risk_tolerance"]
     dd_tol = float(req["risk"].get("max_drawdown_tolerance") or ps.delta_dd_ref_tol)
     dd_mult = drawdown_delta_multiplier(dd_tol, ps)  # 라운드 5: 허용 낙폭이 작을수록 위험회피 ↑ (낙폭을 합격 기준 대신 구성 입력으로)
@@ -69,18 +75,23 @@ def build_market_model(
         bpx = view.adj_close([bench], start)[bench]
         d_mkt, d_win = P.market_implied_delta(bpx, lookback_days=ps.lookback_days, rf=settings.backtest.risk_free_rate)
         mult = ps.risk_aversion_mult[tol]
-        delta = round(max(ps.delta_floor, min(d_mkt * mult * dd_mult, 8.0)), 4)
-        delta_meta = {"delta_source": "market_implied", "delta_market": round(d_mkt, 4), "delta_multiplier": mult, "delta_window": d_win,
-                      "delta_dd_multiplier": dd_mult, "delta_tolerance": dd_tol}  # fmt: skip
-        notes.append(f"delta = market-implied {d_mkt:.2f} ({bench}, {d_win['start']}~{d_win['end']}) × {mult} ({tol}) × {dd_mult} (drawdown tolerance {dd_tol:.0%}) = {delta} (floor {ps.delta_floor}, cap 8)")
+        # 하한은 시장 추정치에 먼저 적용하고 성향·낙폭 배수는 그 뒤에 곱한다. 곱한 뒤에 하한을 걸면 시장 δ 가 작거나 음수인 날
+        # (급락이 추정 창에 든 날)에는 모든 성향이 1.5 로 같아져 성향·허용 낙폭이 무시된다 (2026-11 시나리오 QA).
+        d_base = max(ps.delta_floor, d_mkt)
+        delta = round(min(d_base * mult * dd_mult, 8.0), 4)
+        delta_meta = {"delta_source": "market_implied", "delta_market": round(d_mkt, 4), "delta_base": round(d_base, 4), "delta_multiplier": mult,
+                      "delta_window": d_win, "delta_dd_multiplier": dd_mult, "delta_tolerance": dd_tol,
+                      "delta_capped": d_base * mult * dd_mult > 8.0}  # 상한 8 이 값을 정했으면 리포트가 '시장 자료로 추정' 이라고만 쓰지 않게 (009)  # fmt: skip
+        notes.append(f"delta = max(market-implied {d_mkt:.2f} ({bench}, {d_win['start']}~{d_win['end']}), floor {ps.delta_floor}) × {mult} ({tol}) × {dd_mult} (drawdown tolerance {dd_tol:.0%}) = {delta} (cap 8)")
     else:
-        delta = round(max(ps.delta_floor, min(ps.risk_aversion[tol] * dd_mult, 8.0)), 4)
-        delta_meta = {"delta_source": "fixed", "delta_dd_multiplier": dd_mult, "delta_tolerance": dd_tol}
+        d_base = max(ps.delta_floor, ps.risk_aversion[tol])
+        delta = round(min(d_base * dd_mult, 8.0), 4)
+        delta_meta = {"delta_source": "fixed", "delta_base": round(d_base, 4), "delta_dd_multiplier": dd_mult, "delta_tolerance": dd_tol, "delta_capped": d_base * dd_mult > 8.0}
     total = 1.0 - cons.get("min_cash_ratio", 0)
     max_stock, max_sector = cons["max_weight_per_stock"], cons["max_weight_per_sector"]
     capacity = P.weight_capacity(sec_code, max_stock, max_sector)
     if capacity < total - 1e-9:
-        warnings.append(f"caps allow at most {capacity:.0%} invested (stock {max_stock:.0%}, sector {max_sector:.0%}, {len(tk)} names): "
+        warnings.append(f"caps allow at most {capacity:.0%} invested (stock {max_stock:.0%}, sector {max_sector:.0%}, {len(tk)} names, investable {total:.0%}): "
                         f"{total - capacity:.0%} kept as cash; relax the caps or widen the theme to invest fully")  # fmt: skip
         total = round(capacity - 1e-6, 6)
     baseline_id = req["strategy_preference"]["baseline_weighting"]
@@ -106,9 +117,10 @@ def build_market_model(
     for tpl in ps.templates:
         w = weights[tpl]
         name_ko, rule_ko = ps.template_names_ko[tpl]
+        w_out, cash_out = P.weights_out(tk, w)
         ports.append({
             "id": tpl, "kind": "template", "name_ko": name_ko, "rule_ko": rule_ko,
-            "weights": {t: round(float(x), 6) for t, x in zip(tk, w, strict=True)}, "cash_weight": round(1 - float(w.sum()), 6),
+            "weights": w_out, "cash_weight": cash_out,
             "ex_ante": P.ex_ante_stats(w, pi, mm["cov"]), "sector_weights": P.sector_weights(w, sec_name),
             "constraints_applied": [label(c) for c in applied_by[tpl]],
         })  # fmt: skip

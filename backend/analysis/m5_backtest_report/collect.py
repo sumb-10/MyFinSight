@@ -5,12 +5,16 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from backend.analysis.common.jsonio import now_iso
+from backend.analysis.common.labels import FACT_SOURCE_KO, NEWS_SOURCE_KO, theme_ko, usd_ko
 from backend.analysis.m2_data import descriptor as D
+from backend.analysis.m2_data import metrics as M
 from backend.analysis.schemas.results import ResultsBundle
 from backend.analysis.settings import AnalysisSettings
+from backend.analysis.m2_data.metrics import METRIC_KO as M_KO
 from backend.pipeline.descriptor import Descriptor
 
 DB_SOURCES = [
@@ -25,6 +29,11 @@ DB_SOURCES = [
 ]  # fmt: skip
 
 
+# 근거 제목의 지표 이름 (028: 출처 창에 'IBKR pe_ttm', '시가총액비중 cagr' 처럼 코드 값이 보였다)
+CALC_KO = {"cagr": "연환산 수익률(CAGR)", "period_return": "기간 수익률", "max_drawdown": "최대낙폭", "sharpe": "Sharpe", "excess_cagr": "비교지수 대비 초과 CAGR",
+           "final_value_usd": "최종 평가금액", "ann_vol": "연변동성"}  # fmt: skip
+
+
 def _calc_facts(bt: dict[str, Any], val: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """리포트 문단이 인용할 수 있는 계산값 ID: calc:<metric>:<portfolio_id>."""
     out: dict[str, dict[str, Any]] = {}
@@ -32,11 +41,53 @@ def _calc_facts(bt: dict[str, Any], val: dict[str, Any]) -> dict[str, dict[str, 
         h = p["headline"]
         for k in ("cagr", "period_return", "max_drawdown", "sharpe", "excess_cagr", "final_value_usd"):
             if h.get(k) is not None:
-                out[f"calc:{k}:{p['id']}"] = {"id": f"calc:{k}:{p['id']}", "kind": "calc", "title": f"{p.get('name_ko', p['id'])} {k}", "source": "backtest",
+                out[f"calc:{k}:{p['id']}"] = {"id": f"calc:{k}:{p['id']}", "kind": "calc", "title": f"{p.get('name_ko', p['id'])} {CALC_KO[k]}", "source": FACT_SOURCE_KO["backtest"],
                                               "value": h[k], "unit": "usd" if k == "final_value_usd" else "ratio", "tickers": [], "data_as_of": bt["period"]["end"]}  # fmt: skip
-        out[f"calc:ann_vol:{p['id']}"] = {"id": f"calc:ann_vol:{p['id']}", "kind": "calc", "title": f"{p.get('name_ko', p['id'])} ann_vol", "source": "backtest",
+        out[f"calc:ann_vol:{p['id']}"] = {"id": f"calc:ann_vol:{p['id']}", "kind": "calc", "title": f"{p.get('name_ko', p['id'])} {CALC_KO['ann_vol']}", "source": FACT_SOURCE_KO["backtest"],
                                           "value": p["metrics"]["risk"]["ann_vol"], "unit": "ratio", "tickers": [], "data_as_of": bt["period"]["end"]}  # fmt: skip
     return out
+
+
+def metric_rank(rows: dict[str, dict[str, Any]], asc: bool) -> dict[str, int]:
+    """화면의 '순위' = 선정 지표 순위 (선정 순서가 아니라). 필수 포함 종목은 선정 순서상 맨 앞이라 'ROE 순위 1' 로 보였다 (002 LS ELECTRIC, 실제 5위).
+    지표가 없는 종목(지표 없는 필수 포함)에는 순위를 주지 않는다 (025: CVX·XOM 이 값 없이 '순위 7·8' 로 보였다)."""
+    def k(t: str) -> float:
+        v = rows[t].get("metric_value")
+        return float("inf") if v is None or not math.isfinite(float(v)) else (float(v) if asc else -float(v))
+    return {t: i + 1 for i, t in enumerate(sorted(rows, key=k)) if math.isfinite(k(t))}
+
+
+RULE_KO = {"gics_match": "산업 분류로", "keyword_match": "키워드로", "example_match": "예시 종목으로"}
+
+
+def _matched_label_ko(stats: dict[str, Any]) -> str:
+    """깔때기 '테마 관련 종목' 칸에 실제로 찾은 방법별 수 (037: 후보 4개가 모두 분석 모델이 든 예시 종목이었는데 'GICS·키워드·예시 종목 검색' 이라
+    S&P 500 전체를 뒤져 4개만 찾은 것처럼 읽혔다). 한 종목이 여러 방법에 걸릴 수 있다."""
+    br = stats.get("by_rule") or {}
+    # 숫자는 그 방법으로 걸린 종목 수다 (044: '산업 분류 19, 키워드 18' 을 서술이 '산업 분류 19개·키워드 18개를 사용해 찾았다' 로 읽었다)
+    how = [f"{v} {br[k]}개" for k, v in RULE_KO.items() if br.get(k)]
+    if not how:
+        return "테마 관련 종목 (GICS·키워드·예시 종목 검색)"
+    return "테마 관련 종목 (" + ", ".join(how) + " 걸린 종목" + (", 한 종목이 여러 방법에 걸릴 수 있음)" if len(how) > 1 else ")")
+
+
+def _theme_fail_ko(tag: dict[str, Any], desc: Any, k: int = 5) -> str:
+    """테마 판정에서 떨어진 종목 (제외 테마와 따로) — 깔때기 수가 맞게 (043: 57 − 제외 테마 17 = 40 인데 39 로, PWR 1개가 어디에도 없었다)."""
+    passed, ex = set(tag.get("passed_tickers") or []), {r["ticker"] for r in tag.get("excluded_by_theme") or []}
+    fail = [(desc.by_ticker(r["ticker"]) or {}).get("name", r["ticker"]) for r in tag.get("tagged") or [] if r["ticker"] not in passed and r["ticker"] not in ex]
+    if not fail or not tag.get("theme_filter_applied", True):
+        return ""
+    return f" · 테마에 해당하지 않는다고 판정된 {len(fail)}개: {', '.join(fail[:k])}" + (f" 외 {len(fail) - k}개" if len(fail) > k else "")
+
+
+def _ex_theme_ko(rows: list[dict[str, Any]], k: int = 5) -> str:
+    """깔때기 테마 단계 뒤에 붙이는 '제외 테마로 뺀 종목' (024: 13개를 뺐는데 테마 판정에서 떨어진 것처럼 보였다)."""
+    if not rows:
+        return ""
+    by: dict[str, list[str]] = {}
+    for r in rows:
+        by.setdefault(r["theme_ko"], []).append(r["name"])
+    return " · " + " · ".join(f"제외 테마({th})로 뺌 {len(v)}개: {', '.join(v[:k])}" + (f" 외 {len(v) - k}개" if len(v) > k else "") for th, v in by.items())
 
 
 def build_results(
@@ -78,6 +129,16 @@ def build_results(
     reason = {r["ticker"]: r for r in tag["tagged"]}
     rank_now = {s["ticker"]: s for s in sel["selected"]}
     rank_bt = {s["ticker"]: s for s in spec["selection"]["table"]}
+    # 시작일 재선정을 하지 않았으면(대화에서 '지금 목록으로 과거를 평가') 시작일 표의 지표·순위·인용은 분석 기준일 값의 복사본이다 → 시작일 값처럼 보이지 않게 비운다
+    # (054: 2022-09-26 칸에 2025-09-24 PER·순위·인용이 그대로 있어 서술이 '두 날짜의 PER 이 같다' 고 썼다)
+    reselected = spec["selection"].get("source") != "original"
+    asc = sel["summary"].get("direction") == "asc"
+
+    forced_now = {s["ticker"] for s in sel["selected"] if s.get("forced")}
+    # 필수 포함은 순위와 관계없이 담기므로 순위를 매기지 않는다 (042: 후보 120개 중 꼴찌인 JNJ 가 선정 20개 안에서 '순위 20위' 로 보였다)
+    must = forced_now | set(req["constraints"].get("must_include_tickers") or [])
+    mr_now = metric_rank({t: r for t, r in rank_now.items() if t not in must}, asc)
+    mr_bt = metric_rank({t: r for t, r in rank_bt.items() if t not in must}, asc)
     tickers = sorted(set(rank_now) | set(rank_bt), key=lambda t: (t not in rank_bt, rank_bt.get(t, rank_now.get(t, {})).get("rank", 99)))
     table = []
     for t in tickers:
@@ -88,31 +149,131 @@ def build_results(
                       "sector": g.sector.name if g else "", "sub_industry": g.sub_industry.name if g else "",
                       "summary": e.get("intro", ""), "summary_source": e.get("intro_source"),
                       "themes": r.get("themes", []), "theme_confidence": r.get("confidence"), "theme_reason_ko": r.get("reason_ko"),
-                      "in_selection_now": t in rank_now, "rank_now": rank_now.get(t, {}).get("rank"), "metric_now": rank_now.get(t, {}).get("metric_value"),
+                      "in_selection_now": t in rank_now, "rank_now": mr_now.get(t), "forced": t in forced_now, "metric_now": rank_now.get(t, {}).get("metric_value"),
                       "metric_fact_id": rank_now.get(t, {}).get("metric_fact_id"),
-                      "in_backtest": t in rank_bt, "rank_backtest": rank_bt.get(t, {}).get("rank"), "metric_backtest": rank_bt.get(t, {}).get("metric_value")})  # fmt: skip
-    excluded = [{"ticker": r["ticker"], "name": (desc.by_ticker(r["ticker"]) or {}).get("name", r["ticker"]), "reason": r["reason"], "metric_value": r.get("metric_value")}
-                for r in sel["rejected"][:8]]  # fmt: skip
+                      "in_backtest": t in rank_bt, "rank_backtest": mr_bt.get(t) if reselected else None,
+                      "metric_backtest": rank_bt.get(t, {}).get("metric_value") if reselected else None,
+                      "metric_backtest_fact_id": rank_bt.get(t, {}).get("metric_fact_id") if reselected else None})  # fmt: skip
+    reason_ko = {"sector_preference": "섹터 선호(순위가 더 낮은 다른 섹터 종목에 자리를 내줌)", "rank_beyond_n": "순위 밖", "metric_missing": "지표 자료 없음",
+                 "no_dividend": "최근 12개월 배당 확인 안 됨 (배당 기업 테마)",
+                 "sector_preference_lower": "섹터 선호(같은 섹터 종목이 많아 순위가 더 낮은 다른 섹터 종목을 먼저 뽑음)",
+                 "metric_missing (eps<=0 or no financials)": "지표 자료 없음(적자 또는 재무 자료 없음)"}  # fmt: skip
+    order = {"sector_preference": 0, "sector_preference_lower": 0, "metric_out_of_range": 1, "no_dividend": 1, "rank_beyond_n": 2}
+    rej = sorted(sel["rejected"], key=lambda r: order.get(str(r["reason"]).split("(")[0], 3))
+    def _reason(r: dict[str, Any]) -> str:
+        if r["reason"].startswith("metric_out_of_range("):  # 'roe_ttm=-0.1572, 범위 >0 ≤10' → 'ROE -15.7%, 자격선 0% 초과 1,000% 이하' (009)
+            met = r["reason"].split("(", 1)[1].split("=", 1)[0]
+            return f"자격선 밖 ({M.METRIC_SHORT_KO.get(met, met)} {M.display_metric(met, r.get('metric_value'))}, 자격선 {M.eligible_range_ko(met)})"
+        return reason_ko.get(r["reason"], r["reason"])
+
+    excluded = [{"ticker": r["ticker"], "name": (desc.by_ticker(r["ticker"]) or {}).get("name", r["ticker"]), "reason": _reason(r),
+                 "metric_value": r.get("metric_value")} for r in rej[:8]]  # fmt: skip
+    # 테마에는 해당하지만 제외 테마로 뺀 종목도 이름과 함께 (024: 유틸리티 13개를 '화석연료' 로 뺐는데 이름이 어디에도 없고 테마 판정 탈락처럼 보였다)
+    ex_theme = [{"ticker": r["ticker"], "name": (desc.by_ticker(r["ticker"]) or {}).get("name", r["ticker"]), "theme_ko": theme_ko(r.get("excluded_theme")),
+                 "reason_ko": r.get("reason_ko") or ""} for r in tag.get("excluded_by_theme") or []]  # fmt: skip
+    excluded += [{"ticker": r["ticker"], "name": r["name"], "reason": f"제외 테마({r['theme_ko']})에 해당 (분석 모델 판정)", "metric_value": None} for r in ex_theme[:6]]
+    # 03 에서 빠진 종목을 사유별로 (003: 게임주 4개가 모두 거래대금 기준으로 빠졌는데 깔때기·서술에 그 단계가 없었다)
+    cons = req["constraints"]
+    filt_ko = {"min_avg_daily_volume_usd": f"일평균 거래대금 {usd_ko(cons.get('min_avg_daily_volume_usd'))} 미만",
+               "min_market_cap_usd": f"시가총액 {usd_ko(cons.get('min_market_cap_usd'))} 미만", "keyword_weak": "테마 키워드가 약하게만 일치 (후보 검색 단계, 분석 모델 판정 전)",
+               "market_cap_missing": "시가총액 자료 없음 (직전 주식수로도 추정 불가)",
+               "exclude_tickers": "제외 종목", "exclude_sectors": "제외 섹터", "exclude_theme": "제외 테마", "asset_types": "자산 유형 제외",
+               "insufficient_price_history": "가격 이력 부족", "share_class_duplicate": "같은 회사의 다른 주식", "candidate_cap": "후보 상한 밖",
+               "candidate_cap_metric": "후보 상한 밖(선정 지표 순)"}  # fmt: skip
+    # 백테스트 시작일 목록에서 빠진 이유 (그날 기준). 기준일 후보 단계 사유(candidates_filtered)와 섞지 않게 따로 (011)
+    sel_ko = {**reason_ko, "not_in_candidates": "그날 후보 검색에 없음 (상장 전이거나 유니버스·조건 밖)", "not_selected": "그날 선정되지 않음",
+              "user_removed": "확인 단계에서 사용자가 뺌"}  # fmt: skip
+
+    def _why_ko(code: str) -> str:
+        key = str(code).split("(")[0].split(":")[0]
+        if key == "metric_out_of_range":
+            return "자격선 밖"
+        return filt_ko.get(key) or sel_ko.get(code) or sel_ko.get(key) or code
+
+    rm_why = (spec["selection"].get("diff_vs_original") or {}).get("removed_reasons") or {}
+    removed_ko = [{"ticker": t, "name": (desc.by_ticker(t) or {}).get("name", t), "reason_ko": _why_ko(c)} for t, c in rm_why.items()]
+    # 반대 방향: 시작일 목록에는 있었지만 지금(기준일) 목록에 없는 종목의 기준일 사유 (019: PANW·SNPS 가 왜 빠졌는지 어디에도 없었다)
+    rej_now = {r["ticker"]: r["reason"] for r in sel.get("rejected") or []}
+    f_now = {f["ticker"]: f["reason"] for f in cand.get("filtered_out") or []}
+    passed_now = set(tag.get("passed_tickers") or [])
+    bt_only = [t for t in spec["selection"].get("tickers") or [] if t not in {x["ticker"] for x in sel["selected"]}]
+    rej_rows = {r["ticker"]: r for r in sel.get("rejected") or []}
+
+    def _now_reason(t: str) -> str:
+        """기준일 사유에 그날 지표 값을 붙인다 (028: 서술이 시작일 값과 기준일 사유를 짝지어 'FICO(34.8배, 자격선 밖)' — 실제는 기준일 79.3배)."""
+        r, m_ = rej_rows[t], sel["summary"]["metric"]
+        txt, v = _reason(r), r.get("metric_value")
+        if not str(r["reason"]).startswith("metric_out_of_range") and v is not None and math.isfinite(float(v)):
+            txt += f" ({M.METRIC_SHORT_KO.get(m_, m_)} {M.display_metric(m_, v)})"
+        return f"분석 기준일({sel['summary']['as_of']}) {txt}"
+
+    bt_only_ko = [{"ticker": t, "name": (desc.by_ticker(t) or {}).get("name", t),
+                   "reason_ko": (_now_reason(t) if t in rej_now else _why_ko(f_now[t]) if t in f_now else
+                                 "분석 기준일 테마 판정을 통과하지 못함" if t not in passed_now else "분석 기준일 목록에 없음")} for t in bt_only]  # fmt: skip
+    by_reason: dict[str, list[str]] = {}
+    for f in cand.get("filtered_out") or []:
+        key = str(f["reason"]).split("(")[0].split(":")[0]
+        by_reason.setdefault(filt_ko.get(key, key), []).append((desc.by_ticker(f["ticker"]) or {}).get("name", f["ticker"]))
+    filtered_summary = [{"reason_ko": k, "count": len(v), "examples": v[:6]} for k, v in sorted(by_reason.items(), key=lambda x: -len(x[1]))]
+    # 깔때기 라벨은 실제로 빠진 사유로 (009: 키워드 약함 5개가 '시가총액·거래대금·제외 조건' 단계에 섞여 서술이 '테마 판정에서 빠졌다' 고 썼다)
+    short_ko = {"min_avg_daily_volume_usd": "거래대금", "min_market_cap_usd": "시가총액", "market_cap_missing": "시가총액 자료 없음", "keyword_weak": "테마 키워드 약함", "exclude_tickers": "제외 종목",
+                "exclude_sectors": "제외 섹터", "exclude_theme": "제외 테마", "asset_types": "자산 유형", "insufficient_price_history": "가격 이력 부족",
+                "share_class_duplicate": "같은 회사 다른 주식", "candidate_cap": "후보 상한", "candidate_cap_metric": "후보 상한"}  # fmt: skip
+    n_by: dict[str, int] = {}
+    for f in cand.get("filtered_out") or []:
+        k = short_ko.get(str(f["reason"]).split("(")[0].split(":")[0], "기타")
+        n_by[k] = n_by.get(k, 0) + 1
+    cand_label = ("후보 조건 통과 (빠짐: " + ", ".join(f"{k} {n}개" for k, n in sorted(n_by.items(), key=lambda x: -x[1])) + ")" if n_by
+                  else "후보 조건 통과 (시가총액·거래대금·제외 조건)")  # fmt: skip
+    # 조건을 못 채웠지만 필수 포함이라 남은 종목을 밝힌다 (038: 거래대금 미달인 이마트·CJ제일제당이 '후보 조건 통과 9' 안에 섞였다)
+    min_adv, min_mc = cons.get("min_avg_daily_volume_usd"), cons.get("min_market_cap_usd")
+    below = [c.get("name") or c["ticker"] for c in cand.get("candidates") or [] if c.get("forced")
+             and ((min_adv and (c.get("adv_usd") or 0) < float(min_adv)) or (min_mc and (c.get("market_cap_usd") or 0) < float(min_mc)))]  # fmt: skip
+    if below:
+        cand_label += f" · 그중 조건을 못 채웠지만 필수 포함으로 넣은 {len(below)}개({', '.join(below[:3])}{' 등' if len(below) > 3 else ''})"
+    met = sel["summary"]["metric"]
+    # 필수 포함 중 지표가 없거나 자격선 밖인 종목 — 종목마다 실제 사유로 (076: ROE −4.2% 인 CRWD 를 '지표 없음·자격선 밖' 으로 뭉뚱그렸다)
+    forced_off = [s["ticker"] + (f"(자격선 밖 {M.display_metric(met, s.get('metric_value'))})" if _finite(s.get("metric_value")) else "(지표 없음)")
+                  for s in sel["selected"] if s.get("forced") and not M.eligible(met, s.get("metric_value"))]  # fmt: skip
+    n_forced = int(sel["summary"].get("n_forced") or 0)
     funnel = [
         {"stage": "universe", "label_ko": "투자 가능 종목 (" + " ∪ ".join(req["constraints"]["universe"]) + ")", "count": descriptor_info.get("n_stocks", len(D.tickers(desc)))},
-        {"stage": "candidates", "label_ko": "테마 관련 후보 (GICS·키워드·예시 종목 검색)", "count": cand["stats"]["n_candidates"]},
-        {"stage": "theme_passed", "label_ko": f"테마 해당 판정 (분석 모델, 신뢰도 ≥ {tag['min_confidence']})", "count": len(tag["passed_tickers"])},
-        {"stage": "with_metric", "label_ko": f"선정 지표({sel['summary']['metric']}) 계산 가능", "count": sel["summary"]["n_with_metric"]},
-        {"stage": "selected_now", "label_ko": f"최종 선정 ({sel['summary']['as_of']}, 섹터 분산 적용)", "count": sel["summary"]["n_selected"]},
-        {"stage": "selected_backtest", "label_ko": f"백테스트용 재선정 ({spec['period']['as_of']})", "count": len(spec["selection"]["tickers"])},
+        {"stage": "matched", "label_ko": _matched_label_ko(cand["stats"]), "count": cand["stats"].get("n_matched", cand["stats"]["n_candidates"])},
+        {"stage": "candidates", "label_ko": cand_label, "count": cand["stats"]["n_candidates"]},
+        {"stage": "theme_passed", "label_ko": (f"테마 해당 판정 (분석 모델, 신뢰도 ≥ {tag['min_confidence']})" if tag.get("theme_filter_applied", True)
+                                               else "제외 테마 판정 (넓은 테마라 테마 해당 여부로는 거르지 않음)") + _ex_theme_ko(ex_theme) + _theme_fail_ko(tag, desc), "count": len(tag["passed_tickers"])},
+        # 필수 포함은 지표·자격선과 관계없이 담기므로 따로 적는다 (018: 지표 없는 필수 포함까지 '지표 계산 가능' 으로 셌다;
+        # 025: '(필수 포함 2개 포함)' 을 서술이 빠뜨려 '지표를 계산할 수 있는 17개' 라고 썼다 → 지표 없는 필수 포함은 개수를 나눠 적는다)
+        # 필수 포함은 지표와 관계없이 따로 센다 — 공지(…자격선 안 6개(필수 포함 2개 별도))와 같은 나눔 (038)
+        {"stage": "with_metric", "label_ko": ("배당을 확인했고 " if sel["summary"].get("n_no_dividend") else "")
+                                             + f"선정 지표({M_KO.get(met, met)}) 계산 가능·자격선 안 {sel['summary']['n_with_metric'] - n_forced}개"
+                                             + (f" + 필수 포함 {n_forced}개" + (f"(그중 지표 없음·자격선 밖 {len(forced_off)}개: {', '.join(forced_off)})" if forced_off else "") if n_forced else ""),
+         "count": sel["summary"]["n_with_metric"]},  # fmt: skip
+        # 섹터 분산은 실제로 순위를 바꿨을 때만 적는다 (015·017: 섹터 상한 100%·한 섹터 12종목인데 '섹터 분산 적용' 이라고 했다)
+        {"stage": "selected_now", "label_ko": f"최종 선정 ({sel['summary']['as_of']}"
+                                              + (", 섹터 분산으로 순위 일부 조정" if any(r.get("reason") in ("sector_preference", "sector_preference_lower") for r in sel.get("rejected") or []) else "") + ")",
+         "count": sel["summary"]["n_selected"]},  # fmt: skip
+        {"stage": "selected_backtest", "label_ko": (f"백테스트용 재선정 ({spec['period']['as_of']}" + (", 넓은 테마라 그날 후보 전체에서" if not tag.get("theme_filter_applied", True) else "") + ")" if reselected
+                                                     else f"백테스트에 쓴 목록 ({spec['period']['as_of']}부터 · 분석 기준일 목록 그대로, 시작일 재선정 없음)"),
+         "count": len(spec["selection"]["tickers"])},  # fmt: skip
     ]  # fmt: skip
     selection = {"funnel": funnel, "metric": sel["summary"]["metric"], "direction": sel["summary"]["direction"], "candidates_summary": cand["stats"],
+                 "backtest_reselected": reselected,
+                 "candidates_filtered": filtered_summary,
+                 "excluded_by_theme": ex_theme,
                  "tagging_summary": {"n_tagged": len(tag["tagged"]), "n_passed": len(tag["passed_tickers"]), "n_excluded_by_theme": len(tag["excluded_by_theme"]),
+                                     "theme_filter_applied": tag.get("theme_filter_applied", True),
                                      "min_confidence": tag["min_confidence"]},
                  "as_of_now": {"as_of": sel["summary"]["as_of"], "selected": sel["selected"], "rejected_examples": excluded, "summary": sel["summary"],
                                "warnings": sel["warnings"], "infeasibility": sel.get("infeasibility"), "sector_overflow": sel["summary"].get("sector_overflow")},
                  "explained": expl,
                  "backtest_as_of": {"as_of": spec["period"]["as_of"], "source": spec["selection"]["source"], "table": spec["selection"]["table"],
-                                    "diff_vs_original": spec["selection"]["diff_vs_original"], "infeasibility": spec["selection"].get("infeasibility"),
+                                    "diff_vs_original": spec["selection"]["diff_vs_original"], "removed_reasons_ko": removed_ko, "backtest_only_reasons_ko": bt_only_ko,
+                                    "infeasibility": spec["selection"].get("infeasibility"),
                                     "sector_overflow": spec["selection"].get("sector_overflow")},
                  "table": table}  # fmt: skip
-    mm_small = {k: mm[k] for k in ["as_of", "lookback", "tickers", "ann_vol", "cap_weights", "delta", "delta_source", "delta_market", "delta_multiplier",
-                                    "delta_dd_multiplier", "delta_tolerance", "delta_window", "tau", "baseline_id", "implied_returns", "shrinkage", "notes"] if k in mm}  # fmt: skip
+    mm_small = {k: mm[k] for k in ["as_of", "lookback", "tickers", "ann_vol", "cap_weights", "delta", "delta_source", "delta_market", "delta_base", "delta_multiplier",
+                                    "delta_dd_multiplier", "delta_tolerance", "delta_capped", "delta_window", "tau", "baseline_id", "implied_returns", "shrinkage", "notes"] if k in mm}  # fmt: skip
     portfolio = {"backtest_spec": {k: spec[k] for k in ["period", "capital", "rebalance_rule", "benchmark", "extra_benchmarks", "execution_rule"] if k in spec},
                  "market_model": mm_small, "baselines": base, "views": views, "targets": targets,
                  "news_windows": news_windows, "walkforward": walkforward, "forward": forward}  # fmt: skip
@@ -122,8 +283,10 @@ def build_results(
     by_pf = {}
     for p in [*bt.get("benchmarks", [bt["benchmark"]]), *bt["portfolios"], *val.get("alternatives", [])]:
         m = p["money"]
-        by_pf[p["id"]] = {"final_value_krw": round(m["final_value_usd"] * fx), "net_invested_krw": round(m["net_invested_usd"] * fx),
-                          "profit_krw": round(m["profit_usd"] * fx), "contributions_krw": round(m["contributions_usd"] * fx),
+        # 넣은 돈(원금·적립)은 백테스트가 환산한 시작일 환율로 되돌린다 = 사용자가 실제로 낸 원화 (예전에는 기준일 환율이라 원금 1,000만 원이
+        # 1,160만 원으로 보였다, 2026-11 QA 002). 평가금액만 기준일 환율, 손익 = 기준일 평가금액 − 낸 원화 (환율 효과 포함).
+        fv, ni = round(m["final_value_usd"] * fx), round(m["net_invested_usd"] * fx_bt)
+        by_pf[p["id"]] = {"final_value_krw": fv, "net_invested_krw": ni, "profit_krw": fv - ni, "contributions_krw": round(m["contributions_usd"] * fx_bt),
                           "final_value_krw_at_backtest_fx": round(m["final_value_usd"] * fx_bt)}  # fmt: skip
     money_krw = {"fx_rate": fx, "fx_date": str(req["derived"]["fx_date"]), "fx_source": req["derived"].get("fx_source"), "direction": f"1 USD = {fx:,.2f} KRW",
                  "backtest_fx": {"fx_rate": fx_bt, "fx_date": str(spec["capital"].get("fx_date")), "fx_source": spec["capital"].get("fx_source"),
@@ -134,20 +297,26 @@ def build_results(
 
     # 인용 색인: 뉴스(ev*) + 재무·가격 지표(fin:*) + 계산값(calc:*)
     evidence_index: dict[str, dict[str, Any]] = {}
+
+    def _win(eid: str, w: dict[str, Any]) -> str:
+        """같은 근거가 여러 창에 들면 가장 늦은 창(분석 기준일 창)으로. 예전에는 나중에 쓴 창이 이겨, 기준일 90일 공시 창의 공시가
+        walk-forward 날짜 창 이름을 달고 시장 분석(기준일 창만 씀)에서 빠졌다 (008: 실적 공시 12 → 7)."""
+        return max(str((evidence_index.get(eid) or {}).get("window_as_of") or ""), str(w.get("as_of") or "")) or None
+
     for w in news_windows:
         for r in w.get("records", []):
-            evidence_index[r["evidence_id"]] = {"id": r["evidence_id"], "kind": "news", "title": r["title"], "source": r.get("publisher") or r.get("source", ""),
+            evidence_index[r["evidence_id"]] = {"id": r["evidence_id"], "kind": "news", "title": r["title"], "source": r.get("publisher") or NEWS_SOURCE_KO.get(r.get("source") or "", r.get("source", "")),
                                                 "url": r.get("url"), "published_at": r.get("published_at"), "tickers": [r["ticker"]], "language": r.get("language"),
-                                                "window_as_of": w.get("as_of")}  # fmt: skip
+                                                "window_as_of": _win(r["evidence_id"], w)}  # fmt: skip
     for w in news_windows:
         for r in w.get("disclosures", []) or []:
             evidence_index[r["evidence_id"]] = {"id": r["evidence_id"], "kind": "disclosure", "title": r["title"], "source": r.get("publisher") or r.get("source", ""),
                                                 "url": r.get("url"), "published_at": r.get("filed_at") or r.get("published_at"), "data_as_of": r.get("available_on"),
                                                 "tickers": [r["ticker"]], "language": r.get("language"), "event_type": r.get("event_type"), "event_label_ko": r.get("event_label_ko"),
                                                 "form": r.get("form"), "items": r.get("items"), "filed_at": r.get("filed_at"), "available_on": r.get("available_on"),
-                                                "window_as_of": w.get("as_of")}  # fmt: skip
+                                                "window_as_of": _win(r["evidence_id"], w)}  # fmt: skip
     for f in facts:
-        evidence_index[f["id"]] = {"id": f["id"], "kind": "financial", "title": f"{f['ticker']} {f['metric']}", "source": f["source"], "value": f["value"],
+        evidence_index[f["id"]] = {"id": f["id"], "kind": "financial", "title": f"{f['ticker']} {M.METRIC_SHORT_KO.get(f['metric'], f['metric'])}", "source": FACT_SOURCE_KO.get(f["source"], f["source"]), "value": f["value"],
                                    "unit": f["unit"], "data_as_of": f["as_of"], "tickers": [f["ticker"]]}  # fmt: skip
     evidence_index.update(_calc_facts(bt, val))
 
@@ -159,3 +328,11 @@ def build_results(
                            evidence_index=evidence_index, data_quality=bt.get("data_quality"), llm_usage=llm_usage or {"available": False},
                            sources=DB_SOURCES, parameters=parameters, warnings=warnings, warnings_summary=warnings_summary, notices=notices, notices_ko=notices_ko)  # fmt: skip
     return bundle.model_dump(mode="json")
+
+
+def _finite(x: Any) -> bool:
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return False
+    return v == v and abs(v) != float("inf")

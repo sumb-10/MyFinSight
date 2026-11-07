@@ -74,7 +74,7 @@ def test_dart_names() -> None:
     assert cat.dart_event("현금ㆍ현물배당결정")[0] == "dividend"
     assert cat.dart_event("단일판매ㆍ공급계약체결")[0] == "material_agreement"
     assert cat.dart_event("최대주주변경")[0] == "control_change"
-    assert cat.dart_event("투자설명서(일괄신고)") == ("derivative_offering", "dart-v2")
+    assert cat.dart_event("투자설명서(일괄신고)") == ("derivative_offering", "dart-v3")
     assert (
         cat.dart_event("증권발행실적보고서[파생결합증권(주가연계증권)]")[0] == "derivative_offering"
     )

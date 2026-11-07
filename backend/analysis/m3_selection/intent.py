@@ -7,9 +7,11 @@ LLM 은 종목을 고르지 않는다. 코드가 GICS 코드·예시 티커를 �
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Sequence
 from typing import Any
 
+from backend.analysis.common.labels import THEME_KO
 from backend.analysis.common.llm import LlmClient, Message
 from backend.analysis.common.prompts import load_prompts
 from backend.analysis.m2_data import descriptor as D
@@ -39,6 +41,61 @@ PROFILE_DEFAULT_FIELDS = ("constraints.universe", "constraints.num_holdings.targ
                           "constraints.exclude_tickers", "constraints.must_include_tickers", "constraints.rebalance", "constraints.max_weight_per_stock",
                           "constraints.max_weight_per_sector", "constraints.min_cash_ratio", "strategy_preference.template",
                           "strategy_preference.baseline_weighting", "strategy_preference.use_news_tilt", "risk.benchmark", "horizon.backtest_years")  # fmt: skip
+
+
+# 제외 테마 → 테마와 정확히 같은 GICS 세부 업종. 03 은 GICS 코드로 그 업종 전체를 하드 제외하므로 이 밖의 코드는 버리고 키워드·04 판정으로만 거른다.
+# 빈 튜플 = 맞는 세부 업종이 없어 키워드로만 (013: '성인 산업' 을 영화·엔터테인먼트(50202010)·인터랙티브 미디어(50203010) 전체로 옮겨 DIS·GOOGL·META·NFLX 가
+# '성인 산업' 으로 빠졌다. 017 은 '도박' 에도 같은 두 업종을 붙였다). 표에 없는 테마(화석연료·에너지 등)는 LLM 코드를 그대로 쓴다.
+EXCLUDE_THEME_GICS: dict[str, tuple[str, ...]] = {
+    "adult_entertainment": (), "cannabis": (), "crypto": (), "animal_testing": (), "fur": (), "nuclear": (),
+    "tobacco": ("30203010",), "gambling": ("25301010",), "alcohol": ("30201010", "30201020"), "weapons": ("20101010",), "defense": ("20101010",),
+}  # fmt: skip
+# 규칙 이름이 조금 달라도('adult content'·'성인 산업'·'tobacco_products'·'casinos') 같은 표를 쓴다: 이름 낱말 하나(표의 키 자체 포함) → 표의 키
+_EXCLUDE_THEME_WORDS: dict[str, str] = {
+    "adult": "adult_entertainment", "porn": "adult_entertainment", "pornography": "adult_entertainment", "성인": "adult_entertainment",
+    "marijuana": "cannabis", "대마": "cannabis", "cryptocurrency": "crypto", "가상자산": "crypto", "암호화폐": "crypto", "모피": "fur", "원전": "nuclear",
+    "원자력": "nuclear", "담배": "tobacco", "cigarette": "tobacco", "cigarettes": "tobacco", "casino": "gambling", "casinos": "gambling", "도박": "gambling",
+    "alcoholic": "alcohol", "liquor": "alcohol", "주류": "alcohol", "무기": "weapons", "weapon": "weapons", "firearms": "weapons", "방산": "defense",
+}  # fmt: skip
+
+
+def exclude_theme_key(theme: Any) -> str | None:
+    """제외 규칙 이름 → EXCLUDE_THEME_GICS 의 키 (id 그대로 → 한국어 이름(labels.THEME_KO) → 이름 낱말 순). 모르면 None = LLM 코드 그대로."""
+    t = str(theme or "").strip().lower().replace("-", "_").replace(" ", "_")
+    ko = {v.replace(" ", "_"): k for k, v in THEME_KO.items()}
+    words = (w if w in EXCLUDE_THEME_GICS else _EXCLUDE_THEME_WORDS.get(w) for w in t.split("_"))
+    return next((c for c in (t, ko.get(t), *words) if c in EXCLUDE_THEME_GICS), None)
+
+
+def clean_exclude_rules(rules: list[dict[str, Any]]) -> list[str]:
+    """제외 규칙의 GICS 코드를 테마와 정확히 같은 세부 업종만 남긴다 (제자리에서 고침, 바꾼 것을 돌려준다). 같은 규칙이면 다시 해도 그대로.
+    해석(interpret)과 실행 단계가 같이 쓴다: 실행은 대화에서 확정된 의도를 다시 쓰므로, 예전 규칙으로 만든 의도도 여기서 정리된다 (013 다시 돌리기)."""
+    warns: list[str] = []
+    for r in rules or []:
+        key, codes = exclude_theme_key(r.get("theme")), list(r.get("gics_codes") or [])
+        out = [c for c in codes if key is not None and c not in EXCLUDE_THEME_GICS[key]]
+        if out:  # 테마 업종을 덮는 상위 코드는 그 업종만 남긴다 (예: 도박 '253010' → '25301010'). 맞는 업종이 없으면 키워드로만
+            allowed = EXCLUDE_THEME_GICS[key]
+            r["gics_codes"] = sorted(a for a in allowed if any(a.startswith(c) for c in codes))
+            warns.append(f"exclude theme {r.get('theme')}: GICS codes {out} dropped "
+                         + (f"(only {list(allowed)} match the theme; kept {r['gics_codes']})" if allowed else "(no matching GICS sub-industry)"))  # fmt: skip
+    return warns
+
+
+SECTOR_CODES = ("10", "15", "20", "25", "30", "35", "40", "45", "50", "55", "60")  # GICS 11개 섹터
+_AGNOSTIC = re.compile(r"(?:업종|산업)(?:에|과|와|을|를)?\s*(?:관계\s*없이|무관|상관\s*없이|가리지\s*않|한정하지\s*않)|모든\s*(?:업종|산업)")
+
+
+def broaden_industry_agnostic(themes: list[dict[str, Any]]) -> list[str]:
+    """업종이 아니라 배당·재무 특성으로 정한 테마(설명이 스스로 '업종에 관계없이' 라고 함)에 GICS 코드가 없으면 11개 섹터를 채운다.
+    그 특성은 선정 기준(템플릿)이 순위로 정한다 (037: '배당을 꾸준히 늘려 온 기업' 을 키워드 'dividend growth' 와 예시 4종목으로만 찾아
+    후보가 4개였고, 25종목 요청이 3종목이 됐다). 제자리에서 고치고 경고를 돌려준다. 해석과 실행 단계가 같이 쓴다 (같은 테마면 다시 해도 그대로)."""
+    warns: list[str] = []
+    for th in themes or []:
+        if not th.get("gics_codes") and _AGNOSTIC.search(" ".join(str(th.get(k) or "") for k in ("label_ko", "description_ko"))):
+            th["gics_codes"] = list(SECTOR_CODES)
+            warns.append(f"theme {th.get('id')}: industry-agnostic theme had no GICS codes; searching all 11 sectors (the selection metric ranks)")
+    return warns
 
 
 def field_tags(explicit_fields: Sequence[str] = ()) -> dict[str, str]:
@@ -134,6 +191,8 @@ def interpret(
             if out:
                 warnings.append(f"theme {th['id']}: dropped tickers outside universe {out}")
             th["example_tickers"] = [t for t in th["example_tickers"] if t in universe]
+    warnings += clean_exclude_rules(ans.get("exclude_theme_rules", []))
+    warnings += broaden_industry_agnostic(ans["interpretation"]["themes"])
     ans["request_id"] = req["request_id"]
     sp, cons = req["strategy_preference"], req["constraints"]
     metric, direction = TEMPLATE_METRICS[sp["template"]]
@@ -146,15 +205,18 @@ def interpret(
                 warnings.append(f"screen.{k}: LLM gave {ans['screen'].get(k)!r}, enforced {v!r}")
             ans["screen"][k] = v
     ans["news_tilt"]["enabled"] = bool(sp["use_news_tilt"])
-    # 숫자는 코드가 정한다 (HARD 필드): 허용 낙폭·목표수익·비교지수. LLM 값은 경고만 남기고 덮어쓴다.
+    # 숫자는 코드가 정한다 (HARD 필드): 허용 낙폭·목표수익·비교지수·투자기간. LLM 값은 경고만 남기고 덮어쓴다.
     eff = effective_max_drawdown(req)
     rp = ans.setdefault("risk_params", {})
     if rp.get("effective_max_drawdown") is not None and abs(float(rp["effective_max_drawdown"]) - eff) > 1e-9:
         warnings.append(f"risk_params.effective_max_drawdown: LLM gave {rp['effective_max_drawdown']!r}, enforced {eff!r}")
     rp["effective_max_drawdown"] = eff
     vc = ans.setdefault("validation_criteria", {})
-    # 검증·표시에 쓰는 허용 낙폭은 사용자 입력값 그대로 (라운드 5). 보정값(eff)은 낙폭 맞춤안의 목표로만 쓴다
-    for k, v in (("max_drawdown", float(req["risk"]["max_drawdown_tolerance"])), ("target_annual_return", float(req["risk"]["target_annual_return"])), ("benchmark", req["risk"]["benchmark"])):
+    # 검증·표시에 쓰는 허용 낙폭은 사용자 입력값 그대로 (라운드 5). 보정값(eff)은 낙폭 맞춤안의 목표로만 쓴다.
+    # 투자기간도 확정된 요청값 (013: 요청 10년인데 LLM 이 아이디어의 '약 15년' 을 적어 R2 가 '투자기간 15년' 으로 판정하고, 리포트가 스스로 만든 불일치를 경고했다)
+    hz = (req.get("horizon") or {}).get("target_years")
+    for k, v in (("max_drawdown", float(req["risk"]["max_drawdown_tolerance"])), ("target_annual_return", float(req["risk"]["target_annual_return"])), ("benchmark", req["risk"]["benchmark"]),
+                 *((("horizon_years", float(hz)),) if hz is not None else ())):  # fmt: skip
         cur = vc.get(k)
         same = (abs(float(cur) - v) < 1e-9) if isinstance(v, float) and cur is not None else (cur == v)
         if cur is not None and not same:

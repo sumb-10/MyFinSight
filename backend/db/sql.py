@@ -305,9 +305,16 @@ RECONNECT_WAITS = (5.0, 20.0, 60.0)
 _sleep = time.sleep
 
 
+_BROKEN_CONN = ("can't change 'autocommit'", "connection in transaction status")
+
+
 def _disconnected(exc: BaseException) -> bool:
     """서버가 연결을 끊은 오류인가 (다시 연결하면 될 수 있는 것만, SQL 오류는 아님)."""
     if isinstance(exc, DBAPIError) and exc.connection_invalidated:
+        return True
+    # 네트워크 오류(이름 풀이 실패 등) 뒤 풀에 남은 연결이 트랜잭션 중 상태로 꼬이면 풀의 사전 점검(pre-ping)이 ProgrammingError 를 낸다
+    # → 끊긴 연결로 보고 풀을 비운 뒤 다시 (2026-11 QA 012: 일꾼이 '종목 매핑 조회 실패 … can't change autocommit now' 로 멈췄다)
+    if isinstance(exc, DBAPIError) and any(s in str(exc).lower() for s in _BROKEN_CONN):
         return True
     if not isinstance(exc, OperationalError):
         return False
@@ -593,6 +600,7 @@ class SqlRepository(AnalysisReadersMixin):
                 raise
             except (SQLAlchemyError, ValidationError, ValueError, TypeError) as exc:
                 if _disconnected(exc) and attempt < len(RECONNECT_WAITS):
+                    self.engine.dispose()  # 꼬인 연결이 풀에 남아 다시 나오지 않게
                     _retry_later(what, attempt, exc)
                     continue
                 raise RepositoryError(

@@ -72,7 +72,8 @@ def test_resolve_strategy_and_options(paper_run):
         resolve_strategy("nope", results)
     opts = strategy_options(results)
     ids = [o["id"] for o in opts]
-    assert {"equal_weight", "wf_bl_news"} <= set(ids) and sum(o["chosen"] for o in opts) == 1 and opts[0]["chosen"]
+    # walk-forward 뉴스 뷰가 없는 리포트라 'wf_bl_news' 는 고를 수 있는 전략에 없다 (기준 비중과 같은 후보를 만들지 않음)
+    assert "equal_weight" in ids and "wf_bl_news" not in ids and sum(o["chosen"] for o in opts) == 1 and opts[0]["chosen"]
 
 
 def test_trade_to_target_fees_keep_cash_non_negative():

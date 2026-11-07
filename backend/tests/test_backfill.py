@@ -21,6 +21,7 @@ from backend.adapters.crawlers import alpaca_news_client, google_news_rss_client
 from backend.adapters.crawlers.google_news_rss_client import RateLimited
 from backend.collectors.common import Forever, JobSettings, ensure_assets
 from backend.collectors.financials.supplements import split_step
+from backend.collectors.news import backfill as news_backfill
 from backend.collectors.news.backfill import (
     alpaca_news_backfill,
     month_windows,
@@ -343,13 +344,28 @@ def test_naver_backfill_once_per_day(repo: SqlRepository) -> None:
     assert len(ad.calls) == 4
 
 
-def test_newsapi_backfill_respects_daily_budget(repo: SqlRepository) -> None:
+def _wall_clock(monkeypatch: pytest.MonkeyPatch, day: date) -> None:
+    """뉴스 백필이 남기는 받은 시각(NewsSink 의 datetime.now)을 day 정오로 고정."""
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz: Any = None) -> datetime:
+            return datetime(day.year, day.month, day.day, 12, tzinfo=UTC)
+
+    monkeypatch.setattr(news_backfill, "datetime", Clock)
+
+
+def test_newsapi_backfill_respects_daily_budget(repo: SqlRepository, monkeypatch: pytest.MonkeyPatch) -> None:
+    # 하루 한도와 받을 순서는 실제 받은 시각으로 센다. today 만 바꾸면 실제 날짜가 TODAY 가 아닌 날
+    # (2026-10-10 하루를 빼고 늘) 실패했다 → 시계도 같은 날로 맞춘다.
+    _wall_clock(monkeypatch, TODAY)
     s = _settings({**US, "NVDA": "NVIDIA", "AMZN": "Amazon"})
     ad = StubAll()
     r = newsapi_backfill(repo, s, adapter=ad, today=TODAY, deadline=Forever(), daily_max=7)
     assert r.counts["NEWSAPI_quota_left"] == 2 and len(ad.calls) == 2 and not r.done
     r2 = newsapi_backfill(repo, s, adapter=ad, today=TODAY, deadline=Forever(), daily_max=7)
     assert r2.counts["NEWSAPI_quota_left"] == 0 and len(ad.calls) == 2  # 오늘 쓴 만큼 빠짐
+    _wall_clock(monkeypatch, TODAY + timedelta(days=1))
     newsapi_backfill(repo, s, adapter=ad, today=TODAY + timedelta(days=1),
                         deadline=Forever(), daily_max=7)  # fmt: skip
     assert len(set(ad.calls)) == 4  # 다음 날은 아직 안 받은 종목부터

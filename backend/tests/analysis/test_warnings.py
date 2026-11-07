@@ -39,7 +39,7 @@ def test_merge_collapses_repeats_and_render_shows_count_and_span():
     news = next(w for w in m if w.code == "news_thin_fallback")
     assert news.count == 4 and render(news).endswith("(4회, 2009-12-31~2015-10-01)")
     cap = next(w for w in m if w.code == "weight_capacity")
-    assert cap.count == 2 and cap.stage == "05_selection"  # 첫 등장 단계 유지
+    assert cap.count == 1 and cap.stage == "05_selection"  # 첫 등장 단계 유지 · 다른 단계가 같은 날 같은 사실을 다시 낸 것은 횟수로 세지 않는다 (2026-11 QA)
     assert [w.code for w in by_level(m, "user")] == ["weight_capacity"]
 
 

@@ -417,7 +417,9 @@ def _word_pattern(word: str) -> re.Pattern[str]:
     한글로 끝나는 말은 뒤에 조사가 붙어도 맞음 ("반도체" → "반도체를")."""
     w = word.strip().lower()
     tail = r"(?![0-9a-z])" if re.search(r"[0-9a-z]$", w) else ""
-    return re.compile(r"(?<![0-9a-z가-힣])" + re.escape(w) + tail)
+    # 하이픈·띄어쓰기는 서로 바꿔 써도 맞게 ('e-commerce' ↔ 'e commerce' ↔ 'ecommerce'; 붙여 쓴 쪽은 search_keywords 가 하이픈을 뺀 글로도 찾는다)
+    body = "".join(r"[\s\-]?" if ch in "- " else re.escape(ch) for ch in w)
+    return re.compile(r"(?<![0-9a-z가-힣])" + body + tail)
 
 
 @dataclass
@@ -465,7 +467,8 @@ class Descriptor:
             text = " | ".join(
                 [str(e.get("name", "")), *e.get("keywords", []), str(e.get("intro", ""))]
             ).lower()
-            hit = [w for w, p in pats if p.search(text)]
+            flat = text.replace("-", "")  # 066: 'ecommerce platform' 이 'e-commerce platform' 을 못 찾아 Carvana 가 키워드 약함으로 빠졌다
+            hit = [w for w, p in pats if p.search(text) or p.search(flat)]
             if len(hit) >= min_distinct and hit:
                 out.append(Match(e, hit))
         return out

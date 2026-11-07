@@ -278,7 +278,9 @@ def test_views_accept_disclosure_ids_and_clip_disclosure_only_confidence(seeded_
     views = sets[0]["views"]
     by = {v["long"][0]: v for v in views}
     assert by["JPM"]["evidence_type"] == "disclosure" and by["JPM"]["confidence"] == s.disclosures.disclosure_only_max_confidence
-    assert by["XOM"]["evidence_type"] == "mixed" and by["XOM"]["confidence"] == 0.4
+    # 다른 종목(JPM)의 공시는 XOM 뷰의 근거가 아니다 (043) → 빼고 자기 뉴스 1건만 남아 근거 1건 상한
+    assert by["XOM"]["evidence_ids"] == [ev_xom] and by["XOM"]["evidence_type"] == "news" and by["XOM"]["confidence"] == s.portfolio.single_evidence_max_confidence
+    assert any("belongs to other tickers" in w for w in warns)
     assert "AMD" not in by and any("unknown evidence ids" in w for w in warns) and any("clipped to" in w for w in warns)
 
 

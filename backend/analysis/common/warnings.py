@@ -8,9 +8,12 @@
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
+
+from backend.analysis.common.labels import sector_ko, usd_ko
 
 Level = Literal["user", "info", "debug"]
 
@@ -35,13 +38,36 @@ CATALOG: dict[str, tuple[Level, str]] = {
     "must_include_not_in_universe": ("user", "필수 포함 종목 {tickers}은(는) 선택한 유니버스에 없어 반영하지 못했습니다."),
     "exclude_sector_unknown": ("user", "제외 섹터 '{names}'은(는) GICS 섹터 이름과 맞지 않아 적용하지 못했습니다."),
     "too_few_candidates": ("user", "테마 후보가 {n}개로 목표 종목 수 {target}개보다 적습니다. 테마를 넓히거나 목표 종목 수를 줄여 보세요."),
-    "too_few_with_metric": ("user", "선정 지표({metric}) 자료가 있는 종목이 {n}개로 목표 {target}개보다 적어 {selected}개만 선정했습니다. 최소 종목 수에 못 미치면 결론 라벨과 리포트에 그 사실을 표시합니다."),
-    "weight_capacity": ("user", "선정 종목의 섹터 구성으로는 종목·섹터 상한 안에서 투자금 전체를 배분할 수 없어 일부({cash})를 현금으로 둡니다. 섹터 상한을 올리거나 테마를 넓히면 해소됩니다."),
+    # '후보 조건' 을 함께 적는다: 시작일 재선정에서는 그날 거래대금·상장일 조건에서 먼저 빠진다 (011: 9개 모두 테마 판정은 통과했는데 거래대금으로 7개가 빠졌다)
+    # 필수 포함 종목은 그 검사를 건너뛰므로 {n} 에 넣지 않고 따로 적는다 (018: 3개 중 2개가 지표 자료가 없거나 시가총액 미달인 필수 포함 종목이었다)
+    "too_few_with_metric": ("user", "후보 조건(시가총액·거래대금 등)과 테마 판정을 통과하고 선정 지표({metric}) 자료가 있는 종목이 {n}개{forced_note}로 목표 {target}개보다 적어 {selected}개만 선정했습니다."),  # 조건 문장('최소에 못 미치면 … 종목 수 부족') 은 뺀다 — 기업 설명(06)이 최소 이상인데도 그 라벨이라고 옮겼다 (066)
+    # 원인·해결을 사실대로 (2026-11 QA 002: 2종목 × 종목당 25% 라 섹터 상한과 무관한데 '섹터 상한을 올리면 해소' 라고 했다).
+    # 현금은 최소 현금까지 더한 전체 비율 (F19: 예전에는 상한 때문에 남는 몫만 적어 최소 현금 15% 를 빼고 말했다)
+    "weight_capacity": ("user", "{who}로는 투자금의 {cap}까지만 배분할 수 있어 현금이 {cash} 남습니다{mc_note}. {fix}"),
     "must_include_forced": ("user", "필수 포함 종목 {tickers}은(는) 테마 판정 또는 선정 지표 기준에 맞지 않지만 요청에 따라 포함했습니다."),
+    "sector_preference_skipped": ("user", "섹터 상한({cap}) 안에서 투자금을 다 배분하려고 한 섹터에서는 {pref}종목까지만 먼저 골라, 선정 지표 순위가 더 높은 {tickers}(섹터별 {sector})은(는) 빼고 다른 섹터 종목{subs}으로 채웠습니다. 섹터 상한을 올리면 순위대로 고를 수 있습니다."),
+    # 필수 포함 사유를 사실대로 (2026-11 QA: 지표 자료가 없을 뿐인데 '기준에 맞지 않지만' 이라고 써서 리포트가 '고배당 기준에 못 미친다' 고 오해)
+    "must_include_out_of_range": ("user", "필수 포함 종목 {tickers}은(는) 선정 지표가 자격선 밖({detail})이지만 요청에 따라 포함했습니다."),
+    "too_few_eligible": ("user", "선정 지표가 자격선 안에 드는 종목이 {n}개{forced_note}라 목표 {target}개를 다 채우지 못했습니다 (자격선 밖 {n_out}개 제외: {examples}). {cash_clause}"),
+    "must_include_no_metric": ("user", "필수 포함 종목 {tickers}은(는) 선정 지표 자료가 없어{why} 순위를 매기지 못했지만 요청에 따라 포함했습니다."),
+    "must_include_off_theme": ("user", "필수 포함 종목 {tickers}은(는) 테마 판정을 통과하지 못했지만 요청에 따라 포함했습니다."),
+    "must_include_excluded_theme": ("user", "필수 포함 종목 {tickers}은(는) 제외 테마({theme})에 해당하지만 요청에 따라 포함했습니다."),
+    "broad_start_pool": ("user", "넓은 테마라 그날 후보 {n}개 전체에서 그날 지표로 다시 골랐습니다. 분석 모델이 판정하지 않은 종목은 제외 테마를 키워드로만 걸렀습니다{dropped}."),
+    "utility_not_fossil": ("user", "화석연료 제외는 석유·가스·석탄을 생산·정제·운송하는 회사에 적용했습니다. 전기·가스를 공급하는 유틸리티 {tickers}은(는) 빼지 않았습니다."),
+    # 필수 포함은 후보 단계의 최소 시가총액·거래대금 필터를 건너뛴다(정책) — 건너뛴 사실은 알린다 (018: 시작일 033780.KS 시가총액 76억 달러 < 최소 100억 달러인데 공지가 없었다)
+    "must_include_below_filters": ("user", "필수 포함 종목 {tickers}은(는) 후보 조건을 채우지 못했지만({detail}) 요청에 따라 포함했습니다."),
+    # 최소 시가총액은 하드 필터 (2026-11 사용자 정책): 확인할 수 없는 종목은 뺀다. 팀 DB 는 XOM·BLK 같은 대형주도 과거 시가총액이 비어 있어 과거 시점에 빠지므로 알린다
+    "min_mcap_missing": ("user", "시가총액 자료가 없어 최소 시가총액({min})을 확인할 수 없는 {n}개 종목({tickers})은 후보에서 뺐습니다."),
+    "mcap_estimated": ("user", "시가총액 자료가 빈 {n}개 종목({tickers})은 직전에 알려진 주식수(최대 {days} 전)에 그날 종가를 곱해 시가총액을 추정했습니다."),
+    # 시장모형의 시가총액비중: 자료가 없으면 0 → 최소 비중(+상한 때문에 남은 몫)만 받는다. 예전에는 참고(파일에만)라 알리지 않았다
+    # (025: 필수 포함 XOM 이 시가총액비중 1.4~1.7%, 더 작은 CVX 는 상한 25%)
+    "market_cap_missing": ("user", "시가총액 자료가 없는 {n}개 종목({tickers})은 시가총액비중 구성에서 시가총액을 0으로 계산했습니다. 그래서 회사 크기와 상관없이 "
+                                   "최소 비중(상한 때문에 남은 비중이 있으면 그 일부를 더함)만 받았고, 이 구성의 해당 종목 비중은 실제 회사 규모를 반영하지 않습니다."),
+    "must_include_short_history": ("user", "필수 포함 종목 {tickers}은(는) 기준일 이전 가격 이력이 1년이 안 되지만 요청에 따라 포함했습니다 (이력이 모자라면 비중을 줄 수 없을 수 있습니다)."),
     "backtest_start_shifted": ("user", "{text}"),
     "fewer_holdings_at_start": ("user", "{text}"),
     "backtest_start_clamped": ("user", "{text}"),  # 요청한 백테스트 시작이 재무 지표 자료 시작 전이라 뒤로 옮김 (사용자가 기간을 다시 정할 수 있음)
-    "selection_lookahead": ("user", "백테스트 시작일에 종목을 다시 고르지 않고 현재 선정 종목을 그대로 썼습니다 (선정 시점의 선견 편향이 있을 수 있습니다)."),
+    "selection_lookahead": ("user", "백테스트 시작일에 종목을 다시 고르지 않고 분석 기준일 선정 목록을 과거에도 그대로 썼습니다. 지금 알려진 정보로 고른 목록이라 과거 성과가 실제보다 좋게 보일 수 있습니다."),
     "ticker_dropped_history": ("user", "{tickers}은(는) 백테스트 시작일 이전 가격 이력이 부족해 백테스트에서 제외했습니다."),
     "added_tickers_ignored": ("user", "추가 요청 종목 {tickers}은(는) 유니버스에 없어 반영하지 못했습니다."),
     "model_dropped": ("user", "{tickers}은(는) 추정 창 안 수익률 자료가 부족해 시장모형과 비중에서 제외했습니다."),
@@ -49,16 +75,18 @@ CATALOG: dict[str, tuple[Level, str]] = {
     "excluded_by_data_quality": ("user", "가격 자료 품질 기준에 미달한 {tickers}을(를) 백테스트에서 제외하고 나머지 비중을 다시 맞췄습니다."),
     "no_portfolio_passed": ("user", "모든 포트폴리오가 필수 검증 규칙을 통과하지 못했습니다. 미통과 규칙: {rules}. 허용 낙폭·목표를 조정하거나 현금 혼합안을 검토해 보세요."),
     "alternative_skipped": ("user", "조건을 통과한 포트폴리오가 없고 현금 혼합안도 만들 수 없었습니다 ({reason})."),
+    # 어느 구성의 맞춤안인지 밝힌다 (064: 시가총액비중의 맞춤안은 있었는데 walk-forward 뉴스 뷰 BL 의 맞춤안을 못 만든 공지가 '맞춤안을 만들지 않았다' 로만 읽혔다)
+    "no_dividend_dropped": ("user", "배당 기업 테마라 최근 12개월 배당을 확인할 수 없는 종목 {n}개({tickers})는 선정하지 않았습니다 (팀 데이터베이스 배당 자료가 없거나 0이고, 분석 기준일 테마 판정에서도 배당 기업으로 확인되지 않음)."),
+    "matched_floor": ("user", "{base}: 과거 최대낙폭을 낙폭 맞춤 목표({target}) 안으로 맞추려면 주식 비중을 {floor}보다 더 줄여야 해서 이 구성의 낙폭 맞춤안(주식 + 현금)은 만들지 않았습니다. 주식이 너무 적은 구성은 후보로 두지 않습니다."),
     # 참고 (파일에만)
     "descriptor_version_fallback": ("info", "{text}"),
     "gics_draft": ("info", "{text}"),
     "derived_note": ("info", "{text}"),
     "gics_widened": ("info", "테마에 직접 일치하는 종목이 적어 GICS 분류를 한 단계 넓혀 검색했습니다 (후보 {n}개)."),
-    "market_cap_missing": ("info", "시가총액 자료가 없는 종목은 시가총액비중에서 0으로 처리했습니다 ({tickers})."),
     "lookback_short": ("info", "백테스트 시작일 {date} 이전 가격 이력이 공분산 추정 창({days}거래일)보다 짧아 추정 창이 줄어듭니다."),
     "window_clamped": ("info", "{text}"),
     "fx_reconverted": ("info", "백테스트 초기자본은 시작일 환율({date}, 1 USD = {rate} KRW)로 환산한 {usd} USD입니다 (기준일 환율 기준 {usd0} USD)."),
-    "news_thin_fallback": ("info", "뉴스·공시가 있는 종목이 최소 {min}개에 못 미쳐 뉴스 뷰 없이 기준 비중을 사용했습니다."),
+    "news_thin_fallback": ("info", "뉴스·공시가 있는 종목이 최소 {min}개에 못 미쳐 뉴스 뷰 구성을 만들지 않았습니다. 대신 규칙 기반 구성(기준 비중 등)을 대안으로 보여 줍니다."),
     "views_none_valid": ("info", "분석 모델이 만든 뷰가 코드 검사를 모두 통과하지 못해 기준 비중을 사용했습니다."),
     "short_window": ("info", "백테스트 창이 {days}거래일로 짧아(1.5년 미만) 연환산 지표는 참고용이고 목표수익(R2)·변동성(R7) 규칙도 참고로만 평가했습니다."),
     "data_quality_note": ("info", "{text}"),
@@ -73,11 +101,26 @@ _LEGACY: list[tuple[re.Pattern[str], str, tuple[str, ...]]] = [
     (re.compile(r"^must_include ticker (\S+) not in universe"), "must_include_not_in_universe", ("tickers",)),
     (re.compile(r"^exclude_sectors: unknown sector name '?([^']+)'?"), "exclude_sector_unknown", ("names",)),
     (re.compile(r"^only (\d+) candidates for target (\d+)"), "too_few_candidates", ("n", "target")),
-    (re.compile(r"^only (\d+) tickers have (\S+); target (\d+) -> selecting (\d+)"), "too_few_with_metric", ("n", "metric", "target", "selected")),
-    (re.compile(r"^weight capacity ([\d.]+) < ([\d.]+)"), "weight_capacity", ("cap", "investable")),
-    (re.compile(r"^caps allow at most (\d+)% invested .*?(\d+)% kept as cash"), "weight_capacity", ("cap_pct", "cash_pct")),
+    # '(+N must_include)' = 필수 포함 종목 수 (앞의 수에는 넣지 않음, 018). 예전 원문(그 부분 없음)도 읽는다
+    (re.compile(r"^only (\d+) tickers have (\w+)(?: \(\+(\d+) must_include\))?; target (\d+) -> selecting (\d+)"), "too_few_with_metric",
+     ("n", "metric", "n_forced", "target", "selected")),
+    (re.compile(r"^only (\d+) tickers within eligibility for (\w+)(?: \(\+(\d+) must_include\))?; target (\d+) \(excluded (\d+) out of range: (.*?)\)(?: \[capacity ([\d.]+) of ([\d.]+)\])?$"),
+     "too_few_eligible", ("n", "metric", "n_forced", "target", "n_out", "examples", "cap", "investable")),
+    (re.compile(r"^weight capacity ([\d.]+) < ([\d.]+): .*?\(cap needed ([\d.]+|None)(?:; stock (\d+)%, sector (\d+)%, (\d+) names)?\)"), "weight_capacity",
+     ("cap", "investable", "needed", "stock_pct", "sector_pct", "n")),
+    (re.compile(r"^caps allow at most (\d+)% invested \(stock (\d+)%, sector (\d+)%, (\d+) names(?:, investable (\d+)%)?\)"), "weight_capacity",
+     ("cap_pct", "stock_pct", "sector_pct", "n", "investable_pct")),
+    (re.compile(r"^sector count preference \((\d+)/sector, sector cap (\d+%)\) skipped higher-ranked \[([^\]]*)\] \(([^)]*)\)(?: for lower-ranked names in other sectors \[([^\]]*)\])?"), "sector_preference_skipped",
+     ("pref", "cap", "tickers", "sector", "subs")),
+    (re.compile(r"^must_include (\S+): metric_out_of_range\(([^)]*)\)"), "must_include_out_of_range", ("tickers", "detail")),
+    (re.compile(r"^must_include (\S+): metric_missing( \(eps<=0)?"), "must_include_no_metric", ("tickers", "why")),
+    (re.compile(r"^must_include (\S+): insufficient price history"), "must_include_short_history", ("tickers",)),
+    (re.compile(r"^(\S+): must_include matches excluded theme (.+?) -> "), "must_include_excluded_theme", ("tickers", "theme")),
+    (re.compile(r"^(\S+): utility kept despite excluded theme "), "utility_not_fossil", ("tickers",)),
+    (re.compile(r"^broad start pool (\d+) candidates; exclusion keywords dropped (\d+) unchecked names \[([^\]]*)\]"), "broad_start_pool", ("n", "k", "names")),
+    (re.compile(r"^must_include (\S+): below candidate filters \((.*)\), kept"), "must_include_below_filters", ("tickers", "detail")),  # 아래 포괄 규칙보다 먼저
     (re.compile(r"^must_include (\S+): "), "must_include_forced", ("tickers",)),
-    (re.compile(r"^(\S+): must_include but not in theme"), "must_include_forced", ("tickers",)),
+    (re.compile(r"^(\S+): must_include but not in theme"), "must_include_off_theme", ("tickers",)),
     (re.compile(r"^original selection used at an earlier date"), "selection_lookahead", ()),
     (re.compile(r"^(\S+) dropped: insufficient history before"), "ticker_dropped_history", ("tickers",)),
     (re.compile(r"^added_tickers not in universe ignored: (.+)"), "added_tickers_ignored", ("tickers",)),
@@ -85,24 +128,34 @@ _LEGACY: list[tuple[re.Pattern[str], str, tuple[str, ...]]] = [
     (re.compile(r"^excluded by data quality \(weights renormalized\): (.+)"), "excluded_by_data_quality", ("tickers",)),
     (re.compile(r"^no portfolio passed the hard rules \(fail counts by rule: (.+)\)"), "no_portfolio_passed", ("rules",)),
     (re.compile(r"^alternative skipped: (.+)"), "alternative_skipped", ("reason",)),
+    (re.compile(r"^dividend theme: dropped (\d+) candidates without a confirmed dividend in the last 12 months \[([^\]]*)\]"), "no_dividend_dropped", ("n", "tickers")),
+    (re.compile(r"^matched variant skipped for (\S+): stocks below floor (\S+) would be needed to bring max drawdown within (\S+) "), "matched_floor", ("base", "floor", "target")),
     (re.compile(r"^fewer than target after matching; widened GICS codes one level up -> (\d+)"), "gics_widened", ("n",)),
-    (re.compile(r"^market cap (?:unavailable|missing for) ?(.*)"), "market_cap_missing", ("tickers",)),
+    # 후보 단계 시가총액 하드 필터 (retrieve.mcap_warnings). 아래 시장모형 공지('market cap missing for …: treated as 0')와 앞말이 달라 서로 가리지 않는다
+    (re.compile(r"^min market cap ([\d.]+) USD: dropped (\d+) candidates without market cap data \[([^\]]*)\]"), "min_mcap_missing", ("min", "n", "tickers")),
+    (re.compile(r"^market cap estimated from last known shares \(within (\d+) days\) for \[([^\]]*)\]"), "mcap_estimated", ("days", "tickers")),
+    # 시장모형 원문 "market cap missing for ['XOM']: treated as 0 in market_cap weights" → 종목 목록만 (예전에는 뒤의 ': treated as 0 …' 까지 종목 칸에 들어갔다, 025)
+    (re.compile(r"^market cap missing for \[([^\]]*)\]"), "market_cap_missing", ("tickers",)),
+    (re.compile(r"^market cap unavailable"), "market_cap_missing", ()),  # 예전 후보 단계 원문 '… for all candidates' (지금은 내지 않음): 종목 목록이 없다
     (re.compile(r"^less than (\d+) trading days of history before (\S+)"), "lookback_short", ("days", "date")),
     (re.compile(r"^backtest (?:start|end)_date .* clamped"), "window_clamped", ()),
     (re.compile(r"^capital re-converted at (\S+) FX ([\d.]+): ([\d,]+) USD vs request-date ([\d,]+) USD"), "fx_reconverted", ("date", "rate", "usd", "usd0")),
     (re.compile(r"^window of (\d+) trading days <"), "short_window", ("days",)),
     (re.compile(r"있는 종목 (\d+)개 < 최소 (\d+)개"), "news_thin_fallback", ("n", "min")),
     (re.compile(r"유효한 뷰가 하나도 남지 않아"), "views_none_valid", ()),
-    (re.compile(r"^백테스트 시작일 .* 로 옮김"), "backtest_start_shifted", ()),
+    (re.compile(r"^백테스트 시작일 .* 로 (?:자동으로 )?옮김"), "backtest_start_shifted", ()),  # 동의 이동 · 1종목 이하 자동 이동 (정책 결정 4)
     (re.compile(r"^백테스트 시작일 .* 그 종목으로 시작합니다"), "fewer_holdings_at_start", ()),
     (re.compile(r"^GICS 분류 검수 대기"), "gics_draft", ()),
     (re.compile(r"이전 사전 버전이 없어"), "descriptor_version_fallback", ()),
-    (re.compile(r".*재무 지표 자료가 .* 로 옮김"), "backtest_start_clamped", ()),
+    (re.compile(r".*(?:재무 지표|시가총액) 자료가 .* 로 옮김"), "backtest_start_clamped", ()),
     (re.compile(r"^(기준일 .* 로 옮김|백테스트 시작일 .* 로 줄임)"), "derived_note", ()),
 ]
-_SCREEN_AT = re.compile(r"^screen@(" + _DATE + r"): (.+)$")
+_SCREEN_AT = re.compile(r"^(?:screen|start)@(" + _DATE + r"): (.+)$")  # screen@ = 07 시작일 재선정, start@ = 10 시작일 구성
 _DATE_PREFIX = re.compile(r"^(" + _DATE + r"): (.+)$")
 RULE_KO = {"R1": "최대낙폭", "R2": "목표수익", "R3": "비교지수 대비", "R4": "종목 상한", "R4b": "종목 상한(드리프트)", "R5": "섹터 상한", "R5b": "섹터 상한(드리프트)", "R6": "종목 수", "R7": "변동성 적합", "R8": "기타"}
+
+
+_OPTIONAL_FMT = {"forced_note": ""}  # 없어도 되는 자리표시자 (빈 문자열) — 없다고 문장 전체를 원문으로 바꾸지 않게
 
 
 def make(stage: str, code: str, *, dates: list[str] | tuple[str, ...] = (), details: dict[str, Any] | None = None, **fmt: Any) -> Warning:
@@ -111,7 +164,7 @@ def make(stage: str, code: str, *, dates: list[str] | tuple[str, ...] = (), deta
         fmt.setdefault("text", f"{code}")
         code = "legacy_note"
     try:
-        msg = tmpl.format(**{k: _fmt_value(v) for k, v in fmt.items()}) if fmt else tmpl
+        msg = tmpl.format(**{**_OPTIONAL_FMT, **{k: _fmt_value(v) for k, v in fmt.items()}}) if fmt else tmpl
     except (KeyError, IndexError):
         msg = tmpl
     if "{" in msg and "}" in msg:  # 채우지 못한 자리표시자
@@ -132,8 +185,12 @@ def from_text(stage: str, text: str, *, dates: list[str] | None = None) -> Warni
     m = _SCREEN_AT.match(text)
     if m:  # 07 단계(백테스트 시작일 재선정)의 선정 경고: 기준일 선정과 헷갈리지 않게 시점을 앞에 적는다 (라운드 5)
         w = from_text(stage, m.group(2), dates=[*dates, m.group(1)])
-        if w.code in ("too_few_with_metric", "too_few_candidates") and not w.message_ko.startswith("백테스트 시작일"):
+        # 사용자에게 보이는 공지는 모두 시점을 붙인다 (예전에는 too_few_* 만 → 필수 포함 공지가 기준일 선정 얘기로 읽혔다, 098 현대차)
+        if w.level == "user" and not w.message_ko.startswith("백테스트 시작일"):
             w.message_ko = f"백테스트 시작일({m.group(1)}) 기준: {w.message_ko}"
+        k = (w.details or {}).get("key")
+        if w.details is not None and (k is None or str(k).startswith("@now")):  # 같은 날 같은 사실(07 선정·10 구성의 배분 가능 비율)은 하나로 합친다
+            w.details["key"] = f"@{m.group(1)}" + (str(k)[len("@now"):] if k else "")
         return w
     m = _DATE_PREFIX.match(text)
     if m and not text.startswith("백테스트 시작일"):
@@ -144,24 +201,148 @@ def from_text(stage: str, text: str, *, dates: list[str] | None = None) -> Warni
             continue
         kw: dict[str, Any] = {k: m.group(i + 1) for i, k in enumerate(keys) if i + 1 <= rx.groups}
         if code == "weight_capacity":
-            if "cash_pct" in kw:
-                kw["cash"] = f"{kw['cash_pct']}%"
-            else:
-                try:
-                    kw["cash"] = f"{(float(kw['investable']) - float(kw['cap'])) * 100:.0f}%"
-                except (ValueError, KeyError):
-                    kw["cash"] = "일부"
+            kw.update(_capacity_words(kw))
+        n_forced = int(kw.get("n_forced") or 0)  # 지표·후보 조건 검사를 건너뛴 필수 포함 종목 수 (too_few_*: 앞의 수에 넣지 않고 따로 적는다, 018)
+        if code in ("too_few_with_metric", "too_few_eligible"):
+            kw["forced_note"] = f"(필수 포함 {n_forced}개 별도)" if n_forced else ""
+        if code == "too_few_eligible":  # 남는 비중이 정말 있을 때만 '현금' (배분 가능 비율을 모르는 예전 원문은 가능성으로)
+            try:
+                short = float(kw["cap"]) < float(kw["investable"]) - 1e-9
+                kw["cash_clause"] = "남는 비중은 현금으로 둡니다." if short else f"선정한 {int(kw['n']) + n_forced}종목에 투자금을 나눠 담습니다."
+            except (TypeError, ValueError, KeyError):
+                kw["cash_clause"] = "종목 수가 적으면 종목·섹터 상한 때문에 현금이 남을 수 있습니다."
+            # 원문 예시는 앞 몇 개뿐 → 나머지는 '외 N개' (019: 7개 중 4개만 적고 끝나 그게 전부처럼 읽혔다)
+            ex = [x.strip() for x in str(kw.get("examples") or "").split(", ") if x.strip()]
+            more = int(kw["n_out"]) - len(ex)
+            kw["examples"] = ", ".join(ex) + (f" 외 {more}개" if more > 0 else "")
         if code == "no_portfolio_passed":
             found = re.findall(r"'(R\d+b?)': (\d+)", kw.get("rules", ""))
             kw["rules"] = ", ".join(f"{RULE_KO.get(r, r)}({r}) {n}개" for r, n in found) or kw.get("rules", "")
+        if code == "broad_start_pool":  # 키워드로 뺀 종목이 있으면 이름과 수 (060)
+            names = [x.strip().strip("'\"") for x in kw.get("names", "").split(",") if x.strip()]
+            k = int(kw.get("k") or 0)
+            kw["dropped"] = (f" — 그렇게 뺀 {k}개: {', '.join(names[:5])}" + (f" 외 {k - len(names[:5])}개" if k > len(names[:5]) else "")) if k else ""
+        if code == "sector_preference_skipped":  # 시작일 재선정은 20개 넘게 빠지기도 한다 → 앞 5개 + '외 N개'
+            names = [x.strip().strip("'\"") for x in kw.get("tickers", "").split(",") if x.strip()]
+            kw["tickers"] = ", ".join(names[:5]) + (f" 외 {len(names) - 5}개" if len(names) > 5 else "")
+            pairs = [x.rsplit(":", 1) for x in kw.get("sector", "").split(";") if ":" in x]
+            if pairs:  # 'Industrials: 2; Utilities: 1' → '산업재 2개, 유틸리티 1개'
+                kw["sector"] = ", ".join(f"{sector_ko(a.strip())} {b.strip()}개" for a, b in pairs)
+            subs = [x.strip().strip("'\"") for x in (kw.get("subs") or "").split(",") if x.strip()]
+            kw["subs"] = f"({', '.join(subs[:5])}" + (f" 외 {len(subs) - 5}개" if len(subs) > 5 else "") + ")" if subs else ""
+        if code in ("min_mcap_missing", "mcap_estimated", "market_cap_missing", "no_dividend_dropped") and "tickers" in kw:  # 과거 시점에는 앞쪽이 빈 종목이 열 개 넘게 빠지기도 한다 → 앞 5개 + '외 N개'
+            names = [x.strip().strip("'\"") for x in kw.get("tickers", "").split(",") if x.strip()]
+            kw["tickers"] = ", ".join(names[:5]) + (f" 외 {len(names) - 5}개" if len(names) > 5 else "")
+            kw["n"] = len(names)
+            if code == "min_mcap_missing":
+                kw["min"] = usd_ko(float(kw["min"]))
+            elif code == "mcap_estimated":  # 설정(mcap_fallback_max_days)을 바꿔도 문구가 맞게 원문의 일수로: 730 → '2년'
+                days = int(kw.get("days") or 0)
+                kw["days"] = f"{days // 365}년" if days and days % 365 == 0 else f"{days}일"
+        elif code == "market_cap_missing":  # 예전 원문(후보 전체에 시가총액 자료 없음)은 종목 목록이 없어 그 사실만 적는다 (make 가 채우지 못한 템플릿 대신 text 를 쓴다)
+            kw["text"] = "시가총액 자료가 있는 후보가 하나도 없었습니다."
+        if code == "matched_floor":
+            kw["base"] = _plan_ko(kw.get("base", ""))
+        if code == "must_include_no_metric":  # 적자 여부는 PER 에서만 안다 (배당·ROE·모멘텀은 그냥 자료 없음)
+            kw["why"] = "(적자이거나 재무 자료 없음)" if kw.get("why") else ""
+        if code == "must_include_out_of_range":
+            kw["detail"] = _out_of_range_ko(kw.get("detail", ""))
+        if code == "must_include_below_filters":
+            kw["detail"] = _below_filters_ko(kw.get("detail", ""))
         if code == "too_few_with_metric":
             kw["metric"] = {"return_12m_1m": "모멘텀", "pe_ttm": "PER", "roe_ttm": "ROE", "vol_60d": "변동성", "dividend_yield_ttm": "배당수익률"}.get(kw["metric"], kw["metric"])
         if code in ("backtest_start_shifted", "backtest_start_clamped", "fewer_holdings_at_start", "gics_draft", "descriptor_version_fallback", "derived_note", "window_clamped"):
             kw["text"] = text
         w = make(stage, code, dates=dates, **kw)
-        w.details = {"text": text, "key": kw.get("tickers") or kw.get("names")}
+        # 기준일 배분 가능 비율은 05 선정·10f 구성이 같은 사실을 따로 낸다 → 하나로 (먼저 나온 05 문장이 해결 방법이 더 구체적)
+        w.details = {"text": text, "key": kw.get("tickers") or kw.get("names") or kw.get("base") or (f"@now:{kw.get('cap')}" if code == "weight_capacity" else None)}
         return w
     return Warning(stage=stage, code="legacy_note", level="debug", message_ko=text, dates=dates, details={"text": text})
+
+
+_PLAN_KO = {"equal_weight": "동일비중", "market_cap": "시가총액비중", "inverse_volatility": "역변동성비중", "min_variance": "최소분산", "bl_news": "뉴스 뷰 BL"}
+
+
+def _plan_ko(pid: str) -> str:
+    """구성 id → 이름 ('wf_market_cap' → '시가총액비중 (walk-forward)', 'wf_bl_news' → 'walk-forward 뉴스 뷰 BL', 'bl_02' → 'BL 타겟 2')."""
+    if pid == "wf_bl_news":
+        return "walk-forward 뉴스 뷰 BL"
+    if m := re.fullmatch(r"bl_0*(\d+)", pid):
+        return f"BL 타겟 {m.group(1)}"
+    wf = pid.startswith("wf_")
+    name = _PLAN_KO.get(pid[3:] if wf else pid, pid)
+    return f"{name} (walk-forward)" if wf else name
+
+
+def _pct(x: float) -> str:
+    return f"{x * 100:.0f}%"
+
+
+def _out_of_range_ko(detail: str) -> str:
+    """'roe_ttm=-0.1572, 범위 >0 ≤10' → 'ROE -15.7%, 자격선 0% 초과 1,000% 이하' (리포트 제외 사유와 같은 말, 009: 원문 소수가 공지에 그대로 나왔다).
+    못 읽는 원문은 지표 이름만 바꾼다."""
+    from backend.analysis.m2_data import metrics as M  # 늦은 import: metrics → market_data 를 경고 모듈이 처음부터 끌어오지 않게
+
+    m = re.match(r"^(\w+)=([-+\d.eE]+)", detail)
+    if m and m.group(1) in M.ELIGIBLE_RANGE:
+        try:
+            met, v = m.group(1), float(m.group(2))
+            return f"{M.METRIC_SHORT_KO.get(met, met)} {metric_value_ko(met, v)}, 자격선 {M.eligible_range_ko(met)}"
+        except ValueError:
+            pass
+    return re.sub(r"^(\w+)=", lambda mm: {"pe_ttm": "PER ", "roe_ttm": "ROE ", "dividend_yield_ttm": "배당수익률 "}.get(mm.group(1), mm.group(1) + " "), detail)
+
+
+def metric_value_ko(metric: str, value: float | None) -> str:
+    """선정 지표 값 표시 (M.display_metric 과 같음). 반올림하면 0 이 돼 부호·크기가 사라지는 작은 값만 유효숫자 2자리로
+    (019: AMD ROE −0.045% 가 '-0.0%' 로 보여 자격선(0% 초과) 밖인 이유를 알 수 없었다)."""
+    from backend.analysis.m2_data import metrics as M  # 늦은 import (위 _out_of_range_ko 와 같은 이유)
+
+    s = M.display_metric(metric, value)
+    try:
+        v = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return s
+    if v == 0 or v != v or math.isinf(v) or re.search(r"[1-9]", s):
+        return s
+    x = v if metric == "pe_ttm" else v * 100  # PER 은 배, 나머지는 %
+    d = max(0, 1 - math.floor(math.log10(abs(x))))  # 유효숫자 2자리 (지수 표기 없이): 0.04533 → 3자리 '0.045'
+    num = (f"{x:+.{d}f}" if metric == "return_12m_1m" else f"{x:.{d}f}").rstrip("0").rstrip(".")  # '0.0040' → '0.004'
+    return f"{num}배" if metric == "pe_ttm" else f"{num}%"
+
+
+def _below_filters_ko(detail: str) -> str:
+    """필수 포함 종목이 건너뛴 후보 조건 원문 → 한국어. 'market cap 7600055223 < 10000000000 USD' → '시가총액 76억 달러, 최소 100억 달러'. 못 읽으면 원문."""
+    name = {"market cap": "시가총액", "avg daily volume": "하루 평균 거래대금"}
+    parts = [f"{name[what]} {'자료 없음' if v == 'n/a' else usd_ko(float(v))}, 최소 {usd_ko(float(lo))}"
+             for what, v, lo in re.findall(r"(market cap|avg daily volume) (n/a|[\d.]+) < ([\d.]+) USD", detail)]  # fmt: skip
+    return " · ".join(parts) or detail
+
+
+def _capacity_words(kw: dict[str, Any]) -> dict[str, str]:
+    """배분 가능 비율 경고의 숫자 → 문장 조각 (n, stock, sector, cap, cash, mc_note, fix)."""
+    try:
+        if kw.get("cap_pct") is not None:  # 시장모형(10 단계): 퍼센트 정수
+            cap = float(kw["cap_pct"]) / 100
+            inv = float(kw["investable_pct"]) / 100 if kw.get("investable_pct") else None
+        else:  # 정량 선정(05·07 단계): 소수
+            cap, inv = float(kw["cap"]), float(kw["investable"])
+    except (TypeError, ValueError, KeyError):
+        return {"who": "선정 종목의 섹터 구성", "cap": "일부", "cash": "일부", "mc_note": "", "fix": "상한을 올리거나 테마를 넓히면 해소됩니다."}
+    stock = float(kw["stock_pct"]) / 100 if kw.get("stock_pct") else None
+    sector = float(kw["sector_pct"]) / 100 if kw.get("sector_pct") else None
+    n = int(kw["n"]) if kw.get("n") else None
+    needed = kw.get("needed")
+    min_cash = max(0.0, 1.0 - inv) if inv is not None else 0.0
+    if needed not in (None, "None"):
+        fix = f"섹터 상한을 {_pct(float(needed))}로 올리거나 테마를 넓혀 다른 섹터 종목을 늘리면 해소됩니다."
+    elif needed == "None" or (n is not None and stock is not None and inv is not None and n * stock < inv - 1e-9):
+        fix = "종목 수가 적어 섹터 상한만 올려서는 해소되지 않습니다. 종목당 상한을 올리거나 테마를 넓혀 종목 수를 늘려 보세요."
+    else:
+        fix = "섹터 상한을 올리거나 테마를 넓혀 다른 섹터 종목을 늘리면 해소됩니다."
+    who = (f"선정 종목 {n}개(종목당 상한 {_pct(stock)}, 섹터당 상한 {_pct(sector)})" if n is not None and stock is not None and sector is not None
+           else "선정 종목의 섹터 구성")  # 예전 형식 원문(숫자 없음)
+    return {"who": who, "cap": _pct(cap), "cash": _pct(1.0 - cap), "mc_note": f" (최소 현금 {_pct(min_cash)} 포함)" if min_cash > 0.004 else "", "fix": fix}  # fmt: skip
 
 
 def merge(ws: list[Warning]) -> list[Warning]:
@@ -169,10 +350,14 @@ def merge(ws: list[Warning]) -> list[Warning]:
     out: list[Warning] = []
     idx: dict[tuple[str, Any], int] = {}
     for w in ws:
-        key = (w.code, (w.details or {}).get("key") if w.code != "legacy_note" else w.message_ko)
+        k2 = (w.details or {}).get("key")
+        # 종목 키가 없는 코드(weight_capacity·too_few_*)는 문장까지 같아야 합친다 — 날짜·숫자가 다른 공지를 첫 문장 하나로 덮지 않게.
+        # 시작일 재선정 공지('백테스트 시작일(…) 기준:')는 기준일 공지와 따로 둔다.
+        key = (w.code, w.message_ko if (w.code == "legacy_note" or k2 is None) else (k2, w.message_ko.startswith("백테스트 시작일")))
         if key in idx:
             g = out[idx[key]]
-            g.count += w.count
+            if not str(k2 or "").startswith("@"):  # '@날짜' 키 = 다른 단계가 같은 날의 같은 사실을 다시 낸 것 → 횟수로 세지 않는다
+                g.count += w.count
             g.dates = sorted(set(g.dates) | set(w.dates))
             continue
         idx[key] = len(out)

@@ -14,15 +14,21 @@
 뒤 단계는 이렇게 동작합니다: 코드가 당신의 GICS 코드·키워드로 후보 종목을 검색하고 → 다른 LLM 호출이 후보를 테마별로 분류하고 → 알고리즘이 정량 지표로 최종 종목을 고릅니다.
 따라서 **GICS 코드는 넉넉하게**(관련 산업을 빠뜨리지 않게), **키워드는 구체적으로**(영문 소문자, 회사 설명문에 등장할 법한 단어) 적는 것이 중요합니다.
 
+사용자에게 그대로 보이는 한국어 문장(`summary_ko`·`notes_ko`·`issue_ko`·`resolution_ko`·질문 문장)에는 영어 코드값(hold, buy_more, medium, beginner, high_dividend, HARD 등)을 쓰지 말고 한국어로 씁니다 (예: 보유, 추가 매수, 중간, 초보, 고배당, 바꾸지 않는 조건). '필드'·'스키마'·'경로' 같은 개발 용어도 쓰지 않습니다 (예: '이를 표현할 백테스트 종목 수 필드는 없습니다' 대신 '백테스트 종목 수만 따로 정하는 조건은 없습니다').
+
 # 규칙
 
 - 출력은 **아래 스키마를 따르는 JSON 객체 하나**입니다. 코드블록·설명·머리말을 붙이지 않습니다.
 - `request_id` 는 입력값을 그대로 복사합니다.
 - `gics_codes` 는 트리에 있는 코드만 씁니다. 2자리(섹터)·4자리(산업그룹)·6자리(산업)·8자리(세부산업) 모두 허용되며, 상위 코드는 하위를 전부 포함합니다. 섹터 전체(2자리)는 테마가 정말 섹터 전체일 때만 씁니다.
+- 업종이 아니라 배당·재무·주가 특성으로 정한 아이디어(예: "배당을 꾸준히 늘려 온 기업", "재무가 탄탄한 기업", "특정 테마 없이")는 업종에 관계없이 고르는 넓은 테마입니다. `gics_codes` 에 11개 섹터 2자리 코드("10"~"60")를 모두 적고, 그 특성은 선정 기준(템플릿)이 순위로 정하게 둡니다. 'dividend growth' 같은 재무 특성 단어는 기업 소개문에 거의 나오지 않아 검색 키워드로 쓰지 않습니다.
+- `exclude_theme_rules` 의 GICS 코드는 그 업종 전체를 빼므로 테마와 정확히 같은 세부산업(예: 담배 30203010, 카지노·게이밍 25301010)만 적고, 성인 콘텐츠처럼 맞는 세부산업이 없는 제외 테마는 `gics_codes` 를 비우고 키워드로만 표현합니다 (영화·엔터테인먼트, 인터랙티브 미디어 같은 넓은 업종을 대신 적지 않습니다).
 - `keywords` 는 영문 소문자 단어·구(예: "gpu", "data center", "cloud"). 테마당 5~12개. 너무 일반적인 단어("technology", "company")는 피합니다.
 - `example_tickers` 는 유니버스 안 티커(미국 yfinance 표기, 한국은 `005930.KS` 형식)로, 확신이 있는 것만 적습니다. 유니버스 밖 티커는 코드가 제거합니다.
 - 필드 태그의 뜻: `[HARD]`·`[HARD (이번 입력)]` 은 사용자가 이번 요청에서 직접 정했거나 코드가 반드시 지키는 값이라 자연어보다 우선합니다 — 충돌하면 그 값을 따르고 `conflicts` 에 기록합니다. `[PROFILE 기본값]` 은 저장해 둔 프로필에서 그대로 온 값이라 **아이디어가 다른 값을 뜻하면 사용자에게 물어야 합니다**: 그 필드를 `kind: "conflict"` 질문으로 제안하고(보기 1 = 아이디어대로 바꾼 값, 보기 2 = 프로필 값 유지) `conflicts` 에도 `idea_value`(아이디어가 뜻하는 값, 필드 타입 그대로) 를 적습니다. 사용자가 답하기 전까지는 프로필 값을 따릅니다. 예: 아이디어가 "미국 기업"만 말하는데 유니버스에 KOSPI200 이 있으면 `constraints.universe` 를 묻고 `idea_value: ["SP500", "NASDAQ100"]`; "배당주"인데 템플릿이 모멘텀이면 `strategy_preference.template` 을 묻고 `idea_value: "high_dividend"`.
+- 보충 질문에 사용자가 답해 정한 조건(종목 수 줄이기, 상한 올리기, 백테스트 시작 때 종목 수 등)은 코드가 그대로 반영하므로 `conflicts` 에 적지 않습니다. 질문하지 않고 지금 설정을 쓰는 충돌의 `resolution_ko` 는 '지금 설정(…)을 그대로 씁니다' 처럼 확정형으로 쓰고 '답변 전까지'·'확인이 필요' 같은 미정 표현을 쓰지 않습니다(리포트는 대화가 끝난 뒤 읽힙니다). `summary_ko` 에도 '확인이 필요합니다' 같은 미정 문장을 넣지 않습니다. 보충 질문의 보기가 알린 결과(예: '백테스트 시작 때 4종목으로 투자금의 60%만 투자')를 사용자가 바란 것처럼 `summary_ko` 에 쓰지 않습니다. `summary_ko` 에 선정 기준을 쓸 때는 `screen.metric` 으로 실제로 고르는 지표(예: 'ROE 순위')만 쓰고, 지표로 재지 않는 바람(예: '재무 건전성')을 선정 기준이라고 쓰지 않습니다. 결과를 살펴볼 때만 고려하는 바람(예: 저변동성 지표로 고르지 않는데 '변동성을 낮게 유지')을 구성이 하는 일처럼 쓰지 않고 '낮은 변동성을 원합니다' 처럼 바람으로 씁니다.
 - 필드 값으로 표현할 수 없는 의도(예: "두 테마를 반반")는 질문 대신 `conflicts` 에 `idea_value: null` 로 기록하고 해석(`themes`·`style_hints`)에 반영합니다.
+- `resolution_ko` 에는 실제로 하는 처리만 씁니다. 선정 기준(template)은 하나만 쓰므로 고르지 않은 기준(예: 저PER)을 '보조적으로 반영한다'고 쓰지 않습니다. 테마 설명(`description_ko`)에는 업종·사업 내용만 쓰고 '실적 대비 싼', '배당이 높은' 같은 선정 지표 조건은 넣지 않습니다(그 조건은 선정 기준이 순위로 정합니다).
 - `screen` 은 `strategy_preference.template` 과 아래 표를 따릅니다. `as_of` 는 `horizon.start_date`, `select_top_n` 은 `num_holdings.target` 입니다.
 - 날짜는 `YYYY-MM-DD`, 비율은 0~1 소수, 설명 문장은 한국어입니다. 모르는 값은 추측하지 말고 `null` 로 둡니다.
 
@@ -38,7 +44,7 @@
 
 # [SOFT] 해석 지침
 
-- `risk_params.effective_max_drawdown` : 낙폭 맞춤안(현금을 섞어 과거 최대낙폭을 목표 안에 맞춘 구성)의 목표. `risk.max_drawdown_tolerance` 기준으로 `loss_reaction = "sell"` 이면 0.8배, `investment_experience = "none"` 이면 0.9배. 그 외 그대로. 근거를 `notes_ko` 에 적습니다. 허용 낙폭 판정과 표시는 입력값 그대로 쓰고, 최대낙폭은 합격 기준이 아니라 순위와 주의 표시에 쓰입니다.
+- `risk_params.effective_max_drawdown` : 낙폭 맞춤안(현금을 섞어 과거 최대낙폭을 목표 안에 맞춘 구성)의 목표. `risk.max_drawdown_tolerance` 기준으로 `loss_reaction = "sell"` 이면 0.8배, `investment_experience = "none"` 이면 0.9배. 그 외 그대로. 조정 여부와 이유는 코드가 따로 보여 주므로 `notes_ko` 에 쓰지 않습니다(투자 경험 '초보' 는 '없음' 이 아닙니다). 허용 낙폭 판정과 표시는 입력값 그대로 쓰고, 최대낙폭은 합격 기준이 아니라 순위와 주의 표시에 쓰입니다.
 - `risk_params.volatility_preference` : conservative→low, moderate→medium, aggressive→high. 자연어에 변동성 언급이 있으면 그것을 우선합니다.
 - `news_tilt` : `enabled = strategy_preference.use_news_tilt`. `max_view_confidence` 는 conservative 0.3 / moderate 0.5 / aggressive 0.7. `max_tilt_per_stock` 은 `max_weight_per_stock` 의 1/3.
 - `validation_criteria` : benchmark, max_drawdown(= max_drawdown_tolerance), target_annual_return, horizon_years(= target_years) 를 그대로.

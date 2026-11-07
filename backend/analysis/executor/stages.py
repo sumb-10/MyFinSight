@@ -16,15 +16,14 @@ from backend.analysis.executor.context import RunContext
 from backend.analysis.executor.parallel import run_ordered
 from backend.analysis.m1_request.derive import derive
 from backend.analysis.m2_data import descriptor as D
-from backend.analysis.m3_selection.classify import classify
+from backend.analysis.m3_selection.classify import classify, is_broad_theme
 from backend.analysis.m3_selection.explain import explain
-from backend.analysis.m3_selection.intent import interpret
+from backend.analysis.m3_selection.intent import broaden_industry_agnostic, clean_exclude_rules, interpret
 from backend.analysis.m3_selection.retrieve import retrieve
 from backend.analysis.m3_selection.screen import screen
 from backend.analysis.m4_portfolio.construct import construct
 from backend.analysis.m4_portfolio.spec import build_backtest_spec
-from backend.analysis.m5_backtest_report.backtest import run_backtest
-from backend.analysis.m5_backtest_report.backtest_engine import rebalance_dates
+from backend.analysis.m5_backtest_report.backtest import run_backtest, trade_schedule
 from backend.analysis.m5_backtest_report.collect import build_results
 from backend.analysis.m5_backtest_report.report import generate_report
 from backend.analysis.m5_backtest_report.validate import validate
@@ -64,9 +63,29 @@ def st_request(ctx: RunContext) -> str:
 TEMPLATE_KO = {"low_per": "저PER", "quality": "퀄리티(ROE)", "momentum": "모멘텀", "low_volatility": "저변동성", "high_dividend": "고배당"}
 
 
+def _drop_answered_conflicts(ctx: RunContext) -> None:
+    """대화에서 사용자가 직접 답한 필드의 '필드로 표현할 수 없는 의도'(idea_value 없음) 충돌은 뺀다 — 답으로 이미 정해졌다
+    (039: '시작 때 6종목·투자 60%' 를 골라 그대로 적용됐는데, 의도 해석이 이를 충돌로 적어 카드가 '별도로 반영하지 않습니다' 라고 했다)."""
+    answered_fields = getattr(ctx, "answered_fields", ())
+    if not answered_fields or not ctx.intent:
+        return
+    interp = ctx.intent.get("interpretation") or {}
+
+    def answered(f: str) -> bool:
+        return any(f == a or f.startswith(a + ".") or a.startswith(f + ".") for a in answered_fields)
+
+    keep = [c for c in interp.get("conflicts") or [] if not (c.get("idea_value") is None and answered(str(c.get("field") or "")))]
+    if len(keep) != len(interp.get("conflicts") or []):
+        interp["conflicts"] = keep
+
+
 def st_intent(ctx: RunContext) -> str:
     if ctx.intent is not None:
+        # 대화에서 확정된 의도를 다시 쓰되, 코드 규칙(제외 테마의 GICS 정리)은 지금 규칙으로 다시 적용한다 — 예전 의도면 '성인 산업' 이 미디어 업종 전체를 뺐다 (013)
         ctx.outputs["02_intent"] = ctx.intent
+        ctx.warn_all("02_intent", clean_exclude_rules(ctx.intent.get("exclude_theme_rules") or [])
+                     + broaden_industry_agnostic((ctx.intent.get("interpretation") or {}).get("themes") or []))  # fmt: skip  (037)
+        _drop_answered_conflicts(ctx)
         return "대화에서 확정된 의도 재사용 (LLM 호출 없음)"
     spec, warns, _ = interpret(ctx.request, ctx.desc, ctx.llm, ctx.settings)
     out = spec.model_dump(mode="json")
@@ -93,8 +112,10 @@ def st_candidates(ctx: RunContext) -> str:
 
 
 def st_tagging(ctx: RunContext) -> str:
+    broad = is_broad_theme(ctx.out("02_intent")["interpretation"]["themes"], ctx.settings.selection.broad_theme_min_sectors)  # 넓은 테마: 지표 순위에 맡긴다
     tag = classify(Candidates.model_validate(ctx.out("03_candidates")), ctx.out("02_intent"), ctx.llm,
-                   max_workers=ctx.settings.executor.classify_workers or ctx.settings.llm.max_concurrency, cancel_check=ctx.cancel_check)  # fmt: skip
+                   max_workers=ctx.settings.executor.classify_workers or ctx.settings.llm.max_concurrency, cancel_check=ctx.cancel_check,
+                   broad=broad)  # fmt: skip
     ctx.outputs["04_tagging"] = tag.model_dump(mode="json")
     ctx.warn_all("04_tagging", list(tag.warnings))
     return f"테마 통과 {len(tag.passed_tickers)}개 / 배치 {tag.batches}"
@@ -103,13 +124,16 @@ def st_tagging(ctx: RunContext) -> str:
 def st_selection(ctx: RunContext) -> str:
     view = ctx.md.view(_as_of(ctx))
     sel, facts = screen(view, ctx.desc, Tagging.model_validate(ctx.out("04_tagging")), ctx.out("02_intent"), ctx.request["constraints"], request_id=ctx.request_id)
+    sel.warnings += _forced_filter_notes(ctx.outputs.get("03_candidates"), ctx.request["constraints"], {s.ticker for s in sel.selected})  # 018
     ctx.outputs["05_selection"] = sel.model_dump(mode="json")
     ctx.facts += facts
     ctx.outputs["_facts_05"] = list(facts)  # 06 이 쓰는 스냅샷 (07 이 같은 웨이브에서 백테스트 시작일 지표를 덧붙이므로)
     ctx.warn_all("05_selection", list(sel.warnings))
     if not sel.selected:
         raise ValueError("no ticker selected: cannot continue")
-    return f"선정 {len(sel.selected)}개 ({sel.summary['metric']})"
+    from backend.analysis.m2_data.metrics import METRIC_SHORT_KO
+
+    return f"선정 {len(sel.selected)}개 ({METRIC_SHORT_KO.get(sel.summary['metric'], sel.summary['metric'])} 순)"  # 실행 기록에 'roe_ttm' 이 보였다 (072)
 
 
 def st_explain(ctx: RunContext) -> str:
@@ -124,7 +148,8 @@ def st_explain(ctx: RunContext) -> str:
     notes_ko = [_render(w) for w in _merge(ctx.warnings_of("05_selection") + ctx.warnings_of("03_candidates")) if w.level == "user"]
     facts05 = ctx.outputs.get("_facts_05", ctx.facts)
     out = explain(sel, Tagging.model_validate(ctx.out("04_tagging")), ctx.out("02_intent"), ctx.llm,
-                  facts=[f for f in facts05 if f["ticker"] in {s.ticker for s in sel.selected}], news=win, warnings_ko=notes_ko)  # fmt: skip
+                  facts=[f for f in facts05 if f["ticker"] in {s.ticker for s in sel.selected}], news=win, warnings_ko=notes_ko,
+                  summaries={c["ticker"]: c.get("company_summary") or "" for c in (ctx.outputs.get("03_candidates") or {}).get("candidates") or []})  # fmt: skip
     ctx.outputs["06_selection_explained"] = out
     return f"기업별 근거 {len(out.get('per_ticker', []))}개"
 
@@ -132,7 +157,11 @@ def st_explain(ctx: RunContext) -> str:
 def st_backtest_spec(ctx: RunContext) -> str:
     spec, extras = build_backtest_spec(ctx.md, ctx.request, ctx.out("02_intent"), Tagging.model_validate(ctx.out("04_tagging")),
                                        Selection.model_validate(ctx.out("05_selection")), ctx.desc, ctx.settings, bt_req=ctx.bt_req,
-                                       allow_fewer_at_start=ctx.allow_fewer_at_start)  # fmt: skip
+                                       allow_fewer_at_start=ctx.allow_fewer_at_start, start_shift_ok=ctx.start_shift_ok,
+                                       no_reselect=getattr(ctx, "no_reselect", False), shift_cannot_help=getattr(ctx, "shift_cannot_help", False))  # fmt: skip
+    if extras.get("candidates_bt"):  # 시작일 재선정 후보에서도 필수 포함이 건너뛴 후보 조건을 알린다 (018: 033780.KS 는 기준일엔 통과, 시작일엔 시가총액 미달)
+        notes = _forced_filter_notes(extras["candidates_bt"], ctx.request["constraints"], set(spec["selection"]["tickers"]))
+        spec["warnings"] += [f"screen@{spec['period']['as_of']}: {w}" for w in notes]
     ctx.outputs["07_backtest_spec"] = spec
     for k, v in extras.items():
         if k == "facts_bt":
@@ -148,7 +177,7 @@ def st_targets(ctx: RunContext) -> str:
     spec = ctx.out("07_backtest_spec")
     as_of = dt.date.fromisoformat(str(spec["period"]["as_of"]))
     res = construct(ctx.md.view(as_of), list(spec["selection"]["tickers"]), ctx.request, ctx.out("02_intent"), ctx.settings, ctx.llm, ctx.desc,
-                    mode="start", stage_tag=f"09_views_news_{as_of}")  # fmt: skip
+                    mode="start", stage_tag=f"09_views_news_{as_of}_start")  # fmt: skip  (10w 첫날과 단계명이 겹치면 프롬프트·응답 기록이 서로 덮어쓴다)
     ctx.outputs["08_market_model"] = res.market_model
     ctx.outputs["08_baseline_portfolios"] = res.baselines
     views = Views(request_id=ctx.request_id, as_of=as_of, window=res.evidence.summary() if res.evidence else None,
@@ -157,45 +186,48 @@ def st_targets(ctx: RunContext) -> str:
     ctx.outputs["09_views"] = views.model_dump(mode="json")
     if res.evidence:
         ctx.add_news_window("10_targets", res.evidence.to_dict())
+    bl_ok = res.applied_bl  # 최적화가 실패해 기준 비중과 같은 세트는 후보에서 뺀다 (동점이면 '뉴스 뷰' 이름으로 먼저 추천되던 문제)
+    if len(bl_ok) < len(res.bl_portfolios):
+        res.warnings.append(f"BL sets without applied views excluded: {[p['id'] for p in res.bl_portfolios if not p.get('views_applied')]}")
     notes = ["BL prior = 기준 비중의 역최적화 수익률; 뷰 신뢰도가 0 에 가까우면 기준 비중으로 수렴.",
              "구성일 d 의 추정은 d 이전 자료만 쓰고(정보 마감 t−1), 체결은 d 종가 (D4).",
              (f"종목별 비중 이동 한도 |w − w_baseline| ≤ {res.params['max_tilt_per_stock']}" if res.params else "뉴스 뷰 없음: BL 타겟 없이 템플릿만 백테스트")]  # fmt: skip
     targets = TargetPortfolios(request_id=ctx.request_id, as_of=as_of,
                                backtest_spec={k: spec[k] for k in ["period", "capital", "rebalance_rule", "benchmark", "extra_benchmarks", "selection", "execution_rule"]},
                                parameters=res.params or {}, baseline={"id": res.baselines["chosen_baseline"], "weights": res.baseline_weights},
-                               portfolios=[Portfolio(**p) for p in res.bl_portfolios], templates=[Portfolio(**p) for p in res.baselines["portfolios"]],
+                               portfolios=[Portfolio(**p) for p in bl_ok], templates=[Portfolio(**p) for p in res.baselines["portfolios"]],
                                notes_ko=notes, warnings=res.warnings)  # fmt: skip
     ctx.outputs["10_target_portfolios"] = targets.model_dump(mode="json")
-    ctx.warn_all("10_targets", list(res.warnings))
+    # 10 단계 구성은 백테스트 시작일의 것 → 사용자 공지에 시점을 붙인다 (예전에는 '현금 50%' 공지가 날짜 없이 나와 지금 구성 얘기로 읽혔다, 002)
+    ctx.warn_all("10_targets", [f"start@{as_of}: {w}" for w in res.warnings])
     _warn_optimizer(ctx, "10_targets", res.bl_portfolios)
-    return f"비중 규칙 {len(res.baselines['portfolios'])}개 + 뉴스 반영 구성 {len(res.bl_portfolios)}개 ({'뉴스 뷰 적용' if not res.fallback else '근거 부족으로 기준 비중 유지'})"
+    return f"비중 규칙 {len(res.baselines['portfolios'])}개 + 뉴스 반영 구성 {len(bl_ok)}개 ({_news_effect_ko(bl_ok, res.baseline_weights)})"
 
 
 def st_walkforward(ctx: RunContext) -> str:
     """리밸런싱일마다 construct(mode=rebalance): 시장모형·뉴스 뷰·BL 재계산, 종목 고정 (K8)."""
     spec, intent = ctx.out("07_backtest_spec"), ctx.out("02_intent")
-    as_of, end = dt.date.fromisoformat(str(spec["period"]["as_of"])), dt.date.fromisoformat(str(spec["period"]["end"]))
     tickers = list(spec["selection"]["tickers"])
-    # 백테스트(prepare)와 같은 달력: 종목 시장 ∪ 비교지수 시장의 거래일 합집합. 종목 시장만 쓰면 한국 휴장일에 리밸런싱 날짜가 어긋나
-    # 체크포인트의 '리밸런싱 직후 비중'이 드리프트된 값으로 잡혀 내부 점검(R4)이 틀리게 실패한다 (라운드 5 재실행에서 발견)
-    benches = [spec["benchmark"], *[b for b in spec.get("extra_benchmarks", []) if b in ctx.md.assets]]
-    markets = sorted({ctx.md.market_of(t) for t in tickers} | {ctx.md.market_of(b) for b in benches if b in ctx.md.assets})
-    cal = ctx.md.view(end).trading_days(as_of, end, markets=markets)
-    dates = [d.date() for d in rebalance_dates(spec["rebalance_rule"], cal, as_of, ctx.settings.backtest)]
+    # 백테스트(prepare)와 같은 함수로 날짜를 정한다: 따로 계산하면 날짜가 어긋나 체크포인트의 '리밸런싱 직후 비중'이 드리프트된 값으로 잡혀
+    # 내부 점검(R4)이 틀리게 실패한다 (라운드 5 재실행에서 발견). 날짜는 보유 종목 시장이 모두 연 날 (시나리오 QA 002)
+    dates = [d.date() for d in trade_schedule(ctx.md, spec, ctx.settings)["rb"]]
     ps = ctx.settings.portfolio
     tmpl = {t: {"id": f"wf_{t}", "kind": "template", "name_ko": f"{ps.template_names_ko[t][0]} (walk-forward)", "rule_ko": ps.template_names_ko[t][1],
                 "weights_by_date": {}} for t in ps.templates}  # fmt: skip
-    bl: dict[str, Any] = {"id": "wf_bl_news", "kind": "black_litterman", "name_ko": "뉴스 뷰 Black-Litterman (walk-forward)", "title_ko": "뉴스 근거 뷰",
+    # title_ko 를 두지 않는다: 표 라벨(pf_label)이 title_ko 가 있으면 '뉴스 뷰: {title_ko}' 라 '뉴스 뷰: 뉴스 근거 뷰' 가 시작일 시나리오처럼 읽혔다 (021).
+    # 없으면 다른 wf_ 안과 같이 name_ko('… (walk-forward)') 를 쓴다
+    bl: dict[str, Any] = {"id": "wf_bl_news", "kind": "black_litterman", "name_ko": "뉴스 뷰 Black-Litterman (walk-forward)", "title_ko": None,
                           "rule_ko": "리밸런싱마다 직전 뉴스 헤드라인으로 뷰를 새로 만들어 기준 비중을 조정", "weights_by_date": {}, "views_by_date": {},
                           "fallback_dates": [], "narrative_by_date": {}}  # fmt: skip
-    models, news_summary, warnings = {}, {}, []
+    models, news_summary, warnings, fallback_reasons = {}, {}, [], {}
 
     def per_date(d: dt.date):  # 순수 함수: 날짜 하나의 구성 (공유 상태를 건드리지 않음 → 병렬 가능)
-        return construct(ctx.md.view(d), tickers, ctx.request, intent, ctx.settings, ctx.llm, ctx.desc, mode="rebalance", stage_tag=f"09_views_news_{d}",
+        return construct(ctx.md.view(d), tickers, ctx.request, intent, ctx.settings, ctx.llm, ctx.desc, mode="rebalance", stage_tag=f"09_views_news_{d}_wf",
                          id_prefix=f"wf_bl_{d}", name_prefix="뉴스 뷰 BL")  # fmt: skip
 
     workers = ctx.settings.executor.walkforward_workers or ctx.settings.llm.max_concurrency
     results = run_ordered(ctx, "10w_paths", dates, per_date, max_workers=workers)  # 날짜 순서대로 돌아온다 (라운드 4 S2)
+    base_by_date: dict[str, dict[str, float]] = {}  # 날짜별 기준 비중 (뉴스 뷰가 비중을 실제로 바꾼 날을 세는 데 쓴다)
     for d, res in zip(dates, results, strict=True):  # 조립은 날짜순 → 경고·근거 색인 순서가 순차 실행과 같다
         key = str(d)
         models[key] = {k: res.market_model[k] for k in ["delta", "delta_source", "lookback", "implied_returns"]}
@@ -205,25 +237,52 @@ def st_walkforward(ctx: RunContext) -> str:
         if res.evidence:
             ctx.add_news_window("10w_paths", res.evidence.to_dict())
         warnings += [f"{key}: {w}" for w in res.warnings]
-        ctx.warn_all("10w_paths", list(res.warnings), dates=[key])
+        # 종목·상한이 고정이라 배분 가능 비율 경고는 날짜마다 시작일 공지(10 단계)와 같은 내용 → 파일에만 남기고 공지는 한 번만
+        ctx.warn_all("10w_paths", [w for w in res.warnings if not str(w).startswith("caps allow at most")], dates=[key])
         _warn_optimizer(ctx, "10w_paths", res.bl_portfolios, dates=[key])
-        if res.bl_portfolios:
-            p0 = res.bl_portfolios[0]
+        applied = res.applied_bl
+        base_by_date[key] = res.baseline_weights
+        if applied:
+            p0 = applied[0]
             bl["weights_by_date"][key] = p0["weights"]
             bl["views_by_date"][key] = p0["views_applied"]
-            bl["narrative_by_date"][key] = res.view_sets[0].get("narrative_ko", "")
+            # 그날 '뷰 방향 유지' 로 기준 비중에 고정된 종목 — 비중을 못 바꾼 뷰의 이유를 상한 탓으로 쓰지 않게 (065: Visa 는 상한과 멀었다)
+            holds_ = [str(a).split(":", 1)[1] for a in p0.get("active_constraints", []) if str(a).startswith("view_direction_hold:")]
+            if holds_:
+                bl.setdefault("holds_by_date", {})[key] = holds_
+            i0 = res.bl_portfolios.index(p0)
+            bl["narrative_by_date"][key] = res.view_sets[i0].get("narrative_ko", "") if i0 < len(res.view_sets) else ""
         else:
             bl["weights_by_date"][key] = res.baseline_weights
             bl["views_by_date"][key] = []
+        failed = [a for p in res.bl_portfolios for a in p.get("active_constraints", []) if str(a).startswith("optimizer_failed")]
+        if failed:  # 감사용: 그날 최적화가 왜 실패했는지 (10w 에 남기지 않으면 기준 비중으로 돌아간 이유를 알 수 없다)
+            bl.setdefault("optimizer_notes", {})[key] = failed[0]
+        if res.fallback:
             bl["fallback_dates"].append(key)
+            fallback_reasons[key] = res.fallback_reason_ko or ""
+    # 뉴스 반영 구성은 뉴스를 켰고 실제로 뷰가 반영된 날이 하나라도 있을 때만 후보로 둔다 (F15: 뉴스를 꺼도 'wf_bl_news' 가 생겼다).
+    # 모든 날짜가 기준 비중이면 기준 비중 구성과 똑같은 후보가 '뉴스 뷰' 이름으로 순위에 들어가 소수점 잡음으로 추천될 수 있다 (라운드 2: 002·003).
+    news_on = bool((intent.get("news_tilt") or {}).get("enabled"))
+    keep_bl = news_on and any(bl["views_by_date"].get(k) for k in bl["views_by_date"])
+    omitted = None
+    if not keep_bl:
+        reasons = sorted({r for r in fallback_reasons.values() if r})
+        omitted = {"reason": "news_off" if not news_on else "no_views", "n_dates": len(dates),
+                   "reason_ko": ("뉴스 반영을 끈 분석입니다" if not news_on
+                                 else f"리밸런싱 {len(dates)}회 모두 뉴스 뷰를 만들지 못해 뉴스 반영 구성을 따로 만들지 않았습니다"
+                                 + (f" ({reasons[0]})" if len(reasons) == 1 else ""))}  # fmt: skip
     out = {"request_id": ctx.request_id, "stage": "10w_target_paths", "dates": [str(d) for d in dates], "tickers": tickers,
-           "portfolios": [*tmpl.values(), bl], "market_models_by_date": models, "news_summary": news_summary,
+           "portfolios": [*tmpl.values(), *([bl] if keep_bl else [])], "bl_omitted": omitted, "market_models_by_date": models, "news_summary": news_summary,
            "parameters": {"view_sets": ctx.settings.news.view_sets_at_rebalance, "views_per_set": ctx.settings.news.views_per_set,
                           "news_window_days": ctx.settings.news.window_days, "min_news_tickers": ctx.settings.news.min_tickers,
                           "disclosure_window_days": (ctx.settings.disclosures.window_days if ctx.settings.disclosures.enabled else 0)},
            "warnings": warnings}  # fmt: skip
     ctx.outputs["10w_target_paths"] = out
-    return f"리밸런싱 {len(dates)}회, 뉴스 뷰 적용 {len(dates) - len(bl['fallback_dates'])}회"
+    # '뉴스 뷰 적용' 은 뷰가 비중을 실제로 바꾼 날만 (018: 모든 종목이 종목당 상한에 걸려 37일 모두 기준 비중과 같았는데 '적용 36회' 라고 했다)
+    moved = sum(1 for k, w in bl["weights_by_date"].items() if bl["views_by_date"].get(k) and k in base_by_date
+                and max((abs(w.get(t, 0.0) - base_by_date[k].get(t, 0.0)) for t in {*w, *base_by_date[k]}), default=0.0) > 1e-4)  # fmt: skip
+    return f"리밸런싱 {len(dates)}회, 뉴스 뷰가 비중을 바꾼 날 {moved}회" + ("" if keep_bl else " (뉴스 반영 구성 없음)")
 
 
 def st_forward(ctx: RunContext) -> str:
@@ -236,7 +295,7 @@ def st_forward(ctx: RunContext) -> str:
     if res.evidence:
         ctx.add_news_window("10f_current", res.evidence.to_dict())
     init, fx = ctx.request["derived"]["initial_amount_usd"], ctx.request["derived"]["fx_rate"]
-    ports = [dict(p) for p in res.bl_portfolios]
+    ports = [dict(p) for p in res.applied_bl]  # 최적화 실패 세트(= 기준 비중)는 '현재 구성 BL' 로 보이지 않게 뺀다
     templates = [dict(p) for p in res.baselines["portfolios"]]
     for p in [*templates, *ports]:
         p["allocation"] = [{"ticker": t, "weight": w_, "usd": round(init * w_, 2), "krw": round(init * w_ * fx)}
@@ -244,7 +303,10 @@ def st_forward(ctx: RunContext) -> str:
     ev = res.evidence
     out = {"request_id": ctx.request_id, "stage": "10f_forward_portfolios", "as_of": str(as_of), "news_window": ev.summary() if ev else None,
            "evidence": {r["evidence_id"]: r for r in (ev.records if ev else [])},
-           "market_model": {k: res.market_model[k] for k in ["as_of", "lookback", "tickers", "ann_vol", "cap_weights", "delta", "delta_source", "tau", "implied_returns"]},
+           "market_model": {**{k: res.market_model[k] for k in ["as_of", "lookback", "tickers", "ann_vol", "cap_weights", "delta", "delta_source", "tau", "implied_returns"]},
+                            "delta_capped": bool(res.market_model.get("delta_capped")),
+                            # δ 를 어떻게 정했는지 (020: 시장 추정치가 음수라 하한 1.5 × 성향 1.5 × 낙폭 1.5 = 3.375 였는데 이 값들이 빠져 리포트가 '시장 자료로 추정' 이라고만 썼다)
+                            **{k: res.market_model.get(k) for k in ["delta_market", "delta_base", "delta_multiplier", "delta_dd_multiplier"]}},
            "baseline": {"id": res.baselines["chosen_baseline"], "weights": res.baseline_weights}, "templates": templates, "views_sets": res.view_sets,
            "portfolios": ports, "chosen_weights": res.chosen_weights, "fallback": res.fallback, "fallback_reason_ko": res.fallback_reason_ko,
            "parameters": res.params, "capital": {"initial_amount_usd": init, "fx_rate": fx, "fx_date": str(ctx.request["derived"]["fx_date"])},
@@ -252,7 +314,8 @@ def st_forward(ctx: RunContext) -> str:
     ctx.outputs["10f_forward_portfolios"] = out
     ctx.warn_all("10f_current", list(res.warnings), dates=[str(as_of)])
     _warn_optimizer(ctx, "10f_current", res.bl_portfolios, dates=[str(as_of)])
-    return f"기준일 {as_of} 현재 구성: 템플릿 {len(templates)} + BL {len(ports)}"
+    # 10 단계와 같은 규칙: 뉴스 뷰가 비중을 실제로 바꿨는지까지 (029: 다섯 세트 모두 기준 비중과 같았는데 'BL 5' 만 적었다)
+    return f"기준일 {as_of} 현재 구성: 비중 규칙 {len(templates)}개 + 뉴스 반영 구성 {len(ports)}개 ({_news_effect_ko(ports, res.baseline_weights)})"
 
 
 # ───────────────────────── bucket 3·4: 백테스트·검증 ─────────────────────────
@@ -292,7 +355,8 @@ def st_results(ctx: RunContext) -> str:
                            walkforward=o.get("10w_target_paths"), forward=o.get("10f_forward_portfolios"), llm_usage=ctx.llm.usage_summary(),
                            extra_warnings=ctx.warnings)  # fmt: skip
     ctx.outputs["13_results"] = bundle
-    return f"결과 통합: 포트폴리오 {len(bundle['backtest']['portfolios'])}개, 인용 색인 {len(bundle['evidence_index'])}건, 경고 {len(bundle['warnings'])}건"
+    # '경고 3건' 이 사용자 공지 0건인 실행에도 나왔다 (참고·개발용 기록까지 셈, 003) → 사용자에게 보이는 공지 수
+    return f"결과 통합: 포트폴리오 {len(bundle['backtest']['portfolios'])}개, 인용 색인 {len(bundle['evidence_index'])}건, 사용자 공지 {len(bundle.get('notices') or [])}건"
 
 
 def st_report(ctx: RunContext) -> str:
@@ -301,6 +365,42 @@ def st_report(ctx: RunContext) -> str:
     ctx.outputs["14_report"] = doc
     ctx.warn_all("14_report", list(warns))  # 숫자 대조·개발 용어 = debug (파일에만)
     return f"리포트 7섹션, KPI {len(doc['kpis'])}개, 근거 {len(doc['evidence'])}건" + (f" · 문장 검증 메모 {len(warns)}건" if warns else "")
+
+
+def _forced_filter_notes(cand: dict[str, Any], cons: dict[str, Any], keep: set[str]) -> list[str]:
+    """필수 포함 종목은 후보 단계(retrieve)의 최소 시가총액·거래대금 필터를 건너뛴다(정책) → 그 조건에 못 미친 선정 종목을 원문 경고로.
+    후보 단계가 계산한 값(market_cap_usd·adv_usd)을 그대로 쓴다. 018: 시작일에 033780.KS 시가총액이 76억 달러로 최소 100억 달러보다 작았는데 공지가 없었다."""
+    min_mc, min_adv = float(cons.get("min_market_cap_usd") or 0), float(cons.get("min_avg_daily_volume_usd") or 0)
+    out = []
+    for c in (cand or {}).get("candidates") or []:
+        if not c.get("forced") or c["ticker"] not in keep:
+            continue
+        mc, adv = c.get("market_cap_usd"), c.get("adv_usd")
+        parts = []
+        if min_mc > 0 and (mc is None or mc < min_mc):
+            parts.append(f"market cap {'n/a' if mc is None else f'{mc:.0f}'} < {min_mc:.0f} USD")
+        if min_adv > 0 and (adv is None or adv < min_adv):
+            parts.append(f"avg daily volume {'n/a' if adv is None else f'{adv:.0f}'} < {min_adv:.0f} USD")
+        if parts:
+            out.append(f"must_include {c['ticker']}: below candidate filters ({'; '.join(parts)}), kept")
+    return out
+
+
+def _news_effect_ko(ports: list[dict[str, Any]], base: dict[str, float]) -> str:
+    """구성 요약의 뉴스 뷰 효과. '뉴스 뷰 적용' 은 어느 세트든 기준 비중에서 1e-4 넘게 움직였을 때만
+    (029: 모든 종목이 상한 10% 라 다섯 세트 모두 기준 비중과 같았는데(차이 최대 1e-6) '뉴스 뷰 적용' 이라고 했다). 10w 의 '비중을 바꾼 날' 과 같은 기준."""
+    if not ports:
+        return "뉴스 뷰 없음 — 비중 규칙만"  # 069: '기준 비중 유지' 는 추천이 다른 규칙(동일비중)이어도 기준 비중만 쓴 것처럼 읽혔다
+
+    def moved(p: dict[str, Any]) -> bool:
+        w = p.get("weights") or {}
+        return max((abs(float(w.get(t, 0.0)) - float(base.get(t, 0.0))) for t in {*w, *base}), default=0.0) > 1e-4
+
+    if any(moved(p) for p in ports):
+        return "뉴스 뷰 적용"
+    # 상한에 묶였다는 말은 최적화가 상한에 걸렸다고 기록한 때만 (그 밖의 이유로 안 움직였으면 이유를 지어내지 않는다)
+    caps = any(str(a).startswith(("tilt_or_stock_cap:", "sector_cap:")) for p in ports for a in p.get("active_constraints") or [])
+    return "뉴스 뷰는 있었지만 " + ("상한에 묶여 " if caps else "") + "기준 비중과 같음"
 
 
 def _warn_optimizer(ctx: RunContext, stage: str, ports: list[dict[str, Any]], *, dates: list[str] | None = None) -> None:

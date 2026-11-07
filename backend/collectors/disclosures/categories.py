@@ -14,7 +14,8 @@ import re
 from datetime import date
 
 SEC_RULE_VERSION = "v1"
-DART_RULE_VERSION = "v2"  # v2: 증권 발행을 파생결합증권·후속 서류·신고(결정)로 나눔
+DART_RULE_VERSION = "v3"  # v2: 증권 발행을 파생결합증권·후속 서류·신고(결정)로 나눔
+# v3: 매매거래정지를 상장폐지 통지(delisting_notice)에서 떼어 trading_halt 로
 SEC_NEW_ITEMS_FROM = date(2004, 8, 23)
 """8-K Item 번호가 지금 체계(1.01~9.01)로 바뀐 날 (SEC Release 33-8400)."""
 
@@ -89,7 +90,10 @@ DART_RULES: list[tuple[str, str]] = [
     (r"^분기보고서", "quarterly_report"),
     (r"감사보고서", "audit_report"),
     (r"부도|회생절차|파산|영업정지|해산사유", "bankruptcy"),
-    (r"상장폐지|관리종목|불성실공시|매매거래정지", "delisting_notice"),
+    (r"상장폐지|관리종목|불성실공시", "delisting_notice"),
+    # 거래소의 매매거래 정지·해제: 대개 중요 공시 전후의 절차상 정지 (카카오 분할합병 날 등).
+    # 상장폐지·관리종목 사유가 같이 적힌 것은 바로 위 규칙이 먼저 잡는다. 자리는 예전 묶음 그대로
+    (r"매매거래정지", "trading_halt"),
     (r"잠정\)?실적|영업\(잠정\)|매출액또는손익구조|손익구조", "earnings"),
     (r"최대주주(또는주요주주)?변경|최대주주인수|경영권", "control_change"),
     (r"대량보유|최대주주등소유주식변동", "major_holder"),

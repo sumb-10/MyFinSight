@@ -6,7 +6,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import math
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 from backend.analysis.common.llm import LlmClient
@@ -19,6 +20,11 @@ from backend.analysis.settings import AnalysisSettings
 from backend.pipeline.descriptor import Descriptor
 
 Mode = Literal["start", "rebalance", "current", "paper"]
+
+
+def news_min_tickers(configured: int, n: int) -> int:
+    """뉴스 뷰에 필요한 '근거 있는 종목' 수: 설정값과 종목 수의 절반(올림) 중 작은 쪽 (2종목 1개, 3~4종목 2개, 5종목 이상 3개)."""
+    return min(int(configured), max(1, math.ceil(n / 2)))
 
 
 @dataclass
@@ -48,9 +54,15 @@ class ConstructResult:
         return dict(self.baseline["weights"])
 
     @property
+    def applied_bl(self) -> list[dict[str, Any]]:
+        """뷰가 실제로 반영된 BL 세트 (최적화가 실패해 기준 비중을 유지한 세트는 뺀다)."""
+        return [p for p in self.bl_portfolios if p.get("views_applied")]
+
+    @property
     def chosen_weights(self) -> dict[str, float]:
-        """리밸런싱·모의투자가 적용할 비중: BL 첫 세트가 있으면 그것, 없으면 기준 비중."""
-        return dict(self.bl_portfolios[0]["weights"]) if self.bl_portfolios else self.baseline_weights
+        """리밸런싱·모의투자가 적용할 비중: 뷰가 반영된 첫 BL 세트가 있으면 그것, 없으면 기준 비중."""
+        ap = self.applied_bl
+        return dict(ap[0]["weights"]) if ap else self.baseline_weights
 
     def evidence_summary(self) -> dict[str, Any] | None:
         return self.evidence.summary() if self.evidence else None
@@ -78,11 +90,18 @@ def construct(
     model, base = build_market_model(view, tickers, req, desc, settings, request_id=req["request_id"])
     tk = model["tickers"]
     res = ConstructResult(as_of=str(view.as_of), mode=mode, market_model=model, baselines=base)
-    res.warnings += [n for n in model.get("notes", []) if n.startswith("dropped") or n.startswith("caps allow")]
+    res.warnings += [n for n in model.get("notes", []) if n.startswith("dropped") or n.startswith("caps allow")
+                     or (n.startswith("market cap missing for") and _cap_floored(model, base))]  # fmt: skip
     if not intent["news_tilt"]["enabled"]:
-        res.fallback, res.fallback_reason_ko = True, "뉴스 반영(use_news_tilt)이 꺼져 있어 기준 비중을 사용"
+        # '기준 비중을 사용' 이라 쓰면 추천이 다른 규칙일 때도 기준 비중을 산 것처럼 읽혔다 (033: 추천 시가총액비중인데 기준(역변동성) 구성처럼 서술)
+        res.fallback, res.fallback_reason_ko = True, "뉴스 반영을 꺼서 뉴스 뷰 구성을 만들지 않음"
         return res
     ev = view.news_window(tk)
+    # 작은 포트폴리오는 근거 있는 종목의 최소 수를 종목 수의 절반(올림)까지 낮춘다 — 2종목이면 설정값 3개를 영영 채울 수 없었다 (사용자 결정 2026-11-05).
+    # 그래도 모자라면 뉴스 뷰 구성 없이 규칙 기반 구성(기준 비중 등)을 대안으로 제시한다
+    mt = getattr(ev, "min_tickers", None)
+    if isinstance(ev, EvidenceWindow) and mt is not None and news_min_tickers(mt, len(tk)) != mt:
+        ev = replace(ev, min_tickers=news_min_tickers(mt, len(tk)))
     res.evidence = ev
     if not ev.enough:
         res.fallback = True
@@ -90,6 +109,8 @@ def construct(
         res.warnings.append(f"{view.as_of}: {res.fallback_reason_ko}")
         return res
     wb = {t: res.baseline_weights[t] for t in tk}
+    # 세트당 뷰 수는 서로 다른 뷰의 수(절대 n + 상대 n(n−1)/2)를 넘지 않게 — 2종목이면 3개뿐인데 4개를 요구해 같은 상대 뷰를 양방향으로 채웠다 (057)
+    per_set = min(per_set, len(tk) + len(tk) * (len(tk) - 1) // 2)
     sets, w = generate_views(view, tk, model, wb, intent, desc, settings, llm, ev, n_sets=n_sets, views_per_set=per_set,
                              stage_tag=stage_tag or f"09_views_news_{view.as_of}")  # fmt: skip
     res.warnings += w
@@ -100,4 +121,16 @@ def construct(
     ports, w2, params = build_bl(model, base, sets, req, intent, desc, settings, id_prefix=id_prefix, name_prefix=name_prefix)
     res.bl_portfolios, res.view_sets, res.params = ports, sets, params
     res.warnings += w2
+    if ports and not res.applied_bl:  # 모든 세트가 실패했을 때만 기준 비중 유지 (세트 하나 실패로 전체를 fallback 이라 부르지 않는다)
+        res.fallback = True
+        res.fallback_reason_ko = "뉴스 뷰 비중 최적화가 수렴하지 않아 기준 비중을 사용"
     return res
+
+
+def _cap_floored(model: dict[str, Any], base: dict[str, Any]) -> bool:
+    """시가총액 자료가 없어 시가총액비중이 0 인 종목이 시가총액비중 구성에서 다른 종목보다 적게 담겼나 → 사용자 공지 (025: 필수 포함 XOM 이
+    최소 비중 1% 에 남는 몫만 더한 1.4~1.7%, 더 작은 CVX 는 상한 25% 였는데 공지가 없었다). 모두 비면 동일비중으로 돌아가고(0 인 종목 없음),
+    모두 상한에 걸려 비중이 같으면 회사 크기와 무관하게 같은 비중이라 알릴 것이 없다."""
+    zero = [t for t, w in (model.get("cap_weights") or {}).items() if not w]
+    mc = next((p["weights"] for p in base.get("portfolios", []) if p.get("id") == "market_cap"), None)
+    return bool(zero and mc) and min(mc.get(t, 0.0) for t in zero) < max(mc.values()) - 1e-6
