@@ -51,7 +51,7 @@ describe("10-3 리포트 이름 표시 기준", () => {
   it("홈 「최근 분석 리포트」도 같은 이름", async () => {
     show(normal(), <HomeScreen />)
     const card = (await screen.findByRole("heading", { name: "최근 분석 리포트" }, { timeout: 5000 })).parentElement!.parentElement!
-    expect(await within(card).findByText(REPORTS[0].idea)).toBeInTheDocument()
+    expect((await within(card).findAllByText(REPORTS[0].idea)).length).toBeGreaterThan(0)  // 같은 아이디어의 수정안 리포트도 같은 이름으로 함께 보일 수 있다
   })
 })
 

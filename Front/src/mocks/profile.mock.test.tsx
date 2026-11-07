@@ -101,14 +101,14 @@ describe("내 투자조건 화면 (목업)", () => {
     withSvc(mock(), <ProfileScreen mode="edit" />)
     await step(4, "투자 전략")
     const card = (await screen.findByRole("heading", { name: "위험중립형에게 추천하는 전략" })).closest("section")!
-    expect(within(card).getByText("수익성이 좋은 기업 · 모든 기업에 비슷하게 투자 · 뉴스·공시 반영")).toBeInTheDocument()
-    expect(within(card).getAllByText(/수익성/).length).toBeGreaterThan(1)
+    expect(within(card).getByText("수익성이 좋은 기업(퀄리티) · 모든 기업에 비슷하게 투자(동일비중) · 뉴스·공시 반영")).toBeInTheDocument()
+    expect(within(card).getAllByText(/퀄리티/).length).toBeGreaterThan(1)  // 추천 전략 이름과 추천 이유 모두 같은 용어(괄호)
     expect(within(card).getByText(/지금은 추천과 다른 전략을 쓰고 있습니다/)).toBeInTheDocument()
     expect(screen.getAllByText("추천")).toHaveLength(2)  // 기업 고르는 기준·나누는 방식 카드
     fireEvent.click(within(card).getByRole("button", { name: "추천 전략 적용" }))
     expect(await within(card).findByText("지금 적용됨")).toBeInTheDocument()
     expect(screen.getByRole("radio", { name: /수익성이 좋은 기업/ })).toHaveAttribute("aria-checked", "true")
-    fireEvent.click(screen.getByRole("radio", { name: /^주가 변동이 작은 기업최근/ }))
+    fireEvent.click(screen.getByRole("radio", { name: /^주가 변동이 작은 기업\(저변동성\)최근/ }))
     expect(await within(card).findByRole("button", { name: "추천 전략 적용" })).toBeInTheDocument()
   })
   it("변경 이력: 앞 버전과 비교하면 바뀐 항목만 강조하고, 그대로인 항목은 따로 접어 둔다", async () => {
@@ -117,7 +117,7 @@ describe("내 투자조건 화면 (목업)", () => {
     const changed = await screen.findByRole("list", { name: "바뀐 항목" })
     await waitFor(() => expect(changed).toHaveTextContent(/제외 종목.*없음.*→.*테슬라 \(TSLA\)/))  // 회사명은 따로 조회해 붙는다
     expect(within(changed).getByText("엔비디아 (NVDA)")).toBeInTheDocument()
-    expect(within(changed).getByText("규모가 큰 기업에 더 많이 투자")).toBeInTheDocument()
+    expect(within(changed).getByText("규모가 큰 기업에 더 많이 투자(시가총액비중)")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /바뀌지 않은 항목 \d+개/ })).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "버전 2을 앞 버전과 비교" }))
     await waitFor(() => expect(screen.getByRole("list", { name: "바뀐 항목" })).toHaveTextContent(/처음 투자할 금액.*1,000만원.*2,000만원/))

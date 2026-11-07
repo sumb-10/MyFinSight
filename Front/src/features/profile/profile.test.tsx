@@ -47,16 +47,16 @@ describe("기본 투자조건 수정 화면", () => {
     expect(screen.getByText("선택: 뉴스·공시 반영 켜짐")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("switch", { name: /뉴스와 공시를 참고해/ }))
     expect(screen.getByText("선택: 뉴스·공시 반영 꺼짐")).toBeInTheDocument()  // 켜면/끄면 카드 대신 지금 선택만 한 상자로
-    // 요약은 용어로 보이고, ⓘ 를 누르면 쉬운 설명이 열린다 (Esc 로 닫힘, 한 번에 하나만)
-    expect(screen.getByText("저PER / 시가총액비중 / 뉴스 반영 꺼짐")).toBeInTheDocument()
-    const plain = "저평가 기업 중심 · 규모가 큰 기업에 더 많이 투자 · 뉴스 반영 꺼짐"
-    expect(screen.queryByText(plain)).toBeNull()
-    const tip = screen.getByRole("button", { name: "투자 전략 요약 설명 보기" })
+    // 전략 이름은 쉬운 표현 옆에 전문용어를 괄호로 함께 보여 준다 (카드·선택 줄·저장 요약 모두)
+    expect(screen.getByRole("radio", { name: /^가격이 상대적으로 저평가된 기업\(저PER\)/ })).toHaveAttribute("aria-checked", "true")
+    expect(screen.getByRole("radio", { name: /^최근 주가 상승세가 좋은 기업\(모멘텀\)/ })).toBeInTheDocument()
+    expect(screen.getByRole("radio", { name: /^규모가 큰 기업에 더 많이 투자\(시가총액비중\)/ })).toHaveAttribute("aria-checked", "true")
+    expect(screen.getByText("저평가 기업 중심(저PER) · 규모가 큰 기업에 더 많이 투자(시가총액비중) · 뉴스 반영 꺼짐")).toBeInTheDocument()
+    expect(screen.queryByText(/전문 용어/)).toBeNull()  // 괄호로 보이므로 따로 적지 않는다
+    // ⓘ 설명은 Esc 로 닫힌다
+    const tip = screen.getByRole("button", { name: "투자 전략 설정 설명 보기" })
     fireEvent.click(tip)
     expect(tip).toHaveAttribute("aria-expanded", "true")
-    expect(screen.getByText(plain)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "투자 전략 설정 설명 보기" }))
-    expect(screen.queryByText(plain)).toBeNull()
     fireEvent.keyDown(window, { key: "Escape" })
     expect(screen.queryByRole("note")).toBeNull()
 
@@ -186,7 +186,7 @@ describe("저장된 투자조건 화면", () => {
     expect(screen.getByText("투자 대상 지수")).toBeInTheDocument()
     expect(screen.getByText("위험중립형")).toBeInTheDocument()  // "위험중립형 (중립)" 같은 중복 없이
     expect(screen.getByText("20억 USD 이상")).toBeInTheDocument()
-    expect(screen.getByText("모멘텀 / 동일비중 / 뉴스 반영 꺼짐")).toBeInTheDocument()
+    expect(screen.getByText("주가 상승세 좋은 기업 중심(모멘텀) · 모든 기업에 비슷하게 투자(동일비중) · 뉴스 반영 꺼짐")).toBeInTheDocument()
     expect(screen.queryByText(/stock|1×|\(중립\)/)).toBeNull()
   })
 

@@ -9,7 +9,7 @@ import { MockTag } from "../report/proposedView"
 import { ASSET_KO, benchName, listText, money, monthlyText, pctText, rebalanceText, usdFloor, yearsText } from "./format"
 import { whenText } from "./history"
 import { useStockNames } from "./stocks"
-import { TEMPLATE_INFO, WEIGHTING_INFO } from "./strategyInfo"
+import { templateLabel, weightingLabel } from "./strategyInfo"
 
 // 투자조건 버전 비교 (제안 기능): 서비스에 getProfileVersion(과거 버전 값 전체)이 있을 때만 — 지금은 목업뿐.
 // 값 표시는 저장된 투자조건 화면과 같은 글(format.ts)을 쓴다.
@@ -44,8 +44,8 @@ export function profileRows(p: ProfileFields, name: (t: string) => string = (t) 
     r("종목 범위·제약", "constraints.exclude_themes", "제외 테마", listText(c.exclude_themes)),
     r("종목 범위·제약", "constraints.min_market_cap_usd", "최소 시가총액", usdFloor(c.min_market_cap_usd)),
     r("종목 범위·제약", "constraints.min_avg_daily_volume_usd", "최소 일평균 거래대금", usdFloor(c.min_avg_daily_volume_usd)),
-    r("투자 전략", "strategy.template", "어떤 기업을 고를까", TEMPLATE_INFO[sp.template]?.name ?? sp.template),
-    r("투자 전략", "strategy.weighting", "투자금을 나누는 방식", WEIGHTING_INFO[sp.baseline_weighting]?.name ?? sp.baseline_weighting),
+    r("투자 전략", "strategy.template", "어떤 기업을 고를까", templateLabel(sp.template)),
+    r("투자 전략", "strategy.weighting", "투자금을 나누는 방식", weightingLabel(sp.baseline_weighting)),
     r("투자 전략", "strategy.news", "뉴스·공시 반영", sp.use_news_tilt ? "반영" : "반영 안 함"),
     r("투자 전략", "memo", "메모", p.diagnosis?.memo || "없음"),
   ]

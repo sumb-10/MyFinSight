@@ -1,5 +1,27 @@
 import type { Block, CheckpointsBlock, DonutBlock, EvidenceBlock, ReportDoc, ReportSummary, TableBlock, TimelineBlock } from "../api/types"
 
+/** 서버 문장 속 괄호 안의 코드 이름(지표 ID)을 지운다: "모멘텀(return_12m_1m)은" → "모멘텀은", "5개 (return_12m_1m)" → "5개".
+ *  소문자·숫자·밑줄로 된 ID 만 지우고 (ROE)·(SPY)·(최근 1개월 제외) 같은 용어·설명 괄호는 그대로 둔다. */
+export const dropCodeIds = (t: string) => t.replace(/\s?\([a-z][a-z0-9]*(?:_[a-z0-9]+)+\)/g, "")
+
+/** 리포트 본문(섹션 블록)의 화면 문장에서 코드 이름을 지운다. 바꿀 것이 없으면 같은 객체를 돌려준다.
+ *  *_ko 문자열과 문단(items) 문자열만 고치고, ID·숫자 같은 계산용 값은 건드리지 않는다 (백엔드 report.py _metric_note·collect.py 깔때기 이름이 ID 를 함께 적는다). */
+export function hideCodeIds(doc: ReportDoc): ReportDoc {
+  let changed = false
+  const fix = (v: unknown, key: string): unknown => {
+    if (typeof v === "string") { if (key.endsWith("_ko") || key === "items") { const t = dropCodeIds(v); if (t !== v) { changed = true; return t } } return v }
+    if (Array.isArray(v)) { const out = v.map((x) => fix(x, key)); return out.some((x, i) => x !== v[i]) ? out : v }
+    if (v && typeof v === "object") {
+      let out: Record<string, unknown> | null = null
+      for (const [k, x] of Object.entries(v)) { const y = fix(x, k); if (y !== x) (out ??= { ...(v as Record<string, unknown>) })[k] = y }
+      return out ?? v
+    }
+    return v
+  }
+  const sections = fix(doc.sections, "sections") as ReportDoc["sections"]
+  return changed ? { ...doc, sections } : doc
+}
+
 /** 저장된 v1 문서(라운드 3 이전)를 v2 화면이 그릴 수 있게 바꾼다. v2 문서는 그대로 돌려준다 (같은 객체). 서버의 present_doc 과 같은 규칙. */
 export function normalizeDoc(doc: ReportDoc): ReportDoc {
   if ((doc.doc_version ?? 1) >= 2 && doc.summary) return doc

@@ -20,8 +20,8 @@ const usd = (x: number) => `${round(x).toLocaleString("en-US", { minimumFraction
 const kindKo = (k: string) => ({ template: "규칙", black_litterman: "뉴스 뷰(BL)", matched: "낙폭 맞춤", benchmark: "비교지수" }[k] ?? k)
 const statusKo = (s: string) => ({ pass: "통과", warn: "주의", fail: "미통과" }[s] ?? "-")
 const PREF_TABLE: Record<string, string> = { low: "low", medium: "medium", high: "high" }
-/** 선정 기준(템플릿) → 서버 지표 이름과 설명 (목업). */
-const METRIC: Record<string, [string, string, string]> = { momentum: ["return_12m_1m", "모멘텀", "최근 12개월 주가 수익률에서 가장 최근 1개월을 뺀 값입니다. 높은 순서로 뽑습니다."], high_dividend: ["dividend_yield_ttm", "고배당", "최근 1년 주당배당금을 기준일 종가로 나눈 값입니다. 높은 순서로 뽑습니다."], quality: ["roe", "퀄리티(ROE)", "자기자본이익률입니다. 높은 순서로 뽑습니다."], low_per: ["pe_ttm", "저PER", "주가를 최근 1년 주당순이익으로 나눈 값입니다. 낮은 순서로 뽑습니다."], low_volatility: ["vol_60d", "저변동성", "최근 60거래일 주가 변동성입니다. 낮은 순서로 뽑습니다."] }
+/** 선정 기준(템플릿) → 서버 지표 ID·이름·설명 (목업). 설명 문장에는 ID 를 쓰지 않는다 (화면에 영어 코드가 보이지 않게). */
+const METRIC: Record<string, [string, string, string]> = { momentum: ["return_12m_1m", "모멘텀", "모멘텀은 최근 12개월 주가 수익률에서 가장 최근 1개월을 뺀 값입니다. 높은 순서로 뽑습니다."], high_dividend: ["dividend_yield_ttm", "고배당", "고배당은 최근 1년 주당배당금을 기준일 종가로 나눈 값입니다. 높은 순서로 뽑습니다."], quality: ["roe_ttm", "퀄리티(ROE)", "퀄리티(ROE)는 자기자본이익률입니다. 높은 순서로 뽑습니다."], low_per: ["pe_ttm", "저PER", "저PER은 주가를 최근 1년 주당순이익으로 나눈 값입니다. 낮은 순서로 뽑습니다."], low_volatility: ["vol_60d", "저변동성", "저변동성은 최근 60거래일 주가 변동성입니다. 낮은 순서로 뽑습니다."] }
 
 /* ───────── 근거 자료 (목업 뉴스·공시: 실제 기사가 아니다) ───────── */
 function evidenceFor(sc: ReportScenario): EvidenceRecord[] {
@@ -202,7 +202,7 @@ export function buildReport(sc: ReportScenario): MockReportDoc {
     { id: "companies", title_ko: "기업별 투자 근거", blocks: [
       { type: "paragraphs", src: "14b", items: [`[목업] 투자 가능 종목 518개에서 테마 관련 후보를 찾고, 선정 지표 순위와 섹터 분산 규칙으로 ${sc.tickers.length}개를 골랐습니다.`] },
       { type: "funnel", items: funnel },
-      { type: "callout", tone: "info", title_ko: "선정 지표", text_ko: `[목업] ${metricKo}(${metricId})는 ${metricDesc}` },
+      { type: "callout", tone: "info", title_ko: "선정 지표", text_ko: `[목업] ${metricDesc}` },
       { type: "companies", title_ko: "선정 종목과 기업별 근거", metric: metricId, metric_ko: metricKo, direction: sc.template === "low_per" || sc.template === "low_volatility" ? "asc" : "desc", as_of_now: MOCK_AS_OF, as_of_bt: start, portfolio_id: chosen.def.id, items: companies },
       table(`테마에는 해당하지만 최종 선정에서 빠진 예 (${MOCK_AS_OF} 기준)`, [["ticker", "티커"], ["name", "회사"], ["reason", "제외 이유"], ["metric", "지표값", "pct"]], [{ ticker: "INTC", name: "Intel Corporation", reason: "rank_beyond_n", metric: -0.12 }, { ticker: "QCOM", name: "Qualcomm", reason: "metric_missing", metric: null }], { group_ko: "제외된 종목과 재선정 차이" }),
       table("분석 기준일 선정 목록과 백테스트 시작일 재선정 목록의 차이", [["k", "구분"], ["v", "종목"]], [{ k: "백테스트용 재선정에서 추가된 종목", v: "없음" }, { k: "빠진 종목", v: "없음" }], { group_ko: "제외된 종목과 재선정 차이", note_ko: "백테스트는 시작일 당시에 알 수 있던 정보만으로 같은 규칙을 다시 적용합니다. 그래서 목록이 달라질 수 있습니다." }),

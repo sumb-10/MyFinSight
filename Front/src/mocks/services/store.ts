@@ -4,6 +4,7 @@ import type { ProposedMessageResult } from "../../api/proposed"
 import type { DialogState, ProfileFields, ProfileVersion, UserRequest } from "../../api/types"
 import type { PaperScenario } from "../scenarios"
 import type { LiveRun } from "../data/runs"
+import { SEEN_KEYS } from "../../lib/seen"
 
 export const MOCK_STORE_KEY = "myfinsight.mock.store.v1"
 
@@ -40,5 +41,5 @@ export function saveState(s: MockState) {
 }
 
 export function clearState() {
-  try { window.sessionStorage.removeItem(MOCK_STORE_KEY) } catch { /* ignore */ }
+  try { window.sessionStorage.removeItem(MOCK_STORE_KEY); window.sessionStorage.removeItem(SEEN_KEYS.mock) } catch { /* ignore */ }  // 확인 기록(새 리포트·리밸런싱 알림)도 처음으로
 }

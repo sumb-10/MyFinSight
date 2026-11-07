@@ -90,7 +90,7 @@ function ProfileSummary({ view }: { view: ProfileView }) {
       ["최소 시가총액", usdFloor(c.min_market_cap_usd)], ["최소 일평균 거래대금", usdFloor(c.min_avg_daily_volume_usd)],
     ] },
     { title: "투자 전략", rows: [
-      ["투자 전략", <span className="inline-flex flex-wrap items-center gap-1">{sp.term}<InfoTip label="투자 전략">{sp.plain}</InfoTip></span>],
+      ["투자 전략", sp],
       ...(p.diagnosis?.memo ? [["메모", p.diagnosis.memo] as [string, React.ReactNode]] : []),
     ] },
   ]
@@ -429,7 +429,7 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
             <Part title="메모" tag="선택"><textarea aria-label="메모" className={`${inputClass} min-h-20`} value={form.diagnosis?.memo ?? ""} onChange={(e) => upd((f) => { if (f.diagnosis) f.diagnosis.memo = e.target.value })} placeholder="선호나 참고 사항. 검증되는 수치 제약으로는 쓰이지 않습니다." /></Part>
             <Part title="저장 요약">
               <p className="text-sm text-slate-700">{money(form.capital.initial_amount, cur)} · {yearsText(form.horizon.target_years)} · {form.diagnosis?.final_tendency} · 손실 감내 {pctText(form.risk.max_drawdown_tolerance)} · {c.universe.map(ko).join("/")}</p>
-              <p className="flex flex-wrap items-center gap-1 text-sm font-semibold text-slate-900">{sp.term}<InfoTip label="투자 전략 요약">{sp.plain}</InfoTip></p>
+              <p className="text-sm font-semibold text-slate-900">{sp}</p>
             </Part>
             {saveError && <Alert title="저장 실패" tone="error">{saveError}</Alert>}
             {Object.keys(errors).length > 0 && <Alert title="확인이 필요한 항목 (빨간 단계 카드를 눌러 고칠 수 있습니다)" tone="warning"><ul className="list-disc pl-5">{Object.entries(errors).map(([k, v]) => <li key={k}>{v.includes(":") ? v : `${FIELD_KO[k] ?? k}: ${v}`}</li>)}</ul></Alert>}

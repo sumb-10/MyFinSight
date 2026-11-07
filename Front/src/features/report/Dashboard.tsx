@@ -161,6 +161,7 @@ export function AllocationCard({ a, doc, onMore }: { a: NonNullable<ReportSummar
   const base = requestedAmount(doc)
   const fee = (doc?.parameters?.backtest as { commission_bps?: number } | undefined)?.commission_bps
   const shown = all ? items : items.slice(0, TOP_N)
+  const maxW = Math.max(cash, ...items.map((x) => x.weight), 1e-9)  // 막대 길이 기준: 전체 종목·현금 가운데 가장 큰 비중 (펼쳐도 기준이 바뀌지 않게)
   const forward = a.basis === "forward"
   const desc = <>{forward ? "분석 기준일의 자료로 계산한 목표 배분액입니다" : "선택된 전략의 배분액입니다"} · 기준: {a.basis_ko}{!usdOnly && a.fx_direction ? ` · 환율 ${a.fx_direction}` : ""}</>
   return (
@@ -174,33 +175,22 @@ export function AllocationCard({ a, doc, onMore }: { a: NonNullable<ReportSummar
         {items.map((x) => <span key={x.ticker} className="min-w-0" style={{ flex: `${x.weight} 1 0`, background: holdingColor(x.ticker, order) }} />)}
         {cash > 0 && <span className="min-w-0" style={{ flex: `${cash} 1 0`, background: OTHER_COLOR }} />}
       </div>
-      <ul aria-label="종목별 목표 배분액" className="divide-y divide-slate-100">
-        {shown.map((x) => (
-          <li key={x.ticker} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 py-3 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_auto]">
-            <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-2">
-              <span className="inline-block size-2.5 shrink-0 rounded-sm" style={{ background: holdingColor(x.ticker, order) }} aria-hidden />
-              <span className="min-w-0"><span className="block truncate font-semibold text-slate-900" title={x.name}>{x.name && x.name !== x.ticker ? x.name : x.ticker}</span><span className="block text-xs text-slate-500">{x.name && x.name !== x.ticker ? x.ticker : ""}{x.sector ? `${x.name && x.name !== x.ticker ? " · " : ""}${x.sector}` : ""}</span></span>
-            </div>
-            <div className="col-span-2 flex items-center gap-2 sm:col-span-1 sm:row-start-1 sm:col-start-2">
-              <span className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full" style={{ width: `${Math.min(100, x.weight * 100)}%`, background: holdingColor(x.ticker, order) }} /></span>
-              <span className="w-12 text-right text-xs font-semibold tabular-nums text-slate-600">{fmt(x.weight, "pct1")}</span>
-            </div>
-            <div className="col-start-2 row-start-1 text-right sm:col-start-3">
-              <span className="block whitespace-nowrap text-base font-bold tabular-nums text-slate-950">{usdOnly ? fmt(x.usd, "usd") : money(Math.round(x.krw), "KRW")}</span>
-              {!usdOnly && <span className="block whitespace-nowrap text-xs tabular-nums text-slate-500">{fmt(x.usd, "usd")}</span>}
-            </div>
-          </li>
-        ))}
-        {cash > 0 && (
-          <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 py-3 text-slate-600 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_auto]">
-            <div className="col-start-1 row-start-1 flex items-center gap-2"><span className="inline-block size-2.5 rounded-sm" style={{ background: OTHER_COLOR }} aria-hidden /><span className="font-semibold">현금 (목표 비중)</span></div>
-            <div className="col-span-2 flex items-center gap-2 sm:col-span-1 sm:row-start-1 sm:col-start-2"><span className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full" style={{ width: `${cash * 100}%`, background: OTHER_COLOR }} /></span><span className="w-12 text-right text-xs font-semibold tabular-nums">{fmt(cash, "pct1")}</span></div>
-            {cashAmt ? (
-              <div className="col-start-2 row-start-1 text-right sm:col-start-3"><span className="block whitespace-nowrap text-base font-bold tabular-nums text-slate-700">{usdOnly ? fmt(cashAmt.usd, "usd") : money(cashAmt.krw, "KRW")}</span>{!usdOnly && <span className="block whitespace-nowrap text-xs tabular-nums text-slate-500">{fmt(cashAmt.usd, "usd")}</span>}</div>
-            ) : <div className="col-start-2 row-start-1 text-right text-xs sm:col-start-3">금액 미제공</div>}
-          </li>
-        )}
-      </ul>
+      {/* 종목별 줄: 모든 줄이 부모 격자의 같은 칸(subgrid)을 써서, 금액 글자 길이와 상관없이 막대가 같은 위치에서 같은 길이 기준으로 시작한다.
+          막대는 가장 큰 비중을 꽉 찬 길이로 둔 하나의 기준이라 종목끼리 비율이 그대로 보인다. 비중(%)은 이름 바로 옆, 금액만 오른쪽 끝. */}
+      <div>
+        <div aria-hidden className={`${ALLOC_GRID} border-b border-slate-200 pb-2 text-xs font-semibold text-slate-500`}><span>종목</span><span className="text-right">비중</span><span /><span className="text-right">목표 배분액</span></div>
+        <ul aria-label="종목별 목표 배분액" className={`${ALLOC_GRID} divide-y divide-slate-100`}>
+          {shown.map((x) => (
+            <AllocRow key={x.ticker} color={holdingColor(x.ticker, order)} weight={x.weight} max={maxW}
+              name={<><span className="block truncate font-semibold text-slate-900" title={x.name}>{x.name && x.name !== x.ticker ? x.name : x.ticker}</span><span className="block truncate text-xs text-slate-500">{x.name && x.name !== x.ticker ? x.ticker : ""}{x.sector ? `${x.name && x.name !== x.ticker ? " · " : ""}${x.sector}` : ""}</span></>}
+              amount={<><span className="block whitespace-nowrap text-base font-bold tabular-nums text-slate-950">{usdOnly ? fmt(x.usd, "usd") : money(Math.round(x.krw), "KRW")}</span>{!usdOnly && <span className="block whitespace-nowrap text-xs tabular-nums text-slate-500">{fmt(x.usd, "usd")}</span>}</>} />
+          ))}
+          {cash > 0 && (
+            <AllocRow color={OTHER_COLOR} weight={cash} max={maxW} name={<span className="block font-semibold text-slate-600">현금 (목표 비중)</span>}
+              amount={cashAmt ? <><span className="block whitespace-nowrap text-base font-bold tabular-nums text-slate-700">{usdOnly ? fmt(cashAmt.usd, "usd") : money(cashAmt.krw, "KRW")}</span>{!usdOnly && <span className="block whitespace-nowrap text-xs tabular-nums text-slate-500">{fmt(cashAmt.usd, "usd")}</span>}</> : <span className="text-xs text-slate-600">금액 미제공</span>} />
+          )}
+        </ul>
+      </div>
       {items.length > TOP_N && <button type="button" aria-expanded={all} onClick={() => setAll((v) => !v)} className="flex items-center gap-1 text-sm font-semibold text-blue-700 hover:underline">{all ? "상위 종목만 보기" : `전체 종목 보기 (${items.length}개${cash ? " + 현금" : ""})`}<ChevronDown className={`size-4 transition-transform ${all ? "rotate-180" : ""}`} /></button>}
       {p?.execution && <ExecutionOrders e={p.execution} usdOnly={usdOnly} doc={doc} />}
       <div className="space-y-1 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
@@ -210,6 +200,21 @@ export function AllocationCard({ a, doc, onMore }: { a: NonNullable<ReportSummar
           : <p>목표 배분액은 실제 매수 금액과 다를 수 있습니다. 종목별 매수 수량, 거래 수수료{fee !== undefined ? `(백테스트는 거래대금의 ${fee / 100}%를 가정)` : ""}, 매수 후 남는 현금은 이 분석에서 제공하지 않습니다. 비중은 반올림해 표시해 합계가 100%와 조금 다를 수 있습니다.</p>}
       </div>
     </ResultCard>
+  )
+}
+
+/** 카드 2 종목 줄의 칸: 종목 | 비중(%) | 막대 | 금액. 칸 너비는 글자와 상관없는 고정 최소값 + 비율이라 모든 줄(머리 줄 포함)이 같은 위치에 선다. */
+const ALLOC_GRID = "grid grid-cols-[minmax(13rem,1.1fr)_4rem_minmax(9rem,1.4fr)_minmax(8.5rem,0.8fr)] gap-x-5"
+
+/** 종목 한 줄. 막대는 왼쪽 기준선에서 시작하고(끝만 둥글게), 길이는 가장 큰 비중 대비 비율이다. 값은 바로 옆 % 글자로 읽는다. */
+function AllocRow({ color, weight, max, name, amount }: { color: string; weight: number; max: number; name: React.ReactNode; amount: React.ReactNode }) {
+  return (
+    <li className="col-span-full grid grid-cols-subgrid items-center py-3">
+      <div className="flex min-w-0 items-center gap-2"><span className="inline-block size-2.5 shrink-0 rounded-sm" style={{ background: color }} aria-hidden /><span className="min-w-0">{name}</span></div>
+      <span className="text-right text-sm font-semibold tabular-nums text-slate-700">{fmt(weight, "pct1")}</span>
+      <span className="block h-2.5 border-l border-slate-300" aria-hidden><span data-bar className="block h-full rounded-r" style={{ width: `${Math.min(100, (weight / max) * 100)}%`, minWidth: weight > 0 ? 2 : 0, background: color }} /></span>
+      <div className="min-w-0 text-right">{amount}</div>
+    </li>
   )
 }
 

@@ -10,15 +10,16 @@ import { Badge, Button, Card, EmptyState, ErrorState, Loading, Menu, PageHeader 
 import { date, ko } from "../../lib/format"
 import { DeleteReportDialog, RenameReportDialog, useRenameTick } from "./ReportName"
 import type { ReportRow } from "../../api/types"
+import { reportKey, useNewReports } from "../attention"
 
 const open = (r: ReportRow) => navigate({ page: "report", reportId: r.report_id ?? r.run_id })
 
 /** 목록 한 줄의 이름·설명. link 이면 누를 수 있는 모양(마우스를 올리면 파란 밑줄). */
-function RowText({ r, link }: { r: ReportRow; link?: boolean }) {
+function RowText({ r, link, fresh }: { r: ReportRow; link?: boolean; fresh?: boolean }) {
   const name = reportName(r)
   return (
     <>
-      <p className="font-semibold text-slate-800"><span className={link ? "group-hover:text-blue-700 group-hover:underline" : ""}>{name}</span>{proposedNameOf(r) && <MockTag />}</p>
+      <p className="font-semibold text-slate-800">{fresh && <span className="mr-1.5 inline-flex items-center rounded-full bg-red-500 px-1.5 py-px align-[1px] text-[10px] font-bold text-white">새 리포트</span>}<span className={link ? "group-hover:text-blue-700 group-hover:underline" : ""}>{name}</span>{proposedNameOf(r) && <MockTag />}</p>
       {r.request_summary && r.request_summary !== name && <p className="mt-0.5 line-clamp-1 text-xs text-slate-500">{r.request_summary}</p>}
       {r.strategy_name && <p className="mt-0.5 line-clamp-1 text-xs text-slate-400">선택 전략: {r.strategy_name}</p>}
     </>
@@ -32,6 +33,7 @@ export function ReportList() {
   const [rename, setRename] = useState<string | null>(null)
   const [removing, setRemoving] = useState<ReportRow | null>(null)
   const runs = useResource(() => svc.listRuns(), [svc])
+  const fresh = useNewReports(res.data)  // 새로 완료돼 아직 열지 않은 리포트 (열면 표시가 사라진다)
   if (res.status === "loading" && !res.data) return <Loading />
   if (res.status === "error") return <ErrorState message={res.error ?? ""} retry={res.reload} />
   const rows = res.data ?? []
@@ -50,7 +52,7 @@ export function ReportList() {
               {rows.map((r) => (
                 <tr key={r.run_id} className="border-b border-slate-100 hover:bg-slate-50">
                   <td className="px-5 py-3">{r.has_report ? (  // 이름·설명을 누르면 리포트를 연다 (따로 「열기」 버튼은 두지 않는다)
-                    <button type="button" onClick={() => open(r)} className="group block w-full rounded-lg text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><RowText r={r} link /></button>
+                    <button type="button" onClick={() => open(r)} className="group block w-full rounded-lg text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><RowText r={r} link fresh={fresh.has(reportKey(r))} /></button>
                   ) : <RowText r={r} />}</td>
                   <td className="px-5 py-3 whitespace-nowrap">{r.as_of}</td>
                   <td className="px-5 py-3 whitespace-nowrap">{date(r.created_at)}</td>

@@ -7,7 +7,8 @@ import type { EvidenceRecord, ReportDoc } from "../../api/types"
 import { useResource } from "../../state/useResource"
 import { Alert, Badge, Button, EmptyState, Loading, Menu } from "../../ui"
 import { citationNumbers } from "../../lib/citations"
-import { normalizeDoc } from "../../lib/reportNormalize"
+import { hideCodeIds, normalizeDoc } from "../../lib/reportNormalize"
+import { markReportSeen } from "../../lib/seen"
 import { CitationContext } from "./blocks/blocks"
 import { StartPaperDialog } from "../paper/StartPaperDialog"
 import { RevisionPanel } from "./RevisionPanel"
@@ -53,7 +54,11 @@ function ReportView({ reportId, sec, company, rb }: Props) {
     document.documentElement.classList.add("report-wide")
     return () => document.documentElement.classList.remove("report-wide")
   }, [])
-  const doc = useMemo(() => (res.data ? reorder(normalizeDoc(res.data)) : null), [res.data])
+  const doc = useMemo(() => (res.data ? reorder(hideCodeIds(normalizeDoc(res.data))) : null), [res.data])  // 화면 문장의 지표 ID 괄호는 지운다
+  useEffect(() => {  // 열어 본 리포트는 사이드바 「새 리포트」 배지에서 뺀다 (이 브라우저의 확인 기록)
+    if (!res.data) return
+    for (const k of new Set([reportId, res.data.run_id, (res.data as { report_id?: string }).report_id].filter(Boolean) as string[])) markReportSeen(svc.mode, k)
+  }, [svc, reportId, res.data])
   const [source, setSource] = useState<EvidenceRecord | { id: string } | null>(null)
   const [drawer, setDrawer] = useState<DrawerFilter | null>(null)
   const [panel, setPanel] = useState<"calc" | "exec" | null>(null)

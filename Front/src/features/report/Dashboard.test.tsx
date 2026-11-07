@@ -26,6 +26,14 @@ describe("카드 2: 어떤 주식에 얼마를 투자하면 될까요?", () => {
     expect(list().getByText("회사10")).toBeInTheDocument()
     expect(list().getAllByRole("listitem")).toHaveLength(12)  // 11종목 + 현금
   })
+  it("종목 줄은 모두 같은 칸(subgrid)을 쓰고, 막대는 가장 큰 비중을 기준으로 같은 비율로 그린다 (금액 글자 길이와 상관없음)", () => {
+    const items = [{ ticker: "A", name: "가 회사", sector: "IT", weight: 0.4, usd: 4000, krw: 5_000_000 }, { ticker: "B", name: "나 회사", sector: "IT", weight: 0.2, usd: 2000, krw: 2_345_678 }]
+    render(<AllocationCard a={alloc(2, { items, cash_weight: 0.1 })} onMore={() => {}} />)
+    const rows = within(screen.getByRole("list", { name: "종목별 목표 배분액" })).getAllByRole("listitem")
+    expect(rows.every((li) => li.className.includes("grid-cols-subgrid"))).toBe(true)
+    expect(rows.map((li) => (li.querySelector("[data-bar]") as HTMLElement).style.width)).toEqual(["100%", "50%", "25%"])  // 40% · 20% · 현금 10%
+    expect(rows.map((li) => li.children[1].textContent)).toEqual(["40.0%", "20.0%", "10.0%"])  // 비중은 이름 바로 옆 칸
+  })
   it("없는 매수 수량·수수료·잔여 현금은 계산하지 않고 한 줄로만 알리며, 현금 금액도 지어내지 않는다", () => {
     render(<AllocationCard a={alloc(3)} doc={doc({ parameters: { backtest: { commission_bps: 5 } } })} onMore={() => {}} />)
     expect(screen.getByText(/종목별 매수 수량, 거래 수수료\(백테스트는 거래대금의 0.05%를 가정\), 매수 후 남는 현금은 이 분석에서 제공하지 않습니다/)).toBeInTheDocument()

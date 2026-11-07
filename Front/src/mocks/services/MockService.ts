@@ -14,6 +14,7 @@ import { buildReport, checkpointDetail, type MockReportDoc } from "../data/repor
 import { CANCEL_MS, RUN_WARNINGS, STEPS, buckets, cancelInfo, liveStatus, runPartial, runRows, runStatus } from "../data/runs"
 import { STOCKS } from "../data/stocks"
 import { clearState, initialState, loadState, saveState, type MockState } from "./store"
+import type { SeenSeed } from "../../lib/seen"
 
 const notFound = (what: string) => new ApiError("NOT_FOUND", `[목업] ${what}을(를) 찾을 수 없습니다`, 404)
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T
@@ -65,6 +66,11 @@ export class MockService implements AnalysisService {
   state() { return clone(this.s) }
   setProfileVariant(v: MockState["profileVariant"]) { this.s.profileVariant = v; this.commit() }
   reset() { clearState(); this.s = initialState(); this.bt.clear(); this.docs.clear(); this.papers.clear() }
+  /** 시연용 확인 기록 시작값: 가장 최근에 완료된 리포트 하나와 첫 모의투자의 마지막 리밸런싱을 '확인 안 함'으로 둔다 (사이드바 배지·알림이 보이게). */
+  seenSeed(): SeenSeed {
+    const live = this.allPapers().some((p) => p.id === "mock_paper_a1") ? this.paperOf("mock_paper_a1").detail.summary.n_rebalances : 0
+    return { unseenReports: ["mock_rep_revised"], papers: live > 0 ? { mock_paper_a1: live - 1 } : {} }
+  }
 
   /* ───────── 메타·프로필 ───────── */
   health(): Promise<Health> { return this.wait(() => ({ ok: true, api_version: "mock", llm_mode: "api" as const, db: { ok: true, latest_trading_day: MOCK_AS_OF, data_start: "2020-01-02" }, worker: { alive: true, running_run_id: null }, queue_length: 0 })) }
@@ -243,7 +249,8 @@ export class MockService implements AnalysisService {
 
   /* ───────── 리포트 ───────── */
   listReports(): Promise<(ReportRow & ProposedReportRowExt)[]> {
-    return this.wait(() => REPORTS.filter((sc) => !this.s.deletedReports.includes(sc.id)).map((sc) => { const b = this.backtestOf(sc); return { report_id: sc.id, run_id: sc.run_id, request_id: sc.request_id, status: "success" as const, has_report: true, strategy_name: b.chosen.def.label_ko, request_summary: sc.idea, as_of: MOCK_AS_OF, created_at: sc.created_at, idea: sc.idea, mode: sc.base_report_id ? "revision" : "new", proposed_name: this.nameOf(sc.id) } }))
+    // 실제 서버처럼 최근에 만든 리포트부터 (같은 날이면 시나리오 순서)
+    return this.wait(() => [...REPORTS].sort((x, y) => y.created_at.localeCompare(x.created_at)).filter((sc) => !this.s.deletedReports.includes(sc.id)).map((sc) => { const b = this.backtestOf(sc); return { report_id: sc.id, run_id: sc.run_id, request_id: sc.request_id, status: "success" as const, has_report: true, strategy_name: b.chosen.def.label_ko, request_summary: sc.idea, as_of: MOCK_AS_OF, created_at: sc.created_at, idea: sc.idea, mode: sc.base_report_id ? "revision" : "new", proposed_name: this.nameOf(sc.id) } }))
   }
   getReport(id: string): Promise<ReportDoc> { return this.wait(() => { const sc = this.sc(id); if (this.s.deletedReports.includes(sc.id)) throw notFound("리포트"); return this.docOf(sc) }) }
   /** 리포트 삭제: 목업 상태에서만 빠진다 (이 리포트로 만든 모의투자는 그대로 둔다). */
