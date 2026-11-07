@@ -39,7 +39,9 @@ function reorder(doc: ReportDoc): ReportDoc {
 }
 
 /** readOnly: 튜토리얼처럼 둘러보기만 하는 화면. 모의투자 시작·조건 수정·다시 분석·이름 바꾸기·삭제를 막고, 주소(해시)도 바꾸지 않는다. */
-type Props = { reportId: string; sec?: string; company?: string; rb?: number; readOnly?: boolean }
+type MenuItem = { label: string; onClick: () => void; disabled?: boolean; icon?: React.ElementType; danger?: boolean }
+/** extraMenu: 더보기 메뉴 끝에 붙일 항목 (예시 리포트의 「리포트 삭제」 = 목록에서 숨기기) */
+type Props = { reportId: string; sec?: string; company?: string; rb?: number; readOnly?: boolean; extraMenu?: MenuItem[] }
 
 const TAB_OFFSET = 110  // 상단 고정 탭(49px) 아래 이 선을 지난 마지막 섹션을 「지금 보는 섹션」으로 친다 (섹션은 scroll-mt-16 = 64px 에 멈춘다)
 const STOP = 64  // scroll-mt-16
@@ -50,7 +52,7 @@ export function ReportDetail(props: Props) {
   return <ReportView key={props.reportId} {...props} />
 }
 
-function ReportView({ reportId, sec, company, rb, readOnly = false }: Props) {
+function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = [] }: Props) {
   const svc = useService()
   const navigate: typeof routerNavigate = readOnly ? () => {} : routerNavigate
   const res = useResource(() => svc.getReport(reportId), [svc, reportId])
@@ -173,6 +175,7 @@ function ReportView({ reportId, sec, company, rb, readOnly = false }: Props) {
     // 이름 바꾸기·삭제(제안 기능)는 서비스에 메서드가 있을 때만 — 지금은 목업뿐
     ...(name && svc.renameReport && !readOnly ? [{ label: "이름 바꾸기", icon: Pencil, onClick: () => setRename(true) }] : []),
     ...(svc.deleteReport && !readOnly ? [{ label: "리포트 삭제", icon: Trash2, onClick: () => setRemoving(true), danger: true }] : []),
+    ...extraMenu,
   ]
   // 헤더에는 백테스트 기간만 두고, 나머지 날짜는 (?) 도움말 안에서 본다
   const otherDates: [string, string][] = [["작성일", h.created_at], ["분석 기준일", h.data_as_of], ["종목 선정 기준일", h.selection_as_of]]

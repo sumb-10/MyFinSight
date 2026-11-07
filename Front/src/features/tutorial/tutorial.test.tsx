@@ -1,9 +1,50 @@
-import { describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it } from "vitest"
 import { fireEvent, render, screen, within } from "@testing-library/react"
 import { TutorialScreen } from "./TutorialScreen"
 import { TOUR_STEPS } from "./steps"
 import { loadTutorialDoc } from "./tutorialService"
 import { parseRoute, routePath } from "../../app/router"
+import { popoverStyle } from "./Coachmark"
+import { ServiceContext } from "../../app/providers"
+import type { AnalysisService } from "../../api/service"
+import { ReportList } from "../report/ReportList"
+import { EXAMPLE_ROW, isExampleHidden } from "./exampleReport"
+
+beforeEach(() => { try { window.localStorage.clear() } catch { /* ignore */ } })
+
+describe("목록의 「[예시]」 리포트", () => {
+  const svc = { mode: "api", listReports: async () => [], listRuns: async () => [] } as unknown as AnalysisService
+  const list = () => render(<ServiceContext.Provider value={svc}><ReportList /></ServiceContext.Provider>)
+
+  it("서버 리포트가 없어도 맨 위에 예시 리포트가 보이고, 지우면 숨겨졌다가 「다시 보이기」로 돌아온다", async () => {
+    list()
+    const row = (await screen.findByText(EXAMPLE_ROW.name)).closest("tr")!
+    expect(row).toHaveAttribute("data-example")
+    expect(screen.queryByText("아직 리포트가 없습니다")).toBeNull()
+    fireEvent.click(within(row).getByRole("button", { name: /삭제/ }))
+    const dlg = screen.getByRole("dialog", { name: "예시 리포트를 목록에서 지울까요?" })
+    fireEvent.click(within(dlg).getByRole("button", { name: "확인" }))
+    expect(screen.queryByText(EXAMPLE_ROW.name)).toBeNull()
+    expect(isExampleHidden()).toBe(true)  // 브라우저 저장소에 숨김 (서버는 부르지 않는다)
+    fireEvent.click(screen.getByRole("button", { name: /예시 리포트 다시 보이기/ }))
+    expect(screen.getByText(EXAMPLE_ROW.name)).toBeInTheDocument()
+    expect(isExampleHidden()).toBe(false)
+  })
+
+  it("예시 리포트 화면: 코치마크 없이 열리고, 띠에서 둘러보기를 시작하며, 더보기에 「리포트 삭제」가 있다", async () => {
+    render(<TutorialScreen load={loadTutorialDoc} startTour={false} />)
+    await screen.findByRole("button", { name: /모의투자 시작/ }, { timeout: 10000 })
+    expect(screen.queryByTestId("coachmark")).toBeNull()
+    expect(screen.getByRole("note")).toHaveTextContent("예시 리포트입니다")
+    expect(screen.getByRole("button", { name: /모의투자 시작/ })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: /더보기/ }))
+    fireEvent.click(screen.getByRole("menuitem", { name: /리포트 삭제/ }))
+    expect(screen.getByRole("dialog", { name: "예시 리포트를 목록에서 지울까요?" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "취소" }))
+    fireEvent.click(screen.getByRole("button", { name: "리포트 보는 법 둘러보기" }))
+    expect(screen.getByRole("dialog", { name: TOUR_STEPS[0].title })).toBeInTheDocument()
+  }, 20000)
+})
 
 const show = () => render(<TutorialScreen load={loadTutorialDoc} />)
 const tour = async () => {  // 예시 리포트가 다 그려진 뒤의 첫 단계 말풍선 (부하가 높으면 리포트가 늦게 그려진다)
@@ -74,6 +115,16 @@ describe("리포트 보는 법 둘러보기", () => {
     window.dispatchEvent(wheel2)
     expect(wheel2.defaultPrevented).toBe(false)  // 완료 화면에서는 스크롤 가능
   }, 20000)
+
+  it("2·5단계(큰 강조 영역)는 말풍선을 왼쪽에, 좁은 화면이면 기본 배치로", () => {
+    expect(TOUR_STEPS.filter((s) => s.placement === "left").map((s) => s.target)).toEqual(["allocation", "details"])
+    const big = { top: 64, left: 272, width: 720, height: 860 }
+    const left = popoverStyle(big, "left", 1440, 900)
+    expect(left.side).toBe("left")
+    expect((left.css.left as number) + (left.css.width as number)).toBeLessThanOrEqual(big.left)  // 강조 영역과 겹치지 않는다
+    expect(popoverStyle({ ...big, left: 120 }, "left", 800, 900).side).not.toBe("left")  // 왼쪽 공간이 좁으면 폴백
+    expect(popoverStyle({ top: 100, left: 300, width: 400, height: 120 }, undefined, 1440, 900).side).toBe("below")
+  })
 
   it("둘러보기 중에는 모의투자 시작·조건 수정 같은 쓰기 동작을 막는다", async () => {
     show()

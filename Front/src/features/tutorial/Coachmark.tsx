@@ -7,11 +7,26 @@ const GAP = 12  // 하이라이트와 말풍선 사이
 const W = 340  // 말풍선 너비
 const TOP_GAP = 72  // 긴 대상을 맞출 때 위쪽 여백 (고정 탭 48px + 여유)
 
-type Box = { top: number; left: number; width: number; height: number }
+export type Box = { top: number; left: number; width: number; height: number }
 
 const findTarget = (t: string) => document.querySelector<HTMLElement>(`[data-tour="${t}"]`)
 
-const SCROLL_KEYS = new Set(["PageUp", "PageDown", "ArrowUp", "ArrowDown", "Home", "End", " "])
+const LEFT_MIN = 200  // 왼쪽 배치에 필요한 최소 폭 (이보다 좁으면 기본 배치)
+
+/** 말풍선 자리.
+ *  - placement "left": 강조 영역 왼쪽 빈 곳(사이드바 위)에 세로 가운데로. 강조 영역과 겹치지 않게 폭을 그 공간에 맞춘다.
+ *  - 기본: 아래에 공간이 있으면 아래, 아니면 위, 둘 다 없으면 화면 아래쪽. 대상을 못 찾으면 화면 가운데. */
+export function popoverStyle(box: Box | null, placement: "left" | undefined, vw: number, vh: number): { side: "left" | "below" | "above" | "bottom" | "center"; css: React.CSSProperties } {
+  if (!box) return { side: "center", css: { top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: W } }
+  const room = box.left - GAP - 16
+  if (placement === "left" && room >= LEFT_MIN) return { side: "left", css: { top: "50%", left: 16, transform: "translateY(-50%)", width: Math.min(W, room) } }
+  const left = Math.max(16, Math.min(vw - W - 16, box.left))
+  if (box.top + box.height + GAP + 220 < vh) return { side: "below", css: { top: box.top + box.height + GAP, left, width: W } }
+  if (box.top - GAP - 220 > 0) return { side: "above", css: { top: box.top - GAP, left, transform: "translateY(-100%)", width: W } }
+  return { side: "bottom", css: { top: Math.max(16, vh - 260), left, width: W } }
+}
+
+const SCROLL_KEYS =new Set(["PageUp", "PageDown", "ArrowUp", "ArrowDown", "Home", "End", " "])
 
 /** 페이지 스크롤 잠금: html 의 overflow 를 숨기고(스크롤바 폭만큼 오른쪽 여백으로 보정해 화면이 흔들리지 않게), 휠·터치·스크롤 키를 막는다.
  *  코드로 하는 scrollIntoView 는 그대로 된다. 말풍선 버튼 위의 스페이스·엔터(누르기)와 Tab 은 막지 않는다. 돌려주는 함수가 잠금을 모두 푼다. */
@@ -98,16 +113,7 @@ export function Coachmark({ steps, index, onPrev, onNext, onClose }: { steps: To
     return () => window.removeEventListener("keydown", key)
   }, [onClose])
 
-  // 말풍선 자리: 아래에 공간이 있으면 아래, 아니면 위, 둘 다 없으면 화면 가운데
-  const vw = typeof window !== "undefined" ? window.innerWidth : 1280
-  const vh = typeof window !== "undefined" ? window.innerHeight : 800
-  let style: React.CSSProperties = { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }
-  if (box) {
-    const left = Math.max(16, Math.min(vw - W - 16, box.left))
-    if (box.top + box.height + GAP + 220 < vh) style = { top: box.top + box.height + GAP, left }
-    else if (box.top - GAP - 220 > 0) style = { top: box.top - GAP, left, transform: "translateY(-100%)" }
-    else style = { top: Math.max(16, vh - 260), left }
-  }
+  const style = popoverStyle(box, step.placement, window.innerWidth, window.innerHeight)
 
   return (
     <div className="fixed inset-0 z-[60]" data-testid="coachmark">
@@ -116,7 +122,7 @@ export function Coachmark({ steps, index, onPrev, onNext, onClose }: { steps: To
       {box
         ? <div aria-hidden className="pointer-events-none absolute rounded-2xl ring-2 ring-blue-400" style={{ ...box, boxShadow: "0 0 0 9999px rgba(15, 23, 42, 0.55)" }} />
         : <div aria-hidden className="pointer-events-none absolute inset-0 bg-slate-900/55" />}
-      <div ref={pop} role="dialog" aria-modal="true" aria-labelledby="tour-title" aria-describedby="tour-body" className="absolute rounded-2xl border border-slate-200 bg-white p-5 shadow-xl" style={{ ...style, width: W, maxWidth: "calc(100vw - 32px)" }}>
+      <div ref={pop} role="dialog" aria-modal="true" aria-labelledby="tour-title" aria-describedby="tour-body" data-placement={style.side} className="absolute rounded-2xl border border-slate-200 bg-white p-5 shadow-xl" style={{ ...style.css, maxWidth: "calc(100vw - 32px)" }}>
         <div className="flex items-start justify-between gap-3">
           <p className="text-xs font-bold tracking-wider text-blue-700"><span className="sr-only">단계 </span>{index + 1}/{steps.length}</p>
           <button type="button" onClick={onClose} aria-label="둘러보기 닫기" className="-m-1 rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"><X className="size-4" /></button>

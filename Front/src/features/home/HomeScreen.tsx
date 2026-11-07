@@ -13,6 +13,8 @@ import { reportName } from "../../lib/reportName"
 import { proposedNameOf } from "../../api/proposed"
 import { MockTag } from "../report/proposedView"
 import { useRenameTick } from "../report/ReportName"
+import { EXAMPLE_ROW, useExampleVisible } from "../tutorial/exampleReport"
+import { ExampleBadge, openExample } from "../tutorial/ExampleReportParts"
 
 export function HomeScreen() {
   const svc = useService()
@@ -24,6 +26,7 @@ export function HomeScreen() {
   const [detail, setDetail] = useState(false)
   const renamed = useRenameTick()
   const reports = useResource(() => svc.listReports(), [svc, renamed])
+  const example = useExampleVisible()  // 최근 리포트 맨 위의 「[예시]」 리포트
   const [ui, setUi] = useState(() => loadUi())
   useEffect(() => { saveUi({ draftIdea: idea }) }, [idea])
   useEffect(() => { const u = loadUi(); if (u.prefillIdea || u.prefillOverrides) setUi(saveUi({ prefillIdea: null, prefillOverrides: null })) }, [])  // 미리 채운 값(새 요청)은 한 번만 쓴다
@@ -103,13 +106,19 @@ export function HomeScreen() {
           <div className="flex justify-between"><h2 className="font-bold text-slate-900">최근 분석 리포트</h2><button onClick={() => navigate({ page: "reports" })} className="text-xs font-semibold text-blue-700">전체 보기</button></div>
           <div className="mt-3 space-y-1">
             {reports.status === "error" && <p className="text-xs text-red-600">{reports.error}</p>}
+            {example && (
+              <button onClick={openExample} className="flex w-full items-center justify-between rounded-xl p-3 text-left hover:bg-slate-50">
+                <span><span className="block text-sm font-semibold text-slate-800"><ExampleBadge />{EXAMPLE_ROW.name.replace(/^\[예시\]\s*/, "")}</span><span className="mt-0.5 block text-xs text-slate-400">리포트 보는 법 예시 · 기준일 {EXAMPLE_ROW.as_of}</span></span>
+                <ChevronRight className="size-4 text-slate-300" />
+              </button>
+            )}
             {(reports.data ?? []).slice(0, 4).map((r) => (
               <button key={r.run_id} onClick={() => navigate({ page: "report", reportId: r.report_id ?? r.run_id })} className="flex w-full items-center justify-between rounded-xl p-3 text-left hover:bg-slate-50">
                 <span><span className="block text-sm font-semibold text-slate-800">{reportName(r)}{proposedNameOf(r) && <MockTag />}</span><span className="mt-0.5 block text-xs text-slate-400">{date(r.created_at)} · 기준일 {r.as_of}</span></span>
                 <ChevronRight className="size-4 text-slate-300" />
               </button>
             ))}
-            {reports.status === "ready" && (reports.data ?? []).length === 0 && <p className="p-3 text-sm text-slate-500">아직 완료된 분석이 없습니다.</p>}
+            {reports.status === "ready" && (reports.data ?? []).length === 0 && !example && <p className="p-3 text-sm text-slate-500">아직 완료된 분석이 없습니다.</p>}
           </div>
         </Card>
       </div>
