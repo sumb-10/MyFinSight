@@ -19,7 +19,6 @@ type Tone = "green" | "amber" | "red" | "slate"
 const TONE_BOX: Record<Tone, string> = { green: "border-emerald-200 bg-emerald-50/70 text-emerald-900", amber: "border-amber-200 bg-amber-50/70 text-amber-950", red: "border-red-200 bg-red-50/70 text-red-950", slate: "border-slate-300 bg-slate-50 text-slate-900" }
 const TONE_PILL: Record<Tone, string> = { green: "border-emerald-200 bg-emerald-50 text-emerald-800", amber: "border-amber-300 bg-amber-50 text-amber-900", red: "border-red-200 bg-red-50 text-red-800", slate: "border-slate-200 bg-slate-50 text-slate-700" }
 const TONE_ICON: Record<Tone, React.ElementType> = { green: CheckCircle2, amber: AlertTriangle, red: XCircle, slate: MinusCircle }
-const NEUTRAL_BOX = "border-amber-200 bg-slate-50 text-slate-900"
 const VERDICT_TONE: Record<ReportSummary["verdict"]["status"], Tone> ={ recommended: "green", recommended_warn: "amber", insufficient: "amber", none_cash_blend: "slate", none_baseline: "slate" }
 
 /** 상태 표시: 색과 아이콘에 글자를 함께 둔다 (색만으로 구분하지 않는다). */
@@ -109,14 +108,11 @@ export function VerdictCard({ sm, doc, onMore, paperReason }: { sm: ReportSummar
   const info = strategyInfoOf(doc, chosenId)
   const chosenName = sm.verdict.chosen_label_ko || h.chosen_label_ko
   const notices = sm.verdict.notices_ko ?? []
-  // 추천이어도 주의·미충족이 있으면 초록 상자 대신 중립 상자 (좋기만 한 결과로 읽히지 않게)
-  const neutral = tone === "green" && alerts.length > 0
-  const BoxIcon = neutral ? Info : Icon
   const fit = conditionSentence(sm.validation)
   return (
     <ResultCard id="q-verdict" q="이번 투자 전략은 어떤 결과인가요?" more={["판단 근거 자세히 보기", onMore]}>
-      <div data-tour="verdict" data-tone={neutral ? "neutral" : tone} className={`rounded-xl border p-4 sm:p-5 ${neutral ? NEUTRAL_BOX : TONE_BOX[tone]}`}>
-        <p className="flex items-start gap-2 text-sm font-bold"><BoxIcon className="mt-0.5 size-4 shrink-0" aria-hidden /><span className="min-w-0 break-words">{sm.verdict.label_ko}</span></p>
+      <div data-tour="verdict" data-tone={tone} className={`rounded-xl border p-4 sm:p-5 ${TONE_BOX[tone]}`}>
+        <p className="flex items-start gap-2 text-sm font-bold"><Icon className="mt-0.5 size-4 shrink-0" aria-hidden /><span className="min-w-0 break-words">{sm.verdict.label_ko}</span></p>
         <p className="mt-2 text-lg font-semibold leading-7 text-slate-950"><CitedText text={sm.verdict.headline_ko || h.chosen_note_ko} /></p>
         {fit && <p aria-label="조건 결과 요약" className="mt-2 text-sm font-medium leading-6 text-slate-700">{fit}</p>}
       </div>
