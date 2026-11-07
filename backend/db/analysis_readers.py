@@ -93,6 +93,24 @@ def _name_re(name: str) -> re.Pattern[str]:
     return re.compile(r"(?<![a-z0-9])" + re.escape(name).replace(r"\ ", r"\s*") + r"(?![a-z0-9])")
 
 
+# 한글 회사 이름 바로 뒤에 붙으면 다른 상장사가 되는 말 (계열사·자회사: 셀트리온제약, 종근당바이오, 녹십자홀딩스, 현대차증권, 한국전력기술 …).
+# 같은 회사를 뜻하는 꼬리(지주·그룹·금융)는 넣지 않는다 (신한금융지주 = 신한지주)
+_SIBLING_SUFFIX = ("제약", "바이오", "헬스케어", "홀딩스", "웰빙", "생명과학", "기술", "증권", "엔지니어링", "캐피탈", "카드", "생명", "화재", "중공업",
+                   "건설", "케미칼", "리츠", "인베스트먼트", "파트너스", "페이", "뱅크", "게임즈", "모빌리티")  # fmt: skip
+
+
+def _hangul_hit(text: str, name: str) -> bool:
+    """text 에 name 이 다른 회사 이름의 앞부분이 아닌 꼴로 한 번이라도 나오나."""
+    if not name:
+        return False
+    i = text.find(name)
+    while i >= 0:
+        if not text[i + len(name):].startswith(_SIBLING_SUFFIX):
+            return True
+        i = text.find(name, i + 1)
+    return False
+
+
 def _title_mentions(title: str, names: Iterable[str]) -> bool:
     """제목에 이름 중 하나가 있나. 한글이 든 이름은 띄어쓰기를 무시한 부분 일치
     (조사가 붙는다: '네이버가'). '!' 로 시작하는 이름은 이 회사 이름을 품은 다른 회사 이름이라 먼저 지운다 (한국전력 ⊂ 한국전력기술)."""
@@ -104,6 +122,13 @@ def _title_mentions(title: str, names: Iterable[str]) -> bool:
     flat = "".join(low.split())
     for n in names:
         if str(n or "").startswith("!"):
+            continue
+        if _HANGUL.search(str(n or "")):
+            nn = " ".join(str(n).lower().split())
+            # 이름 바로 뒤에 '제약·바이오·홀딩스…' 가 붙으면 다른 상장사다 — 유니버스 밖 계열사라 '!' 목록에도 없다
+            # (077: 셀트리온 뉴스 10건 중 9건이 셀트리온제약 기사였고 그 기사가 뉴스 뷰 근거가 됐다; 종근당바이오·녹십자홀딩스·GC녹십자웰빙도)
+            if _hangul_hit(low, nn) or _hangul_hit(flat, "".join(nn.split())):
+                return True
             continue
         n = " ".join(str(n or "").lower().split())
         if n and ("".join(n.split()) in flat if _HANGUL.search(n) else _name_re(n).search(low)):

@@ -18,6 +18,10 @@ from zoneinfo import ZoneInfo
 if TYPE_CHECKING:
     from backend.analysis.m2_data.market_data import MarketData
 
+# 티커가 다른 회사로 넘어간 날 (그 전에 그 티커로 붙은 영어 기사는 옛 회사 기사다). 영어 기사는 제목 검사를 하지 않아 걸러지지 않았다
+# (078: Physicians Realty(옛 DOC) 의 배당 기사가 Healthpeak(지금 DOC) 의 'DOC 오름' 뷰 근거가 돼 추천안 DOC 비중이 1.0% → 4.75%)
+TICKER_REUSE: dict[str, str] = {"DOC": "2024-03-04"}  # Healthpeak 가 Physicians Realty 합병(2024-03-01) 뒤 DOC 를 씀
+
 # 제목 검사용 잘 알려진 다른 이름 (6자리 코드 → 이름). pipeline/news_labels.KR_NAME_ALIASES(삼전·하이닉스·포스코 …)에 더한다.
 # 제목에서 긴 사명을 줄여 쓰는 것(한화에어로·가스공사)도 여기에 둔다
 KR_TITLE_ALIASES: dict[str, tuple[str, ...]] = {
@@ -222,6 +226,9 @@ def build_window(
         t = ids.get(r.asset_id)
         if t is None:
             continue
+        cut = TICKER_REUSE.get(str(t).split(".")[0])
+        if cut and r.published_at.date().isoformat() < cut:
+            continue  # 그 티커를 쓰던 옛 회사의 기사 (가격·재무는 지금 회사로 이어져 있다)
         rec = {
             "evidence_id": f"ev{r.news_id}",
             "kind": "news",

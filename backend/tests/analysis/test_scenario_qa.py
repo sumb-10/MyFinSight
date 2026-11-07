@@ -2012,7 +2012,8 @@ def test_news_effect_explains_views_on_pinned_stocks():
     assert ne["capped_note_ko"].startswith("뉴스 뷰 3개 중 2개는 뷰가 걸린 종목(KT·KT&G)이 종목당 상한(15%)에 묶여 있어")
     # '내림' 쪽(상대 뷰의 약한 쪽·절대 내림)은 종목당 상한이 막지 못한다 → 일반 이유 (036 MCD·SBUX, 037 JNJ)
     views["2024-01-02"][1] = {"type": "relative", "long": ["033780.KS"], "short": ["030200.KS"]}
-    assert "(KT: 상한·섹터 예산 같은 제약, KT&G: 종목당 상한 15%)" in news_effect(R)["capped_note_ko"]  # 약한 쪽(KT)만 일반 이유 (071)
+    # KT 는 'KT 오름' 과 'KT&G > KT'(약한 쪽)를 함께 받아 방향이 엇갈린다 → 서로 상쇄 (076), KT&G 는 상한 (071)
+    assert "(KT: 같은 세트의 반대 방향 뷰와 상쇄, KT&G: 종목당 상한 15%)" in news_effect(R)["capped_note_ko"]
     views["2024-01-02"][1] = {"type": "absolute", "direction": "down", "long": ["033780.KS"], "short": []}
     assert "(KT: 종목당 상한 15%, KT&G: 상한·섹터 예산 같은 제약)" in news_effect(R)["capped_note_ko"]  # 이유가 섞이면 종목마다 (066)
 
@@ -2081,7 +2082,7 @@ def test_shortfall_question_names_trading_value_and_market_cap_floors(monkeypatc
     svc, _store, _llm = svc_factory([_intent([])] * 3)
     st = svc.start("국내 자동차 고배당", overrides={"constraints.min_avg_daily_volume_usd": 5_000_000, "constraints.min_market_cap_usd": 10_000_000_000})
     why = st.question.why_ko
-    assert "테마 관련 종목 12개 중 6개는 최근 거래대금이 최소 거래대금(500만 달러)에 못 미쳐, 2개는 시가총액이 최소 시가총액(100억 달러)에 못 미쳐 빠졌습니다." in why
+    assert "테마 관련 종목 12개 중 6개는 최근 거래대금이 최소 거래대금(500만 달러)에 못 미쳐, 2개는 시가총액이 최소 시가총액(100억 달러)에 못 미쳐, 1개는 테마 키워드가 약하게만 맞아 빠졌습니다." in why
 
 
 def test_feasibility_question_is_asked_again_when_its_numbers_change(monkeypatch, svc_factory):

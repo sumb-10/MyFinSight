@@ -275,6 +275,14 @@ def _view_window_ids(R: dict[str, Any], key: str) -> set[str] | None:
     return {i for ids in (w.get(key) or {}).values() for i in ids or []} if w is not None else None
 
 
+def _mode_ko(mode: Any) -> Any:
+    """백테스트 방식 이름 (static_weights = 시작일 비중 고정 구성, walkforward = 리밸런싱일마다 비중 다시 계산)."""
+    if not isinstance(mode, str) or not mode:
+        return mode
+    ko = {"static_weights": "정적 구성(시작일 비중으로 리밸런싱)", "walkforward": "날짜별 재계산(walk-forward)"}
+    return " + ".join(ko.get(x.strip(), x.strip()) for x in mode.split("+"))
+
+
 def _win_of(R: dict[str, Any]) -> list[str] | None:
     """분석 기준일 뉴스 창 [시작, 끝] (현재 구성의 뉴스 창)."""
     w = ((R["portfolio"].get("forward") or {}).get("news_window") or {}).get("window")
@@ -433,7 +441,9 @@ def facts_for_interpret(R: dict[str, Any], chosen: str) -> dict[str, Any]:
                        "n_holdings_backtest": sum(1 for x in p["target_weights"].values() if x > 1e-9), "allocation_now": _allocation_now(R, chosen),
                        "holdings_now_vs_request_ko": _holdings_vs_request(R, chosen),
                        # 백테스트 주식 비중이 지금 구성보다 크게 낮으면 낙폭·변동성이 현금으로 눌린 값 (062)
-                       **({"invested_gap_note_ko": g} if (g := B.invested_gap_note(R, chosen)) else {})},
+                       **({"invested_gap_note_ko": g} if (g := B.invested_gap_note(R, chosen)) else {}),
+                       # 지금 구성의 예상 변동성이 백테스트보다 크게 높으면 (080)
+                       **({"risk_gap_note_ko": rg} if (rg := B.risk_gap_note(R, chosen)) else {})},
             "benchmark": {"label": b["name_ko"], "headline": b["headline"], "headline_display": _headline_display(b["headline"]), "yearly_returns": b["yearly_returns"], "money": b["money"]},
             "other_benchmarks": [{"label": x["name_ko"], "headline": x["headline"]} for x in bt.get("benchmarks", []) if x["id"] != b["id"]],
             "matched": [{"id": x["id"], "label": x["name_ko"], "base_id": x.get("base_id"), "cash_ratio": x.get("cash_ratio"), "cash_ratio_total": x.get("cash_ratio_total"),
@@ -892,7 +902,8 @@ def build_doc(R: dict[str, Any], *, interp: dict[str, Any], narr: dict[str, Any]
               "data_as_of": str(R["request"]["derived"]["as_of"]), "chosen_portfolio_id": chosen, "chosen_label_ko": label,
               "chosen_note_ko": _chosen_note(R, p, is_rec),
               "disclaimer_ko": "이 리포트는 투자 판단을 돕기 위한 자료이며 특정 종목의 매수·매도를 지시하지 않습니다. 과거 성과는 미래 성과를 보장하지 않습니다.",
-              "run_id": R["run_id"], "backtest_mode": bt.get("mode")}  # fmt: skip
+              # 화면에 그대로 보인다 — 내부 값('static_weights + walkforward') 대신 한국어로 (079)
+              "run_id": R["run_id"], "backtest_mode": _mode_ko(bt.get("mode"))}  # fmt: skip
     kp = B.kpis(R, chosen)
     bl_ids = [x["id"] for x in R["portfolio"]["targets"]["portfolios"]]
     bl_for_bar = chosen if chosen in bl_ids else (bl_ids[0] if bl_ids else None)

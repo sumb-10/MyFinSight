@@ -242,10 +242,33 @@ def optimize_utility(mu, cov, delta, w_base, max_stock, max_sector, sectors, max
         lo = np.where(d > 0, np.maximum(lo0, w_base), lo0)
         hi = np.maximum(lo + 1e-9, np.where(d < 0, np.minimum(hi0, w_base), hi0))
     cons = [{"type": "eq", "fun": lambda w: w.sum() - total}] + _sector_constraints(sectors, max_sector, total)
-    res = minimize(lambda w: -(w @ mu - delta / 2 * w @ cov @ w), w_base, method="SLSQP", bounds=list(zip(lo, hi, strict=True)),
-                   constraints=cons, options={"maxiter": 500, "ftol": 1e-12})  # fmt: skip
+
+    def obj(w):
+        return -(w @ mu - delta / 2 * w @ cov @ w)
+
+    def solve(x0):
+        return minimize(obj, x0, method="SLSQP", bounds=list(zip(lo, hi, strict=True)), constraints=cons, options={"maxiter": 500, "ftol": 1e-12})
+
+    def ok(r) -> bool:
+        if not getattr(r, "success", False):
+            return False
+        x = r.x
+        return bool(abs(x.sum() - total) <= 1e-6 and np.all(x >= lo - 1e-8) and np.all(x <= hi + 1e-8) and all(c["fun"](x) >= -1e-7 for c in cons[1:]))
+
+    res = solve(w_base)
+    # 시작점(기준 비중)에서 경계·섹터 상한·합계가 한꺼번에 걸리면 SLSQP 가 더 나은 방향이 있어도 시작점에서 '성공' 으로 멈춘다
+    # (080: 정보기술·커뮤니케이션 둘 다 섹터 상한 50% 에 닿은 날, GOOGL→META 로 옮기면 목적값이 오르는데 기준 비중 그대로 — 뷰 76일 중 5일).
+    # 볼록 QP 라 다른 시작점(경계의 가운데, 기울기 쪽)에서 다시 풀어 목적값이 가장 좋은 해를 쓴다 (정확한 풀이 trust-constr 와 같은 해, 시험)
+    best = res if ok(res) else None
+    grad = mu - delta * cov @ w_base
+    for x0 in ((lo + hi) / 2, np.clip(w_base + 0.5 * (hi - lo) * np.sign(grad), lo, hi)):
+        r = solve(x0)
+        if ok(r) and (best is None or r.fun < best.fun - 1e-12):
+            best = r
+    if best is not None:
+        res = best
     active = []
-    if not res.success or abs(res.x.sum() - total) > 1e-6:
+    if best is None:
         if view_dir is not None:
             return optimize_utility(mu, cov, delta, w_base, max_stock, max_sector, sectors, max_tilt, total, min_weight=min_weight)
         # 최적화 실패: 뷰를 반영하지 않고 기준 비중 유지 (값을 지어내지 않음)

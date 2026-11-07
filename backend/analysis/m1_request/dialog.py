@@ -104,6 +104,15 @@ def _start_why_ko(st: dict[str, Any], cons: dict[str, Any]) -> str:
         return "과거에는 상장 전이거나 재무 지표가 없던 종목이 있어 시작일에 뽑을 수 있는 종목이 적을 수 있습니다."
     return f"분석 기준일 선정 종목 중 {sum(by.values())}개를 시작일에는 고를 수 없습니다: {dropped_ko(by, cons)}."
 
+def _rules_collapse_to_caps(req: dict[str, Any]) -> bool:
+    """목표 종목 수 × 종목당 상한이 투자 가능 비율 이하면 어느 비중 규칙이든 모든 종목이 상한(같은 비중)이 된다."""
+    cons = req.get("constraints") or {}
+    n = int(((cons.get("num_holdings") or {}).get("target")) or 0)
+    cap = float(cons.get("max_weight_per_stock") or 1.0)
+    invest = 1.0 - float(cons.get("min_cash_ratio") or 0.0)
+    return n > 0 and n * cap <= invest + 1e-9
+
+
 class DialogService:
     def __init__(self, store: JsonStore, repo: Any, md: MarketData, llm: LlmClient, settings: AnalysisSettings) -> None:
         self.store, self.repo, self.md, self.llm, self.s = store, repo, md, llm, settings
@@ -435,6 +444,9 @@ class DialogService:
             k_mc = int(bf.get("market_cap_missing") or 0)  # 시가총액 자료가 없어 최소 시가총액을 확인할 수 없는 종목 (057: KB금융이 빠진 이유가 질문에 없었다)
             if k_mc > 0 and float(cons.get("min_market_cap_usd") or 0) > 0:
                 parts.append((k_mc, f"{k_mc}개는 시가총액 자료가 없어"))
+            k_kw = int(bf.get("keyword_weak") or 0)  # 테마 키워드가 약하게만 맞아 후보에서 뺀 종목도 센다 (079: 10개 중 3+1 개만 적어 5개가 남는 계산이 맞지 않았다 — 메리츠금융지주)
+            if k_kw > 0 and parts:
+                parts.append((k_kw, f"{k_kw}개는 테마 키워드가 약하게만 맞아"))
             if not parts:
                 return ""
             parts.sort(key=lambda x: -x[0])
@@ -603,6 +615,8 @@ class DialogService:
             cur = assemble.get_path(req, field)
             if cur == val:
                 continue
+            if field == "strategy_preference.baseline_weighting" and _rules_collapse_to_caps(req):
+                continue  # 모든 비중 규칙이 종목당 상한으로 같은 비중이 되면 기준 비중 방식은 결과를 바꾸지 못한다 (079: 5종목 × 18% = 90% 인데 동일비중·역변동성을 물었다)
             seen.add(field)
             lab = label(field)
             out.append(QuestionProposal(

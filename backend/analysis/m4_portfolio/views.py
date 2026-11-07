@@ -83,7 +83,27 @@ def generate_views(
                  dc_window_days=((evidence.end - evidence.dc_start).days if evidence.dc_start else 0), disclosure_block="\n".join(dc_lines) or "(없음)",
                  dc_only_max_conf=dc_only_max, no_news_tickers=", ".join(no_news) or "없음", no_evidence_tickers=", ".join(no_evidence) or "없음")  # fmt: skip
     system, user = load_prompts(STAGE, **vars_)  # 시스템 프롬프트는 상수 (날짜·조건은 사용자 메시지에만) → 제공자 프리픽스 캐시
-    ans = llm.complete_json(stage_tag, messages_from_prompts(system, user), validator=_check, stub_key=STAGE)
+    attempt = [0]
+
+    def _check_ids(a: dict[str, Any]) -> None:
+        """처음 답에 목록에 없는 근거 id 가 있으면 한 번 다시 받는다 (076: GEN 뷰가 ev1536614 를 ev1536611 로 잘못 적어 말없이 빠졌고
+        세트 설명에는 GEN 이야기가 남았다). 다시 받은 답에도 있으면 아래에서 그 id 를 지우고, 근거가 남지 않은 뷰는 빼며 설명에 밝힌다."""
+        _check(a)
+        attempt[0] += 1
+        if attempt[0] > 1:
+            return
+        bad = []
+        for s_ in a.get("sets") or []:
+            for v in s_.get("views") or []:
+                for raw in v.get("evidence_ids") or []:
+                    eid = str(raw).strip()
+                    if eid in evidence.ids or (eid.isdecimal() and sum(1 for p in ("ev", "dc") if p + eid in evidence.ids) == 1):
+                        continue
+                    bad.append(eid)
+        if bad:
+            raise ValueError(f"unknown evidence ids {sorted(set(bad))[:10]}; cite only ids listed in the news/disclosure lists")
+
+    ans = llm.complete_json(stage_tag, messages_from_prompts(system, user), validator=_check_ids, stub_key=STAGE)
 
     warnings: list[str] = []
     sets: list[dict[str, Any]] = []
@@ -97,6 +117,7 @@ def generate_views(
         views = []
         opposite: list[str] = []  # 오름·내림이 함께 나와 둘 다 뺀 종목 (설명 문장에 덧붙인다)
         mirrored: list[str] = []  # 'A > B' 와 'B > A' 가 함께 나와 둘 다 뺀 상대 뷰 쌍
+        no_ev: list[str] = []  # 근거 id 를 확인할 수 없어 뺀 뷰
         sid = s_.get("scenario_id")
         for v in s_.get("views", []):
             legs = list(v.get("long", [])) + list(v.get("short", []))
@@ -174,6 +195,7 @@ def generate_views(
                 ids = [i for i in ids if i not in foreign]
             if not ids:
                 warnings.append(f"{sid}: view {key} dropped (no valid evidence)")
+                no_ev.append("+".join(v["long"]) + (f">{'+'.join(v.get('short', []))}" if v.get("short") else ""))
                 continue
             if v["type"] == "absolute" and not evidence.has_evidence(v["long"][0]):
                 warnings.append(f"{sid}: absolute view on {v['long'][0]} without news/disclosure evidence dropped")
@@ -197,6 +219,8 @@ def generate_views(
             note = f" 같은 종목({', '.join(opposite)})에 오름·내림 뷰가 함께 나와 그 종목의 두 뷰는 반영하지 않았습니다." if opposite else ""
             if mirrored:
                 note += f" 서로 반대인 상대 뷰({', '.join(mirrored)} 와 그 반대)가 함께 나와 둘 다 반영하지 않았습니다."
+            if no_ev:  # 근거를 확인할 수 없어 뺀 뷰 (076: 설명은 GEN 특허 판정 뒤집기를 말하는데 그 뷰는 빠져 있었다)
+                note += f" 근거 기사를 확인할 수 없는 뷰({', '.join(no_ev)})는 반영하지 않았습니다."
             rel = sum(1 for v in views if v.get("type") == "relative" and set(opposite) & {*v.get("long", []), *v.get("short", [])})
             if note and rel:  # 남은 상대 뷰는 반영된다 — 그 종목 비중이 왜 움직였는지 (055: 메리츠 오름·내림을 뺐는데 '…> 메리츠' 상대 뷰 둘이 비중을 줄였다)
                 note += f" 그 종목이 걸린 상대 뷰 {rel}개는 반영했습니다."
@@ -237,6 +261,9 @@ def _strip_unlisted_ids(text: str, keep: set[str]) -> str:
     ev2691369 는 무관한 기사이고 리포트 근거 목록에도 없어 찾아볼 수 없었다)."""
     out = re.sub(r"(?<![A-Za-z0-9])((?:ev|dc)\d+)(?:와|과)\s*별개로\s*", lambda m: m.group(0) if m.group(1) in keep else "", text)
     out = re.sub(r"\[?(?<![A-Za-z0-9])((?:ev|dc)\d+)(?!\d)\]?(?:와|과|,)?\s*", lambda m: m.group(0) if m.group(1) in keep else "", out)
+    out = re.sub(r",\s*\)", ")", out)  # 마지막 id 를 지우면 '(ev1546230, )' 가 남았다 (078)
+    out = re.sub(r"\(\s*,\s*", "(", out)
+    out = re.sub(r",\s*,", ",", out)
     out = re.sub(r"\(\s*\)", "", out)
     return re.sub(r"\s{2,}", " ", out).strip()
 

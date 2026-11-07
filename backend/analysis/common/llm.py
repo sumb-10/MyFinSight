@@ -125,6 +125,18 @@ class StubLlm(_Base):
     ) -> dict[str, Any]:
         self._save_prompt(stage, messages, batch)
         key = stage if stage in self.answers else (stub_key or stage)  # 날짜 붙은 단계명으로 주입한 답이 있으면 그것이 우선
+        ans = self._answer(key, messages)
+        if validator:
+            try:
+                validator(ans)
+            except Exception:  # noqa: BLE001 — 실제 클라이언트처럼 한 번 다시 받는다 (답 목록이면 다음 답, 아니면 같은 답을 두 번째 검증이 판단)
+                ans = self._answer(key, messages)
+                validator(ans)
+        with self._lock:
+            self.calls.append({"stage": stage, "batch": batch, "cache_hit": False, "stub": True})
+        return ans
+
+    def _answer(self, key: str, messages: Sequence[Message]) -> dict[str, Any]:
         if key in self.answers:
             a = self.answers[key]
             if callable(a):
@@ -149,12 +161,7 @@ class StubLlm(_Base):
                     ans = load_json(p)
                 else:
                     raise FileNotFoundError(f"[llm:stub] no stub for '{key}': {p}")
-        ans = json.loads(json.dumps(ans))  # 호출자가 수정해도 원본이 바뀌지 않게
-        if validator:
-            validator(ans)
-        with self._lock:
-            self.calls.append({"stage": stage, "batch": batch, "cache_hit": False, "stub": True})
-        return ans
+        return json.loads(json.dumps(ans))  # 호출자가 수정해도 원본이 바뀌지 않게
 
 
 class OpenAiLlm(_Base):

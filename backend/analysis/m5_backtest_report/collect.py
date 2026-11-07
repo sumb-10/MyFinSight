@@ -232,7 +232,9 @@ def build_results(
     if below:
         cand_label += f" · 그중 조건을 못 채웠지만 필수 포함으로 넣은 {len(below)}개({', '.join(below[:3])}{' 등' if len(below) > 3 else ''})"
     met = sel["summary"]["metric"]
-    forced_off = [s["ticker"] for s in sel["selected"] if s.get("forced") and not M.eligible(met, s.get("metric_value"))]
+    # 필수 포함 중 지표가 없거나 자격선 밖인 종목 — 종목마다 실제 사유로 (076: ROE −4.2% 인 CRWD 를 '지표 없음·자격선 밖' 으로 뭉뚱그렸다)
+    forced_off = [s["ticker"] + (f"(자격선 밖 {M.display_metric(met, s.get('metric_value'))})" if _finite(s.get("metric_value")) else "(지표 없음)")
+                  for s in sel["selected"] if s.get("forced") and not M.eligible(met, s.get("metric_value"))]  # fmt: skip
     n_forced = int(sel["summary"].get("n_forced") or 0)
     funnel = [
         {"stage": "universe", "label_ko": "투자 가능 종목 (" + " ∪ ".join(req["constraints"]["universe"]) + ")", "count": descriptor_info.get("n_stocks", len(D.tickers(desc)))},
@@ -326,3 +328,11 @@ def build_results(
                            evidence_index=evidence_index, data_quality=bt.get("data_quality"), llm_usage=llm_usage or {"available": False},
                            sources=DB_SOURCES, parameters=parameters, warnings=warnings, warnings_summary=warnings_summary, notices=notices, notices_ko=notices_ko)  # fmt: skip
     return bundle.model_dump(mode="json")
+
+
+def _finite(x: Any) -> bool:
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return False
+    return v == v and abs(v) != float("inf")
