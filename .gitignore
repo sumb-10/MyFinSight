@@ -26,6 +26,17 @@ logs/
 # 개인 PC 백필용 (절전 설정을 바꿈)
 scripts/run_overnight.bat
 # 정기 수집은 role-a-server 레포에서만 돌림 (팀 레포에서 중복 수집 방지)
-.github/workflows/collect.yml# 분석 실행 산출물 (backend/analysis executor: output/<run_id>/, llm_cache)
+.github/workflows/collect.yml
+# 분석 실행 산출물 (backend/analysis executor: output/<run_id>/, llm_cache)
 /output/
 /module_mockup/output/
+
+# 뉴스 지식 그래프 로컬 실험 (코드·자료 모두 저장소 밖)
+/news_kg/
+
+# 미국 대형주 60 유니버스 로컬 자료 (코드·자료 모두 저장소 밖)
+/largecap60/
+
+# 시나리오 QA 실행 기록·자동 점검 요약 (run_scenarios·audit 가 만드는 자료, 로컬에만 둠)
+/docs/mvp/scenario_qa/runs/
+/docs/mvp/scenario_qa/audit/
