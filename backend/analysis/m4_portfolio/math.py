@@ -241,7 +241,9 @@ def optimize_utility(mu, cov, delta, w_base, max_stock, max_sector, sectors, max
         held = d != 0
         lo = np.where(d > 0, np.maximum(lo0, w_base), lo0)
         hi = np.maximum(lo + 1e-9, np.where(d < 0, np.minimum(hi0, w_base), hi0))
-    cons = [{"type": "eq", "fun": lambda w: w.sum() - total}] + _sector_constraints(sectors, max_sector, total)
+    # 섹터 상한에 반올림 크기의 여유를 둔다 — 저장 비중(소수 6자리 버림)을 합계에 다시 맞추면 상한에 닿은 섹터가 2e-7 넘게 되고,
+    # 그 섹터 종목이 모두 오름 뷰(하한 = 기준 비중)면 풀 수 없는 문제가 돼 방향 경계 없이 다시 풀었다 (093 2025-11-03: LGES 오름 뷰인데 −7.35%p)
+    cons = [{"type": "eq", "fun": lambda w: w.sum() - total}] + _sector_constraints(sectors, max_sector + 1e-6, total)
 
     def obj(w):
         return -(w @ mu - delta / 2 * w @ cov @ w)
@@ -253,7 +255,9 @@ def optimize_utility(mu, cov, delta, w_base, max_stock, max_sector, sectors, max
         if not getattr(r, "success", False):
             return False
         x = r.x
-        return bool(abs(x.sum() - total) <= 1e-6 and np.all(x >= lo - 1e-8) and np.all(x <= hi + 1e-8) and all(c["fun"](x) >= -1e-7 for c in cons[1:]))
+        # 허용오차는 저장 비중의 반올림(소수 6자리) 수준 — 더 빡빡하면 기준 비중을 합계에 다시 맞출 때 생기는 2e-7 초과(섹터 0.399999 → 0.4000002)
+        # 때문에 맞는 해를 모두 버리고 방향 경계 없이 다시 풀어 뷰를 거스르는 비중이 나왔다 (093 2025-11-03: LGES 오름 뷰인데 −7.35%p)
+        return bool(abs(x.sum() - total) <= 1e-6 and np.all(x >= lo - 1e-6) and np.all(x <= hi + 1e-6) and all(c["fun"](x) >= -1e-6 for c in cons[1:]))
 
     res = solve(w_base)
     # 시작점(기준 비중)에서 경계·섹터 상한·합계가 한꺼번에 걸리면 SLSQP 가 더 나은 방향이 있어도 시작점에서 '성공' 으로 멈춘다

@@ -58,7 +58,7 @@ def test_rounded_baseline_does_not_make_bl_infeasible(monkeypatch, n_it, legacy_
     ports, _, _ = BL.build_bl(*args)
     p = ports[0]
     assert not any(a.startswith("optimizer_failed") for a in p["active_constraints"])
-    assert abs(sum(p["weights"].values()) - intended_total) < 5e-6
+    assert abs(sum(p["weights"].values()) - intended_total) < 1e-6 * len(p["weights"]) + 1e-9  # 종목마다 소수 6자리 버림 (저장 정책)
     assert sum(list(p["weights"].values())[:n_it]) <= 0.4 + 5e-6
     assert max(p["weights"].values()) <= 0.15 + 1e-6
     assert max(abs(d) for d in p["delta_vs_baseline"].values()) > 0.01
