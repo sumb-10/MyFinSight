@@ -144,6 +144,7 @@ describe("분석 당시 투자성향", () => {
     const getProfile = vi.fn(async () => ({ profile_id: "p", current_version: 9, versions: [], profile: { diagnosis: { answers: {}, computed_tendency: "공격투자형", final_tendency: "공격투자형" } } }))
     render(<ServiceContext.Provider value={{ ...service(d), getProfile } as unknown as AnalysisService}><ReportDetail reportId="run_1" sec="market" /></ServiceContext.Provider>)
     const fit = (await screen.findByRole("heading", { name: "내 투자 조건에 맞나요?" })).closest("section")!
+    fireEvent.click(within(fit).getByRole("button", { name: /조건별 자세한 결과/ }))  // 카드 4는 체크리스트가 먼저, 조건별 카드는 접혀 있다
     expect(fit).toHaveTextContent("이번 분석의 변동성 기준: 중간 변동성 기준투자성향: 위험중립형")
     fireEvent.click(screen.getByRole("button", { name: /요청 조건 확인/ }))
     expect(screen.getByText("위험중립형 · 손실 감내 수준 30.0% · 손실 시 보유")).toBeInTheDocument()
@@ -174,17 +175,22 @@ describe("리포트 상단 탐색·용어", () => {
     const navs = screen.getAllByRole("navigation", { name: "리포트 섹션" })
     expect(navs).toHaveLength(1)  // 예전 왼쪽 목차 + 좁은 화면 칩이 하나로
     const tabs = within(navs[0]).getAllByRole("button").map((b) => b.textContent)
-    expect(tabs).toEqual(["결과 요약", "판단 이유", "종목·비중", "기업", "과거 성과", "내 요청", "주의 사항"])  // 이 문서에 market·references 섹션은 없다
+    expect(tabs).toEqual(["결과 요약", "종목 선정", "과거 성과", "요청·주의·자료"])  // 섹션 묶음 단위 탭. 이 문서에 market 섹션은 없다
     expect(within(navs[0]).getByRole("button", { name: "결과 요약" })).toHaveAttribute("aria-current", "true")
-    fireEvent.click(within(navs[0]).getByRole("button", { name: "기업" }))
-    expect(within(navs[0]).getByRole("button", { name: "기업" })).toHaveAttribute("aria-current", "true")
-    expect(section(/왜 이 기업들을 선택했나요/)).toHaveAttribute("aria-expanded", "true")  // 섹션 제목은 질문형 그대로
+    fireEvent.click(within(navs[0]).getByRole("button", { name: "종목 선정" }))
+    expect(within(navs[0]).getByRole("button", { name: "종목 선정" })).toHaveAttribute("aria-current", "true")
+    expect(section(/왜 이런 투자 전략이 선택되었나요/)).toHaveAttribute("aria-expanded", "true")  // 묶음의 첫 섹션을 펼친다 (섹션 제목은 질문형 그대로)
+    expect(screen.getByRole("heading", { name: "종목 선정", level: 3 })).toBeInTheDocument()  // 아래 접이식 섹션도 같은 묶음 소제목으로 묶인다
     expect(screen.queryByRole("complementary")).toBeNull()
   })
-  it("날짜 넷을 구분해 보여 주고, 더보기에 출처 전체·계산 조건·실행 기록이 있다", async () => {
+  it("헤더에는 백테스트 기간만, 나머지 날짜는 (?) 도움말 안에 두고, 더보기에 출처 전체·계산 조건·실행 기록이 있다", async () => {
     show(doc())
     const dates = await screen.findByLabelText("리포트 날짜")
-    for (const t of ["작성일", "분석 기준일", "종목 선정 기준일", "백테스트 기간", "2023-10-30 ~ 2026-10-30"]) expect(within(dates).getByText(t)).toBeInTheDocument()
+    for (const t of ["백테스트 기간", "2023-10-30 ~ 2026-10-30"]) expect(within(dates).getByText(t)).toBeInTheDocument()
+    for (const t of ["작성일", "분석 기준일", "종목 선정 기준일"]) expect(within(dates).queryByText(t)).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: /날짜 구분/ }))
+    const other = screen.getByLabelText("다른 기준 날짜")
+    for (const t of ["작성일", "분석 기준일", "종목 선정 기준일"]) expect(within(other).getByText(t)).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /더보기/ }))
     for (const n of [/출처 전체 \(0\)/, /계산 조건/, /실행 기록/]) expect(screen.getByRole("menuitem", { name: n })).toBeInTheDocument()
   })

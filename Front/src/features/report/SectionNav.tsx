@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { BookOpen, ChevronLeft, ChevronRight } from "lucide-react"
 import type { ReportDoc } from "../../api/types"
+import { groupsFor } from "./navGroups"
 
 /** 사용자에게 보이는 섹션 제목 (질문형). 섹션 ID 는 서버 것 그대로 쓰고, 모르는 섹션은 서버 제목을 쓴다. */
 export const SECTION_TITLE: Record<string, string> = {
@@ -33,8 +34,8 @@ export function tabList(doc: ReportDoc): [string, string][] {
 
 /** 상단 고정 가로 탭: 리포트 헤더의 맨 아랫줄(구분선 위 밑줄 탭)이고, 스크롤하면 이 줄만 화면 위에 남는다. 배경은 페이지와 같은 색이라 헤더와 한 덩어리로 보인다.
  *  탭 줄만 가로로 움직이고(넘치면 양끝 화살표), 지금 보는 섹션에 밑줄을 둔다. ←/→·Home/End 로 탭 사이를 옮긴다. 오른쪽 끝의 「투자 용어 설명」은 줄과 함께 고정된다. */
-export function ReportTabs({ doc, active, onJump, onGlossary }: { doc: ReportDoc; active: string; onJump: (id: string) => void; onGlossary: () => void }) {
-  const list = tabList(doc)
+export function ReportTabs({ doc, active, onJump, onGlossary }: { doc: ReportDoc; active: string; onJump: (groupId: string) => void; onGlossary: () => void }) {
+  const list = groupsFor(doc).map((g) => [g.id, g.label] as [string, string])  // 상단 탭은 묶음(navGroups) 단위. active·onJump 도 묶음 ID
   const strip = useRef<HTMLDivElement>(null)
   const [edge, setEdge] = useState({ l: false, r: false })
   const sync = useCallback(() => { const el = strip.current; if (el) setEdge({ l: el.scrollLeft > 2, r: el.scrollLeft + el.clientWidth < el.scrollWidth - 2 }) }, [])
@@ -79,7 +80,7 @@ export function ReportTabs({ doc, active, onJump, onGlossary }: { doc: ReportDoc
           </div>
           {edge.r && <button type="button" tabIndex={-1} aria-hidden onClick={() => nudge(1)} className={`${arrow} right-0 justify-end`}><ChevronRight className="size-4" /></button>}
         </div>
-        <button type="button" onClick={onGlossary} aria-label="투자 용어 설명" className="my-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <button type="button" onClick={onGlossary} aria-label="투자 용어 설명" data-tour="glossary" className="my-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
           <BookOpen className="size-4" aria-hidden /><span className="hidden sm:inline">투자 용어 설명</span><span className="sm:hidden">용어</span>
         </button>
       </div>

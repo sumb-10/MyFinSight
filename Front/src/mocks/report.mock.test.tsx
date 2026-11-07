@@ -59,6 +59,7 @@ describe("카드 4와 판단 이유: 분석 당시 성향·위험 기준·구조
   it("주의 시나리오: 정확한 5단계 성향(자동 진단 → 최종 선택), 기준이 다른 이유, 참고로 바뀐 검사, 추천 순위 기준 전체", async () => {
     await open("mock_rep_caution")
     const fit = screen.getByRole("heading", { name: "내 투자 조건에 맞나요?" }).closest("section")!
+    fireEvent.click(within(fit).getByRole("button", { name: /조건별 자세한 결과/ }))  // 카드 4는 체크리스트가 먼저, 조건별 카드는 접혀 있다
     const vol = within(fit).getByText("변동성 적합").closest("li")!  // 서버 요약에는 없던 「기준 이내 참고 검사」도 구조화 값으로 보인다
     expect(vol).toHaveTextContent("투자성향: 위험중립형 (자동 진단 안정추구형 → 최종 선택 위험중립형)")
     expect(vol).toHaveTextContent("변동성이 너무 크지 않았으면")
@@ -69,7 +70,9 @@ describe("카드 4와 판단 이유: 분석 당시 성향·위험 기준·구조
   })
   it("뉴스 꺼짐(공격투자형): 상한 없는 변동성 기준의 결과도 카드 4에 보이고 상한을 만들지 않는다", async () => {
     await open("mock_rep_newsoff")
-    const vol = within(screen.getByRole("heading", { name: "내 투자 조건에 맞나요?" }).closest("section")!).getByText("변동성 적합").closest("li")!
+    const fit = screen.getByRole("heading", { name: "내 투자 조건에 맞나요?" }).closest("section")!
+    fireEvent.click(within(fit).getByRole("button", { name: /조건별 자세한 결과/ }))
+    const vol = within(fit).getByText("변동성 적합").closest("li")!
     expect(vol).toHaveTextContent("상한 없음"); expect(vol).not.toHaveTextContent(/\d% 이하/)
     expect(vol).toHaveTextContent("투자성향: 공격투자형")
   }, 15000)  // 리포트 전체를 그려 부하가 높을 때 5초를 넘길 수 있다
