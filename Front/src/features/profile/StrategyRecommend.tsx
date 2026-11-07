@@ -6,14 +6,14 @@ import { useResource } from "../../state/useResource"
 import { Button } from "../../ui"
 import { MockTag } from "../report/proposedView"
 import { Part } from "./parts"
-import { TEMPLATE_INFO, WEIGHTING_INFO } from "./strategyInfo"
+import { templateLabel, weightingLabel } from "./strategyInfo"
 
 // 투자성향 기반 추천 전략 (제안 기능): 서비스에 recommendStrategy 가 있을 때만 보인다 — 지금은 목업의 미리 정한 결과뿐이고, 실제 추천 규칙이 아니다.
 
 type Rec = ProposedStrategyRecommendation["recommended"]
 export const asPref = (r: Rec): Partial<StrategyPreference> => ({ template: r.template as Template, baseline_weighting: r.baseline_weighting as Weighting, use_news_tilt: r.use_news_tilt })
 const same = (r: Rec, v: StrategyPreference) => r.template === v.template && r.baseline_weighting === v.baseline_weighting && r.use_news_tilt === v.use_news_tilt
-const text = (r: Rec) => [TEMPLATE_INFO[r.template as Template]?.name ?? r.template, WEIGHTING_INFO[r.baseline_weighting as Weighting]?.name ?? r.baseline_weighting, r.use_news_tilt ? "뉴스·공시 반영" : "뉴스·공시 반영 안 함"]
+const text = (r: Rec) => [templateLabel(r.template), weightingLabel(r.baseline_weighting), r.use_news_tilt ? "뉴스·공시 반영" : "뉴스·공시 반영 안 함"]
 
 /** 추천 결과. 없으면(일반 모드) null — 화면은 지금처럼 직접 고르기만 한다. */
 export function useRecommendation(tendency: Tendency | undefined) {

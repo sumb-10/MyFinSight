@@ -7,7 +7,7 @@ import { Button, inputClass } from "../../ui"
 import { ko } from "../../lib/format"
 import { benchName, listText, money, pctText, rebalanceText, usdFloor, yearsText } from "../profile/format"
 import { NumberInput } from "../profile/inputs"
-import { NEWS_INFO, TEMPLATE_INFO, WEIGHTING_INFO } from "../profile/strategyInfo"
+import { NEWS_INFO, TEMPLATE_INFO, templateLabel, WEIGHTING_INFO, weightingLabel } from "../profile/strategyInfo"
 import { DetailDialogShell } from "./DetailDialogShell"
 
 /** 홈의 "상세 조건": 이번 요청에만 적용할 조건. 프로필은 바꾸지 않고, 프로필과 다른 값만 overrides(필드 경로 → 값)로 보낸다. */
@@ -157,8 +157,8 @@ function changeText(k: string, v: unknown, cur: "KRW" | "USD"): string {
     case "constraints.exclude_tickers": case "constraints.exclude_themes": case "constraints.exclude_sectors": return listText(v as string[])
     case "constraints.min_market_cap_usd": case "constraints.min_avg_daily_volume_usd": return usdFloor(Number(v))
     case "constraints.rebalance": return rebalanceText(v as Rebalance)
-    case "strategy_preference.template": return TEMPLATE_INFO[v as Template]?.name ?? String(v)
-    case "strategy_preference.baseline_weighting": return WEIGHTING_INFO[v as Weighting]?.name ?? String(v)
+    case "strategy_preference.template": return templateLabel(String(v))
+    case "strategy_preference.baseline_weighting": return weightingLabel(String(v))
     case "strategy_preference.use_news_tilt": return v ? "켜짐" : "꺼짐"
     default: return ko(v)
   }
@@ -423,8 +423,8 @@ export function DetailConditionsDialog({ profile, initial, onApply, close, title
         ) : (
           <SectionCard title="투자 전략">
             <div className={twoCols}>
-              <Item id={dom("template")} label="어떤 기업에 투자할까요?" changed={has("strategy_preference.template")} help={thisTemplate?.desc}><select id={dom("template")} className={inputClass} value={f.template} onChange={(e) => set("template", e.target.value as Template)}>{(opt?.templates ?? ["momentum", "low_per", "quality", "low_volatility", "high_dividend"]).map((x) => <option key={x} value={x}>{TEMPLATE_INFO[x]?.name ?? ko(x)}</option>)}</select></Item>
-              <Item id={dom("weighting")} label="투자금을 어떻게 나눌까요?" changed={has("strategy_preference.baseline_weighting")} help={thisWeighting?.desc}><select id={dom("weighting")} className={inputClass} value={f.weighting} onChange={(e) => set("weighting", e.target.value as Weighting)}>{(opt?.weightings ?? ["equal_weight", "market_cap", "inverse_volatility", "min_variance"]).map((x) => <option key={x} value={x}>{WEIGHTING_INFO[x]?.name ?? ko(x)}</option>)}</select></Item>
+              <Item id={dom("template")} label="어떤 기업에 투자할까요?" changed={has("strategy_preference.template")} help={thisTemplate?.desc}><select id={dom("template")} className={inputClass} value={f.template} onChange={(e) => set("template", e.target.value as Template)}>{(opt?.templates ?? ["momentum", "low_per", "quality", "low_volatility", "high_dividend"]).map((x) => <option key={x} value={x}>{TEMPLATE_INFO[x] ? templateLabel(x) : ko(x)}</option>)}</select></Item>
+              <Item id={dom("weighting")} label="투자금을 어떻게 나눌까요?" changed={has("strategy_preference.baseline_weighting")} help={thisWeighting?.desc}><select id={dom("weighting")} className={inputClass} value={f.weighting} onChange={(e) => set("weighting", e.target.value as Weighting)}>{(opt?.weightings ?? ["equal_weight", "market_cap", "inverse_volatility", "min_variance"]).map((x) => <option key={x} value={x}>{WEIGHTING_INFO[x] ? weightingLabel(x) : ko(x)}</option>)}</select></Item>
             </div>
             <Item label="뉴스·공시 반영" changed={has("strategy_preference.use_news_tilt")} help={NEWS_INFO.caution}><label className="flex cursor-pointer items-start gap-2"><input type="checkbox" className="mt-1 accent-blue-700" checked={f.use_news_tilt} onChange={(e) => set("use_news_tilt", e.target.checked)} /><span>{NEWS_INFO.title}</span></label></Item>
           </SectionCard>

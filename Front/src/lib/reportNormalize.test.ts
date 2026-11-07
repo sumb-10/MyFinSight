@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { groupBlocks, normalizeDoc } from "./reportNormalize"
+import { dropCodeIds, groupBlocks, hideCodeIds, normalizeDoc } from "./reportNormalize"
 import type { Block, ReportDoc } from "../api/types"
 
 const base = (): ReportDoc => ({
@@ -44,5 +44,33 @@ describe("normalizeDoc", () => {
     const blocks = [{ type: "callout", tone: "info", title_ko: "a", text_ko: "x" }, { type: "callout", tone: "info", title_ko: "b", text_ko: "x", group_ko: "G" }, { type: "callout", tone: "info", title_ko: "c", text_ko: "x", group_ko: "G", group_open: true }, { type: "callout", tone: "info", title_ko: "d", text_ko: "x" }, { type: "callout", tone: "info", title_ko: "e", text_ko: "x", group_ko: "G" }] as Block[]
     const g = groupBlocks(blocks)
     expect(g.map((x) => [x.group_ko ?? null, x.blocks.length, x.open ?? null])).toEqual([[null, 1, null], ["G", 2, true], [null, 1, null], ["G", 1, false]])
+  })
+})
+
+describe("hideCodeIds: 화면 문장의 지표 ID 괄호 지우기", () => {
+  it("소문자·밑줄 ID 괄호만 지우고, 용어·설명 괄호는 둔다", () => {
+    expect(dropCodeIds("모멘텀(return_12m_1m)은 최근 12개월 주가 수익률에서 가장 최근 1개월을 뺀 값입니다.")).toBe("모멘텀은 최근 12개월 주가 수익률에서 가장 최근 1개월을 뺀 값입니다.")
+    expect(dropCodeIds("선정 지표(return_12m_1m) 계산 가능")).toBe("선정 지표 계산 가능")
+    expect(dropCodeIds("계산할 수 있었던 종목은 5개 (return_12m_1m)였고, 고배당(dividend_yield_ttm)은")).toBe("계산할 수 있었던 종목은 5개였고, 고배당은")
+    const keep = "퀄리티(ROE) · 비교지수(SPY) · 최근 12개월 수익률 (최근 1개월 제외) · (단위: %)"
+    expect(dropCodeIds(keep)).toBe(keep)
+  })
+  it("섹션의 *_ko·문단만 고치고 ID 값은 그대로, 바꿀 것이 없으면 같은 객체", () => {
+    const d = base()
+    d.sections[1].blocks.push(
+      { type: "callout", tone: "info", title_ko: "선정 지표", text_ko: "모멘텀(return_12m_1m)은 높은 순서로 뽑습니다." } as Block,
+      { type: "funnel", title_ko: "선정 과정", items: [{ label_ko: "선정 지표(return_12m_1m) 계산 가능", count: 5 }] } as unknown as Block,
+      { type: "paragraphs", items: ["지표를 계산할 수 있었던 종목은 5개 (return_12m_1m)였습니다."] } as Block,
+      { type: "companies", title_ko: "선정 종목", metric: "return_12m_1m", metric_ko: "모멘텀", items: [] } as unknown as Block,
+    )
+    const out = hideCodeIds(d)
+    const blocks = out.sections[1].blocks.slice(-4) as unknown as Record<string, unknown>[]
+    expect(blocks[0].text_ko).toBe("모멘텀은 높은 순서로 뽑습니다.")
+    expect((blocks[1].items as { label_ko: string }[])[0].label_ko).toBe("선정 지표 계산 가능")
+    expect(blocks[2].items).toEqual(["지표를 계산할 수 있었던 종목은 5개였습니다."])
+    expect(blocks[3].metric).toBe("return_12m_1m")  // 계산·조회에 쓰는 ID 는 그대로
+    expect(out.sections[0]).toBe(d.sections[0])       // 바뀐 것이 없는 섹션은 같은 객체
+    const clean = base()
+    expect(hideCodeIds(clean)).toBe(clean)
   })
 })

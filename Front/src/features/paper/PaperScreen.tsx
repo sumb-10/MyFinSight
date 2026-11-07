@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
-import { Activity, ChevronRight, FileText, Link2, Pause, PencilLine, Play, RefreshCw } from "lucide-react"
+import { Activity, BellRing, ChevronRight, FileText, Link2, Pause, PencilLine, Play, RefreshCw } from "lucide-react"
 import { useService } from "../../app/providers"
 import { navigate } from "../../app/router"
 import { errorMessage } from "../../api/client"
@@ -18,6 +18,10 @@ import { FxStatus, KrwPerformance } from "./KrwPerformance"
 import { MockTag } from "../report/proposedView"
 import { paperBasis, paperStrategy, samePapers } from "./paperLabel"
 import { findReportRow, reportName } from "../../lib/reportName"
+import { initPapers, markRebalanceSeen, useSeen } from "../../lib/seen"
+import { RebalanceCard } from "./RebalanceCard"
+import { freshRebalance } from "./rebalance"
+import { useRebalanceAlerts } from "../attention"
 
 /** Module6 모의투자: 목록(#/paper) 과 상세(#/paper/:id). 서버가 저장한 수치만 보여 주고 화면에서 다시 계산하지 않는다 (원화는 날짜별 환율로 표시만 바꾼다). */
 export function PaperScreen({ paperId }: { paperId?: string }) {
@@ -73,6 +77,7 @@ function PaperList() {
   const svc = useService()
   const res = useResource(() => svc.listPaper(), [svc])
   const reports = useResource(() => svc.listReports(), [svc])  // 원본 리포트 이름 (리포트 화면과 같은 기준)
+  const alerts = useRebalanceAlerts(res.data)  // 확인하지 않은 리밸런싱 거래가 있는 모의투자
   if (res.status === "loading" && !res.data) return <Loading label="모의투자 목록을 불러오는 중…" />
   if (res.status === "error") return <ErrorState message={res.error ?? ""} retry={res.reload} />
   const rows = res.data ?? []
@@ -97,7 +102,7 @@ function PaperList() {
                   <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums"><ListValue r={r} />{r.contributions_total_usd > 0 && <div className="text-xs text-slate-500">적립 포함</div>}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums"><ListReturn r={r} /></td>
                   <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">{r.excess_return == null ? "–" : fmt(r.excess_return, "pp")}</td>
-                  <td className="whitespace-nowrap px-4 py-3"><span className="flex flex-col items-start gap-1">{runBadge(r)}{r.update_status === "delayed" && dataBadge(r)}</span></td>
+                  <td className="whitespace-nowrap px-4 py-3"><span className="flex flex-col items-start gap-1">{runBadge(r)}{r.update_status === "delayed" && dataBadge(r)}{alerts.has(r.paper_id) && <Badge tone="blue"><BellRing className="size-3" aria-hidden />리밸런싱 확인</Badge>}</span></td>
                 </tr>
               ))}
             </tbody>
@@ -223,6 +228,8 @@ function PaperDetailScreen({ paperId }: { paperId: string }) {
   const [nameTick, setNameTick] = useState(0)
   const [naming, setNaming] = useState(false)
   const [siblings, setSiblings] = useState(false)
+  const [tradesOpen, setTradesOpen] = useState(false)
+  const seen = useSeen(svc.mode)  // 이 브라우저에서 확인한 리밸런싱 번호 (서버에는 없다)
   const pname = useResource(() => (svc.getPaperName ? svc.getPaperName(paperId) : Promise.resolve(null)), [svc, paperId, nameTick]).data  // 제안 기능: 목업에서만 값이 있다
   const allPapers = useResource(() => svc.listPaper(), [svc, nameTick]).data  // 같은 리포트의 다른 모의투자 구분
   const d = override ?? res.data
@@ -233,6 +240,7 @@ function PaperDetailScreen({ paperId }: { paperId: string }) {
   const partial = useResource(() => (runId ? svc.getRunPartial(runId).catch(() => null) : Promise.resolve(null)), [svc, runId])  // 회사명: 모의투자 응답에는 없고 실행의 선정 결과에 있다
   const names = useMemo(() => new Map((partial.data?.selection?.rows ?? []).filter((x) => x.name).map((x) => [x.ticker, x.name as string])), [partial.data])
   const fx = useMemo(() => (d ? fxByDate(d) : new Map<string, number>()), [d])
+  useEffect(() => { if (d) initPapers(svc.mode, [d.summary], svc.seenSeed?.()) }, [svc, d])  // 처음 보는 모의투자는 지금까지의 리밸런싱을 확인한 것으로 둔다
   if (res.status === "loading" && !d) return <Loading label="모의투자를 불러오는 중…" />
   if (res.status === "error" && !d) return <EmptyState title="이 모의투자를 열 수 없습니다" description={res.error ?? ""} action={<Button onClick={() => navigate({ page: "paper" })}>목록으로</Button>} />
   if (!d) return null
@@ -257,6 +265,8 @@ function PaperDetailScreen({ paperId }: { paperId: string }) {
   const { rows, gap } = chartRows(d)
   const events = recentEvents(d)
   const stopped = p.status === "stopped"
+  const fresh = freshRebalance(d, seen.papers[paperId])  // 확인하지 않은 리밸런싱 → 거래 카드를 강조
+  const showAllTrades = () => { setTradesOpen(true); requestAnimationFrame(() => document.getElementById("paper-trades")?.scrollIntoView?.({ behavior: "smooth", block: "start" })) }
   const others = samePapers(allPapers ?? [], p.report_id).filter((x) => x.paper_id !== paperId)
   const relink = async () => { setErr(null); try { await svc.setPaperName!(paperId, { mode: "linked" }); setNameTick((n) => n + 1) } catch (e) { setErr(errorMessage(e)) } }
   // 더보기: 원본 리포트 · (목업) 이름 바꾸기·다시 연동 · 같은 리포트로 시작한 다른 모의투자(목록 창)
@@ -316,6 +326,9 @@ function PaperDetailScreen({ paperId }: { paperId: string }) {
 
       {k && <KrwPerformance k={k} />}
 
+      {/* 리밸런싱 거래: 접힌 상세 기록에 숨기지 않고 성과 카드 바로 아래(위험 위)에 둔다 */}
+      <RebalanceCard d={d} cur={cur} fx={fx} names={names} fresh={!!fresh} onAck={() => fresh && markRebalanceSeen(svc.mode, paperId, fresh.seq)} onAll={showAllTrades} />
+
       <Part title="위험" desc="운용 수익률과 같은 기준으로 계산한 낙폭입니다.">
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
           <Small label="현재 낙폭" value={pct(s.drawdown)} />
@@ -356,7 +369,7 @@ function PaperDetailScreen({ paperId }: { paperId: string }) {
         ) : <p className="text-sm text-slate-600">운용 기록이 없습니다.</p>}
       </Part>
 
-      <PartDisclosure title="거래·리밸런싱 상세" summary={`${d.rebalances.length}건`}>
+      <div id="paper-trades" className="scroll-mt-6"><PartDisclosure title="거래·리밸런싱 상세" summary={`${d.rebalances.length}건`} open={tradesOpen} onToggle={setTradesOpen}>
         {d.rebalances.length === 0 ? <p className="text-sm text-slate-600">기록이 없습니다.</p> : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-sm">
@@ -373,7 +386,7 @@ function PaperDetailScreen({ paperId }: { paperId: string }) {
             </table>
           </div>
         )}
-      </PartDisclosure>
+      </PartDisclosure></div>
 
       <PartDisclosure title="일별 평가 기록" summary={`${d.snapshots.length}일`}>
         {d.snapshots.length === 0 ? <p className="text-sm text-slate-600">기록이 없습니다.</p> : (

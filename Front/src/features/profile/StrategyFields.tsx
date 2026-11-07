@@ -19,6 +19,8 @@ export function StrategyFields({ value, onChange, templates, weightings, recomme
 const sortBy = <T extends string>(xs: T[], order: T[]) => [...xs].sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99)
 
 
+/** 쉬운 이름 + 괄호 전문용어 ("최근 주가 상승세가 좋은 기업(모멘텀)"). 전문용어는 이름과 같은 색·굵기 — 아래 회색 설명과 헷갈리지 않게 이름의 일부로 보인다. */
+const Named = ({ name, short }: { name: string; short: string }) => <>{name}({short})</>
 const RecBadge = () => <span className="ml-1.5 inline-flex items-center rounded border border-blue-200 bg-white px-1.5 py-px align-middle text-[11px] font-semibold text-blue-700">추천</span>
 const cardClass = (on: boolean) => `rounded-xl border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-blue-500 ${on ? "border-blue-400 bg-blue-50 ring-1 ring-blue-200" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`
 
@@ -32,7 +34,7 @@ function TemplatePicker({ value, options, onChange, recommended }: { value: Temp
           const on = value === t
           return (
             <button key={t} type="button" role="radio" aria-checked={on} onClick={() => onChange(t)} className={cardClass(on)}>
-              <span className={`block text-sm font-semibold ${on ? "text-blue-900" : "text-slate-800"}`}>{i?.name ?? t}{recommended === t && <><RecBadge /><MockTag /></>}</span>
+              <span className={`block text-sm font-semibold ${on ? "text-blue-900" : "text-slate-800"}`}>{i ? <Named name={i.name} short={i.short} /> : t}{recommended === t && <><RecBadge /><MockTag /></>}</span>
               <span className="mt-0.5 block text-xs leading-5 text-slate-500">{i?.desc}</span>
             </button>
           )
@@ -40,12 +42,11 @@ function TemplatePicker({ value, options, onChange, recommended }: { value: Temp
       </div>
       {cur && (
         <div className="space-y-2 rounded-xl bg-slate-50 p-4 text-xs leading-5 text-slate-700">
-          <p className="text-sm font-semibold text-slate-900">선택: {cur.name}</p>
+          <p className="text-sm font-semibold text-slate-900">선택: <Named name={cur.name} short={cur.short} /></p>
           <p><b className="text-emerald-700">장점</b> {cur.pros}</p>
           <p><b className="text-amber-700">주의할 점</b> {cur.caution}</p>
           <Disclosure size="sm" title="자세히 알아보기">
             <dl className="space-y-1 text-xs leading-5 text-slate-600">
-              <div><dt className="inline font-semibold">전문 용어 </dt><dd className="inline">{cur.term}</dd></div>
               <div><dt className="inline font-semibold">순위를 매기는 지표 </dt><dd className="inline">{cur.metric}</dd></div>
             </dl>
           </Disclosure>
@@ -66,7 +67,7 @@ function WeightingPicker({ value, options, onChange, recommended }: { value: Wei
           return (
             <button key={w} type="button" role="radio" aria-checked={on} onClick={() => onChange(w)} className={`flex gap-3 ${cardClass(on)}`}>
               <span className="min-w-0 flex-1">
-                <span className={`block text-sm font-semibold ${on ? "text-blue-900" : "text-slate-800"}`}>{i?.name ?? w}{recommended === w && <><RecBadge /><MockTag /></>}</span>
+                <span className={`block text-sm font-semibold ${on ? "text-blue-900" : "text-slate-800"}`}>{i ? <Named name={i.name} short={i.short} /> : w}{recommended === w && <><RecBadge /><MockTag /></>}</span>
                 <span className="mt-0.5 block text-xs leading-5 text-slate-500">{i?.desc}</span>
               </span>
               {i && <ExampleBars weights={i.example} active={on} />}
@@ -77,9 +78,9 @@ function WeightingPicker({ value, options, onChange, recommended }: { value: Wei
       <p className="mt-2 text-[11px] text-slate-400">막대는 <b>설명용 예시</b>입니다 (4개 기업 A~D 가정). 실제 분석 결과가 아닙니다.</p>
       {cur && (
         <div className="mt-2 space-y-2 rounded-xl bg-slate-50 p-4 text-xs leading-5 text-slate-700">
-          <p className="text-sm font-semibold text-slate-900">선택: {cur.name}</p>
+          <p className="text-sm font-semibold text-slate-900">선택: <Named name={cur.name} short={cur.short} /></p>
           <p><b className="text-amber-700">주의할 점</b> {cur.caution}</p>
-          <p className="text-slate-500">전문 용어: {cur.term}{cur.exampleNote ? ` · 예시에서 ${cur.exampleNote}` : ""} · 리포트에서는 비교를 위해 다른 나누는 방식의 결과도 함께 계산해 보여 줍니다.</p>
+          <p className="text-slate-500">{cur.exampleNote ? `예시에서 ${cur.exampleNote} · ` : ""}리포트에서는 비교를 위해 다른 나누는 방식의 결과도 함께 계산해 보여 줍니다.</p>
         </div>
       )}
     </Part>

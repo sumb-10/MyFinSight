@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest"
-import { fireEvent, render, screen, within } from "@testing-library/react"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { ServiceContext } from "../../app/providers"
 import type { AnalysisService } from "../../api/service"
 import type { PaperDetail, PaperIn, PaperPortfolio, PaperPreview, PaperRebalance, PaperSnapshot, PaperSummary } from "../../api/types"
@@ -28,7 +28,7 @@ const detail = (cur: "KRW" | "USD", snapshots: PaperSnapshot[], over: { p?: Part
   const summary = { paper_id: "p1", name_ko: portfolio.name_ko, status: portfolio.status, start_date: "2026-01-02", last_date: last?.date ?? null, days_tracked: snapshots.length, initial_capital: cap(cur), value_usd: last?.value_usd ?? 10_000, contributions_total_usd: 0, gain_usd: 500, return_since_start: 0.05, benchmark: "SPY", benchmark_return_since_start: 0.02, excess_return: 0.03, drawdown: -0.02, max_drawdown: -0.08, n_rebalances: 1, update_status: "ok", delayed_reason_ko: null, last_refresh_at: "2026-03-01T10:00:00+09:00", data_ceiling: "2026-03-01", ...over.s } as unknown as PaperSummary
   return { portfolio, summary, snapshots, rebalances: over.rebalances ?? [], series: { dates: snapshots.map((x) => x.date), value_usd: snapshots.map((x) => x.value_usd), benchmark_value_usd: [], return_since_start: snapshots.map((x) => x.return_since_start), benchmark_return_since_start: snapshots.map((x) => x.benchmark_return_since_start ?? null), drawdown: [] } }
 }
-const service = (over: Partial<Record<keyof AnalysisService, unknown>>) => ({ listReports: () => Promise.resolve([]), listPaper: () => Promise.resolve([]), getRunPartial: () => Promise.resolve({ run_id: "run1", intent: null, selection: { as_of: "x", n_selected: 2, rows: [{ ticker: "MU", name: "Micron Technology" }] } }), ...over }) as unknown as AnalysisService
+const service = (over: Partial<Record<keyof AnalysisService, unknown>>) => ({ mode: "api", listReports: () => Promise.resolve([]), listPaper: () => Promise.resolve([]), getRunPartial: () => Promise.resolve({ run_id: "run1", intent: null, selection: { as_of: "x", n_selected: 2, rows: [{ ticker: "MU", name: "Micron Technology" }] } }), ...over }) as unknown as AnalysisService
 const show = (d: PaperDetail, over: Partial<Record<keyof AnalysisService, unknown>> = {}) => render(<ServiceContext.Provider value={service({ getPaper: () => Promise.resolve(d), ...over })}><PaperScreen paperId="p1" /></ServiceContext.Provider>)
 const openPart = (name: RegExp) => fireEvent.click(screen.getByRole("button", { name }))
 
@@ -45,8 +45,9 @@ describe("모의투자 통화와 환율", () => {
     expect(screen.getAllByText("14,000,000원")).toHaveLength(2)  // 적립이 없어 초기 투자금 = 총 납입금
     expect(screen.getByText(/^납입 제외 손익 .+ USD \(수수료 차감 후\)$/)).toBeInTheDocument()
     openPart(/거래·리밸런싱 상세/)
-    expect(screen.getByText("280,000원")).toBeInTheDocument()  // 그날 환율 1,400 으로 거래금액 환산
-    expect(screen.getByText("1,400원")).toBeInTheDocument()
+    const trades = within(screen.getByRole("button", { name: /거래·리밸런싱 상세/ }).closest("section")!)
+    expect(trades.getByText("280,000원")).toBeInTheDocument()  // 그날 환율 1,400 으로 거래금액 환산
+    expect(trades.getByText("1,400원")).toBeInTheDocument()
   })
   it("달러 모의투자는 저장된 통화대로 USD 로 보여 주고 원화 안내를 달지 않는다", async () => {
     show(detail("USD", [snap("2026-01-02", 10_000), snap("2026-02-02", 11_000)]))
@@ -185,3 +186,47 @@ describe("모의투자 시작", () => {
     expect(screen.getByText("12,600,000원")).toBeInTheDocument()
   })
 })
+
+describe("리밸런싱 거래 (첫 화면) · 리밸런싱 알림", () => {
+  beforeEach(() => { window.localStorage.clear(); window.sessionStorage.clear() })  // 앞 테스트가 남긴 확인 기록을 지운다
+  const t = (ticker: string, side: "buy" | "sell", value_usd: number) => ({ ticker, side, shares: value_usd / 100, price: 100, value_usd })
+  const rebs: PaperRebalance[] = [
+    { date: "2026-01-02", seq: 0, kind: "initial", before_weights: {}, target_weights: {}, applied_weights: {}, trades: [t("MU", "buy", 6000), t("NOW", "buy", 3000)], commission_usd: 4.5, turnover: 1, fallback: false, skipped: false },
+    { date: "2026-02-02", seq: 1, kind: "rebalance", before_weights: {}, target_weights: {}, applied_weights: {}, trades: [t("MU", "buy", 200), t("NOW", "sell", 300)], commission_usd: 0.25, turnover: 0.03, fallback: false, skipped: false },
+  ]
+  const usdDetail = () => detail("USD", [snap("2026-01-02", 10_000), snap("2026-02-02", 11_000)], { rebalances: rebs })
+
+  it("접힌 상세를 열지 않아도 핵심 성과와 위험 사이에서 마지막 리밸런싱의 매수·매도와 다음 리밸런싱 시점을 보여 준다 (평소에는 강조 없음)", async () => {
+    show(usdDetail())
+    await screen.findByText("핵심 성과")
+    const heads = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)
+    expect(heads.indexOf("리밸런싱 거래")).toBe(heads.indexOf("핵심 성과") + 1)
+    expect(heads.indexOf("위험")).toBe(heads.indexOf("리밸런싱 거래") + 1)
+    const card = within(screen.getByRole("heading", { name: "리밸런싱 거래" }).closest("section")!)
+    await waitFor(() => expect(card.getByRole("list", { name: "매수한 종목" })).toHaveTextContent(/MU.*Micron Technology.*200\.00 USD.*2\.00주/))  // 회사명은 실행 결과에서 따로 온다
+    expect(card.getByRole("list", { name: "매도한 종목" })).toHaveTextContent(/NOW.*300\.00 USD.*3\.00주/)
+    expect(card.getByText(/2026-02-02 정기 리밸런싱/)).toBeInTheDocument()
+    expect(card.getByText("2026년 3월 첫 거래일")).toBeInTheDocument()
+    expect(card.queryByText("지금 리밸런싱할 시점입니다")).toBeNull()  // 처음 보는 모의투자는 이미 있던 리밸런싱을 확인한 것으로 시작
+    expect(JSON.parse(window.localStorage.getItem("myfinsight.seen.v1")!).papers).toEqual({ p1: 1 })
+    fireEvent.click(card.getByRole("button", { name: /전체 거래 기록 보기/ }))
+    expect(screen.getByRole("button", { name: /거래·리밸런싱 상세/ })).toHaveAttribute("aria-expanded", "true")
+  })
+  it("확인하지 않은 리밸런싱이면 「지금 리밸런싱할 시점입니다」로 강조하고, 「확인했어요」를 누르면 이 브라우저에 확인 기록을 남기고 평소 모양으로 돌아간다", async () => {
+    window.localStorage.setItem("myfinsight.seen.v1", JSON.stringify({ v: 1, reports: [], papers: { p1: 0 } }))
+    show(usdDetail())
+    expect(await screen.findByText("지금 리밸런싱할 시점입니다")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "확인했어요" }))
+    await waitFor(() => expect(screen.queryByText("지금 리밸런싱할 시점입니다")).toBeNull())
+    expect(JSON.parse(window.localStorage.getItem("myfinsight.seen.v1")!).papers.p1).toBe(1)
+  })
+  it("아직 리밸런싱 전이면 시작할 때 산 종목을 보여 주고, 매수 후 보유 규칙이면 다음 시점을 말하지 않는다", async () => {
+    show(detail("USD", [snap("2026-01-02", 10_000)], { rebalances: rebs.slice(0, 1), p: { rebalance_rule: { count: 0, unit: "1m" } } }))
+    const card = within((await screen.findByRole("heading", { name: "리밸런싱 거래" })).closest("section")!)
+    expect(card.getByText(/시작할 때 산 종목/)).toBeInTheDocument()
+    expect(card.getByText(/리밸런싱 없음/)).toBeInTheDocument()
+    expect(card.queryByText(/첫 거래일$/)).toBeNull()
+    expect(card.getByText("매도 0종목")).toBeInTheDocument()
+  })
+})
+

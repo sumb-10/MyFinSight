@@ -16,6 +16,7 @@ import { proposedNameOf } from "../api/proposed"
 import { MockTag } from "../features/report/proposedView"
 import { date } from "../lib/format"
 import { isMockMode } from "../mocks/mode"
+import { reportKey, useNewReports, useRebalanceAlerts } from "../features/attention"
 
 
 // 차트(recharts)를 쓰는 화면은 따로 묶어 처음 화면이 가볍게 뜨게 한다 (F8 코드 분할).
@@ -25,16 +26,20 @@ const ComparisonScreen = lazy(() => import("../features/report/ComparisonScreen"
 const MockChrome = import.meta.env.DEV || import.meta.env.VITE_ENABLE_MOCK === "1" ? lazy(() => import("../mocks/MockChrome")) : null
 const PaperScreen = lazy(() => import("../features/paper/PaperScreen").then((m) => ({ default: m.PaperScreen })))
 
-function Sidebar({ route }: { route: Route }) {
+export function Sidebar({ route }: { route: Route }) {
   const svc = useService()
   const { health, reachable } = useHealth()
   const renamed = useRenameTick()
   const reports = useResource(() => svc.listReports(), [svc, route.page, renamed])
+  const papers = useResource(() => svc.listPaper(), [svc, route.page, renamed])
+  // 숫자 배지(카카오톡처럼): 새로 완료돼 아직 열지 않은 리포트 수, 확인하지 않은 리밸런싱 거래가 있는 모의투자 수. 확인 기록은 이 브라우저에만 있다.
+  const fresh = useNewReports(reports.data)
+  const alerts = useRebalanceAlerts(papers.data)
   const items = [
-    { label: "홈 · 새 분석", icon: Home, to: { page: "home" } as Route, active: ["home", "clarify", "confirm", "run"].includes(route.page) },
-    { label: "분석 리포트", icon: FileText, to: { page: "reports" } as Route, active: ["reports", "report"].includes(route.page) },
-    { label: "모의투자", icon: Activity, to: { page: "paper" } as Route, active: route.page === "paper" },
-    { label: "내 투자조건", icon: SlidersHorizontal, to: { page: "profile" } as Route, active: route.page === "profile" },
+    { label: "홈 · 새 분석", icon: Home, to: { page: "home" } as Route, active: ["home", "clarify", "confirm", "run"].includes(route.page), badge: 0, badgeText: "" },
+    { label: "분석 리포트", icon: FileText, to: { page: "reports" } as Route, active: ["reports", "report"].includes(route.page), badge: fresh.size, badgeText: `새로 완료된 리포트 ${fresh.size}개` },
+    { label: "모의투자", icon: Activity, to: { page: "paper" } as Route, active: route.page === "paper", badge: alerts.size, badgeText: `리밸런싱 확인 ${alerts.size}건` },
+    { label: "내 투자조건", icon: SlidersHorizontal, to: { page: "profile" } as Route, active: route.page === "profile", badge: 0, badgeText: "" },
   ]
   return (
     <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r border-slate-200 bg-white px-4 py-6">
@@ -46,6 +51,7 @@ function Sidebar({ route }: { route: Route }) {
         {items.map((item) => (
           <button key={item.label} onClick={() => navigate(item.to)} className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-blue-500 ${item.active ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}>
             <span className="flex items-center gap-3"><item.icon className="size-4" />{item.label}</span>
+            {item.badge > 0 && <><span aria-hidden className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold tabular-nums text-white">{item.badge}</span><span className="sr-only"> ({item.badgeText})</span></>}
           </button>
         ))}
       </nav>
@@ -54,7 +60,7 @@ function Sidebar({ route }: { route: Route }) {
         <div className="mt-2 space-y-1">
           {(reports.data ?? []).slice(0, 5).map((r) => (
             <button key={r.run_id} onClick={() => navigate({ page: "report", reportId: r.report_id ?? r.run_id })} className={`w-full rounded-lg px-3 py-2 text-left transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 ${route.page === "report" && route.reportId === (r.report_id ?? r.run_id) ? "bg-blue-50" : ""}`}>
-              {proposedNameOf(r) ? <span className="flex min-w-0 items-center text-xs font-semibold text-slate-700"><span className="truncate">{reportName(r)}</span><MockTag /></span> : <span className="block truncate text-xs font-semibold text-slate-700">{reportName(r)}</span>}
+              <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-slate-700">{fresh.has(reportKey(r)) && <><span aria-hidden className="size-1.5 shrink-0 rounded-full bg-red-500" /><span className="sr-only">새 리포트:</span></>}<span className="truncate">{reportName(r)}</span>{proposedNameOf(r) && <MockTag />}</span>
               <span className="mt-0.5 block text-[10px] text-slate-400">{date(r.created_at)} · 기준일 {r.as_of}</span>
             </button>
           ))}
@@ -65,12 +71,6 @@ function Sidebar({ route }: { route: Route }) {
         {!reachable && <Badge tone="red"><WifiOff className="size-3" />서버 연결 끊김</Badge>}
         {health?.llm_mode === "stub" && <Badge tone="amber">연습 모드 (LLM 없음)</Badge>}
         {health && reachable && !health.worker.alive && <Badge tone="red">분석 일꾼 꺼짐 — 새 분석이 시작되지 않습니다</Badge>}
-        {health && reachable && (
-          <p>
-            자료 기준일 {health.db.latest_trading_day ?? "–"}
-            <br />분석 일꾼 {health.worker.alive ? "실행 중" : "꺼짐"} · 대기 {health.queue_length}건 · {health.llm_mode === "api" ? "분석 모델 연결됨" : "연습 모드"}
-          </p>
-        )}
       </div>
     </aside>
   )

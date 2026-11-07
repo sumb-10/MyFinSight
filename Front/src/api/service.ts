@@ -45,6 +45,8 @@ export interface AnalysisService extends Partial<ProposedApi> {
   getReportEvidenceOne(reportId: string, eid: string): Promise<EvidenceDetail | null>
   getReportCheckpoint(reportId: string, seq: number, portfolioId?: string): Promise<CheckpointDetail | null>
   getReportSeries(reportId: string, dataset: "index" | "value_usd" | "drawdown", ids?: string[]): Promise<SeriesResponse | null>
+  /** 목업 전용(시연): 처음 켤 때 '확인 안 함'으로 둘 새 리포트·리밸런싱. 일반 모드에는 없다 — 처음 켤 때 이미 있던 것은 모두 확인한 것으로 둔다. */
+  seenSeed?(): import("../lib/seen").SeenSeed
 }
 
 const qs = (params: Record<string, unknown>) => {

@@ -43,7 +43,7 @@ describe("상세 조건 창", () => {
     const panel = screen.getByRole("tabpanel")
     expect(within(panel).getByText("1,000만원")).toBeInTheDocument()
     expect(within(panel).getByText("2,000만원")).toBeInTheDocument()
-    expect(within(panel).getByText("가격이 상대적으로 저평가된 기업")).toBeInTheDocument()
+    expect(within(panel).getByText("가격이 상대적으로 저평가된 기업(저PER)")).toBeInTheDocument()
     expect(within(panel).getAllByRole("listitem")).toHaveLength(2)
     fireEvent.click(applyBtn())
     expect(onApply).toHaveBeenCalledTimes(1)
