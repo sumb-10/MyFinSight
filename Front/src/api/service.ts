@@ -1,11 +1,14 @@
-// 화면이 쓰는 단일 서비스 계약 (Front/docs/04 §8). 서버(backend/analysis/api) 만 데이터 원천이다. 샘플·오프라인 자료 모드는 없다.
+// 화면이 쓰는 단일 서비스 계약 (Front/docs/04 §8). 일반 모드에서는 서버(backend/analysis/api) 만 데이터 원천이다.
+// 개발용 목업 모드(?mock=1, src/mocks)는 같은 계약을 목업 자료로 구현한다 — main.tsx 가 처음에 하나를 골라 꽂는다.
 import { api, ApiError, LLM_TIMEOUT_MS } from "./client"
+import type { ProposedApi } from "./proposed"
 import type { CheckpointDetail, ComparisonDoc, DialogState, EvidenceDetail, EvidencePage, EvidenceQuery, Health, Options, PaperDetail, PaperIn, PaperPreview, PaperSummary, ProfileFields, ProfileView, ReportDoc, ReportRow, RequestRow, RunPartial, RunRow, RunStatus, SeriesResponse } from "./types"
 
 const LLM = { timeoutMs: LLM_TIMEOUT_MS }
 
-export interface AnalysisService {
-  readonly mode: "api"
+/** 제안 계약 메서드(ProposedApi)는 모두 선택이다. 실제 서버 서비스에는 없고 목업 서비스만 가진다 → 화면은 메서드가 있을 때만 그 기능을 연다. */
+export interface AnalysisService extends Partial<ProposedApi> {
+  readonly mode: "api" | "mock"
   health(): Promise<Health>
   options(): Promise<Options>
   getProfile(): Promise<ProfileView | null>

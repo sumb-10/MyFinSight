@@ -1,4 +1,5 @@
 import type { Format } from "../api/types"
+import { RISK_TOLERANCE_RANGE } from "./tendency"
 
 // 표시 규칙 (Front/docs/04 §7): 수익률 2자리 부호, 비중 1자리, 원화 정수, USD 2자리, 차이 %p. 입력은 분수(0.12 = 12%).
 // 반올림은 표시 직전에만 (ROUND_HALF_UP = halfExpand).
@@ -37,7 +38,7 @@ export const OTHER_COLOR = "#94a3b8"
 export const colorOf = (id: string, ids: string[]) => { const i = ids.indexOf(id); return i < 0 ? OTHER_COLOR : PALETTE[i % PALETTE.length] }
 
 export const KO: Record<string, string> = {
-  conservative: "안정 추구", moderate: "중립", aggressive: "적극",
+  ...RISK_TOLERANCE_RANGE,  // 세 단계 성향 = 투자조건 화면의 다섯 가지 이름 중 확인 가능한 범위 (lib/tendency)
   low_per: "저PER", quality: "퀄리티(ROE)", momentum: "모멘텀", low_volatility: "저변동성", high_dividend: "고배당",
   equal_weight: "동일비중", market_cap: "시가총액비중", inverse_volatility: "역변동성", min_variance: "최소분산",
   SP500: "S&P 500", NASDAQ100: "NASDAQ-100", KOSPI200: "KOSPI 200",

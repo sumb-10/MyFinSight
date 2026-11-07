@@ -3,29 +3,38 @@ import { MessageSquareText, Play, SlidersHorizontal } from "lucide-react"
 import { useProfile, useService } from "../../app/providers"
 import { navigate } from "../../app/router"
 import { errorMessage } from "../../api/client"
-import type { ConditionRow, DialogState } from "../../api/types"
+import type { DialogState } from "../../api/types"
 import { useResource } from "../../state/useResource"
 import { saveUi } from "../../state/uiStorage"
-import { Alert, Badge, Button, Card, EmptyState, ErrorState, Loading, PageHeader, inputClass } from "../../ui"
+import { Alert, Button, EmptyState, ErrorState, Loading, inputClass } from "../../ui"
 import { ko } from "../../lib/format"
 import { RevisionCard } from "./RevisionCard"
 import { startNewWith } from "./ClarifyScreen"
 import { DetailConditionsDialog } from "../home/DetailConditions"
+import { Part } from "../profile/parts"
+import { ActionError, AllConditions, AnsweredList, ChangedConditions, FlowHeader, FlowSteps, IdeaPart, LLM_DETAIL, Pending, ResultNote, diffRows, type RowChange } from "./flow"
+import type { ProposedMessageResult } from "../../api/proposed"
+import { MessageOutcome } from "./MessageOutcome"
 
-const SOURCE_KO: Record<ConditionRow["source"], string> = { profile: "프로필", idea: "아이디어", answer: "보충 답변", default: "기본값", derived: "계산" }
+type Busy = "" | "start" | "overrides" | "message"
+type ActErr = { kind: Exclude<Busy, "">; message: string; retry: () => void }
 
 export function ConfirmScreen({ requestId }: { requestId: string }) {
   const svc = useService()
   const { profile } = useProfile()
   const res = useResource(() => svc.getRequest(requestId), [svc, requestId])
-  const [busy, setBusy] = useState<"" | "start" | "overrides" | "message">("")
-  const [err, setErr] = useState("")
-  const [toolErr, setToolErr] = useState("")
+  const [local, setLocal] = useState<DialogState | null>(null)  // 조건 바꾸기·말로 보태기 응답 (다시 불러오지 않고 바로 반영)
+  const [busy, setBusy] = useState<Busy>("")
+  const [err, setErr] = useState<ActErr | null>(null)
+  const [result, setResult] = useState<{ kind: "message" | "overrides"; changes: RowChange[] } | null>(null)
   const [editing, setEditing] = useState(false)
   const [note, setNote] = useState("")
-  if (res.status === "loading" && !res.data) return <Loading label="확정 조건을 불러오는 중…" />
-  if (res.status === "error" || !res.data) return <ErrorState message={res.error ?? ""} retry={res.reload} />
-  const st = res.data
+  const [noteHint, setNoteHint] = useState("")
+  const [askUnsent, setAskUnsent] = useState(false)  // 보내지 않은 추가 요청이 있는데 「분석 시작」을 눌렀을 때
+  const [msgs, setMsgs] = useState<ProposedMessageResult[] | null>(null)  // 제안 기능: 말로 보태기 처리 결과 (목업에서만)
+  const st = local ?? res.data
+  if (res.status === "loading" && !st) return <Loading label="확정 조건을 불러오는 중…" />
+  if (!st) return <ErrorState message={res.error ?? ""} retry={res.reload} />
   if (st.status === "cancelled") return <EmptyState title="취소된 요청입니다" description="이 요청은 취소되어 분석을 시작할 수 없습니다. 같은 아이디어와 조건으로 새 요청을 시작할 수 있습니다." action={<div className="flex gap-2"><Button onClick={() => startNewWith(st.idea, st.overrides)}>같은 조건으로 새 요청</Button><Button variant="ghost" onClick={() => navigate({ page: "home" })}>홈으로</Button></div>} />
   if (st.state === "asking" || st.state === "blocked") { navigate({ page: "clarify", requestId }); return null }
   if (st.status === "confirmed" && st.run_id) {
@@ -33,37 +42,53 @@ export function ConfirmScreen({ requestId }: { requestId: string }) {
   }
   if (!st.confirmation) return <ErrorState title="확정 조건을 만들지 못했습니다" message="조건을 바꾸거나 새 요청으로 다시 시작해 주세요." retry={res.reload} />
   const rows = st.confirmation.rows
-  const groups = [...new Set(rows.map((r) => r.group_ko))]
   const unsupported = rows.filter((r) => !r.supported)
-  const changed = rows.filter((r) => r.changed)
+  const revision = st.mode === "revision"
+  const base = revision ? "원안" : "기본 투자조건"
+  const locked = busy !== ""
+  const unsent = note.trim()
 
   const start = async () => {
-    setBusy("start"); setErr("")
+    setAskUnsent(false); setBusy("start"); setErr(null)
     try {
       const { run_id } = await svc.confirm(requestId)
       saveUi({ activeRequestId: null, activeRunId: run_id })
       navigate({ page: "run", runId: run_id })
-    } catch (e) { setErr(errorMessage(e)) } finally { setBusy("") }
+    } catch (e) { setErr({ kind: "start", message: errorMessage(e), retry: () => void start() }) } finally { setBusy("") }
   }
-  // 조건 확인 화면에서도 조건을 바꾸거나 말로 보탤 수 있다 (P1-1). 바뀐 뒤 질문이 생기면 대화 화면으로 돌아간다.
-  const after = (next: DialogState) => { if (next.state === "asking" || next.hard_errors.length > 0) navigate({ page: "clarify", requestId }); else res.reload() }
-  const tool = async (kind: "overrides" | "message", fn: () => Promise<DialogState>) => {
-    setBusy(kind); setToolErr("")
-    try { after(await fn()); setNote("") } catch (e) { setToolErr(errorMessage(e)) } finally { setBusy("") }
+  const tryStart = () => { if (unsent && !revision) { setAskUnsent(true); return } void start() }
+  // 조건 확인 화면에서도 조건을 바꾸거나 말로 보탤 수 있다. 바뀐 뒤 질문이 생기면 질문 화면으로 돌아간다.
+  const tool = (kind: "overrides" | "message", fn: () => Promise<DialogState>) => {
+    const run = async () => {
+      setAskUnsent(false); setBusy(kind); setErr(null); setResult(null)
+      try {
+        const next = await fn()
+        if (kind === "message") setNote("")
+        if (next.state === "asking" || next.hard_errors.length > 0) { navigate({ page: "clarify", requestId }); return }
+        setResult({ kind, changes: diffRows(rows, next.confirmation?.rows ?? []) })
+        setLocal(next)
+      } catch (e) { setErr({ kind, message: errorMessage(e), retry: run }) } finally { setBusy("") }
+    }
+    void run()
+  }
+  const sendNote = () => {
+    if (!unsent) { setNoteHint("보탤 내용을 적어 주세요."); return }
+    tool("message", async () => { const next = await svc.sendMessage(requestId, unsent); if (svc.getMessageResults) setMsgs(await svc.getMessageResults(requestId)); return next })
   }
   const applyOverrides = (o: Record<string, unknown>) => {
     const prev = st.overrides ?? {}
     const merged: Record<string, unknown> = { ...o }
     for (const k of Object.keys(prev)) if (!(k in o)) merged[k] = null
-    void tool("overrides", () => svc.updateOverrides(requestId, merged))
+    tool("overrides", () => svc.updateOverrides(requestId, merged))
   }
+  const editBtn = !revision && profile ? <Button variant="secondary" className="shrink-0 whitespace-nowrap" onClick={() => setEditing(true)} disabled={locked}><SlidersHorizontal className="size-4" />{busy === "overrides" ? "변경 처리 중…" : "조건 바꾸기"}</Button> : undefined
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader eyebrow={`${ko(st.mode)} · 조건 확인`} title={st.mode === "revision" ? "이 수정안으로 분석을 시작할까요?" : "이 조건으로 분석을 시작할까요?"} description={st.mode === "revision" ? "원안의 조건에 수정 요청을 반영한 최종 조건입니다. 파란 줄이 원안과 달라진 항목입니다. 분석이 끝나면 원안과 비교한 결과를 볼 수 있습니다." : "프로필 기본값에 보충 답변을 반영한 최종 조건입니다. 「분석 시작」을 누르기 전에는 어떤 분석도 실행되지 않습니다. 아직 바꿀 수 있습니다. 시작 후에는 조건을 바꿀 수 없고, 바꾸려면 새 요청으로 다시 분석합니다."} />
-      {st.summary.interpretation_summary_ko && (
-        <Card className="p-5"><p className="text-xs font-bold text-slate-400">분석 모델의 이해</p><p className="mt-1 text-sm text-slate-800">{st.summary.interpretation_summary_ko}</p><div className="mt-2 flex flex-wrap gap-2">{st.summary.themes.map((t) => <Badge key={t.id} tone="blue">{t.label_ko}</Badge>)}</div></Card>
-      )}
+    <div className="mx-auto max-w-4xl space-y-8">
+      <FlowHeader eyebrow={`${ko(st.mode)} · 조건 확인`} title={revision ? "이 수정안으로 분석을 시작할까요?" : "이 조건으로 분석을 시작할까요?"}
+        desc={revision ? "원안의 조건에 수정 요청을 반영한 최종 조건입니다. 분석이 끝나면 원안과 비교한 결과를 볼 수 있습니다." : "기본 투자조건에 답변과 변경을 반영한 최종 조건입니다. 「분석 시작」을 누르기 전에는 분석이 실행되지 않으며, 아직 바꿀 수 있습니다."} />
+      <FlowSteps current={1} />
+      <IdeaPart st={st} />
       {st.revision && <RevisionCard rev={st.revision} />}
       {st.blocked_reason_ko && (
         <Alert title="보충 질문을 모두 써서 남은 항목은 지금 조건으로 둡니다" tone="info">
@@ -71,46 +96,45 @@ export function ConfirmScreen({ requestId }: { requestId: string }) {
           {st.unresolved.length > 0 && <ul className="mt-2 list-disc pl-5">{st.unresolved.map((u) => <li key={u.field}><b>{u.label_ko}</b>: {u.hint_ko}</li>)}</ul>}
         </Alert>
       )}
-      {changed.length > 0 && <Alert title={`${st.mode === "revision" ? "원안과" : "프로필과"} 달라진 조건 ${changed.length}개`} tone="info">{changed.map((r) => <span key={r.field} className="mr-3">{r.label_ko}: {r.profile_value_ko} → <b>{r.value_ko}</b></span>)}</Alert>}
       {(st.summary.derived?.warnings?.length ?? 0) > 0 && <Alert title="계산 조건 안내" tone="warning"><ul className="list-disc pl-5">{st.summary.derived!.warnings!.map((w, i) => <li key={i}>{w}</li>)}</ul></Alert>}
       {unsupported.length > 0 && <Alert title="지원하지 않는 조건이 있어 분석을 시작할 수 없습니다" tone="error"><ul className="list-disc pl-5">{unsupported.map((r) => <li key={r.field}>{r.label_ko}: {r.note_ko}</li>)}</ul></Alert>}
-      <Card className="overflow-hidden">
-        <table className="w-full text-sm">
-          <thead><tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold text-slate-500"><th className="px-5 py-3">구분</th><th className="px-5 py-3">항목</th><th className="px-5 py-3">이번 분석 값</th><th className="px-5 py-3">출처</th></tr></thead>
-          <tbody>
-            {groups.map((g) => rows.filter((r) => r.group_ko === g).map((r, i) => (
-              <tr key={r.field} className={`border-b border-slate-100 ${r.changed ? "bg-blue-50/40" : ""}`}>
-                <td className="px-5 py-2.5 text-xs font-semibold text-slate-400">{i === 0 ? g : ""}</td>
-                <td className="px-5 py-2.5 font-medium text-slate-800">{r.label_ko}</td>
-                <td className="px-5 py-2.5 text-slate-800">{r.value_ko}{r.changed && r.profile_value_ko && <span className="ml-2 text-xs text-slate-400">({st.mode === "revision" ? "원안" : "프로필"} {r.profile_value_ko})</span>}{r.note_ko && <span className="ml-2 text-xs text-amber-700">{r.note_ko}</span>}</td>
-                <td className="px-5 py-2.5"><Badge tone={r.changed ? "blue" : "slate"}>{SOURCE_KO[r.source]}{r.changed ? " · 변경" : ""}</Badge></td>
-              </tr>
-            )))}
-          </tbody>
-        </table>
-      </Card>
-      {st.mode !== "revision" && (
-        <Card className="p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div><p className="text-xs font-bold text-slate-400">아직 바꿀 수 있습니다</p><p className="mt-1 text-xs text-slate-500">숫자 조건은 「조건 바꾸기」가 정확하고, 그 밖의 요청은 말로 적으면 분석 모델이 해석해 반영합니다. 바꾸면 조건을 다시 확인합니다.</p></div>
-            {profile && <Button variant="secondary" onClick={() => setEditing(true)} disabled={busy !== ""}><SlidersHorizontal className="size-4" />조건 바꾸기</Button>}
-          </div>
-          <div className="mt-3 flex items-start gap-2">
-            <textarea className={`${inputClass} min-h-14 flex-1`} value={note} onChange={(e) => setNote(e.target.value)} placeholder="예: 한국 종목은 빼 주세요 / 종목은 8개만 / 배당주 위주로" disabled={busy !== ""} aria-label="말로 조건 보태기" />
-            <Button variant="secondary" onClick={() => { if (!note.trim()) { setToolErr("보탤 내용을 적어 주세요."); return } void tool("message", () => svc.sendMessage(requestId, note.trim())) }} disabled={busy !== ""}><MessageSquareText className="size-4" />{busy === "message" ? "반영하는 중…" : "말로 보태기"}</Button>
-          </div>
-          {toolErr && <p className="mt-2 text-xs font-medium text-red-600">{toolErr}</p>}
-        </Card>
+      <ChangedConditions rows={rows} base={base} action={editBtn}>
+        {busy === "overrides" && <Pending title="투자 조건 변경 요청을 처리하고 있습니다." detail={LLM_DETAIL} />}
+        {err?.kind === "overrides" && !locked && <ActionError title="조건을 바꾸지 못했습니다" message={err.message} retry={err.retry} />}
+        {result?.kind === "overrides" && !locked && <ResultNote changes={result.changes} what="조건 변경" />}
+      </ChangedConditions>
+      <AllConditions rows={rows} base={base} />
+      <AnsweredList questions={st.questions} />
+      {!revision && (
+        <Part title="말로 조건 보태기" tag="선택" desc="적고 「말로 보태기」를 누르면 분석 모델이 해석해 반영하고, 바뀐 조건을 다시 확인합니다. 투자 시장·숫자 조건은 「조건 바꾸기」가 더 정확합니다.">
+          <textarea className={`${inputClass} min-h-14`} value={note} onChange={(e) => { setNote(e.target.value); setNoteHint("") }} placeholder="예: 배당주 위주로 / 종목은 8개만" readOnly={locked} aria-label="말로 조건 보태기" />
+          {unsent && busy !== "message" && <p className="text-xs font-medium text-amber-800">아직 반영하지 않았습니다. 「말로 보태기」를 눌러야 이번 분석 조건에 들어갑니다.</p>}
+          {noteHint && <p className="text-xs font-medium text-red-600">{noteHint}</p>}
+          {busy === "message" && <Pending title="추가 요청을 처리하고 있습니다." detail={LLM_DETAIL} />}
+          {err?.kind === "message" && !locked && <ActionError title="추가 요청을 반영하지 못했습니다" message={err.message} retry={err.retry} />}
+          {result?.kind === "message" && !locked && (msgs ? <MessageOutcome results={msgs} /> : <ResultNote changes={result.changes} what="추가 요청" />)}
+          <div className="flex justify-end"><Button variant="secondary" onClick={sendNote} disabled={locked}><MessageSquareText className="size-4" />{busy === "message" ? "반영하는 중…" : "말로 보태기"}</Button></div>
+        </Part>
       )}
-      {err && <Alert title="분석을 시작하지 못했습니다" tone="error">{err}</Alert>}
-      <div className="flex items-center justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" onClick={() => startNewWith(st.idea, st.overrides)}>아이디어 수정 (조건 그대로 새 요청)</Button>
-          <span title="프로필을 바꿔도 이 요청에는 적용되지 않습니다. 저장한 뒤 새 요청으로 시작해 주세요."><Button variant="ghost" onClick={() => navigate({ page: "profile", mode: "edit" })}>기본 투자조건 수정</Button></span>
+      {askUnsent && (
+        <div role="alertdialog" aria-label="반영하지 않은 추가 요청" className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-sm text-amber-950">
+          <p className="font-semibold">입력한 추가 요청이 아직 반영되지 않았습니다. 먼저 반영할까요?</p>
+          <p className="mt-1 break-words text-amber-900">“{unsent}”</p>
+          <p className="mt-1 text-xs">이대로 시작하면 이 내용은 분석에 들어가지 않습니다. 먼저 반영하면 바뀐 조건을 확인한 뒤 다시 「분석 시작」을 누르면 됩니다.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button onClick={sendNote}>먼저 반영하기</Button>
+            <Button variant="secondary" onClick={() => { setNote(""); void start() }}>입력을 지우고 분석 시작</Button>
+            <Button variant="ghost" onClick={() => setAskUnsent(false)}>닫기</Button>
+          </div>
         </div>
-        <Button onClick={start} disabled={busy !== "" || unsupported.length > 0}><Play className="size-4" />{busy === "start" ? "큐에 등록 중…" : "분석 시작"}</Button>
+      )}
+      {busy === "start" && <Pending title="분석 요청을 대기열에 등록하고 있습니다." />}
+      {err?.kind === "start" && !locked && <ActionError title="분석을 시작하지 못했습니다" message={err.message} retry={err.retry} />}
+      <div className="flex flex-col gap-3 rounded-2xl border border-slate-300 bg-white px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <p className="text-xs leading-5 text-slate-500">{unsupported.length > 0 ? "지원하지 않는 조건을 바꿔야 분석을 시작할 수 있습니다." : locked && busy !== "start" ? "요청을 처리하는 동안에는 시작할 수 없습니다." : "시작하면 분석 대기열에 등록되고, 진행 화면에서 단계별 상태를 볼 수 있습니다. 시작한 뒤에는 조건을 바꿀 수 없습니다."}</p>
+        <Button onClick={tryStart} disabled={locked || unsupported.length > 0}><Play className="size-4" />{busy === "start" ? "대기열에 등록 중…" : "분석 시작"}</Button>
       </div>
-      {editing && profile && <DetailConditionsDialog profile={profile.profile} initial={st.overrides ?? {}} onApply={applyOverrides} close={() => setEditing(false)} title="이번 요청의 조건 바꾸기" applyLabel="이 조건으로 다시 확인" intro="프로필에서 가져온 기본값을 이번 요청에서만 바꿉니다. 적용하면 분석 모델이 바뀐 조건으로 다시 해석하고, 필요한 질문만 다시 묻습니다. 프로필 자체는 그대로입니다." />}
+      {editing && profile && <DetailConditionsDialog profile={profile.profile} initial={st.overrides ?? {}} onApply={applyOverrides} close={() => setEditing(false)} title="이번 요청의 조건 바꾸기" applyLabel="이 조건으로 다시 확인" intro="기본 투자조건에서 가져온 값을 이번 요청에서만 바꿉니다. 적용하면 분석 모델이 바뀐 조건으로 다시 해석하고, 필요한 질문만 다시 묻습니다. 저장된 기본 투자조건은 그대로입니다." />}
     </div>
   )
 }

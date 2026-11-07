@@ -1,4 +1,5 @@
 import type { ApiErrorBody } from "./types"
+import { isMockMode } from "../mocks/mode"
 
 export const API_BASE: string = (import.meta.env.VITE_API_BASE as string | undefined) ?? "/api/v1"
 /** LLM 이 걸리는 호출(요청 생성·답변·수정 요청 등)은 한 턴에 1~3분이 걸릴 수 있다 (서버 LLM 제한 180초). 기본 호출은 60초. */
@@ -30,6 +31,8 @@ export function errorMessage(e: unknown): string {
 
 /** 모든 API 호출. 끊긴 서버는 NETWORK_UNAVAILABLE 오류가 되며 절대 성공처럼 보이지 않는다. */
 export async function fetchJson<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
+  // 목업 모드(?mock=1)에서는 실제 서버로 어떤 요청도 보내지 않는다 — 목업 서비스가 이 함수를 쓰지 않지만, 혹시 다른 경로로 불려도 막는다.
+  if (isMockMode()) throw new ApiError("MOCK_NETWORK_BLOCKED", "목업 모드에서는 실제 서버에 요청하지 않습니다.", 0)
   const ctrl = new AbortController()
   const timer = window.setTimeout(() => ctrl.abort(), init?.timeoutMs ?? 60_000)
   let res: Response
