@@ -41,7 +41,7 @@ function reorder(doc: ReportDoc): ReportDoc {
 /** readOnly: 튜토리얼처럼 둘러보기만 하는 화면. 모의투자 시작·조건 수정·다시 분석·이름 바꾸기·삭제를 막고, 주소(해시)도 바꾸지 않는다. */
 type MenuItem = { label: string; onClick: () => void; disabled?: boolean; icon?: React.ElementType; danger?: boolean }
 /** extraMenu: 더보기 메뉴 끝에 붙일 항목 (예시 리포트의 「리포트 삭제」 = 목록에서 숨기기) */
-type Props = { reportId: string; sec?: string; company?: string; rb?: number; readOnly?: boolean; extraMenu?: MenuItem[] }
+type Props = { reportId: string; sec?: string; company?: string; rb?: number; readOnly?: boolean; extraMenu?: MenuItem[]; title?: string }
 
 const TAB_OFFSET = 110  // 상단 고정 탭(49px) 아래 이 선을 지난 마지막 섹션을 「지금 보는 섹션」으로 친다 (섹션은 scroll-mt-16 = 64px 에 멈춘다)
 const STOP = 64  // scroll-mt-16
@@ -52,7 +52,7 @@ export function ReportDetail(props: Props) {
   return <ReportView key={props.reportId} {...props} />
 }
 
-function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = [] }: Props) {
+function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = [], title }: Props) {
   const svc = useService()
   const navigate: typeof routerNavigate = readOnly ? () => {} : routerNavigate
   const res = useResource(() => svc.getReport(reportId), [svc, reportId])
@@ -192,10 +192,10 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
                 <div className="min-w-0">
                   <p className="mb-2 text-xs font-bold tracking-widest text-blue-700">분석 리포트</p>
                   <div className="flex items-start gap-1">
-                    <h1 className="break-words text-3xl font-bold tracking-tight text-slate-950">{row ? reportName(row) : rows.status === "loading" ? <span aria-hidden="true" className="inline-block h-8 w-64 max-w-full animate-pulse rounded-lg bg-slate-100 align-middle" /> : (name?.display_ko ?? h.title_ko)}</h1>
+                    <h1 className="break-words text-3xl font-bold tracking-tight text-slate-950">{title ? title : row ? reportName(row) : rows.status === "loading" ? <span aria-hidden="true" className="inline-block h-8 w-64 max-w-full animate-pulse rounded-lg bg-slate-100 align-middle" /> : (name?.display_ko ?? h.title_ko)}</h1>
                     {name && svc.renameReport && <button type="button" aria-label="리포트 이름 바꾸기" title="리포트 이름 바꾸기" onClick={() => setRename(true)} className="mt-1 shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"><Pencil className="size-5" /></button>}
                   </div>
-                  {row && h.title_ko !== reportName(row) && <p className="mt-2 text-sm font-semibold text-slate-700">{h.title_ko}</p>}
+                  {(title ? h.title_ko !== title : row && h.title_ko !== reportName(row)) && <p className="mt-2 text-sm font-semibold text-slate-700">{h.title_ko}</p>}
                   {h.subtitle_ko && <p className="mt-2 max-w-3xl truncate text-sm leading-6 text-slate-600" title={h.subtitle_ko}>{h.subtitle_ko}</p>}
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-2 lg:pt-6">

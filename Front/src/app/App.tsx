@@ -17,7 +17,7 @@ import { MockTag } from "../features/report/proposedView"
 import { date } from "../lib/format"
 import { isMockMode } from "../mocks/mode"
 import { reportKey, useNewReports, useRebalanceAlerts } from "../features/attention"
-import { EXAMPLE_REPORT_ID, EXAMPLE_ROW, useExampleVisible } from "../features/tutorial/exampleReport"
+import { EXAMPLE_REPORT_ID, useExample } from "../features/tutorial/exampleReport"
 import { ExampleBadge, openExample } from "../features/tutorial/ExampleReportParts"
 
 
@@ -38,7 +38,8 @@ export function Sidebar({ route }: { route: Route }) {
   // 숫자 배지(카카오톡처럼): 새로 완료돼 아직 열지 않은 리포트 수, 확인하지 않은 리밸런싱 거래가 있는 모의투자 수. 확인 기록은 이 브라우저에만 있다.
   const fresh = useNewReports(reports.data)
   const alerts = useRebalanceAlerts(papers.data)
-  const example = useExampleVisible()
+  const ex = useExample()
+  const example = ex.visible
   const items = [
     { label: "홈 · 새 분석", icon: Home, to: { page: "home" } as Route, active: ["home", "clarify", "confirm", "run"].includes(route.page), badge: 0, badgeText: "" },
     { label: "분석 리포트", icon: FileText, to: { page: "reports" } as Route, active: ["reports", "report"].includes(route.page), badge: fresh.size, badgeText: `새로 완료된 리포트 ${fresh.size}개` },
@@ -64,7 +65,7 @@ export function Sidebar({ route }: { route: Route }) {
         <div className="mt-2 space-y-1">
           {example && (
             <button onClick={openExample} className={`w-full rounded-lg px-3 py-2 text-left transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 ${route.page === "report" && route.reportId === EXAMPLE_REPORT_ID ? "bg-blue-50" : ""}`}>
-              <span className="flex min-w-0 items-center text-xs font-semibold text-slate-700"><ExampleBadge /><span className="truncate">{EXAMPLE_ROW.name.replace(/^\[예시\]\s*/, "")}</span></span>
+              <span className="flex min-w-0 items-center text-xs font-semibold text-slate-700"><ExampleBadge /><span className="truncate">{ex.name}</span></span>
               <span className="mt-0.5 block text-[10px] text-slate-400">리포트 보는 법 예시</span>
             </button>
           )}
@@ -95,11 +96,11 @@ function Screen({ route }: { route: Route }) {
     case "confirm": return <ConfirmScreen requestId={route.requestId} />
     case "run": return <RunScreen runId={route.runId} />
     case "reports": return <ReportList />
-    case "report": if (route.reportId === EXAMPLE_REPORT_ID) return <Suspense fallback={<Loading label="예시 리포트를 여는 중…" />}><TutorialScreen startTour={false} /></Suspense>
+    case "report": if (route.reportId === EXAMPLE_REPORT_ID) return <Suspense fallback={<Loading label="예시 리포트를 여는 중…" />}><TutorialScreen key="example" startTour={false} /></Suspense>
       return <Suspense fallback={<Loading label="리포트 화면을 여는 중…" />}><ReportDetail reportId={route.reportId} sec={route.sec} company={route.company} rb={route.rb} /></Suspense>
     case "paper": return <Suspense fallback={<Loading />}><PaperScreen paperId={route.paperId} /></Suspense>
     case "comparison": return <Suspense fallback={<Loading />}><ComparisonScreen comparisonId={route.comparisonId} /></Suspense>
-    case "tutorial": return <Suspense fallback={<Loading label="둘러보기를 여는 중…" />}><TutorialScreen /></Suspense>
+    case "tutorial": return <Suspense fallback={<Loading label="둘러보기를 여는 중…" />}><TutorialScreen key="tutorial" /></Suspense>
     case "not-found": return <EmptyState title="페이지를 찾을 수 없습니다" description={`주소 ${route.path} 에 해당하는 화면이 없습니다.`} action={<Button onClick={() => navigate({ page: "home" })}>홈으로</Button>} />
   }
   if (status === "loading") return null

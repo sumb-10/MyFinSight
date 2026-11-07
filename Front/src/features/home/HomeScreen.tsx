@@ -13,7 +13,7 @@ import { reportName } from "../../lib/reportName"
 import { proposedNameOf } from "../../api/proposed"
 import { MockTag } from "../report/proposedView"
 import { useRenameTick } from "../report/ReportName"
-import { EXAMPLE_ROW, useExampleVisible } from "../tutorial/exampleReport"
+import { EXAMPLE_ROW, useExample } from "../tutorial/exampleReport"
 import { ExampleBadge, openExample } from "../tutorial/ExampleReportParts"
 
 export function HomeScreen() {
@@ -26,7 +26,8 @@ export function HomeScreen() {
   const [detail, setDetail] = useState(false)
   const renamed = useRenameTick()
   const reports = useResource(() => svc.listReports(), [svc, renamed])
-  const example = useExampleVisible()  // 최근 리포트 맨 위의 「[예시]」 리포트
+  const ex = useExample()  // 최근 리포트 맨 위의 「예시」 리포트
+  const example = ex.visible
   const [ui, setUi] = useState(() => loadUi())
   useEffect(() => { saveUi({ draftIdea: idea }) }, [idea])
   useEffect(() => { const u = loadUi(); if (u.prefillIdea || u.prefillOverrides) setUi(saveUi({ prefillIdea: null, prefillOverrides: null })) }, [])  // 미리 채운 값(새 요청)은 한 번만 쓴다
@@ -108,7 +109,7 @@ export function HomeScreen() {
             {reports.status === "error" && <p className="text-xs text-red-600">{reports.error}</p>}
             {example && (
               <button onClick={openExample} className="flex w-full items-center justify-between rounded-xl p-3 text-left hover:bg-slate-50">
-                <span><span className="block text-sm font-semibold text-slate-800"><ExampleBadge />{EXAMPLE_ROW.name.replace(/^\[예시\]\s*/, "")}</span><span className="mt-0.5 block text-xs text-slate-400">리포트 보는 법 예시 · 기준일 {EXAMPLE_ROW.as_of}</span></span>
+                <span><span className="block text-sm font-semibold text-slate-800"><ExampleBadge />{ex.name}</span><span className="mt-0.5 block text-xs text-slate-400">리포트 보는 법 예시 · 기준일 {EXAMPLE_ROW.as_of}</span></span>
                 <ChevronRight className="size-4 text-slate-300" />
               </button>
             )}

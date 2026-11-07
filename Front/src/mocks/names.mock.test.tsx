@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { beforeEach, afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { ServiceContext } from "../app/providers"
 import type { AnalysisService } from "../api/service"
@@ -9,6 +9,10 @@ import { StartPaperDialog } from "../features/paper/StartPaperDialog"
 import { PaperScreen } from "../features/paper/PaperScreen"
 import { REPORTS } from "./scenarios"
 import { MockService } from "./services/MockService"
+import { setExampleHidden } from "../features/tutorial/exampleReport"
+
+// 목록 맨 위 「예시」 리포트는 이 파일이 다루는 서버 리포트 이름·삭제와 별개라 숨겨 둔다 (기본 이름이 목업 리포트와 같다)
+beforeEach(() => setExampleHidden(true))
 
 // 3단계: 리포트 이름(자동 이름·바꾸기·되돌리기)과 모의투자 이름 연동. 서비스에 제안 메서드가 없으면(일반 모드) 지금 화면 그대로인지도 확인한다.
 

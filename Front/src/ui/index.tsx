@@ -9,7 +9,7 @@ export const inputClass = "w-full rounded-xl border border-slate-200 bg-white px
 export function Button({ children, variant = "primary", className = "", disabled, onClick, type = "button" }: { children: React.ReactNode; variant?: "primary" | "secondary" | "neutral" | "ghost" | "danger" | "destructive"; className?: string; disabled?: boolean; onClick?: () => void; type?: "button" | "submit" }) {
   const variants = { primary: "bg-blue-700 text-white border-blue-700 hover:bg-blue-800", secondary: "bg-white text-blue-700 border-blue-200 hover:bg-blue-50", neutral: "bg-white text-slate-700 border-slate-300 hover:bg-slate-50", ghost: "bg-transparent text-slate-600 border-transparent hover:bg-slate-100", danger: "bg-white text-red-700 border-red-200 hover:bg-red-50", destructive: "bg-red-600 text-white border-red-600 hover:bg-red-700" }
   return (
-    <button type={type} disabled={disabled} onClick={onClick} className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}>
+    <button type={type} disabled={disabled} onClick={onClick} className={`inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}>
       {children}
     </button>
   )
@@ -21,7 +21,7 @@ export function Card({ children, className = "" }: { children: React.ReactNode; 
 
 export function Badge({ children, tone = "blue" }: { children: React.ReactNode; tone?: "blue" | "green" | "amber" | "red" | "slate" }) {
   const tones = { blue: "border-blue-200 bg-blue-50 text-blue-700", green: "border-emerald-200 bg-emerald-50 text-emerald-700", amber: "border-amber-200 bg-amber-50 text-amber-800", red: "border-red-200 bg-red-50 text-red-700", slate: "border-slate-200 bg-slate-50 text-slate-600" }
-  return <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${tones[tone]}`}>{children}</span>
+  return <span className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold ${tones[tone]}`}>{children}</span>
 }
 
 export function Alert({ title, children, tone = "info" }: { title: string; children?: React.ReactNode; tone?: "info" | "warning" | "error" | "success" }) {

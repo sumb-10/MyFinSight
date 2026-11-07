@@ -53,5 +53,13 @@ export function createTutorialService(doc: ReportDoc): AnalysisService {
 export async function loadTutorialDoc(): Promise<ReportDoc> {
   const [{ buildReport }, { REPORTS }] = await Promise.all([import("../../mocks/data/report"), import("../../mocks/scenarios")])
   const sc = REPORTS.find((r) => r.id === "mock_rep_normal") ?? REPORTS[0]
-  return buildReport(sc)
+  return asExample(buildReport(sc))
+}
+
+/** 목업 자료의 문장 속 「목업」을 「예시」로 (예: 「[목업] 동일비중이…」 → 「[예시] 동일비중이…」). 목업 원본은 그대로 두고 예시 화면에서만 바꾼다. */
+export function asExample<T>(v: T): T {
+  if (typeof v === "string") return v.replace(/목업/g, "예시") as T
+  if (Array.isArray(v)) return v.map(asExample) as T
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, asExample(x)])) as T
+  return v
 }

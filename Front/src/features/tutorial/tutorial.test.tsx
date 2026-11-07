@@ -8,9 +8,9 @@ import { popoverStyle } from "./Coachmark"
 import { ServiceContext } from "../../app/providers"
 import type { AnalysisService } from "../../api/service"
 import { ReportList } from "../report/ReportList"
-import { EXAMPLE_ROW, isExampleHidden } from "./exampleReport"
+import { EXAMPLE_ROW, exampleName, isExampleHidden, resetExampleMemory } from "./exampleReport"
 
-beforeEach(() => { try { window.localStorage.clear() } catch { /* ignore */ } })
+beforeEach(() => { try { window.localStorage.clear() } catch { /* ignore */ } resetExampleMemory() })
 
 describe("목록의 「[예시]」 리포트", () => {
   const svc = { mode: "api", listReports: async () => [], listRuns: async () => [] } as unknown as AnalysisService
@@ -31,11 +31,31 @@ describe("목록의 「[예시]」 리포트", () => {
     expect(isExampleHidden()).toBe(false)
   })
 
+  it("제목에는 「[예시]」 글자 없이 배지만, 다른 리포트처럼 삭제·더보기가 있고 더보기로 이름을 바꿀 수 있다", async () => {
+    list()
+    const row = (await screen.findByText(EXAMPLE_ROW.name)).closest("tr")!
+    expect(row).not.toHaveTextContent("[예시]")
+    expect(within(row).getAllByText("예시").length).toBeGreaterThan(0)  // 배지
+    fireEvent.click(within(row).getByRole("button", { name: /더보기/ }))
+    fireEvent.click(screen.getByRole("menuitem", { name: /이름 변경/ }))
+    const dlg = screen.getByRole("dialog", { name: "리포트 이름 바꾸기" })
+    fireEvent.change(within(dlg).getByRole("textbox"), { target: { value: "내 연습용 리포트" } })
+    fireEvent.click(within(dlg).getByRole("button", { name: "저장" }))
+    expect(screen.getByText("내 연습용 리포트")).toBeInTheDocument()
+    expect(exampleName()).toBe("내 연습용 리포트")
+    fireEvent.click(within(screen.getByText("내 연습용 리포트").closest("tr")!).getByRole("button", { name: /더보기/ }))
+    fireEvent.click(screen.getByRole("menuitem", { name: /이름 변경/ }))
+    fireEvent.click(screen.getByRole("button", { name: "기본 이름으로 되돌리기" }))
+    expect(screen.getByText(EXAMPLE_ROW.name)).toBeInTheDocument()
+  })
+
   it("예시 리포트 화면: 코치마크 없이 열리고, 띠에서 둘러보기를 시작하며, 더보기에 「리포트 삭제」가 있다", async () => {
     render(<TutorialScreen load={loadTutorialDoc} startTour={false} />)
     await screen.findByRole("button", { name: /모의투자 시작/ }, { timeout: 10000 })
     expect(screen.queryByTestId("coachmark")).toBeNull()
     expect(screen.getByRole("note")).toHaveTextContent("예시 리포트입니다")
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(EXAMPLE_ROW.name)  // 목록과 같은 이름
+    expect(document.body.textContent).not.toMatch(/목업/)  // 예시 화면에는 「목업」 대신 「예시」
     expect(screen.getByRole("button", { name: /모의투자 시작/ })).toBeDisabled()
     fireEvent.click(screen.getByRole("button", { name: /더보기/ }))
     fireEvent.click(screen.getByRole("menuitem", { name: /리포트 삭제/ }))

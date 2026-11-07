@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Compass, Home, Trash2 } from "lucide-react"
+import { Compass, Home, Pencil, Trash2 } from "lucide-react"
 import { ServiceContext } from "../../app/providers"
 import { navigate } from "../../app/router"
 import type { ReportDoc } from "../../api/types"
 import { Button, ErrorState, Loading } from "../../ui"
 import { ReportDetail } from "../report/ReportDetail"
 import { Coachmark } from "./Coachmark"
-import { DeleteExampleDialog } from "./ExampleReportParts"
+import { DeleteExampleDialog, RenameExampleDialog } from "./ExampleReportParts"
+import { useExample } from "./exampleReport"
 import { TOUR_STEPS } from "./steps"
 import { createTutorialService, loadTutorialDoc, TUTORIAL_REPORT_ID } from "./tutorialService"
 
@@ -21,6 +22,8 @@ export function TutorialScreen({ load = loadTutorialDoc, startTour = true }: { l
   const [touring, setTouring] = useState(startTour)
   const [done, setDone] = useState(false)
   const [removing, setRemoving] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const ex = useExample()
   useEffect(() => {
     let alive = true
     load().then((d) => { if (alive) setDoc(d) }, (e) => { if (alive) setErr(e instanceof Error ? e.message : String(e)) })
@@ -31,7 +34,7 @@ export function TutorialScreen({ load = loadTutorialDoc, startTour = true }: { l
   const next = useCallback(() => { if (step >= TOUR_STEPS.length - 1) close(); else setStep((s) => s + 1) }, [step, close])
   const prev = useCallback(() => setStep((s) => Math.max(0, s - 1)), [])
   const restart = () => { setStep(0); setDone(false); setTouring(true); window.scrollTo?.({ top: 0 }) }
-  const extraMenu = useMemo(() => (startTour ? [] : [{ label: "리포트 삭제", icon: Trash2, onClick: () => setRemoving(true), danger: true }]), [startTour])
+  const extraMenu = useMemo(() => (startTour ? [] : [{ label: "이름 바꾸기", icon: Pencil, onClick: () => setRenaming(true) }, { label: "리포트 삭제", icon: Trash2, onClick: () => setRemoving(true), danger: true }]), [startTour])
 
   if (err) return <ErrorState title="예시 리포트를 열지 못했습니다" message={err} retry={() => window.location.reload()} />
   if (!doc || !svc) return <Loading label="예시 리포트를 준비하는 중…" />
@@ -50,9 +53,10 @@ export function TutorialScreen({ load = loadTutorialDoc, startTour = true }: { l
         </div>
       )}
       <ServiceContext.Provider value={svc}>
-        <ReportDetail reportId={TUTORIAL_REPORT_ID} readOnly extraMenu={extraMenu} />
+        <ReportDetail reportId={TUTORIAL_REPORT_ID} readOnly extraMenu={extraMenu} title={ex.name} />
       </ServiceContext.Provider>
       {touring && <Coachmark steps={TOUR_STEPS} index={step} onPrev={prev} onNext={next} onClose={close} />}
+      {renaming && <RenameExampleDialog close={() => setRenaming(false)} />}
       {removing && <DeleteExampleDialog close={() => setRemoving(false)} onDeleted={() => navigate({ page: "reports" })} />}
     </div>
   )
