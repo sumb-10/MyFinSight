@@ -23,7 +23,7 @@ function GuidePrompt({ to, close }: { to: GuideDestination; close: () => void })
   const no = () => { recordGuide("declined"); close(); navigate(to) }
   return createPortal(  // 사이드바(sticky)의 쌓임 맥락에 갇히면 리포트의 고정 탭 아래로 깔린다
     <Dialog title="리포트 가이드를 보시겠습니까?" close={close}>
-      <p className="px-6 py-5 text-sm leading-6 text-slate-700">예시 리포트로 리포트 보는 법을 1~2분 동안 안내합니다. 가이드는 홈의 「리포트 보는 법 둘러보기」에서 언제든 다시 볼 수 있습니다.</p>
+      <p className="px-6 py-5 text-sm leading-6 text-slate-700">예시 리포트로 리포트 보는 법을 안내합니다. 가이드는 홈의 「리포트 보는 법 둘러보기」에서 언제든 다시 볼 수 있습니다.</p>
       <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
         <Button variant="neutral" onClick={no}>아니요</Button>
         <Button onClick={yes}>예</Button>
