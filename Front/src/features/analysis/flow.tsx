@@ -69,6 +69,15 @@ export function Pending({ title, detail }: { title: string; detail?: string }) {
 }
 export const LLM_DETAIL = "분석 모델(AI)이 내용을 해석해 조건에 반영합니다. 처리하는 동안 화면을 닫지 마세요."
 
+/** 「말로 조건 보태기」: 질문 화면과 확인 화면이 같은 이름·안내를 쓴다. */
+export const NOTE_BUTTON = "말로 보태기"
+export const NOTE_DESC = `질문과 상관없이 바꾸고 싶은 것을 적고 「${NOTE_BUTTON}」를 누르면 분석 모델이 해석해 반영합니다. 투자 시장·숫자 조건은 「조건 바꾸기」가 더 정확합니다.`
+export const NOTE_UNSENT = `아직 반영하지 않았습니다. 「${NOTE_BUTTON}」를 눌러야 이번 분석 조건에 들어갑니다.`
+/** 적고 아직 보내지 않은 문장 (요청별, 이 탭에서만). 질문 화면 → 확인 화면으로 넘어가도 남아, 확인 화면의 「반영하지 않은 추가 요청」 확인을 거친다. */
+const pendingNotes = new Map<string, string>()
+export const pendingNote = (requestId: string) => pendingNotes.get(requestId) ?? ""
+export const keepPendingNote = (requestId: string, text: string) => { if (text.trim()) pendingNotes.set(requestId, text); else pendingNotes.delete(requestId) }
+
 export function ActionError({ title, message, retry }: { title: string; message: string; retry?: () => void }) {
   return (
     <div role="alert" className="flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-950">

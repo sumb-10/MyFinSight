@@ -53,7 +53,7 @@ export function HomeScreen() {
       <div className="mx-auto max-w-4xl pt-10 text-center">
         <Badge><Sparkles className="size-3" />개인화 투자전략</Badge>
         <h1 className="mt-5 text-4xl font-extrabold tracking-tight text-slate-950">투자 아이디어를 포트폴리오로 확인해보세요.</h1>
-        <p className="mt-3 text-base text-slate-600">내 투자조건을 반영해 종목을 고르고, 과거 데이터로 성과와 위험을 검증합니다. 부족한 조건은 분석 모델이 한 번에 하나씩 물어봅니다.</p>
+        <p className="mt-3 text-base text-slate-600">내 투자조건을 반영해 종목을 고르고, 과거 데이터로 성과와 위험을 검증합니다. 부족한 조건은 분석 모델이 {svc.getQuestionBatch && svc.answerBatch ? "골라서 한 번에" : "한 번에 하나씩"} 물어봅니다.</p>
         <div className="mt-4 flex justify-center"><Button variant="secondary" onClick={() => navigate({ page: "tutorial" })}><Compass className="size-4" />처음이신가요? 리포트 보는 법 둘러보기</Button></div>
         <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm">
           <textarea value={idea} onChange={(e) => { setIdea(e.target.value); setError("") }} className="min-h-36 w-full resize-none rounded-xl border-0 p-3 text-base leading-7 outline-none placeholder:text-slate-400" placeholder="예: 미국과 한국의 반도체·메모리 기업에 분산 투자하고 싶어요. 특정 종목에 너무 집중하고 싶지는 않습니다." />

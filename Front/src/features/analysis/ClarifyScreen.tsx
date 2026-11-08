@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ArrowLeft, Send, SlidersHorizontal } from "lucide-react"
+import { ArrowLeft, MessageSquareText, SlidersHorizontal } from "lucide-react"
 import { useProfile, useService } from "../../app/providers"
 import { navigate } from "../../app/router"
 import { errorMessage } from "../../api/client"
@@ -11,7 +11,7 @@ import { ko } from "../../lib/format"
 import { RevisionCard } from "./RevisionCard"
 import { DetailConditionsDialog, OVERRIDE_LABELS, overrideText } from "../home/DetailConditions"
 import { Part } from "../profile/parts"
-import { ActionError, AllConditions, AnsweredList, ChangedConditions, FlowHeader, FlowSteps, IdeaPart, KIND_HELP, LLM_DETAIL, Pending, ResultNote, diffRows, type RowChange } from "./flow"
+import { ActionError, AllConditions, AnsweredList, ChangedConditions, FlowHeader, FlowSteps, IdeaPart, KIND_HELP, LLM_DETAIL, NOTE_BUTTON, NOTE_DESC, NOTE_UNSENT, Pending, ResultNote, diffRows, keepPendingNote, pendingNote, type RowChange } from "./flow"
 import type { ProposedMessageResult } from "../../api/proposed"
 import { BatchQuestions, BatchResult, type Submitted } from "./BatchQuestions"
 import { MessageOutcome } from "./MessageOutcome"
@@ -39,8 +39,10 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
   const [toolErr, setToolErr] = useState<{ kind: "message" | "overrides" | "cancel"; message: string; retry: () => void } | null>(null)
   const [result, setResult] = useState<{ kind: "message" | "overrides"; changes: RowChange[] } | null>(null)
   const [text, setText] = useState("")
-  const [note, setNote] = useState("")
+  const [note, setNote] = useState(() => pendingNote(requestId))
   const [noteHint, setNoteHint] = useState("")
+  const [confirmCancel, setConfirmCancel] = useState(false)  // 「취소하고 홈으로」를 한 번 더 확인한다 (답한 내용이 이 요청과 함께 닫힘)
+  useEffect(() => { keepPendingNote(requestId, note) }, [requestId, note])
   const [qHint, setQHint] = useState("")
   const [picked, setPicked] = useState<unknown>(undefined)
   const [editing, setEditing] = useState(false)
@@ -105,12 +107,22 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
-      <FlowHeader eyebrow={`${ko(st.mode)} · 조건 확인`} title="부족한 조건을 함께 정합니다" desc="분석 모델이 아이디어를 해석하고, 결과가 달라질 항목만 하나씩 묻습니다. 답하지 않은 조건은 기본 투자조건을 그대로 씁니다."
-        action={<Button variant="ghost" onClick={() => void cancelAndHome()} disabled={locked}><ArrowLeft className="size-4" />{busy === "cancel" ? "취소하는 중…" : "취소하고 홈으로"}</Button>} />
+      <FlowHeader eyebrow={`${ko(st.mode)} · 조건 확인`} title="부족한 조건을 함께 정합니다" desc={`분석 모델이 아이디어를 해석하고, 결과가 달라질 항목만 ${batchMode ? "골라 한 번에" : "하나씩"} 묻습니다. 답하지 않은 조건은 기본 투자조건을 그대로 씁니다.`}
+        action={<Button variant="ghost" onClick={() => setConfirmCancel(true)} disabled={locked || confirmCancel}><ArrowLeft className="size-4" />취소하고 홈으로</Button>} />
+      {confirmCancel && (
+        <div role="alertdialog" aria-label="요청 취소 확인" className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-900">
+          <p className="font-semibold">이 요청을 취소할까요?</p>
+          <p className="mt-1">지금까지 답한 내용과 바꾼 조건은 이 요청과 함께 닫히고, 분석은 시작되지 않습니다.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button variant="danger" onClick={() => void cancelAndHome()} disabled={locked}>{busy === "cancel" ? "취소하는 중…" : "요청 취소"}</Button>
+            <Button variant="ghost" onClick={() => setConfirmCancel(false)} disabled={locked}>계속 답하기</Button>
+          </div>
+        </div>
+      )}
       <FlowSteps current={0} />
       {toolErr?.kind === "cancel" && <ActionError title="요청을 취소하지 못했습니다" message={toolErr.message} retry={toolErr.retry} />}
-      {st.revision && <RevisionCard rev={st.revision} />}
       <IdeaPart st={st} />
+      {st.revision && <RevisionCard rev={st.revision} />}
       {st.hard_errors.length > 0 && (
         <Alert title="입력 조건에 오류가 있어 먼저 수정이 필요합니다" tone="error">
           <ul className="list-disc pl-5">{st.hard_errors.map((e) => <li key={e.field}>{e.message_ko}</li>)}</ul>
@@ -149,14 +161,14 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
       </ChangedConditions>
       <AllConditions rows={rows} base="기본 투자조건" />
       {!batchDone && <AnsweredList questions={st.questions} />}  {/* 한 번에 보낸 직후(목업)에는 「보낸 답변과 반영 결과」와 겹쳐 숨긴다. 최종 확인 화면·일반 모드는 그대로 */}
-      <Part title="말로 조건 보태기" tag="선택" desc="질문과 상관없이 바꾸고 싶은 것을 적고 「보내기」를 누르면 분석 모델이 해석해 반영합니다. 투자 시장·숫자 조건은 「조건 바꾸기」가 더 정확합니다.">
+      <Part title="말로 조건 보태기" tag="선택" desc={NOTE_DESC}>
         <textarea className={`${inputClass} min-h-16`} value={note} onChange={(e) => { setNote(e.target.value); setNoteHint("") }} placeholder="예: 배당주 위주로 / 종목은 8개만" readOnly={locked} aria-label="말로 조건 보태기" />
-        {note.trim() && busy !== "message" && <p className="text-xs font-medium text-amber-800">아직 보내지 않았습니다. 「보내기」를 눌러야 조건에 반영됩니다.</p>}
+        {note.trim() && busy !== "message" && <p className="text-xs font-medium text-amber-800">{NOTE_UNSENT}</p>}
         {noteHint && <p className="text-xs font-medium text-red-600">{noteHint}</p>}
         {busy === "message" && <Pending title={PENDING.message} detail={LLM_DETAIL} />}
         {toolErr?.kind === "message" && !locked && <ActionError title="추가 요청을 반영하지 못했습니다" message={toolErr.message} retry={toolErr.retry} />}
         {result?.kind === "message" && !locked && (msgs ? <MessageOutcome results={msgs} /> : <ResultNote changes={result.changes} what="추가 요청" />)}
-        <div className="flex justify-end"><Button variant="secondary" onClick={sendNote} disabled={locked}><Send className="size-4" />{busy === "message" ? "반영하는 중…" : "보내기"}</Button></div>
+        <div className="flex justify-end"><Button variant="secondary" onClick={sendNote} disabled={locked}><MessageSquareText className="size-4" />{busy === "message" ? "반영하는 중…" : NOTE_BUTTON}</Button></div>
       </Part>
       {editing && profile && <DetailConditionsDialog profile={profile.profile} initial={st.overrides ?? {}} onApply={applyOverrides} close={() => setEditing(false)} title="이번 요청의 조건 바꾸기" applyLabel="이 조건으로 다시 해석" intro="기본 투자조건에서 가져온 값을 이번 요청에서만 바꿉니다. 적용하면 분석 모델이 바뀐 조건으로 다시 해석하고, 필요한 질문만 다시 묻습니다. 저장된 기본 투자조건은 그대로입니다." />}
     </div>

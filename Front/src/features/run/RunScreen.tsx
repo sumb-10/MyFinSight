@@ -343,7 +343,7 @@ function SelectionPreview({ partial, selStep, tried, done, live }: { partial: Ru
   const sel = partial?.selection
   const st = selStep?.status
   return (
-    <Part title="선정 종목 미리보기" desc={sel ? `${sel.n_selected}개${sel.n_target ? ` (목표 ${sel.n_target}개)` : ""} · 기준일 ${sel.as_of}${partial?.intent?.metric && METRIC_KO[partial.intent.metric] ? ` · 선정 지표 ${METRIC_KO[partial.intent.metric]}` : ""}${done ? "" : " · 과거 성과 분석은 아직 진행 중"}` : undefined}>
+    <Part title="선정 종목 미리보기" desc={sel ? `${sel.n_selected}개${sel.n_target ? ` (목표 ${sel.n_target}개)` : ""} · 기준일 ${sel.as_of}${partial?.intent?.metric && METRIC_KO[partial.intent.metric] ? ` · 선정 지표 ${METRIC_KO[partial.intent.metric]}` : ""}${live ? " · 과거 성과 분석은 아직 진행 중" : ""}` : undefined}>
       {sel ? (
         <>
           {partial?.intent?.summary_ko && <p className="text-sm text-slate-600">{partial.intent.summary_ko}</p>}

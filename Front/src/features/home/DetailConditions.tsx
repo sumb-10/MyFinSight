@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { ChevronDown, Info } from "lucide-react"
 import type { NumHoldings, Options, ProfileVersion, Rebalance, Template, Universe, Weighting } from "../../api/types"
 import { useService } from "../../app/providers"
+import { proposedRulesOf } from "../../api/proposed"
 import { useResource } from "../../state/useResource"
 import { Button, inputClass } from "../../ui"
 import { ko } from "../../lib/format"
@@ -100,13 +101,6 @@ function rawOverrides(f: Form, p: ProfileVersion): Overrides {
   return o
 }
 
-export const OVERRIDE_LABELS: Record<string, string> = {
-  "capital.initial_amount": "투자금", "capital.currency": "통화", "capital.monthly_contribution": "월 적립", "capital.contribution_day": "적립일", "horizon.target_years": "투자기간",
-  "horizon.backtest_years": "백테스트 기간", "horizon.start_date": "백테스트 끝(기준일)", "risk.risk_tolerance": "위험 성향", "risk.max_drawdown_tolerance": "허용 낙폭", "risk.target_annual_return": "목표 수익률",
-  "risk.benchmark": "비교지수", "constraints.universe": "유니버스", "constraints.num_holdings.target": "종목 수", "constraints.num_holdings": "종목 수", "constraints.max_weight_per_stock": "종목당 상한", "constraints.max_weight_per_sector": "섹터당 상한",
-  "strategy_preference.template": "선정 기준", "strategy_preference.baseline_weighting": "기준 비중", "strategy_preference.use_news_tilt": "뉴스 반영", "constraints.exclude_tickers": "제외 종목",
-  "constraints.exclude_themes": "제외 테마", "constraints.exclude_sectors": "제외 섹터", "constraints.min_market_cap_usd": "최소 시가총액", "constraints.min_avg_daily_volume_usd": "최소 거래대금", "constraints.min_cash_ratio": "최소 현금", "constraints.rebalance": "리밸런싱",
-}
 export const overrideText = (k: string, v: unknown): string => {
   if (k === "constraints.num_holdings" && v && typeof v === "object") { const n = v as NumHoldings; return `목표 ${n.target} (${n.min}~${n.max})` }
   if (k === "constraints.rebalance" && v && typeof v === "object") { const r = v as { count: number; unit: string }; return r.count === 0 ? "없음" : `${r.count}×${ko(r.unit)}` }
@@ -128,7 +122,7 @@ const TABS: { id: TabId; label: string }[] = [{ id: "money", label: "자금·기
 const PLACE: Record<string, { label: string; tab: TabId; adv?: AdvId }> = {
   "capital.initial_amount": { label: "투자금", tab: "money" }, "capital.currency": { label: "통화", tab: "money" }, "capital.monthly_contribution": { label: "매월 추가 투자금", tab: "money" }, "capital.contribution_day": { label: "추가 투자일", tab: "money" },
   "horizon.target_years": { label: "앞으로 투자할 기간", tab: "money" }, "horizon.backtest_years": { label: "과거 성과를 확인할 기간", tab: "money" }, "horizon.start_date": { label: "분석 기준일", tab: "money" },
-  "risk.risk_tolerance": { label: "위험 성향", tab: "goal" }, "risk.max_drawdown_tolerance": { label: "손실 감내 수준", tab: "goal" }, "risk.target_annual_return": { label: "목표 연수익률", tab: "goal" }, "risk.benchmark": { label: "비교지수", tab: "goal" },
+  "risk.risk_tolerance": { label: "투자성향", tab: "goal" }, "risk.max_drawdown_tolerance": { label: "손실 감내 수준", tab: "goal" }, "risk.target_annual_return": { label: "목표 연수익률", tab: "goal" }, "risk.benchmark": { label: "비교지수", tab: "goal" },
   "constraints.universe": { label: "투자 대상 지수", tab: "stocks" }, "constraints.num_holdings.target": { label: "목표 종목 수", tab: "stocks" }, "constraints.num_holdings": { label: "종목 수", tab: "stocks", adv: "range" },
   "constraints.max_weight_per_stock": { label: "종목당 최대 비중", tab: "stocks" }, "constraints.max_weight_per_sector": { label: "섹터당 최대 비중", tab: "stocks" },
   "constraints.exclude_tickers": { label: "제외 종목", tab: "stocks", adv: "exclude" }, "constraints.exclude_themes": { label: "제외 테마", tab: "stocks", adv: "exclude" }, "constraints.exclude_sectors": { label: "제외 섹터", tab: "stocks", adv: "exclude" },
@@ -136,6 +130,8 @@ const PLACE: Record<string, { label: string; tab: TabId; adv?: AdvId }> = {
   "constraints.min_cash_ratio": { label: "최소 현금 비율", tab: "stocks", adv: "cash" }, "constraints.rebalance": { label: "리밸런싱", tab: "stocks", adv: "cash" },
   "strategy_preference.template": { label: "투자할 기업", tab: "strategy" }, "strategy_preference.baseline_weighting": { label: "투자금 나누는 방식", tab: "strategy" }, "strategy_preference.use_news_tilt": { label: "뉴스·공시 반영", tab: "strategy" },
 }
+/** 홈 배지·질문 보기의 항목 이름. 상세 조건 창과 같은 이름(PLACE, 용어표 기준)을 쓴다 — 전에는 따로 둔 짧은 이름(허용 낙폭·유니버스 등)이 섞였다. */
+export const OVERRIDE_LABELS: Record<string, string> = Object.fromEntries(Object.entries(PLACE).map(([k, p]) => [k, p.label]))
 const ORDER = Object.keys(PLACE)
 const placeOf = (k: string) => PLACE[k] ?? { label: k, tab: "money" as TabId }
 const getPath = (o: unknown, path: string): unknown => path.split(".").reduce<unknown>((x, k) => (x as Record<string, unknown> | undefined)?.[k], o)
@@ -175,9 +171,11 @@ export interface FormError { id: string; message: string; tab: TabId; adv?: AdvI
 /** 목표 종목 수가 최소~최대를 벗어났을 때 (최소·최대는 저절로 바꾸지 않는다 — 서버 HARD: 최소 ≤ 목표 ≤ 최대). */
 const targetRangeError = (f: Form) => `목표 종목 수는 최소 ${f.num_min} ~ 최대 ${f.num_max}개 사이여야 합니다. 목표를 바꾸거나 아래 「종목 수 범위」에서 최소·최대를 바꿔 주세요`
 
-export function validate(f: Form): FormError[] {
+export function validate(f: Form, { allowZero = false }: { allowZero?: boolean } = {}): FormError[] {
   const e: FormError[] = []
-  if (!(f.initial_amount > 0)) e.push({ id: "initial_amount", message: "투자금은 0보다 커야 합니다", tab: "money" })
+  // allowZero: 제안 규칙 — 초기 투자금 0원 + 매월 추가 투자 (목업에서만, 지금 서버는 0보다 커야 함). 내 투자조건 폼(validateProfile)과 같은 규칙
+  if (allowZero && f.initial_amount === 0) { if (!(f.monthly_contribution > 0)) e.push({ id: "initial_amount", message: "처음 투자금을 0원으로 하려면 매월 추가 투자금을 정해 주세요 (목업 규칙)", tab: "money" }) }
+  else if (!(f.initial_amount > 0)) e.push({ id: "initial_amount", message: "투자금은 0보다 커야 합니다", tab: "money" })
   if (f.bt_mode === "range" && !(f.bt_start_year <= f.bt_end_year)) e.push({ id: "bt_start_year", message: "백테스트 시작 연도가 끝 연도보다 늦습니다", tab: "money" })
   if (f.bt_mode === "range" && f.bt_end_year - f.bt_start_year + 1 > 20) e.push({ id: "bt_start_year", message: "백테스트는 최대 20년입니다", tab: "money" })
   if (f.bt_mode === "recent" && !(f.backtest_years > 0 && f.backtest_years <= 20)) e.push({ id: "backtest_years", message: "백테스트 기간은 0보다 크고 20년 이하입니다", tab: "money" })
@@ -238,6 +236,7 @@ export function DetailConditionsDialog({ profile, initial, onApply, close, title
   const svc = useService()
   const options = useResource(() => svc.options(), [svc])
   const opt: Options | null = options.data
+  const allowZero = !!proposedRulesOf(opt)?.allow_zero_initial_amount
   const [f, setF] = useState<Form>(() => fromProfile(profile, initial))
   const [tab, setTab] = useState<TabId>("money")
   const [showChanges, setShowChanges] = useState(false)
@@ -262,7 +261,7 @@ export function DetailConditionsDialog({ profile, initial, onApply, close, title
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setF((x) => ({ ...x, [k]: v }))
   const ov = useMemo(() => toOverrides(f, profile), [f, profile])
   const rows = useMemo(() => changeRows(ov, f, profile), [ov, f, profile])
-  const errors = tried ? validate(f) : []
+  const errors = tried ? validate(f, { allowZero }) : []
   const errOf = (id: string) => errors.find((e) => e.id === id)?.message
   const targetErr = f.num_min <= f.num_max && (f.num_target < f.num_min || f.num_target > f.num_max) ? targetRangeError(f) : undefined  // 목표 칸 오류는 적용을 누르기 전에도 바로 보여 준다
   const has = (...keys: string[]) => keys.some((k) => k in ov)
@@ -272,7 +271,7 @@ export function DetailConditionsDialog({ profile, initial, onApply, close, title
   const field = (id: string) => ({ id: dom(id), "aria-invalid": errOf(id) ? true : undefined, "aria-describedby": errOf(id) ? `${dom(id)}-error` : undefined })
   const apply = () => {
     setTried(true)
-    const first = validate(f)[0]
+    const first = validate(f, { allowZero })[0]
     if (first) {
       setShowChanges(false); setTab(first.tab)
       if (first.adv) setAdvOpen((o) => ({ ...o, [first.adv!]: true }))
@@ -372,7 +371,7 @@ export function DetailConditionsDialog({ profile, initial, onApply, close, title
         ) : tab === "goal" ? (
           <SectionCard title="위험과 목표" desc="분석이 끝나면 결과가 이 기준을 지켰는지 점검합니다.">
             <div className={twoCols}>
-              <Item id={dom("risk")} label="위험 성향" changed={has("risk.risk_tolerance")}><select id={dom("risk")} className={inputClass} value={f.risk_tolerance} onChange={(e) => set("risk_tolerance", e.target.value as Form["risk_tolerance"])}>{(opt?.risk_tolerance ?? ["conservative", "moderate", "aggressive"]).map((x) => <option key={x} value={x}>{ko(x)}</option>)}</select></Item>
+              <Item id={dom("risk")} label="투자성향" changed={has("risk.risk_tolerance")}><select id={dom("risk")} className={inputClass} value={f.risk_tolerance} onChange={(e) => set("risk_tolerance", e.target.value as Form["risk_tolerance"])}>{(opt?.risk_tolerance ?? ["conservative", "moderate", "aggressive"]).map((x) => <option key={x} value={x}>{ko(x)}</option>)}</select></Item>
               <Item id={dom("benchmark")} label="비교지수" changed={has("risk.benchmark")}><select id={dom("benchmark")} className={inputClass} value={f.benchmark} onChange={(e) => set("benchmark", e.target.value)}>{(opt?.benchmarks ?? ["SPY", "QQQ", "069500.KS"]).map((b) => <option key={b} value={b}>{benchName(b)}</option>)}</select></Item>
               <Item id={dom("drawdown")} label="손실 감내 수준 (%)" changed={has("risk.max_drawdown_tolerance")}><NumberInput id={dom("drawdown")} min={5} max={90} value={f.max_drawdown_pct} onChange={(v) => set("max_drawdown_pct", v)} /></Item>
               <Item id={dom("target_return")} label="목표 연수익률 (%)" changed={has("risk.target_annual_return")}><NumberInput id={dom("target_return")} min={0} max={100} value={f.target_return_pct} onChange={(v) => set("target_return_pct", v)} /></Item>

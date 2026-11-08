@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { MessageSquareText, Play, SlidersHorizontal } from "lucide-react"
 import { useProfile, useService } from "../../app/providers"
 import { navigate } from "../../app/router"
@@ -12,7 +12,7 @@ import { RevisionCard } from "./RevisionCard"
 import { startNewWith } from "./ClarifyScreen"
 import { DetailConditionsDialog } from "../home/DetailConditions"
 import { Part } from "../profile/parts"
-import { ActionError, AllConditions, AnsweredList, ChangedConditions, FlowHeader, FlowSteps, IdeaPart, LLM_DETAIL, Pending, ResultNote, diffRows, type RowChange } from "./flow"
+import { ActionError, AllConditions, AnsweredList, ChangedConditions, FlowHeader, FlowSteps, IdeaPart, LLM_DETAIL, NOTE_BUTTON, NOTE_DESC, NOTE_UNSENT, Pending, ResultNote, diffRows, keepPendingNote, pendingNote, type RowChange } from "./flow"
 import type { ProposedMessageResult } from "../../api/proposed"
 import { MessageOutcome } from "./MessageOutcome"
 
@@ -28,10 +28,11 @@ export function ConfirmScreen({ requestId }: { requestId: string }) {
   const [err, setErr] = useState<ActErr | null>(null)
   const [result, setResult] = useState<{ kind: "message" | "overrides"; changes: RowChange[] } | null>(null)
   const [editing, setEditing] = useState(false)
-  const [note, setNote] = useState("")
+  const [note, setNote] = useState(() => pendingNote(requestId))  // 질문 화면에서 적고 보내지 않은 문장을 이어받는다
   const [noteHint, setNoteHint] = useState("")
   const [askUnsent, setAskUnsent] = useState(false)  // 보내지 않은 추가 요청이 있는데 「분석 시작」을 눌렀을 때
   const [msgs, setMsgs] = useState<ProposedMessageResult[] | null>(null)  // 제안 기능: 말로 보태기 처리 결과 (목업에서만)
+  useEffect(() => { keepPendingNote(requestId, note) }, [requestId, note])
   const st = local ?? res.data
   if (res.status === "loading" && !st) return <Loading label="확정 조건을 불러오는 중…" />
   if (!st) return <ErrorState message={res.error ?? ""} retry={res.reload} />
@@ -106,14 +107,14 @@ export function ConfirmScreen({ requestId }: { requestId: string }) {
       <AllConditions rows={rows} base={base} />
       <AnsweredList questions={st.questions} />
       {!revision && (
-        <Part title="말로 조건 보태기" tag="선택" desc="적고 「말로 보태기」를 누르면 분석 모델이 해석해 반영하고, 바뀐 조건을 다시 확인합니다. 투자 시장·숫자 조건은 「조건 바꾸기」가 더 정확합니다.">
+        <Part title="말로 조건 보태기" tag="선택" desc={NOTE_DESC}>
           <textarea className={`${inputClass} min-h-14`} value={note} onChange={(e) => { setNote(e.target.value); setNoteHint("") }} placeholder="예: 배당주 위주로 / 종목은 8개만" readOnly={locked} aria-label="말로 조건 보태기" />
-          {unsent && busy !== "message" && <p className="text-xs font-medium text-amber-800">아직 반영하지 않았습니다. 「말로 보태기」를 눌러야 이번 분석 조건에 들어갑니다.</p>}
+          {unsent && busy !== "message" && <p className="text-xs font-medium text-amber-800">{NOTE_UNSENT}</p>}
           {noteHint && <p className="text-xs font-medium text-red-600">{noteHint}</p>}
           {busy === "message" && <Pending title="추가 요청을 처리하고 있습니다." detail={LLM_DETAIL} />}
           {err?.kind === "message" && !locked && <ActionError title="추가 요청을 반영하지 못했습니다" message={err.message} retry={err.retry} />}
           {result?.kind === "message" && !locked && (msgs ? <MessageOutcome results={msgs} /> : <ResultNote changes={result.changes} what="추가 요청" />)}
-          <div className="flex justify-end"><Button variant="secondary" onClick={sendNote} disabled={locked}><MessageSquareText className="size-4" />{busy === "message" ? "반영하는 중…" : "말로 보태기"}</Button></div>
+          <div className="flex justify-end"><Button variant="secondary" onClick={sendNote} disabled={locked}><MessageSquareText className="size-4" />{busy === "message" ? "반영하는 중…" : NOTE_BUTTON}</Button></div>
         </Part>
       )}
       {askUnsent && (
@@ -130,7 +131,8 @@ export function ConfirmScreen({ requestId }: { requestId: string }) {
       )}
       {busy === "start" && <Pending title="분석 요청을 대기열에 등록하고 있습니다." />}
       {err?.kind === "start" && !locked && <ActionError title="분석을 시작하지 못했습니다" message={err.message} retry={err.retry} />}
-      <div className="flex flex-col gap-3 rounded-2xl border border-slate-300 bg-white px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
+      {/* 「분석 시작」 줄은 화면 아래에 붙여 둔다 — 조건 표가 길어도 스크롤 끝까지 내려가지 않고 시작할 수 있게 */}
+      <div className="sticky bottom-4 z-20 flex flex-col gap-3 rounded-2xl border border-slate-300 bg-white px-5 py-4 shadow-lg sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <p className="text-xs leading-5 text-slate-500">{unsupported.length > 0 ? "지원하지 않는 조건을 바꿔야 분석을 시작할 수 있습니다." : locked && busy !== "start" ? "요청을 처리하는 동안에는 시작할 수 없습니다." : "시작하면 분석 대기열에 등록되고, 진행 화면에서 단계별 상태를 볼 수 있습니다. 시작한 뒤에는 조건을 바꿀 수 없습니다."}</p>
         <Button onClick={tryStart} disabled={locked || unsupported.length > 0}><Play className="size-4" />{busy === "start" ? "대기열에 등록 중…" : "분석 시작"}</Button>
       </div>

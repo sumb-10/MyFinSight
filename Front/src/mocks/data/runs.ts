@@ -59,7 +59,8 @@ export function cancelInfo(st: RunStep[], requested_at: string, completed_at: st
 }
 
 /* ───────── 이벤트 시퀀스 (7-3): 만든 시각부터 시간이 흐르면 대기 → 단계 진행 → 확인할 점 → 완료(또는 실패)로 저절로 바뀐다 ───────── */
-export const LIVE_QUEUE_MS = 3000, LIVE_STEP_MS = 2000, CANCEL_MS = 1500
+// 단계 간격은 진행 화면의 상태 확인 간격(2.5초, RunScreen)보다 길게 둔다 — 짧으면 「진행 중」을 한 번도 못 보고 건너뛰는 단계가 생긴다.
+export const LIVE_QUEUE_MS = 3000, LIVE_STEP_MS = 3000, CANCEL_MS = 1500
 const FAIL_AT = STEPS.findIndex(([s]) => s === "11_backtest")
 const iso = (ms: number) => new Date(ms).toISOString().slice(0, 19)
 
