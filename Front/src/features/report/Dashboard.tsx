@@ -199,7 +199,7 @@ export function AllocationCard({ a, doc, onMore }: { a: NonNullable<ReportSummar
         </ul>
       </div>
       {items.length > TOP_N && <button type="button" aria-expanded={all} onClick={() => setAll((v) => !v)} className="flex items-center gap-1 text-sm font-semibold text-blue-700 hover:underline">{all ? "상위 종목만 보기" : `전체 종목 보기 (${items.length}개${cash ? " + 현금" : ""})`}<ChevronDown className={`size-4 transition-transform ${all ? "rotate-180" : ""}`} /></button>}
-      {p?.execution && <ExecutionOrders e={p.execution} usdOnly={usdOnly} doc={doc} />}
+      {p?.execution && <div data-tour="orders"><ExecutionOrders e={p.execution} usdOnly={usdOnly} doc={doc} /></div>}
       <div className="space-y-1 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
         {forward && doc && <p>이 배분은 분석 기준일의 「현재 구성」입니다. 위에서 선택된 전략({doc.header.chosen_label_ko})은 과거 성과로 고른 구성이라 비중이 다를 수 있습니다.</p>}
         {p?.execution
@@ -310,7 +310,7 @@ function ReturnCompare({ ret, ex, doc }: { ret: SummaryKpi; ex: SummaryKpi | nul
   return (
     <section aria-label={`${n.name} 비교`} className="@container rounded-xl border border-slate-200">
       <div className="px-5 pt-5">
-        <h4 className="flex items-center gap-1 text-base font-bold text-slate-950">{n.name}{kpiTerm(ret) && <Term t={kpiTerm(ret)!} label={n.name} />}{(meta || proposed(doc)?.structured?.benchmark) && <MockTag />}</h4>
+        <h4 className="flex items-center gap-1 text-base font-bold text-slate-950">{n.name}{kpiTerm(ret) && <span data-tour="term-help" className="inline-flex"><Term t={kpiTerm(ret)!} label={n.name} /></span>}{(meta || proposed(doc)?.structured?.benchmark) && <MockTag />}</h4>
         {sub && <p className="text-[13px] leading-5 text-slate-600">{sub}</p>}
       </div>
       <dl className={`mt-4 grid grid-cols-1 gap-y-3 px-5 pb-5 ${hasBench ? "@xs:grid-cols-2 @xs:gap-x-6" : ""}`}>

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest"
-import { fireEvent, render, screen, within } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { TutorialScreen } from "./TutorialScreen"
 import { TOUR_STEPS } from "./steps"
 import { loadTutorialDoc } from "./tutorialService"
@@ -92,6 +92,35 @@ describe("리포트 보는 법 둘러보기", () => {
     expect(screen.getByRole("dialog", { name: TOUR_STEPS[0].title })).toBeInTheDocument()
     // 단계 대상은 모두 리포트 화면에 있다
     for (const s of TOUR_STEPS) expect(document.querySelector(`[data-tour="${s.target}"]`), s.target).not.toBeNull()
+  }, 20000)
+
+  it("2단계는 「예상 매수 주문」을 펼쳐 주식 수를 안내하고, 단계를 떠나면 다시 접는다", async () => {
+    show()
+    await tour()
+    const toggle = () => within(document.querySelector<HTMLElement>('[data-tour="orders"]')!).getByRole("button", { name: /예상 매수 주문/ })
+    expect(toggle()).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(screen.getByRole("button", { name: "다음" }))
+    expect(screen.getByRole("dialog", { name: TOUR_STEPS[1].title })).toHaveTextContent(/몇 주/)
+    await waitFor(() => expect(toggle()).toHaveAttribute("aria-expanded", "true"))
+    expect(await screen.findByRole("columnheader", { name: "주식 수" })).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "다음" }))
+    expect(toggle()).toHaveAttribute("aria-expanded", "false")
+  }, 20000)
+
+  it("6단계 제목을 바꾸고 ? 도움말을 예시로 열며, 「투자 용어 설명」도 함께 비춘 뒤 떠나면 닫는다", async () => {
+    show()
+    await tour()
+    const i = TOUR_STEPS.findIndex((s) => s.target === "term-help")
+    expect(i).toBe(5)
+    for (let n = 0; n < i; n++) fireEvent.click(screen.getByRole("button", { name: "다음" }))
+    expect(TOUR_STEPS[i].title).toBe("어려운 용어는 '?' 또는 투자 용어 설명으로")
+    expect(TOUR_STEPS[i].also).toEqual(["glossary"])
+    expect(screen.getByRole("dialog", { name: TOUR_STEPS[i].title })).toHaveTextContent(/연평균 수익률 옆 \?/)
+    const help = document.querySelector<HTMLElement>('[data-tour="term-help"]')!
+    await waitFor(() => expect(within(help).getByRole("button", { name: /설명 보기/ })).toHaveAttribute("aria-expanded", "true"))
+    expect(help.querySelector('[role="dialog"]')).not.toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "다음" }))
+    expect(help.querySelector('[role="dialog"]')).toBeNull()
   }, 20000)
 
   it("마지막 단계에서 「마치기」, 끝나면 「내 분석 시작하기」가 남는다", async () => {
