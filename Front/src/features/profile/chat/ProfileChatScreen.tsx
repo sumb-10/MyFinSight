@@ -11,14 +11,15 @@ import { Alert, Button, ErrorState, Loading } from "../../../ui"
 import { MockTag } from "../../report/proposedView"
 import { money } from "../format"
 import { ProfileScreen } from "../ProfileScreen"
-import { ChatInput } from "./ChatInput"
+import { Composer, QuickReplies } from "./ChatInput"
 import { ChatReviewActions, ChatReviewSummary } from "./ChatReview"
 
 // 대화형 초기 투자조건 (제안 기능): 서비스에 대화 메서드(startProfileChat 등)가 있을 때만 — 지금은 목업뿐.
 // 없으면(실제 서버) 기존 4단계 폼으로 연다. 대화는 초안만 만들고, 저장은 기존 saveProfile 로 한다.
 //
-// 모양은 메신저 창 하나: 위 막대(도우미·진행) / 가운데 대화(이 영역만 스크롤) / 아래 입력 자리(보기·직접 입력, 요약 단계에선 저장 버튼).
-// 창 높이를 화면에 맞춰 두어 대화가 길어져도 브라우저 페이지는 스크롤되지 않는다.
+// 모양은 메신저 창 하나: 위 막대(도우미·진행) / 가운데 대화(이 영역만 스크롤) / 아래 입력줄(요약 단계에선 저장 버튼).
+// 보기는 마지막 질문 바로 아래 내 쪽에 「추천 답장」처럼 뜨고, 입력줄은 금액·숫자 직접 입력에만 쓴다.
+// 대화는 아래부터 쌓이고(메신저처럼), 창 높이를 화면에 맞춰 두어 대화가 길어져도 브라우저 페이지는 스크롤되지 않는다.
 
 type Answer = Omit<ProposedChatAnswer, "question_id">
 
@@ -154,21 +155,23 @@ function ChatFlow({ hasProfile, onSaved }: { hasProfile: boolean; onSaved: (v: P
         </div>
 
         <div ref={listRef} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain bg-slate-50 px-5 pb-4 pt-2">
-          <section aria-label="대화">
+          <section aria-label="대화" className="flex min-h-full flex-col justify-end">
             <ol aria-live="polite" className="space-y-1.5">
               {msgs.map((m, i) => <Bubble key={m.id} m={m} first={m.role === "bot" && msgs[i - 1]?.role !== "bot"} onEdit={m.editable && m.question_id && !busy ? () => rewind(m.question_id!) : undefined} />)}
               {pending && <li className="flex justify-end pt-2"><p className="max-w-[75%] rounded-2xl rounded-br-sm bg-blue-700/80 px-4 py-2.5 text-sm leading-6 text-white shadow-sm"><span className="sr-only">내 답: </span>{pending}</p></li>}
               {typing && <Typing />}
+              {chat?.question && !typing && !pending && <li className="pt-1"><QuickReplies key={chat.question.id} q={chat.question} busy={busy} onAnswer={answer} /></li>}
               {chat?.state === "review" && !typing && <li ref={reviewRef} className="chat-in flex gap-2.5 pt-2"><Avatar hidden /><div className="min-w-0 flex-1"><ChatReviewSummary chat={chat} allowZero={allowZero} /></div></li>}
             </ol>
           </section>
         </div>
 
-        <section aria-label={chat?.state === "review" ? "저장" : "답하기"} className="max-h-[55%] shrink-0 overflow-y-auto border-t border-slate-200 bg-white px-5 py-4">
+        <section aria-label={chat?.state === "review" ? "저장" : "답하기"} className="shrink-0 border-t border-slate-200 bg-white px-4 py-3">
           {error && <div className="mb-3"><Alert tone="error" title="대화를 이어가지 못했습니다">{error} <button type="button" className="font-semibold underline" onClick={() => void start()}>처음부터 다시 시작</button></Alert></div>}
-          {chat?.question ? <ChatInput key={chat.question.id} q={chat.question} busy={busy} onAnswer={answer} />
-            : chat?.state === "review" ? <ChatReviewActions chat={chat} allowZero={allowZero} busy={busy} saveError={saveError} onSave={() => void save()} onEditInForm={toForm} onRestart={() => void start()} />
-            : <p className="text-sm text-slate-500">잠시만 기다려 주세요…</p>}
+          {chat?.state === "review" && !typing
+            ? <ChatReviewActions chat={chat} allowZero={allowZero} busy={busy} saveError={saveError} onSave={() => void save()} onEditInForm={toForm} onRestart={() => void start()} />
+            : <Composer key={chat?.question?.id ?? "none"} q={chat?.question ?? null} busy={busy} onAnswer={answer}
+                waitingText={!chat ? "대화를 준비하고 있어요…" : typing ? "도우미가 답하는 중…" : undefined} />}
         </section>
       </div>
     </div>
