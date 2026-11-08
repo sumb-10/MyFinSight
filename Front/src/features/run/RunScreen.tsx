@@ -15,6 +15,7 @@ import { Part } from "../profile/parts"
 import { BUCKET_TEXT, STEP_TEXT, collectNotes, notesFromWarnings, splitSummary, stepTitle, type RunNotes } from "./steps"
 import { proposedCancelOf } from "../../api/proposed"
 import { MockTag } from "../report/proposedView"
+import { useGuideGate } from "../tutorial/GuidePrompt"
 
 const TERMINAL = new Set(["success", "partial", "failed", "cancelled"])
 /** 상태가 앞으로만 간다: 취소 응답(cancelling)을 받은 뒤 폴링이 끝난 상태(cancelled 등)를 주면 그것을 쓴다. */
@@ -72,6 +73,7 @@ function RunView({ runId }: { runId: string }) {
   const svc = useService()
   const { health } = useHealth()
   const { data, error, failures } = usePolling(() => svc.getRun(runId), { intervalMs: 2500, until: (d: RunStatus) => TERMINAL.has(d.status) }, [svc, runId])
+  const gate = useGuideGate()  // 「리포트 보기」를 처음 누르면 리포트 가이드를 볼지 묻는다
   const [override, setOverride] = useState<RunStatus | null>(null)  // 취소 응답처럼 폴링보다 먼저 받은 상태
   const r = !data ? override : !override ? data : STAGE_RANK[override.status] > STAGE_RANK[data.status] ? override : data
   const done = r?.status === "success" || r?.status === "partial"
@@ -169,6 +171,7 @@ function RunView({ runId }: { runId: string }) {
               </div>
             ))}
             {r.status === "running" && current.length === 0 && <p className="text-sm text-slate-600">다음 단계를 준비하고 있습니다.</p>}
+            {active && <button type="button" onClick={() => navigate({ page: "tutorial" })} className="text-sm font-semibold text-blue-700 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500">기다리는 동안 리포트 보는 법 둘러보기</button>}
             {active && (
               <div className="border-t border-slate-100 pt-4">
                 {!confirmCancel ? <Button variant="danger" onClick={() => setConfirmCancel(true)} disabled={busy !== ""}><X className="size-4" />분석 취소</Button>
@@ -187,7 +190,8 @@ function RunView({ runId }: { runId: string }) {
             {done && (
               <>
                 <p className="text-sm text-slate-700">결과와 리포트가 저장되었습니다.{cancelAsked ? " 취소 요청이 반영되기 전에 분석이 끝났습니다." : ""}</p>
-                <Button className="w-full" onClick={() => navigate({ page: "report", reportId })}>리포트 보기</Button>
+                <Button className="w-full" onClick={() => gate.go({ page: "report", reportId })}>리포트 보기</Button>
+                {gate.dialog}
                 {collected.total > 0 && <NoteLink total={collected.total} onGo={goNotes} />}
                 {cmp.data && <Button variant="secondary" className="w-full" onClick={() => navigate({ page: "comparison", comparisonId: cmp.data!.comparison_id })}>원안과 비교 보기</Button>}
               </>

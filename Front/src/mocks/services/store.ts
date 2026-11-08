@@ -6,6 +6,8 @@ import type { PaperScenario } from "../scenarios"
 import type { LiveRun } from "../data/runs"
 import { SEEN_KEYS } from "../../lib/seen"
 
+import { clearGuideRecord } from "../../features/tutorial/guideRecord"
+
 export const MOCK_STORE_KEY = "myfinsight.mock.store.v1"
 
 export interface MockState {
@@ -42,4 +44,5 @@ export function saveState(s: MockState) {
 
 export function clearState() {
   try { window.sessionStorage.removeItem(MOCK_STORE_KEY); window.sessionStorage.removeItem(SEEN_KEYS.mock) } catch { /* ignore */ }  // 확인 기록(새 리포트·리밸런싱 알림)도 처음으로
+  clearGuideRecord()  // 리포트 가이드 안내 기록도 처음으로
 }

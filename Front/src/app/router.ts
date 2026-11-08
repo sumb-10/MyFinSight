@@ -11,6 +11,7 @@ export type Route =
   | { page: "report"; reportId: string; sec?: string; company?: string; rb?: number }
   | { page: "paper"; paperId?: string }
   | { page: "comparison"; comparisonId: string }
+  | { page: "tutorial"; next?: "reports"; reportId?: string }  // next·reportId: 가이드를 마친 뒤 돌아갈 곳
   | { page: "not-found"; path: string }
 
 export const routePath = (r: Route): string => {
@@ -31,6 +32,7 @@ export const routePath = (r: Route): string => {
     }
     case "paper": return r.paperId ? `#/paper/${r.paperId}` : "#/paper"
     case "comparison": return `#/comparisons/${r.comparisonId}`
+    case "tutorial": return r.reportId ? `#/tutorial?report=${r.reportId}` : r.next ? `#/tutorial?next=${r.next}` : "#/tutorial"
     case "not-found": return r.path
   }
 }
@@ -57,6 +59,11 @@ export const parseRoute = (hash: string = window.location.hash): Route => {
   if (a === "reports") return { page: "reports" }
   if (a === "paper") return { page: "paper", paperId: b || undefined }
   if (a === "comparisons" && b) return { page: "comparison", comparisonId: b }
+  if (a === "tutorial") {
+    const q = new URLSearchParams(query)
+    const reportId = q.get("report")
+    return reportId ? { page: "tutorial", reportId } : q.get("next") === "reports" ? { page: "tutorial", next: "reports" } : { page: "tutorial" }
+  }
   return { page: "not-found", path: hash }
 }
 

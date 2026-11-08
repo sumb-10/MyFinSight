@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Activity, ArrowLeft, BookOpenText, GitCompareArrows, ListChecks, Pencil, PencilLine, RefreshCw, Sigma, Trash2 } from "lucide-react"
 import { useService } from "../../app/providers"
-import { navigate } from "../../app/router"
+import { navigate as routerNavigate } from "../../app/router"
 import { errorMessage } from "../../api/client"
 import type { EvidenceRecord, ReportDoc } from "../../api/types"
 import { useResource } from "../../state/useResource"
@@ -26,16 +26,22 @@ import { proposedOf } from "../../api/proposed"
 import { GlossaryPanel, HelpTip } from "./terms"
 import { DeleteReportDialog, RenameReportDialog, useRenameTick } from "./ReportName"
 import { findReportRow, reportName } from "../../lib/reportName"
+import { groupOf, groupsFor, SECTION_SEQUENCE } from "./navGroups"
+import { plainSummary } from "./summaryText"
 
-// 읽는 순서: 판단 → 포트폴리오 → 종목 근거 → 시장 → 성과 → (요청 내역) → 전제 → 참고. 서버가 주는 내용은 그대로이고 순서만 바꾼다 (모르는 섹션은 뒤로).
-const SECTION_ORDER = ["verdict", "construction", "companies", "market", "performance", "assumptions", "references"]
+// 읽는 순서는 상단 탭 묶음(navGroups) 순서: 종목 선정(판단 → 포트폴리오 → 종목 근거) → 과거 성과 → 시장·뉴스 → 요청·주의·자료.
+// 서버가 주는 내용은 그대로이고 순서만 바꾼다 (모르는 섹션은 뒤로).
+const SECTION_ORDER = SECTION_SEQUENCE.filter((s) => s !== "history")
 const rank = (id: string) => { const i = SECTION_ORDER.indexOf(id); return i < 0 ? SECTION_ORDER.length : i }
 function reorder(doc: ReportDoc): ReportDoc {
   const by = <T extends { id: string }>(xs: T[]) => xs.map((x, i) => [x, i] as const).sort((a, b) => rank(a[0].id) - rank(b[0].id) || a[1] - b[1]).map(([x]) => x)
   return { ...doc, sections: by(doc.sections), nav: by(doc.nav) }
 }
 
-type Props = { reportId: string; sec?: string; company?: string; rb?: number }
+/** readOnly: 튜토리얼처럼 둘러보기만 하는 화면. 모의투자 시작·조건 수정·다시 분석·이름 바꾸기·삭제를 막고, 주소(해시)도 바꾸지 않는다. */
+type MenuItem = { label: string; onClick: () => void; disabled?: boolean; icon?: React.ElementType; danger?: boolean }
+/** extraMenu: 더보기 메뉴 끝에 붙일 항목 (예시 리포트의 「리포트 삭제」 = 목록에서 숨기기) */
+type Props = { reportId: string; sec?: string; company?: string; rb?: number; readOnly?: boolean; extraMenu?: MenuItem[]; title?: string }
 
 const TAB_OFFSET = 110  // 상단 고정 탭(49px) 아래 이 선을 지난 마지막 섹션을 「지금 보는 섹션」으로 친다 (섹션은 scroll-mt-16 = 64px 에 멈춘다)
 const STOP = 64  // scroll-mt-16
@@ -46,15 +52,16 @@ export function ReportDetail(props: Props) {
   return <ReportView key={props.reportId} {...props} />
 }
 
-function ReportView({ reportId, sec, company, rb }: Props) {
+function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = [], title }: Props) {
   const svc = useService()
+  const navigate: typeof routerNavigate = readOnly ? () => {} : routerNavigate
   const res = useResource(() => svc.getReport(reportId), [svc, reportId])
   useFluidShell()
   useEffect(() => {  // 리포트 화면에서만 앱 틀의 본문 최대 폭을 넓힌다 (index.css 의 html.report-wide). 모의투자 화면은 그대로
     document.documentElement.classList.add("report-wide")
     return () => document.documentElement.classList.remove("report-wide")
   }, [])
-  const doc = useMemo(() => (res.data ? reorder(hideCodeIds(normalizeDoc(res.data))) : null), [res.data])  // 화면 문장의 지표 ID 괄호는 지운다
+  const doc = useMemo(() => (res.data ? reorder(plainSummary(hideCodeIds(normalizeDoc(res.data)))) : null), [res.data])  // 화면 문장의 지표 ID 괄호와 요약의 내부 약어(BL 1 등)는 지운다
   useEffect(() => {  // 열어 본 리포트는 사이드바 「새 리포트」 배지에서 뺀다 (이 브라우저의 확인 기록)
     if (!res.data) return
     for (const k of new Set([reportId, res.data.run_id, (res.data as { report_id?: string }).report_id].filter(Boolean) as string[])) markReportSeen(svc.mode, k)
@@ -89,7 +96,7 @@ function ReportView({ reportId, sec, company, rb }: Props) {
   // 섹션을 펼치고 그 자리(또는 섹션 안 anchor 요소)로 스크롤. 펼친 다음 렌더에서 내용이 생기므로 조금 기다린다.
   const jump = useCallback((id: string, anchor?: string) => {
     if (id !== "summary") setOpenSecs((o) => ({ ...o, [id]: true }))
-    setActive(id)
+    setActive(groupOf(id))
     lockActive.current = Date.now() + 900
     const target = () => (anchor && document.getElementById(anchor)) || document.getElementById(`sec-${id}`)
     window.setTimeout(() => target()?.scrollIntoView({ behavior: "smooth", block: "start" }), 80)
@@ -110,7 +117,7 @@ function ReportView({ reportId, sec, company, rb }: Props) {
   useEffect(() => {  // 주소가 가리키는 곳으로 처음 한 번 이동: 기업 카드 > 리밸런싱 타임라인 > 섹션
     if (!doc || jumped.current || (!sec && !company && rb === undefined)) return
     jumped.current = true
-    const target = () => (company && document.getElementById(`acc-${company}`)) || (rb !== undefined && document.getElementById("rb-timeline")) || (sec ? document.getElementById(`sec-${sec}`) : null)
+    const target = () => typeof document === "undefined" ? null : (company && document.getElementById(`acc-${company}`)) || (rb !== undefined && document.getElementById("rb-timeline")) || (sec ? document.getElementById(`sec-${sec}`) : null)
     window.setTimeout(() => target()?.scrollIntoView({ block: "start" }), 120)
     window.setTimeout(() => {  // 위쪽 카드·차트가 자리를 잡으며 높이가 바뀌면 한 번 더 맞춘다 (고정 탭 아래 멈춤 위치에서 벗어난 경우만)
       const el = target()
@@ -128,7 +135,7 @@ function ReportView({ reportId, sec, company, rb }: Props) {
       let cur = els[0].id
       for (const el of els) if (el.getBoundingClientRect().top <= TAB_OFFSET) cur = el.id
       if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) for (const el of els) if (el.getBoundingClientRect().top < window.innerHeight - 80) cur = el.id
-      setActive(cur.replace("sec-", ""))
+      setActive(groupOf(cur.replace("sec-", "")))  // 활성 표시는 묶음 단위
     }
     const on = () => { if (!raf) raf = window.requestAnimationFrame(calc) }
     window.addEventListener("scroll", on, { passive: true }); window.addEventListener("resize", on)
@@ -161,15 +168,20 @@ function ReportView({ reportId, sec, company, rb }: Props) {
     try { const st = await svc.rerun(doc.run_id); navigate({ page: "clarify", requestId: st.request_id }) } catch (e) { setActErr(errorMessage(e)) } finally { setBusy("") }
   }
   const menu = [
-    { label: "조건 확인 후 다시 분석", icon: RefreshCw, onClick: rerun, disabled: busy === "rerun" },
+    { label: "조건 확인 후 다시 분석", icon: RefreshCw, onClick: rerun, disabled: readOnly || busy === "rerun" },
     ...(cmp.data ? [{ label: "원안과 비교", icon: GitCompareArrows, onClick: () => navigate({ page: "comparison", comparisonId: cmp.data!.comparison_id }) }] : []),
     { label: "계산 조건", icon: Sigma, onClick: () => setPanel("calc") }, { label: "실행 기록", icon: ListChecks, onClick: () => setPanel("exec") },
     { label: `출처 전체 (${doc.evidence_summary?.total ?? doc.evidence.length})`, icon: BookOpenText, onClick: () => setDrawer({ ids: null, title: "출처 전체" }) },
     // 이름 바꾸기·삭제(제안 기능)는 서비스에 메서드가 있을 때만 — 지금은 목업뿐
-    ...(name && svc.renameReport ? [{ label: "이름 바꾸기", icon: Pencil, onClick: () => setRename(true) }] : []),
-    ...(svc.deleteReport ? [{ label: "리포트 삭제", icon: Trash2, onClick: () => setRemoving(true), danger: true }] : []),
+    ...(name && svc.renameReport && !readOnly ? [{ label: "이름 바꾸기", icon: Pencil, onClick: () => setRename(true) }] : []),
+    ...(svc.deleteReport && !readOnly ? [{ label: "리포트 삭제", icon: Trash2, onClick: () => setRemoving(true), danger: true }] : []),
+    ...extraMenu,
   ]
-  const dates: [string, string][] = [["작성일", h.created_at], ["분석 기준일", h.data_as_of], ["종목 선정 기준일", h.selection_as_of], ["백테스트 기간", `${h.backtest_period.start} ~ ${h.backtest_period.end}`]]
+  // 헤더에는 백테스트 기간만 두고, 나머지 날짜는 (?) 도움말 안에서 본다
+  const otherDates: [string, string][] = [["작성일", h.created_at], ["분석 기준일", h.data_as_of], ["종목 선정 기준일", h.selection_as_of]]
+  const groups = groupsFor(doc)
+  const jumpGroup = (gid: string) => { const g = groups.find((x) => x.id === gid); jump(g?.sections[0] ?? gid) }
+  const groupStart = new Map(groups.map((g) => [g.sections.find((s) => s !== "summary"), g] as const))
   return (
     <ReportContext.Provider value={ctx}>
       <CitationContext.Provider value={cite}>
@@ -180,37 +192,48 @@ function ReportView({ reportId, sec, company, rb }: Props) {
                 <div className="min-w-0">
                   <p className="mb-2 text-xs font-bold tracking-widest text-blue-700">분석 리포트</p>
                   <div className="flex items-start gap-1">
-                    <h1 className="break-words text-3xl font-bold tracking-tight text-slate-950">{row ? reportName(row) : rows.status === "loading" ? <span aria-hidden="true" className="inline-block h-8 w-64 max-w-full animate-pulse rounded-lg bg-slate-100 align-middle" /> : (name?.display_ko ?? h.title_ko)}</h1>
+                    <h1 className="break-words text-3xl font-bold tracking-tight text-slate-950">{title ? title : row ? reportName(row) : rows.status === "loading" ? <span aria-hidden="true" className="inline-block h-8 w-64 max-w-full animate-pulse rounded-lg bg-slate-100 align-middle" /> : (name?.display_ko ?? h.title_ko)}</h1>
                     {name && svc.renameReport && <button type="button" aria-label="리포트 이름 바꾸기" title="리포트 이름 바꾸기" onClick={() => setRename(true)} className="mt-1 shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"><Pencil className="size-5" /></button>}
                   </div>
-                  {row && <p className="mt-2 text-sm font-semibold text-slate-700">{h.title_ko}</p>}
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{h.subtitle_ko}</p>
+                  {(title ? h.title_ko !== title : row && h.title_ko !== reportName(row)) && <p className="mt-2 text-sm font-semibold text-slate-700">{h.title_ko}</p>}
+                  {h.subtitle_ko && <p className="mt-2 max-w-3xl truncate text-sm leading-6 text-slate-600" title={h.subtitle_ko}>{h.subtitle_ko}</p>}
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-2 lg:pt-6">
-                  <span title={doc.tracking.eligible ? undefined : (doc.tracking.reason_ko ?? "이 리포트로는 모의투자를 시작할 수 없습니다")}><Button onClick={() => setStartPaper(true)} disabled={!doc.tracking.eligible}><Activity className="size-4" />모의투자 시작</Button></span>
-                  <Button variant="secondary" onClick={() => setRevise(true)}><PencilLine className="size-4" />조건 수정 요청</Button>
+                  <span data-tour="paper-start" title={readOnly ? "둘러보기 중에는 실행되지 않습니다" : doc.tracking.eligible ? undefined : (doc.tracking.reason_ko ?? "이 리포트로는 모의투자를 시작할 수 없습니다")}><Button onClick={() => setStartPaper(true)} disabled={readOnly || !doc.tracking.eligible}><Activity className="size-4" />모의투자 시작</Button></span>
+                  <Button variant="secondary" onClick={() => setRevise(true)} disabled={readOnly}><PencilLine className="size-4" />조건 수정 요청</Button>
                   <Menu items={menu} />
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-                <dl aria-label="리포트 날짜" className="contents">{dates.map(([k, v]) => <div key={k} className="flex gap-1 whitespace-nowrap"><dt>{k}</dt><dd className="tabular-nums text-slate-700">{v}</dd></div>)}</dl>
-                <HelpTip label="날짜 구분">작성일은 리포트를 만든 날입니다. 분석 기준일은 분석에 쓴 가격·뉴스 자료의 기준 날짜로, 투자 금액 카드의 현재 구성도 이 날 기준입니다. 종목 선정 기준일은 투자할 종목 목록을 고른 날짜이고, 과거 성과 계산(백테스트)용 종목은 백테스트 시작일 자료로 다시 골랐습니다. 백테스트 기간은 과거 자료로 성과를 계산한 기간입니다.</HelpTip>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-slate-600">
+                <dl aria-label="리포트 날짜" className="contents"><div className="flex gap-1 whitespace-nowrap"><dt>백테스트 기간</dt><dd className="tabular-nums text-slate-800">{h.backtest_period.start} ~ {h.backtest_period.end}</dd></div></dl>
+                <HelpTip label="날짜 구분">
+                  <dl aria-label="다른 기준 날짜" className="mb-2 space-y-0.5">{otherDates.map(([k, v]) => <div key={k} className="flex justify-between gap-3"><dt>{k}</dt><dd className="tabular-nums font-semibold">{v}</dd></div>)}</dl>
+                  작성일은 리포트를 만든 날입니다. 분석 기준일은 분석에 쓴 가격·뉴스 자료의 기준 날짜로, 투자 금액 카드의 현재 구성도 이 날 기준입니다. 종목 선정 기준일은 투자할 종목 목록을 고른 날짜이고, 과거 성과 계산(백테스트)용 종목은 백테스트 시작일 자료로 다시 골랐습니다. 백테스트 기간은 과거 자료로 성과를 계산한 기간입니다.
+                </HelpTip>
                 {doc.presented_from_version === 1 && <Badge tone="slate">예전 형식 리포트 (자동 변환)</Badge>}
               </div>
             </header>
-            <ReportTabs doc={doc} active={active} onJump={jump} onGlossary={() => setTerms(true)} />
+            <ReportTabs doc={doc} active={active} onJump={jumpGroup} onGlossary={() => setTerms(true)} />
             {actErr && <Alert title="처리하지 못했습니다" tone="error">{actErr}</Alert>}
             {startPaper && <StartPaperDialog reportId={doc.run_id} close={() => setStartPaper(false)} />}
             {revise && <RevisionPanel reportId={doc.run_id} close={() => setRevise(false)} />}
             {rename && <RenameReportDialog reportId={reportId} close={() => setRename(false)} />}
             {removing && <DeleteReportDialog reportId={reportId} name={row ? reportName(row) : (name?.display_ko ?? h.title_ko)} close={() => setRemoving(false)} onDeleted={() => navigate({ page: "reports" })} />}
             {doc.summary && <div id="sec-summary" className="scroll-mt-16"><Dashboard summary={doc.summary} doc={doc} onJump={jump} paperReason={doc.tracking.eligible ? null : (doc.tracking.reason_ko ?? "이 리포트로는 모의투자를 시작할 수 없습니다")} /></div>}
-            <section aria-labelledby="h-details" className="space-y-4">
+            <section aria-labelledby="h-details" data-tour="details" className="space-y-4">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div><h2 id="h-details" className="text-xl font-bold text-slate-950">자세한 분석 보기</h2><p className="mt-1 text-sm text-slate-600">궁금한 부분을 펼쳐 보세요. 판단 근거, 계산 과정, 원문과 출처가 모두 여기에 있습니다.</p></div>
                 <button type="button" onClick={toggleAll} className="shrink-0 rounded-lg px-2 py-1 text-sm font-semibold text-blue-700 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500">{allOpen ? "모두 접기" : "모두 펼치기"}</button>
               </div>
-              {parts.map((x, i) => <SectionShell key={x.id} id={x.id} index={i + 1} title={x.title} sub={x.sub} open={isOpen(x.id)} onToggle={() => setOpenSecs((o) => ({ ...o, [x.id]: !isOpen(x.id) }))}>{x.body}</SectionShell>)}
+              {parts.map((x, i) => {
+                const g = groupStart.get(x.id)  // 묶음의 첫 섹션 앞에 묶음 소제목 (상단 탭과 같은 이름)
+                return (
+                  <Fragment key={x.id}>
+                    {g && <h3 id={`grp-${g.id}`} className="pt-2 text-sm font-bold tracking-wide text-slate-600">{g.heading}</h3>}
+                    <SectionShell id={x.id} index={i + 1} title={x.title} sub={x.sub} open={isOpen(x.id)} onToggle={() => setOpenSecs((o) => ({ ...o, [x.id]: !isOpen(x.id) }))}>{x.body}</SectionShell>
+                  </Fragment>
+                )
+              })}
             </section>
             <footer className="pb-10 text-xs leading-5 text-slate-500">{h.disclaimer_ko}<br />생성 {doc.generated_at} · 요청 {doc.request_id} · 실행 {doc.run_id}{doc.evidence_summary ? ` · 근거 색인 ${doc.evidence_summary.total}건 (본문 인용 ${doc.evidence_summary.cited}건)` : ""}</footer>
         </div>

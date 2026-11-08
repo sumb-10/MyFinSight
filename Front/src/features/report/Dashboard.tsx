@@ -10,6 +10,7 @@ import { holdingColor } from "./colors"
 import { benchOf, checkOf, kpiDisplay, MockTag, nameOf, proposed, strategyInfoOf, toleranceExtraOf, volFromStructured } from "./proposedView"
 import { DEFAULT_VOL_PREF, prefTerms, VOL_PREF_LABEL } from "../../lib/tendency"
 import { HelpTip, Term } from "./terms"
+import { conditionCounts, conditionItems, conditionSentence, shortRuleName } from "./summaryText"
 import { analysisRisk, parseVolCheck, volObserved, type VolCheck, annualizedFromNote, r1Text, benchName, excessSentence, isShortWindow, kpiNote, minAnnualize, pairCagr, periodOf, pickSentence, shortWindowNote } from "./wording"
 
 // 「투자 결과 요약」: 처음 보는 4개 카드 (결과 → 종목별 금액 → 과거 성과 → 내 조건). 숫자·판정은 서버 summary 그대로이고, 여기서는 보여 주는 방식만 정한다.
@@ -18,7 +19,7 @@ type Tone = "green" | "amber" | "red" | "slate"
 const TONE_BOX: Record<Tone, string> = { green: "border-emerald-200 bg-emerald-50/70 text-emerald-900", amber: "border-amber-200 bg-amber-50/70 text-amber-950", red: "border-red-200 bg-red-50/70 text-red-950", slate: "border-slate-300 bg-slate-50 text-slate-900" }
 const TONE_PILL: Record<Tone, string> = { green: "border-emerald-200 bg-emerald-50 text-emerald-800", amber: "border-amber-300 bg-amber-50 text-amber-900", red: "border-red-200 bg-red-50 text-red-800", slate: "border-slate-200 bg-slate-50 text-slate-700" }
 const TONE_ICON: Record<Tone, React.ElementType> = { green: CheckCircle2, amber: AlertTriangle, red: XCircle, slate: MinusCircle }
-const VERDICT_TONE: Record<ReportSummary["verdict"]["status"], Tone> = { recommended: "green", recommended_warn: "amber", insufficient: "amber", none_cash_blend: "slate", none_baseline: "slate" }
+const VERDICT_TONE: Record<ReportSummary["verdict"]["status"], Tone> ={ recommended: "green", recommended_warn: "amber", insufficient: "amber", none_cash_blend: "slate", none_baseline: "slate" }
 
 /** 상태 표시: 색과 아이콘에 글자를 함께 둔다 (색만으로 구분하지 않는다). */
 export function StatusPill({ tone, children }: { tone: Tone; children: React.ReactNode }) {
@@ -27,13 +28,13 @@ export function StatusPill({ tone, children }: { tone: Tone; children: React.Rea
 }
 
 /** 요약 카드 틀: 질문형 제목 + 상세로 가는 링크. 내 투자조건 화면의 파트 카드와 같은 모양. */
-function ResultCard({ id, q, desc, more, body = "space-y-4", children }: { id: string; q: string; desc?: React.ReactNode; more?: [string, () => void]; body?: string; children: React.ReactNode }) {
+function ResultCard({ id, q, desc, more, body = "space-y-4", tour, children }: { id: string; q: string; desc?: React.ReactNode; more?: [string, () => void]; body?: string; tour?: string; children: React.ReactNode }) {
   return (
-    <section aria-labelledby={id} className="flex min-w-0 flex-col rounded-2xl border border-slate-300 bg-white shadow-sm">
+    <section aria-labelledby={id} data-tour={tour} className="flex min-w-0 flex-col rounded-2xl border border-slate-300 bg-white shadow-sm">
       <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1.5 rounded-t-2xl border-b border-slate-200 bg-slate-50 px-5 py-4 sm:px-6">
         <h3 id={id} className="min-w-0 flex-[1_1_15rem] text-base font-bold text-slate-950">{q}</h3>
         {more && <MoreLink label={more[0]} onClick={more[1]} />}
-        {desc && <p className="w-full text-xs leading-5 text-slate-600">{desc}</p>}
+        {desc && <p className="w-full text-[13px] leading-5 text-slate-600">{desc}</p>}
       </header>
       <div className={`flex-1 p-5 sm:p-6 ${body}`}>{children}</div>
     </section>
@@ -79,13 +80,18 @@ export function Dashboard({ summary: sm, doc, onJump, paperReason }: { summary: 
     <section aria-labelledby="h-summary" className="space-y-4">
       <div><h2 id="h-summary" className="text-xl font-bold text-slate-950">투자 결과 요약</h2><p className="mt-1 text-sm text-slate-600">먼저 결과, 종목별 투자 금액, 과거 성과, 내 조건 충족 여부를 확인하세요. 근거와 계산 과정은 아래 「자세한 분석 보기」에 있습니다.</p></div>
       <VerdictCard sm={sm} doc={doc} onMore={() => onJump("verdict")} paperReason={paperReason} />
-      {sm.allocation ? <AllocationCard a={sm.allocation} doc={doc} onMore={() => onJump("construction")} /> : (
+      <div>{sm.allocation ? <AllocationCard a={sm.allocation} doc={doc} onMore={() => onJump("construction")} /> : (
         <ResultCard id="q-alloc" q="어떤 주식에 얼마를 투자하면 될까요?" more={["구성 자세히 보기", () => onJump("construction")]}><p className="text-sm text-slate-600">이 리포트에는 종목별 배분 금액 정보가 없습니다. 비중은 상세 분석의 구성 부분에서 확인할 수 있습니다.</p></ResultCard>
-      )}
+      )}</div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <PastCard sm={sm} doc={doc} onMore={() => onJump("performance")} />
+        <PastCard sm={sm} doc={doc} onMore={() => onJump("performance")} chart={false} />
         <ConditionCard sm={sm} doc={doc} onMore={() => onJump("performance", "perf-validation")} />
       </div>
+      {doc.datasets.dates.length > 0 && (
+        <section aria-label="누적 수익률" className="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex h-64 flex-col"><ReturnMini doc={doc} ids={sm.mini_series?.ids ?? [doc.header.chosen_portfolio_id]} grow /></div>
+        </section>
+      )}
     </section>
   )
 }
@@ -97,35 +103,36 @@ export function VerdictCard({ sm, doc, onMore, paperReason }: { sm: ReportSummar
   const h = doc.header
   const period = sm.period ?? h.backtest_period
   const years = yearsOf(period)
-  const win = periodOf(doc).window_days
   const alerts = keyAlerts(sm)
   const chosenId = sm.verdict.chosen_portfolio_id || h.chosen_portfolio_id
   const info = strategyInfoOf(doc, chosenId)
   const chosenName = sm.verdict.chosen_label_ko || h.chosen_label_ko
   const notices = sm.verdict.notices_ko ?? []
+  const fit = conditionSentence(sm.validation)
   return (
     <ResultCard id="q-verdict" q="이번 투자 전략은 어떤 결과인가요?" more={["판단 근거 자세히 보기", onMore]}>
-      <div className={`rounded-xl border p-4 sm:p-5 ${TONE_BOX[tone]}`}>
+      <div data-tour="verdict" data-tone={tone} className={`rounded-xl border p-4 sm:p-5 ${TONE_BOX[tone]}`}>
         <p className="flex items-start gap-2 text-sm font-bold"><Icon className="mt-0.5 size-4 shrink-0" aria-hidden /><span className="min-w-0 break-words">{sm.verdict.label_ko}</span></p>
         <p className="mt-2 text-lg font-semibold leading-7 text-slate-950"><CitedText text={sm.verdict.headline_ko || h.chosen_note_ko} /></p>
+        {fit && <p aria-label="조건 결과 요약" className="mt-2 text-sm font-medium leading-6 text-slate-700">{fit}</p>}
       </div>
       <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
         <div className="min-w-0 sm:col-span-2">
           <dt className="text-xs font-semibold text-slate-500">선택된 전략</dt>
           <dd className="mt-0.5 flex items-start gap-1 font-semibold text-slate-900"><span className="min-w-0">{chosenName}</span>{info && <HelpTip label={chosenName}>{info.help}</HelpTip>}</dd>
-          {info && <dd className="mt-0.5 text-xs leading-5 text-slate-600">{info.short}{proposed(doc)?.explanations?.strategies?.[chosenId ?? ""] && <MockTag />}</dd>}
+          {info && <dd className="mt-0.5 text-[13px] leading-5 text-slate-600">{info.short}{proposed(doc)?.explanations?.strategies?.[chosenId ?? ""] && <MockTag />}</dd>}
         </div>
         <div><dt className="text-xs font-semibold text-slate-500">분석 기준일</dt><dd className="mt-0.5 tabular-nums text-slate-900">{h.data_as_of}</dd></div>
-        <div><dt className="text-xs font-semibold text-slate-500">과거 성과 계산 기간 (백테스트)</dt><dd className="mt-0.5 tabular-nums text-slate-900">{period.start} ~ {period.end}<span className="block text-xs text-slate-500">{years !== null ? `약 ${years}년` : ""}{period.trading_days ? ` · ${period.trading_days}거래일` : ""}{win && win !== period.trading_days ? ` (수익률 계산 구간 ${win}거래일)` : ""}</span></dd></div>
+        <div><dt className="text-xs font-semibold text-slate-500">과거 성과 계산 기간 (백테스트)</dt><dd className="mt-0.5 tabular-nums text-slate-900">{period.start} ~ {period.end}<span className="block text-xs text-slate-500">{years !== null ? `약 ${years}년` : ""}{period.trading_days ? ` · ${period.trading_days}거래일` : ""}</span></dd></div>
       </dl>
       {alerts.length > 0 ? <div><p className="mb-2 text-xs font-semibold text-slate-500">꼭 확인할 점 {alerts.length}건</p><AlertList items={alerts} /></div>
-        : <p className="text-xs text-slate-500">조건 검증에서 미충족·주의로 표시된 항목은 없습니다.</p>}
+        : <p className="text-[13px] text-slate-600">조건 검증에서 미충족·주의로 표시된 항목은 없습니다.</p>}
       {notices.length > 0 && (
         <Disclosure size="sm" title={`분석 중 확인한 점 ${sm.verdict.n_notices ?? notices.length}건`}>
           <ul className="list-disc space-y-0.5 pl-5 text-sm leading-6 text-slate-700">{notices.map((n, i) => <li key={i}>{n}</li>)}</ul>
         </Disclosure>
       )}
-      {paperReason && !doc.tracking.eligible && <p className="text-xs text-slate-500">모의투자 시작 불가: {paperReason}</p>}
+      {paperReason && !doc.tracking.eligible && <p className="text-[13px] text-slate-600">모의투자 시작 불가: {paperReason}</p>}
     </ResultCard>
   )
 }
@@ -166,6 +173,7 @@ export function AllocationCard({ a, doc, onMore }: { a: NonNullable<ReportSummar
   const desc = <>{forward ? "분석 기준일의 자료로 계산한 목표 배분액입니다" : "선택된 전략의 배분액입니다"} · 기준: {a.basis_ko}{!usdOnly && a.fx_direction ? ` · 환율 ${a.fx_direction}` : ""}</>
   return (
     <ResultCard id="q-alloc" q="어떤 주식에 얼마를 투자하면 될까요?" more={["구성 자세히 보기", onMore]} desc={desc}>
+      <div data-tour="allocation-list" className="space-y-4">
       <dl className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
         <div><dt className="text-xs font-semibold text-slate-500">투자 기준금액</dt><dd className="mt-0.5 text-lg font-bold tabular-nums text-slate-950">{base ?? fmt(a.initial_amount_usd, "usd")}{proposed(doc)?.structured?.requested_amount && <MockTag />}</dd></div>
         {base && <div><dt className="text-xs font-semibold text-slate-500">배분 계산에 쓴 금액</dt><dd className="mt-0.5 tabular-nums text-slate-700">{fmt(a.initial_amount_usd, "usd")}</dd></div>}
@@ -191,8 +199,9 @@ export function AllocationCard({ a, doc, onMore }: { a: NonNullable<ReportSummar
           )}
         </ul>
       </div>
+      </div>
       {items.length > TOP_N && <button type="button" aria-expanded={all} onClick={() => setAll((v) => !v)} className="flex items-center gap-1 text-sm font-semibold text-blue-700 hover:underline">{all ? "상위 종목만 보기" : `전체 종목 보기 (${items.length}개${cash ? " + 현금" : ""})`}<ChevronDown className={`size-4 transition-transform ${all ? "rotate-180" : ""}`} /></button>}
-      {p?.execution && <ExecutionOrders e={p.execution} usdOnly={usdOnly} doc={doc} />}
+      {p?.execution && <div data-tour="orders"><ExecutionOrders e={p.execution} usdOnly={usdOnly} doc={doc} /></div>}
       <div className="space-y-1 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
         {forward && doc && <p>이 배분은 분석 기준일의 「현재 구성」입니다. 위에서 선택된 전략({doc.header.chosen_label_ko})은 과거 성과로 고른 구성이라 비중이 다를 수 있습니다.</p>}
         {p?.execution
@@ -253,7 +262,7 @@ const kpiTerm = (k: { id: string; label_ko: string }) => (k.id === "cagr" ? (/CA
 /** 카드 3: 과거에 투자했다면 어땠을까요?
  *  [지표 이름] → [선택 전략 값 | 비교지수 값] (같은 크기) → [비교지수 대비 차이(서버 excess)] → [같은 조건 안내] → (짧은 창이면) 연 환산 안내 한 줄.
  *  지표 이름은 서버가 준 KPI(짧은 창 = 기간 수익률, 아니면 CAGR)를 따르고, 값·차이는 서버 값 그대로다. 그다음 최대낙폭, 누적 수익률 미니 차트. */
-export function PastCard({ sm, doc, onMore }: { sm: ReportSummary; doc: ReportDoc; onMore: () => void }) {
+export function PastCard({ sm, doc, onMore, chart = true }: { sm: ReportSummary; doc: ReportDoc; onMore: () => void; chart?: boolean }) {
   const ret = sm.kpis.find((k) => k.id === "cagr")
   const ex = sm.kpis.find((k) => k.id === "excess")
   const period = sm.period ?? doc.header.backtest_period
@@ -262,7 +271,7 @@ export function PastCard({ sm, doc, onMore }: { sm: ReportSummary; doc: ReportDo
   const rest = [...(exInline || !ex ? [] : [ex]), ...sm.kpis.filter((k) => k.id === "mdd")]
   return (
     // 옆 카드 4가 길면 이 카드도 같은 높이로 늘어난다 → 요소 사이를 넓히고, 남는 높이는 누적 수익률 차트가 채운다 (좁은 화면에서는 늘어나지 않음)
-    <ResultCard id="q-past" q="과거에 투자했다면 어땠을까요?" more={["과거 성과 자세히 보기", onMore]} desc={`${period.start} ~ ${period.end} 백테스트 (과거 자료로 계산한 결과)`} body="flex flex-col gap-6">
+    <ResultCard id="q-past" tour="past" q="과거에 투자했다면 어땠을까요?" more={["과거 성과 자세히 보기", onMore]} desc={`${period.start} ~ ${period.end} 백테스트 (과거 자료로 계산한 결과)`} body="flex flex-col gap-6">
       {ret && <ReturnCompare ret={ret} ex={exInline ? ex! : null} doc={doc} />}
       {rest.length ? (
         <dl className="divide-y divide-slate-100 rounded-xl border border-slate-200">
@@ -272,7 +281,7 @@ export function PastCard({ sm, doc, onMore }: { sm: ReportSummary; doc: ReportDo
               <div key={k.id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1.5 px-5 py-4">
                 <div className="min-w-0 flex-[1_1_12rem]">
                   <dt className="flex items-center gap-1 text-sm font-semibold text-slate-800"><span className="min-w-0">{n.name}</span>{kpiTerm(k) && <Term t={kpiTerm(k)!} />}{proposed(doc)?.structured?.kpi_meta?.[k.id] && <MockTag />}</dt>
-                  <dd className="mt-0.5 text-xs leading-5 text-slate-500">{k.id === "excess" && k.note_ko ? kpiNote(k.note_ko, doc) : <>{PAST_HELP[k.id]?.(k)}{k.note_ko ? ` · ${kpiNote(k.note_ko, doc)}` : ""}</>}</dd>
+                  <dd className="mt-0.5 text-[13px] leading-5 text-slate-600">{k.id === "excess" && k.note_ko ? kpiNote(k.note_ko, doc) : <>{PAST_HELP[k.id]?.(k)}{k.note_ko ? ` · ${kpiNote(k.note_ko, doc)}` : ""}</>}</dd>
                 </div>
                 <dd className="shrink-0 text-right"><span className="block text-xl font-bold tabular-nums text-slate-950">{fmt(k.value, k.format)}</span>{k.benchmark_value != null && <span className="block whitespace-nowrap text-xs tabular-nums text-slate-500">{k.benchmark_label_ko ?? "비교지수"} {fmt(k.benchmark_value, k.format)}</span>}</dd>
               </div>
@@ -280,8 +289,8 @@ export function PastCard({ sm, doc, onMore }: { sm: ReportSummary; doc: ReportDo
           })}
         </dl>
       ) : !ret && <p className="text-sm text-slate-600">요약 성과 지표가 없습니다. 상세 분석의 과거 성과에서 확인하세요.</p>}
-      <ReturnMini doc={doc} ids={sm.mini_series?.ids ?? [doc.header.chosen_portfolio_id]} grow />
-      <p className="text-xs leading-5 text-slate-500">과거 성과는 미래 수익을 보장하지 않습니다. 최종 평가금액·Sharpe 등 나머지 지표는 상세 분석에서 모두 볼 수 있습니다.</p>
+      {chart && <ReturnMini doc={doc} ids={sm.mini_series?.ids ?? [doc.header.chosen_portfolio_id]} grow />}
+      <p className="text-[13px] leading-5 text-slate-600">과거 성과는 미래 수익을 보장하지 않습니다. 최종 평가금액·Sharpe 등 나머지 지표는 상세 분석에서 모두 볼 수 있습니다.</p>
     </ResultCard>
   )
 }
@@ -303,8 +312,8 @@ function ReturnCompare({ ret, ex, doc }: { ret: SummaryKpi; ex: SummaryKpi | nul
   return (
     <section aria-label={`${n.name} 비교`} className="@container rounded-xl border border-slate-200">
       <div className="px-5 pt-5">
-        <h4 className="flex items-center gap-1 text-base font-bold text-slate-950">{n.name}{kpiTerm(ret) && <Term t={kpiTerm(ret)!} label={n.name} />}{(meta || proposed(doc)?.structured?.benchmark) && <MockTag />}</h4>
-        {sub && <p className="text-xs leading-5 text-slate-500">{sub}</p>}
+        <h4 data-tour="term-help" className="flex items-center gap-1 text-base font-bold text-slate-950">{n.name}{kpiTerm(ret) && <Term t={kpiTerm(ret)!} label={n.name} />}{(meta || proposed(doc)?.structured?.benchmark) && <MockTag />}</h4>
+        {sub && <p className="text-[13px] leading-5 text-slate-600">{sub}</p>}
       </div>
       <dl className={`mt-4 grid grid-cols-1 gap-y-3 px-5 pb-5 ${hasBench ? "@xs:grid-cols-2 @xs:gap-x-6" : ""}`}>
         <div className={cell}>
@@ -328,7 +337,7 @@ function ReturnCompare({ ret, ex, doc }: { ret: SummaryKpi; ex: SummaryKpi | nul
       {hasBench && (
         <div className="space-y-1.5 border-t border-slate-100 px-5 py-4">
           {exText && <p className="text-sm font-semibold text-slate-900">{exText}</p>}
-          <p className="text-xs leading-5 text-slate-600">{bt ? `같은 기간, 같은 투자금 납입 조건(동일 적립)으로 ${bt}를 사서 계속 보유했다고 가정해 비교했습니다.` : "같은 기간, 같은 투자금 납입 조건으로 비교했습니다."}</p>
+          <p className="text-[13px] leading-5 text-slate-600">{bt ? `같은 기간, 같은 투자금 납입 조건(동일 적립)으로 ${bt}를 사서 계속 보유했다고 가정해 비교했습니다.` : "같은 기간, 같은 투자금 납입 조건으로 비교했습니다."}</p>
         </div>
       )}
       {short && <ShortWindowNotice ret={ret} doc={doc} />}
@@ -344,7 +353,7 @@ function ShortWindowNotice({ ret, doc }: { ret: SummaryKpi; doc: ReportDoc }) {
   const min = minAnnualize(doc)
   const days = periodOf(doc).window_days ?? (/\((\d+)거래일\)/.exec(ret.label_ko)?.[1] ? Number(/\((\d+)거래일\)/.exec(ret.label_ko)![1]) : null)
   return (
-    <p className="border-t border-slate-100 px-5 py-4 text-xs leading-5 text-slate-600">
+    <p className="border-t border-slate-100 px-5 py-4 text-[13px] leading-5 text-slate-600">
       분석 기간이 짧아, 위 비교에는 전체 기간 수익률을 사용했습니다. 연 환산 수익률은 참고용입니다.{an && <MockTag />}{" "}
       <HelpTip label="연 환산 수익률 안내">
         {annual && <span className="block">선택 전략의 연 환산 수익률은 <b className="font-semibold tabular-nums">{annual}</b>입니다.</span>}
@@ -355,6 +364,9 @@ function ShortWindowNotice({ ret, doc }: { ret: SummaryKpi; doc: ReportDoc }) {
     </p>
   )
 }
+
+/** 지수(시작 = 100) → 누적 수익률 표기: 266.0 → 「+166.0%」. 값이 없으면 「—」. */
+export const indexReturn = (v: number | undefined | null) => (typeof v === "number" && Number.isFinite(v) ? `${v >= 100 ? "+" : "−"}${Math.abs(v - 100).toFixed(1)}%` : "—")
 
 /** 누적 수익률 미니 차트 (시작 = 100). 서버 datasets 의 index 계열 그대로. grow = 카드에 남는 높이를 채운다 (최소 h-28). */
 export function ReturnMini({ doc, ids, grow }: { doc: ReportDoc; ids: string[]; grow?: boolean }) {
@@ -368,7 +380,7 @@ export function ReturnMini({ doc, ids, grow }: { doc: ReportDoc; ids: string[]; 
         <ResponsiveContainer width="100%" height="100%"><LineChart data={rows}><XAxis dataKey="date" hide /><YAxis hide domain={["auto", "auto"]} /><Tooltip formatter={(v: unknown, n: unknown) => [fmt(v as number, "index"), doc.datasets.series[String(n)]?.label_ko ?? String(n)]} labelFormatter={(l) => String(l)} />
           {ids.map((id) => <Line key={id} type="monotone" dataKey={id} stroke={colorOf(id, ids)} dot={false} strokeWidth={id === doc.header.chosen_portfolio_id ? 2.5 : 1.5} isAnimationActive={false} />)}</LineChart></ResponsiveContainer>
       </div>
-      <ul className={`${grow ? "mt-3 space-y-1" : "mt-1 space-y-0.5"} text-xs text-slate-600`}>{ids.map((id) => <li key={id} className="flex items-center gap-2"><span className="inline-block size-2.5 shrink-0 rounded-full" style={{ background: colorOf(id, ids) }} aria-hidden /><span className="min-w-0 truncate" title={doc.datasets.series[id]?.label_ko ?? id}>{doc.datasets.series[id]?.label_ko ?? id}</span><b className="ml-auto tabular-nums">{fmt(last[id] as number, "index")}</b></li>)}</ul>
+      <ul className={`${grow ? "mt-3 space-y-1" : "mt-1 space-y-0.5"} text-xs text-slate-600`}>{ids.map((id) => <li key={id} className="flex items-center gap-2"><span className="inline-block size-2.5 shrink-0 rounded-full" style={{ background: colorOf(id, ids) }} aria-hidden /><span className="min-w-0 truncate" title={doc.datasets.series[id]?.label_ko ?? id}>{doc.datasets.series[id]?.label_ko ?? id}</span><b className="ml-auto tabular-nums" title={`시작 = 100 기준 ${fmt(last[id] as number, "index")}`}>{indexReturn(last[id] as number)}</b></li>)}</ul>
     </div>
   )
 }
@@ -378,9 +390,23 @@ const LEVEL_KO: Record<string, string> = { hard: "필수", flag: "표시" }
 
 /** 카드 4: 내 투자 조건에 맞나요? 서버 검증 규칙(rules_ko)을 그대로, 허용 손실은 막대로. 새 판정은 만들지 않는다. */
 export function ConditionCard({ sm, doc, onMore }: { sm: ReportSummary; doc?: ReportDoc; onMore: () => void }) {
+  const items = conditionItems(sm.validation)
+  const n = conditionCounts(items)
   return (
     <ResultCard id="q-fit" q="내 투자 조건에 맞나요?" more={["검증 결과 자세히 보기", onMore]} desc="선택된 전략을 내가 정한 조건과 비교한 검증 결과입니다">
-      <ConditionRules v={sm.validation} verdict={sm.verdict} bench={benchName(sm)} doc={doc} />
+      <div data-tour="conditions" className="space-y-4">
+        {items.length > 0 && (
+          <>
+            <p className="text-base font-bold text-slate-950">충족 {n.pass} · 주의 {n.issue}</p>
+            <ul aria-label="조건 체크리스트" className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+              {items.map((x) => { const [tone, label] = ruleStatus(x.status); return <li key={x.key} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm"><span className="min-w-0 font-semibold text-slate-800">{shortRuleName(x.name)}</span><StatusPill tone={tone}>{label}</StatusPill></li> })}
+            </ul>
+          </>
+        )}
+        {items.length > 0
+          ? <Disclosure size="sm" title="조건별 자세한 결과"><ConditionRules v={sm.validation} verdict={sm.verdict} bench={benchName(sm)} doc={doc} /></Disclosure>
+          : <ConditionRules v={sm.validation} verdict={sm.verdict} bench={benchName(sm)} doc={doc} />}
+      </div>
     </ResultCard>
   )
 }
@@ -544,7 +570,7 @@ export function NewsEffect({ n }: { n: NonNullable<ReportSummary["news_effect"]>
         </table>
       </div>
       <p className="mt-3 text-sm text-slate-800"><b>{retKo} 차이</b> <span className="text-base font-bold tabular-nums">{n.diff_cagr == null ? "–" : fmt(n.diff_cagr, "pp")}</span> <span className="text-xs text-slate-500">(뉴스 반영 − 기준 비중)</span></p>
-      <p className="mt-1 text-xs leading-5 text-slate-500">과거 한 기간의 비교 결과이며, 이 차이가 뉴스 때문이라고 단정할 수 없습니다.</p>
+      <p className="mt-1 text-[13px] leading-5 text-slate-600">과거 한 기간의 비교 결과이며, 이 차이가 뉴스 때문이라고 단정할 수 없습니다.</p>
       <Disclosure size="sm" className="mt-3" title="뉴스 분석 자세히 보기">
         <dl className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
           <div><dt className="flex items-center gap-1 text-slate-500">투자 의견 적중률 (다음 리밸런싱까지)<Term t="투자 의견(뷰)" /></dt><dd className="mt-0.5 text-base font-semibold tabular-nums">{n.hit_next_rb == null ? "–" : fmt(n.hit_next_rb, "pct1")}</dd><dd className="text-[11px] text-slate-500">투자 의견으로 비중을 바꾼 기간 안에서</dd></div>
@@ -595,7 +621,7 @@ export function KpiRow({ kpis, doc }: { kpis: SummaryKpi[]; doc?: ReportDoc }) {
             <div className="mt-1 break-words text-xl font-semibold tabular-nums text-slate-900">{won ? `약 ${money(won.krw, "KRW")}` : fmt(k.value, k.format)}</div>
             {won && <div className="mt-1 text-xs tabular-nums text-slate-500">{fmt(k.value, k.format)} · 분석 기준일 환율 기준</div>}
             {k.benchmark_value !== undefined && k.benchmark_value !== null && <div className="mt-1 text-xs text-slate-500">{k.benchmark_label_ko ?? "비교지수"} {fmt(k.benchmark_value, k.format)}</div>}
-            {(won ? won.rest : k.note_ko) && <div className="mt-1 text-xs leading-5 text-slate-500">{won ? won.rest : kpiNote(k.note_ko, doc)}</div>}
+            {(won ? won.rest : k.note_ko) && <div className="mt-1 text-[13px] leading-5 text-slate-600">{won ? won.rest : kpiNote(k.note_ko, doc)}</div>}
           </div>
         )
       })}

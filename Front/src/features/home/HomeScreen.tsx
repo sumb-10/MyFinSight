@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ChevronRight, SlidersHorizontal, Sparkles, X } from "lucide-react"
+import { ChevronRight, Compass, SlidersHorizontal, Sparkles, X } from "lucide-react"
 import { useProfile, useService } from "../../app/providers"
 import { navigate } from "../../app/router"
 import { errorMessage } from "../../api/client"
@@ -13,6 +13,8 @@ import { reportName } from "../../lib/reportName"
 import { proposedNameOf } from "../../api/proposed"
 import { MockTag } from "../report/proposedView"
 import { useRenameTick } from "../report/ReportName"
+import { EXAMPLE_ROW, useExample } from "../tutorial/exampleReport"
+import { ExampleBadge, openExample } from "../tutorial/ExampleReportParts"
 
 export function HomeScreen() {
   const svc = useService()
@@ -24,6 +26,8 @@ export function HomeScreen() {
   const [detail, setDetail] = useState(false)
   const renamed = useRenameTick()
   const reports = useResource(() => svc.listReports(), [svc, renamed])
+  const ex = useExample()  // 최근 리포트 맨 위의 「예시」 리포트
+  const example = ex.visible
   const [ui, setUi] = useState(() => loadUi())
   useEffect(() => { saveUi({ draftIdea: idea }) }, [idea])
   useEffect(() => { const u = loadUi(); if (u.prefillIdea || u.prefillOverrides) setUi(saveUi({ prefillIdea: null, prefillOverrides: null })) }, [])  // 미리 채운 값(새 요청)은 한 번만 쓴다
@@ -50,6 +54,7 @@ export function HomeScreen() {
         <Badge><Sparkles className="size-3" />개인화 투자전략</Badge>
         <h1 className="mt-5 text-4xl font-extrabold tracking-tight text-slate-950">투자 아이디어를 포트폴리오로 확인해보세요.</h1>
         <p className="mt-3 text-base text-slate-600">내 투자조건을 반영해 종목을 고르고, 과거 데이터로 성과와 위험을 검증합니다. 부족한 조건은 분석 모델이 한 번에 하나씩 물어봅니다.</p>
+        <div className="mt-4 flex justify-center"><Button variant="secondary" onClick={() => navigate({ page: "tutorial" })}><Compass className="size-4" />처음이신가요? 리포트 보는 법 둘러보기</Button></div>
         <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm">
           <textarea value={idea} onChange={(e) => { setIdea(e.target.value); setError("") }} className="min-h-36 w-full resize-none rounded-xl border-0 p-3 text-base leading-7 outline-none placeholder:text-slate-400" placeholder="예: 미국과 한국의 반도체·메모리 기업에 분산 투자하고 싶어요. 특정 종목에 너무 집중하고 싶지는 않습니다." />
           {Object.keys(overrides).length > 0 && (
@@ -102,13 +107,19 @@ export function HomeScreen() {
           <div className="flex justify-between"><h2 className="font-bold text-slate-900">최근 분석 리포트</h2><button onClick={() => navigate({ page: "reports" })} className="text-xs font-semibold text-blue-700">전체 보기</button></div>
           <div className="mt-3 space-y-1">
             {reports.status === "error" && <p className="text-xs text-red-600">{reports.error}</p>}
+            {example && (
+              <button onClick={openExample} className="flex w-full items-center justify-between rounded-xl p-3 text-left hover:bg-slate-50">
+                <span><span className="block text-sm font-semibold text-slate-800"><ExampleBadge />{ex.name}</span><span className="mt-0.5 block text-xs text-slate-400">리포트 보는 법 예시 · 기준일 {EXAMPLE_ROW.as_of}</span></span>
+                <ChevronRight className="size-4 text-slate-300" />
+              </button>
+            )}
             {(reports.data ?? []).slice(0, 4).map((r) => (
               <button key={r.run_id} onClick={() => navigate({ page: "report", reportId: r.report_id ?? r.run_id })} className="flex w-full items-center justify-between rounded-xl p-3 text-left hover:bg-slate-50">
                 <span><span className="block text-sm font-semibold text-slate-800">{reportName(r)}{proposedNameOf(r) && <MockTag />}</span><span className="mt-0.5 block text-xs text-slate-400">{date(r.created_at)} · 기준일 {r.as_of}</span></span>
                 <ChevronRight className="size-4 text-slate-300" />
               </button>
             ))}
-            {reports.status === "ready" && (reports.data ?? []).length === 0 && <p className="p-3 text-sm text-slate-500">아직 완료된 분석이 없습니다.</p>}
+            {reports.status === "ready" && (reports.data ?? []).length === 0 && !example && <p className="p-3 text-sm text-slate-500">아직 완료된 분석이 없습니다.</p>}
           </div>
         </Card>
       </div>
