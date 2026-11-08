@@ -4,6 +4,7 @@ import { useState } from "react"
 import { FlaskConical, RotateCcw, X } from "lucide-react"
 import { useProfile, useService } from "../app/providers"
 import { navigate, type Route } from "../app/router"
+import { clearGuideRecord } from "../features/tutorial/guideRecord"
 import { exitMockHref } from "./mode"
 import { PAPERS, REPORTS, RUN_STATES } from "./scenarios"
 import type { MockService } from "./services/MockService"
@@ -51,6 +52,7 @@ export default function MockChrome() {
             </div>
             <button type="button" className={link} onClick={() => go({ page: "profile" })}>내 투자조건 열기</button>
             <div className="mt-2 border-t border-slate-100 pt-2">
+              <button type="button" className={`${link} text-amber-900`} onClick={clearGuideRecord}>가이드 안내 기록 지우기</button>
               <button type="button" className={`${link} flex items-center gap-1.5 text-amber-900`} onClick={() => { svc.reset(); window.location.reload() }}><RotateCcw className="size-3.5" aria-hidden />목업 데이터 초기화 (바꾼 이름·조건·모의투자 지우기)</button>
             </div>
           </div>

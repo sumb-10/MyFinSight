@@ -19,6 +19,7 @@ import { isMockMode } from "../mocks/mode"
 import { reportKey, useNewReports, useRebalanceAlerts } from "../features/attention"
 import { EXAMPLE_REPORT_ID, useExample } from "../features/tutorial/exampleReport"
 import { ExampleBadge, openExample } from "../features/tutorial/ExampleReportParts"
+import { guideDestination, useGuideGate } from "../features/tutorial/GuidePrompt"
 
 
 // 차트(recharts)를 쓰는 화면은 따로 묶어 처음 화면이 가볍게 뜨게 한다 (F8 코드 분할).
@@ -40,6 +41,7 @@ export function Sidebar({ route }: { route: Route }) {
   const alerts = useRebalanceAlerts(papers.data)
   const ex = useExample()
   const example = ex.visible
+  const gate = useGuideGate()  // 「분석 리포트」를 처음 누르면 리포트 가이드를 볼지 묻는다
   const items = [
     { label: "홈 · 새 분석", icon: Home, to: { page: "home" } as Route, active: ["home", "clarify", "confirm", "run"].includes(route.page), badge: 0, badgeText: "" },
     { label: "분석 리포트", icon: FileText, to: { page: "reports" } as Route, active: ["reports", "report"].includes(route.page), badge: fresh.size, badgeText: `새로 완료된 리포트 ${fresh.size}개` },
@@ -54,7 +56,7 @@ export function Sidebar({ route }: { route: Route }) {
       </button>
       <nav className="mt-8 space-y-1" aria-label="주 메뉴">
         {items.map((item) => (
-          <button key={item.label} onClick={() => navigate(item.to)} className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-blue-500 ${item.active ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}>
+          <button key={item.label} onClick={() => (item.to.page === "reports" ? gate.go(item.to) : navigate(item.to))} className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-blue-500 ${item.active ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}>
             <span className="flex items-center gap-3"><item.icon className="size-4" />{item.label}</span>
             {item.badge > 0 && <><span aria-hidden className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold tabular-nums text-white">{item.badge}</span><span className="sr-only"> ({item.badgeText})</span></>}
           </button>
@@ -83,6 +85,7 @@ export function Sidebar({ route }: { route: Route }) {
         {health?.llm_mode === "stub" && <Badge tone="amber">연습 모드 (LLM 없음)</Badge>}
         {health && reachable && !health.worker.alive && <Badge tone="red">분석 일꾼 꺼짐 — 새 분석이 시작되지 않습니다</Badge>}
       </div>
+      {gate.dialog}
     </aside>
   )
 }
@@ -100,7 +103,7 @@ function Screen({ route }: { route: Route }) {
       return <Suspense fallback={<Loading label="리포트 화면을 여는 중…" />}><ReportDetail reportId={route.reportId} sec={route.sec} company={route.company} rb={route.rb} /></Suspense>
     case "paper": return <Suspense fallback={<Loading />}><PaperScreen paperId={route.paperId} /></Suspense>
     case "comparison": return <Suspense fallback={<Loading />}><ComparisonScreen comparisonId={route.comparisonId} /></Suspense>
-    case "tutorial": return <Suspense fallback={<Loading label="둘러보기를 여는 중…" />}><TutorialScreen key="tutorial" /></Suspense>
+    case "tutorial": return <Suspense fallback={<Loading label="둘러보기를 여는 중…" />}><TutorialScreen key="tutorial" after={guideDestination(route)} /></Suspense>
     case "not-found": return <EmptyState title="페이지를 찾을 수 없습니다" description={`주소 ${route.path} 에 해당하는 화면이 없습니다.`} action={<Button onClick={() => navigate({ page: "home" })}>홈으로</Button>} />
   }
   if (status === "loading") return null

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Compass, Home, Pencil, Trash2 } from "lucide-react"
+import { Compass, FileText, Home, Pencil, Trash2 } from "lucide-react"
 import { ServiceContext } from "../../app/providers"
 import { navigate } from "../../app/router"
 import type { ReportDoc } from "../../api/types"
@@ -8,6 +8,8 @@ import { ReportDetail } from "../report/ReportDetail"
 import { Coachmark } from "./Coachmark"
 import { DeleteExampleDialog, RenameExampleDialog } from "./ExampleReportParts"
 import { useExample } from "./exampleReport"
+import type { GuideDestination } from "./GuidePrompt"
+import { recordGuide } from "./guideRecord"
 import { TOUR_STEPS } from "./steps"
 import { createTutorialService, loadTutorialDoc, TUTORIAL_REPORT_ID } from "./tutorialService"
 
@@ -15,7 +17,7 @@ import { createTutorialService, loadTutorialDoc, TUTORIAL_REPORT_ID } from "./tu
  *  - 「리포트 보는 법 둘러보기」(#/tutorial, startTour): 코치마크로 단계별로 안내한다.
  *  - 목록의 「[예시]」 리포트(#/reports/example): 일반 리포트처럼 열고, 띠의 버튼으로 둘러보기를 시작할 수 있다. 더보기에서 목록에서 지울 수 있다.
  *  실제 서버·목업 서비스와 상관없이 예시 데이터만 쓰고, 쓰기 동작은 모두 막는다. */
-export function TutorialScreen({ load = loadTutorialDoc, startTour = true }: { load?: () => Promise<ReportDoc>; startTour?: boolean }) {
+export function TutorialScreen({ load = loadTutorialDoc, startTour = true, after = null }: { load?: () => Promise<ReportDoc>; startTour?: boolean; after?: GuideDestination | null }) {
   const [doc, setDoc] = useState<ReportDoc | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [step, setStep] = useState(0)
@@ -30,10 +32,11 @@ export function TutorialScreen({ load = loadTutorialDoc, startTour = true }: { l
     return () => { alive = false }
   }, [load])
   const svc = useMemo(() => (doc ? createTutorialService(doc) : null), [doc])
-  const close = useCallback(() => { setTouring(false); setDone(true) }, [])
+  useEffect(() => { if (startTour) recordGuide("seen") }, [startTour])  // 둘러보기를 시작하면 「본 것」: 안내 창을 다시 띄우지 않는다
+  const close = useCallback(() => { setTouring(false); setDone(true); if (after) navigate(after) }, [after])  // 마치기·건너뛰기·Esc 모두. 돌아갈 곳이 있으면 바로 이동
   const next = useCallback(() => { if (step >= TOUR_STEPS.length - 1) close(); else setStep((s) => s + 1) }, [step, close])
   const prev = useCallback(() => setStep((s) => Math.max(0, s - 1)), [])
-  const restart = () => { setStep(0); setDone(false); setTouring(true); window.scrollTo?.({ top: 0 }) }
+  const restart = () => { recordGuide("seen"); setStep(0); setDone(false); setTouring(true); window.scrollTo?.({ top: 0 }) }
   const extraMenu = useMemo(() => (startTour ? [] : [{ label: "이름 바꾸기", icon: Pencil, onClick: () => setRenaming(true) }, { label: "리포트 삭제", icon: Trash2, onClick: () => setRemoving(true), danger: true }]), [startTour])
 
   if (err) return <ErrorState title="예시 리포트를 열지 못했습니다" message={err} retry={() => window.location.reload()} />
@@ -44,7 +47,9 @@ export function TutorialScreen({ load = loadTutorialDoc, startTour = true }: { l
         <p className="flex items-center gap-2 font-semibold"><Compass className="size-4 shrink-0" aria-hidden />{startTour ? "예시 데이터로 보는 화면입니다. 실제 분석 결과가 아니며, 버튼을 눌러도 아무것도 실행되지 않습니다." : "예시 리포트입니다. 실제 분석 결과가 아니며, 모의투자 시작 같은 버튼은 실행되지 않습니다."}</p>
         <div className="flex gap-2">
           {!touring && <Button variant="secondary" onClick={restart}>{startTour ? "처음부터 다시 보기" : "리포트 보는 법 둘러보기"}</Button>}
-          <Button onClick={() => navigate({ page: "home" })}><Home className="size-4" />내 분석 시작하기</Button>
+          {after
+            ? <Button onClick={() => navigate(after)}><FileText className="size-4" />{after.page === "report" ? "내 리포트 보기" : "리포트 목록으로"}</Button>
+            : <Button onClick={() => navigate({ page: "home" })}><Home className="size-4" />내 분석 시작하기</Button>}
         </div>
       </div>
       {done && (
