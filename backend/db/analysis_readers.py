@@ -208,6 +208,62 @@ class AnalysisReadersMixin:
 
         return self._read("가치평가(기준일)", run)  # type: ignore[attr-defined]
 
+    def get_balance_sheet_asof(
+        self, asset_ids: Sequence[str], d: date, items: Sequence[str] = ("부채총계", "자본총계"), *, max_staleness_days: int = 550
+    ) -> dict[str, dict[str, Any]]:
+        """종목별 d 이하에 공시된(report_date ≤ d) 가장 최근 회계기간의 재무상태표 항목 {asset_id: {"period_end": 날짜, 항목: 값}}.
+
+        기간 끝이 d − max_staleness_days 보다 오래된 것은 제외. 공시일로 자르므로 d 뒤에 나온 재무는 읽지 않는다 (선견 없음).
+        퀄리티 선정의 '재무가 탄탄한' 보조 조건(부채비율)에 쓴다 (2026-11 평가).
+        """
+        f = T.financials
+        lo = d - timedelta(days=max_staleness_days)
+        ids, names = sorted(set(asset_ids)), list(items)
+
+        def run(conn: Any) -> dict[str, dict[str, Any]]:
+            out: dict[str, dict[str, Any]] = {}
+            for part in _chunks(ids):
+                cond = (f.c.asset_id.in_(part), f.c.statement == "BS", f.c.item.in_(names), f.c.report_date <= d, f.c.period_end >= lo)
+                sub = select(f.c.asset_id, func.max(f.c.period_end).label("pe")).where(*cond).group_by(f.c.asset_id).subquery()
+                q = select(f.c.asset_id, f.c.item, f.c.value, f.c.period_end).join(
+                    sub, (sub.c.asset_id == f.c.asset_id) & (sub.c.pe == f.c.period_end)
+                ).where(*cond)
+                for r in conn.execute(q):
+                    out.setdefault(r.asset_id, {"period_end": r.period_end})[r.item] = float(r.value)
+            return out
+
+        return self._read("재무상태표(기준일 이하 공시)", run)  # type: ignore[attr-defined]
+
+    def get_income_ttm_asof(
+        self, asset_ids: Sequence[str], d: date, items: Sequence[str] = ("매출액(분기)", "영업이익(분기)"), *, max_staleness_days: int = 550
+    ) -> dict[str, dict[str, Any]]:
+        """종목별 d 이하에 공시된(report_date ≤ d) 최근 4개 분기 손익 항목의 합 {asset_id: {"period_end": 마지막 분기 끝, 항목: 4개 분기 합}}.
+
+        4개 분기가 다 있고 이어져 있을 때(첫·마지막 분기 끝이 400일 안)만, 마지막 분기 끝이 d − 200일보다 새로울 때만 그 항목을 넣는다.
+        같은 분기가 여러 번 공시됐으면 가장 늦게 공시된 값. 퀄리티 선정의 '이익률이 높은' 보조 조건(영업이익률)에 쓴다 (2026-11 평가).
+        """
+        f = T.financials
+        lo = d - timedelta(days=max_staleness_days)
+        ids, names = sorted(set(asset_ids)), list(items)
+
+        def run(conn: Any) -> dict[str, dict[str, Any]]:
+            by: dict[tuple[str, str], dict[Any, float]] = {}
+            for part in _chunks(ids):
+                q = (select(f.c.asset_id, f.c.item, f.c.period_end, f.c.value)
+                     .where(f.c.asset_id.in_(part), f.c.statement == "IS", f.c.item.in_(names), f.c.report_date <= d, f.c.period_end >= lo)
+                     .order_by(f.c.asset_id, f.c.item, f.c.period_end.desc(), f.c.report_date.desc()))  # fmt: skip
+                for r in conn.execute(q):
+                    if r.value is not None:
+                        by.setdefault((r.asset_id, r.item), {}).setdefault(r.period_end, float(r.value))
+            out: dict[str, dict[str, Any]] = {}
+            for (aid, item), vals in by.items():
+                pes = sorted(vals, reverse=True)[:4]
+                if len(pes) == 4 and (pes[0] - pes[3]).days <= 400 and pes[0] >= d - timedelta(days=200):
+                    out.setdefault(aid, {"period_end": pes[0]})[item] = sum(vals[x] for x in pes)
+            return out
+
+        return self._read("손익(최근 4개 분기, 기준일 이하 공시)", run)  # type: ignore[attr-defined]
+
     def get_shares_asof(
         self, asset_ids: Sequence[str], d: date, *, max_staleness_days: int = 730
     ) -> dict[str, dict[str, Any]]:

@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import math
+import re
 from collections import Counter
 from collections.abc import Iterable
 from typing import Any
@@ -18,9 +19,11 @@ from backend.analysis.common.warnings import metric_value_ko
 from backend.analysis.m2_data import descriptor as D
 from backend.analysis.m2_data import metrics as M
 from backend.analysis.m2_data.market_data import MarketDataView
+from backend.analysis.m3_selection.retrieve import _share_class_key
 from backend.analysis.schemas.intent import IntentSpec
 from backend.analysis.schemas.selection import Rejected, Selected, Selection, Tagging
 from backend.pipeline.descriptor import Descriptor
+from backend.pipeline.normalizer import normalize_ticker
 
 
 def screen(
@@ -53,6 +56,11 @@ def screen(
         rejected += [Rejected(ticker=t, reason="no_dividend") for t in no_div]
         warnings.append(f"dividend theme: dropped {len(no_div)} candidates without a confirmed dividend in the last 12 months {no_div}")
     ranked = [t for t in tickers if t not in set(no_div)]
+    g_rej, g_warn = _idea_guards(view, desc, scr, ranked, forced)
+    if g_rej:
+        rejected += g_rej
+        ranked = [t for t in ranked if t not in {r.ticker for r in g_rej}]
+    warnings += g_warn
 
     values, facts = M.METRICS[metric](view, ranked) if ranked else (M.pd.Series(dtype=float), [])
     fact_by_ticker = {f.ticker: f for f in facts}
@@ -78,6 +86,10 @@ def screen(
             else:
                 rejected.append(Rejected(ticker=t, reason=reason))
 
+    if metric == "vol_60d":
+        pool = _low_vol_half(pool, forced, rejected)
+    elif metric in ("dividend_yield_ttm", "pe_ttm") and getattr(getattr(getattr(view, "s", None), "selection", None), "style_floor_median", False):
+        pool = _style_floor(view, desc, metric, pool, forced, rejected, warnings)
     n_pass = len(pool)
     n = nh["target"] if n_pass >= nh["target"] else max(nh["min"], n_pass)
     # '후보 조건·테마 판정을 통과하고 지표가 있는 종목' 수에는 필수 포함을 넣지 않는다: 그 검사를 건너뛰고(지표 없음·자격선 밖도 유지) 들어온다.
@@ -219,6 +231,228 @@ def dividend_theme(it: dict[str, Any]) -> bool:
     """테마가 '배당 기업' 인가 (id·이름에 dividend·배당)."""
     themes = (it.get("interpretation") or {}).get("themes") or []
     return any("dividend" in str(th.get("id") or "").lower() or "배당" in str(th.get("label_ko") or "") for th in themes)
+
+
+def _idea_guards(view: MarketDataView, desc: Descriptor, scr: dict[str, Any], tickers: list[str], forced: set[str]) -> tuple[list[Rejected], list[str]]:
+    """아이디어가 템플릿 지표 하나로 못 담는 뜻을 거른다 (intent.screen 의 보조 조건, 값은 m3_selection.intent.idea_screen_guards).
+    - dividend_growth_years = N: 최근 N년 주당배당(최근 12개월) 이력. 해마다 허용 폭보다 더 줄면 뺀다. dividend_require_growth 면 N년 전보다 많고
+      해마다 거의 빠짐없이(한 해만 쉬어도 됨) 늘어야 한다. 중간 해 자료가 비면 그 해는 건너뛴다.
+    - max_debt_to_equity: 부채비율이 상한을 넘거나 자본이 0 이하인 종목을 뺀다. 금융 섹터(GICS 40)는 부채(예금·보험부채)가 사업 자체라 재지 않고, 자료가 없으면 남긴다.
+    - mega_cap_rank = K: 선정일 시가총액 순위(같은 시장 전체 주식 기준)가 K 위 밖이거나 시가총액 자료가 없는 종목을 뺀다. 가장 넓은 조건이라 먼저 본다.
+    - high_margin: 영업이익률(최근 4개 분기)이 같은 유니버스(같은 시장) 비금융 종목의 중앙값 이상인 종목만. 금융 섹터는 재지 않고, 자료가 없으면 남긴다.
+      (예전에는 테마 후보 중 위쪽 절반이라 빅테크끼리 비교해 이익률 33% 인 GOOGL·AAPL 이 빠졌다, 2026-11 평가 019·063)
+    - us_hq_only: '미국 기업' 아이디어에서 법인 소재지가 미국 밖인 기업(회사 소개 첫 문장의 정식 이름이 plc·N.V.·Ltd 등)을 뺀다.
+      분류(04)가 테마 경계 문장('본사가 미국이 아닌 기업은 넣지 않음')을 놓쳐 MDT·ACN·AMCR·LIN·STE 가 들어갔다 (2026-11 평가 7건).
+    필수 포함은 빼지 않고 알린다 (자격선과 같은 규칙)."""
+    rej: list[Rejected] = []
+    warns: list[str] = []
+    if scr.get("us_hq_only") and tickers:
+        exc = set(view.s.selection.us_domicile_exceptions)
+        abroad = []
+        for t in tickers:
+            if view.md.market_of(t) != "US" or normalize_ticker(t) in exc:
+                continue
+            form = foreign_domicile(str((desc.by_ticker(t) or {}).get("intro") or ""))
+            if form is None:
+                continue
+            if t.upper() in forced:
+                warns.append(f"must_include {t}: foreign_domicile({form}), kept")
+                continue
+            abroad.append(t)
+            rej.append(Rejected(ticker=t, reason=f"foreign_domicile({form})"))
+        if abroad:
+            warns.append(f"us headquarters: dropped {len(abroad)} with a legal domicile outside the US [{', '.join(abroad)}]")
+        tickers = [t for t in tickers if t not in {r.ticker for r in rej}]
+    k = int(scr.get("mega_cap_rank") or 0)
+    if k > 0 and tickers:
+        rank = _market_cap_rank(view, tickers)
+        small = []
+        for t in tickers:
+            r = rank.get(t)
+            if r is not None and r <= k:
+                continue
+            why = f"market_cap_rank({r}>{k})" if r is not None else "market_cap_rank(unknown)"
+            if t.upper() in forced:
+                warns.append(f"must_include {t}: {why}, kept")
+                continue
+            small.append(f"{t} {r}위" if r is not None else f"{t} 자료 없음")
+            rej.append(Rejected(ticker=t, reason=why))
+        if small:
+            warns.append(f"mega cap: dropped {len(small)} outside market-cap rank {k} [{', '.join(small)}]")
+        tickers = [t for t in tickers if t not in {r.ticker for r in rej}]
+    years = int(scr.get("dividend_growth_years") or 0)
+    growth = scr.get("dividend_require_growth", True) is not False
+    if years > 0 and tickers:
+        tol, raise_min = view.s.selection.dividend_cut_tolerance, view.s.selection.dividend_raise_min
+        hist = view.dps_history(tickers, years)
+        cut, short = [], []
+        for t in tickers:
+            h = hist.get(t) or []
+            first, last = (h[0] if h else None), (h[-1] if len(h) > years else None)
+            pts = [x for x in h if x is not None]
+            steps = list(zip(pts, pts[1:]))  # (최근 값, 1년 전 값) … pts[0] = 기준일, 뒤로 갈수록 과거
+            if first is None or last is None or first <= 0 or last <= 0:
+                why = f"dividend_history_short({years}y)"
+            elif any(b < a * (1 - tol) for b, a in steps):
+                why = f"dividend_cut({years}y)"
+            elif growth and (first <= last or sum(1 for b, a in steps if b > a * (1 + raise_min)) < max(1, len(steps) - 1)):
+                why = f"dividend_not_growing({years}y)"  # 해마다 거의 빠짐없이 인상 (한 해만 쉬어도 됨) — 동결이 이어지면 성장이 아니다
+            else:
+                continue
+            if t.upper() in forced:
+                warns.append(f"must_include {t}: {why}, kept")
+                continue
+            (short if why.startswith("dividend_history") else cut).append(t)
+            rej.append(Rejected(ticker=t, reason=why))
+        if cut:
+            warns.append(f"dividend growth ({years}y): dropped {len(cut)} without steady growth [{', '.join(cut)}]" if growth
+                         else f"dividend steady ({years}y): dropped {len(cut)} with a dividend cut [{', '.join(cut)}]")
+        if short:
+            warns.append(f"dividend history ({years}y): dropped {len(short)} without dividend history [{', '.join(short)}]")
+    lim = scr.get("max_debt_to_equity")
+    done = {r.ticker for r in rej}
+    if lim and tickers:
+        de = view.debt_to_equity([t for t in tickers if t not in done])
+        high, unknown = [], []
+        for t, v in de.items():
+            e = desc.by_ticker(t) or {}
+            g = D.gics_model(e) if e else None
+            if g is not None and g.sector.code == "40":
+                continue
+            if v is None:
+                unknown.append(t)
+            elif v > float(lim):
+                if t.upper() in forced:
+                    warns.append(f"must_include {t}: debt_to_equity({'inf' if math.isinf(v) else format(v, '.2f')}>{float(lim):g}), kept")
+                    continue
+                high.append(f"{t} {'자본 0 이하' if math.isinf(v) else format(v, '.2f')}")
+                rej.append(Rejected(ticker=t, reason=f"debt_to_equity({'inf' if math.isinf(v) else format(v, '.2f')}>{float(lim):g})", metric_value=None if math.isinf(v) else v))
+        if high:
+            warns.append(f"balance sheet: dropped {len(high)} with debt/equity above {float(lim):g} [{', '.join(high)}]")
+        if unknown:
+            warns.append(f"balance sheet: debt/equity unknown for {len(unknown)} kept [{', '.join(unknown)}]")
+    if scr.get("high_margin") and tickers:
+        rej_t = {r.ticker for r in rej}
+        nonfin = [t for t in tickers if t not in rej_t and ((g := (D.gics_model(e) if (e := desc.by_ticker(t) or {}) else None)) is None or g.sector.code != "40")]
+        mg = view.operating_margin_ttm(nonfin) if nonfin else {}
+        meds = {m: _universe_median(view, desc, "operating_margin", m) for m in {view.md.market_of(t) for t in nonfin}}
+        low = []
+        for t, v in mg.items():
+            med = meds.get(view.md.market_of(t))
+            if v is None or med is None or v >= med - 1e-12:  # 중앙값 이상 통과 (모자라도 채우지 않는다 — 자격선과 같은 규칙)
+                continue
+            if t.upper() in forced:
+                warns.append(f"must_include {t}: operating_margin({v:.4f}<{med:.4f}), kept")
+                continue
+            low.append(f"{t} {v:.1%}")
+            rej.append(Rejected(ticker=t, reason=f"operating_margin({v:.4f}<{med:.4f})", metric_value=None))
+        if low:
+            med_txt = ";".join(f"{m}:{v:.4f}" for m, v in sorted(meds.items()) if v is not None) if len(meds) > 1 else f"{next(iter(meds.values())):.4f}"
+            warns.append(f"profit margin: dropped {len(low)} below the universe median operating margin {med_txt} [{', '.join(low)}]")
+        unknown_m = [t for t in nonfin if mg.get(t) is None and t.upper() not in forced]
+        if unknown_m:
+            warns.append(f"profit margin: operating margin unknown for {len(unknown_m)} kept [{', '.join(unknown_m)}]")
+    return rej, warns
+
+
+# 회사 소개(yfinance 요약) 첫 문장은 정식 이름으로 시작한다: 'Medtronic plc develops …', 'Amcor plc, through its subsidiaries, …'
+_LEGAL_NAME = re.compile(r"^(?P<name>.{1,80}?)\s+(?:is|was|operates|provides|designs|develops|engages|manufactures|offers|together|through|a|an|and|focuses|produces|owns|researches)\b", re.S)
+_FOREIGN_FORM = re.compile(r"(?:^|[\s,])(plc|Plc|PLC|N\.V\.|NV|Ltd\.?|LTD\.?|Limited|AG|S\.A\.|SA|SE|B\.V\.|S\.p\.A\.|A/S|ASA|Oyj)(?=$|[\s,.])")
+
+
+def foreign_domicile(intro: str) -> str | None:
+    """회사 소개 첫 문장의 정식 이름에 미국 밖 법인 형태(plc·N.V.·Ltd·AG·SA 등)가 있으면 그 형태, 없으면 None.
+    법인 소재지 기준이라 운영 본사가 미국인 버뮤다·아일랜드 법인(IVZ·RCL 등)도 미국 밖으로 본다 — 심사도 법인 소재지로 판정했다."""
+    m = _LEGAL_NAME.match(intro or "")
+    name = m.group("name") if m else (intro or "")[:60]
+    f = _FOREIGN_FORM.search(name)
+    return f.group(1) if f else None
+
+
+def _universe_median(view: MarketDataView, desc: Descriptor, what: str, market: str) -> float | None:
+    """같은 유니버스(요청한 종목 사전)에서 같은 시장 종목의 중앙값: 'dividend_yield_ttm'(자료가 있는 종목), 'pe_ttm'(양수만),
+    'operating_margin'(금융 섹터 제외). 값이 5개 미만이면 None (거르지 않는다)."""
+    tks = [t for t in D.tickers(desc) if view.md.market_of(t) == market]
+    if what == "operating_margin":
+        tks = [t for t in tks if (g := (D.gics_model(e) if (e := desc.by_ticker(t) or {}) else None)) is None or g.sector.code != "40"]
+        vals = [v for v in view.operating_margin_ttm(tks).values() if v is not None and math.isfinite(v)]
+    else:
+        s, _ = M.METRICS[what](view, tks)
+        vals = [float(v) for v in s.values if math.isfinite(float(v))]
+    if len(vals) < 5:
+        return None
+    vals.sort()
+    n = len(vals)
+    return vals[n // 2] if n % 2 else (vals[n // 2 - 1] + vals[n // 2]) / 2
+
+
+def _style_floor(view: MarketDataView, desc: Descriptor, metric: str, pool: list[tuple[str, float]], forced: set[str], rejected: list[Rejected],
+                 warnings: list[str]) -> list[tuple[str, float]]:
+    """고배당은 배당수익률이 같은 유니버스(같은 시장) 종목의 중앙값 이상, 저PER 은 PER 이 중앙값 이하인 종목에서만 고른다 (2026-11 평가 사용자 결정).
+    후보가 목표보다 적어 모두 담을 때 '배당을 많이 주는'·'실적 대비 싼' 과 반대인 종목이 들어갔다 (062 CEG 배당 0.12%, 079 카카오뱅크 PER 25.5).
+    자격선과 같은 규칙: 모자라도 채우지 않고, 필수 포함은 남기고 알린다.
+    단 테마 후보가 모두 기준선 밖이면(인터넷·게임처럼 업종 전체가 PER 이 높을 때, 003) 분석할 종목이 없어지므로 그 시장 후보 중 나은 절반을 고르고 알린다."""
+    meds = {m: _universe_median(view, desc, metric, m) for m in {view.md.market_of(t) for t, _ in pool}}
+    worse = (lambda v, ref: v < ref - 1e-12) if metric == "dividend_yield_ttm" else (lambda v, ref: v > ref + 1e-12)
+    for m, med in list(meds.items()):
+        own = [(t, v) for t, v in pool if view.md.market_of(t) == m and t.upper() not in forced and math.isfinite(v)]
+        if med is None or not own or any(not worse(v, med) for _, v in own):
+            continue
+        vals = sorted(v for _, v in own)
+        half = vals[len(vals) // 2] if metric == "dividend_yield_ttm" else vals[(len(vals) - 1) // 2]  # 배당은 위쪽, PER 은 아래쪽 절반
+        meds[m] = half
+        kept = [t for t, v in own if not worse(v, half)]
+        warnings.append(f"style floor: all {len(own)} candidates beyond the universe median {med:.4g} for {metric}; kept the better half of theme candidates (median {half:.4g}) [{', '.join(kept)}]")
+    keep = []
+    for t, v in pool:
+        med = meds.get(view.md.market_of(t))
+        bad = med is not None and math.isfinite(v) and worse(v, med)
+        if not bad:
+            keep.append((t, v))
+            continue
+        reason = f"metric_out_of_range({metric}={v:.4g}, 시장 중앙값 {med:.4g} {'미만' if metric == 'dividend_yield_ttm' else '초과'})"  # 대체 기준이면 후보 중앙값
+        if t.upper() in forced:
+            warnings.append(f"must_include {t}: {reason}, kept")
+            keep.append((t, v))
+        else:
+            rejected.append(Rejected(ticker=t, reason=reason, metric_value=v))
+    return keep
+
+
+def _market_cap_rank(view: MarketDataView, tickers: list[str]) -> dict[str, int]:
+    """선정일 시가총액 순위 — 같은 시장의 팀 DB 전체 주식(미국 = S&P 500 ∪ 나스닥 100) 기준이라 요청 유니버스(나스닥 100 만 등)에 따라 달라지지 않는다.
+    같은 회사의 주식 클래스(GOOGL·GOOG)는 한 회사로 센다. 시가총액 자료가 없는 종목은 결과에 없다."""
+    assets = view.md.assets
+    out: dict[str, int] = {}
+    for m in {view.md.market_of(t) for t in tickers}:
+        mc = view.market_cap_usd([s for s, a in assets.items() if a.get("market") == m and a.get("asset_type") == "STOCK"])
+        best: dict[str, float] = {}
+        for s, v in mc.items():
+            key = _share_class_key(assets.get(s) or {"ticker": s})
+            best[key] = max(best.get(key, 0.0), v)
+        order = {key: i + 1 for i, key in enumerate(sorted(best, key=lambda x: -best[x]))}
+        for t in tickers:
+            s = normalize_ticker(t)
+            if view.md.market_of(t) == m and s in mc:
+                out[t] = order[_share_class_key(assets.get(s) or {"ticker": s})]
+    return out
+
+
+def _low_vol_half(pool: list[tuple[str, float]], forced: set[str], rejected: list[Rejected]) -> list[tuple[str, float]]:
+    """저변동성은 테마 후보 중 변동성이 낮은 절반(중앙값 이하)에서만 고른다 — 자격선과 같은 규칙: 모자라도 채우지 않는다.
+    (2026-11 평가 010: 목표 30개에 후보 25개라 변동성 0.49 인 BSX 까지 다 담아 '크게 흔들리지 않는 종목 위주' 가 뜻을 잃었다.
+    후보가 목표의 두 배 이상이면 위쪽 절반은 어차피 뽑히지 않아 결과가 같다)"""
+    vals = sorted(v for t, v in pool if t.upper() not in forced and math.isfinite(v))
+    if len(vals) < 2:
+        return pool
+    med = vals[(len(vals) - 1) // 2]
+    keep = []
+    for t, v in pool:
+        if t.upper() in forced or not math.isfinite(v) or v <= med:
+            keep.append((t, v))
+        else:
+            rejected.append(Rejected(ticker=t, reason=f"metric_out_of_range(vol_60d={v:.4g}, 후보 중앙값 {med:.4g} 초과)", metric_value=v))
+    return keep
 
 
 def _no_dividend(view: MarketDataView, it: dict[str, Any], tagging: Tagging, metric: str, tickers: list[str], forced: set[str],

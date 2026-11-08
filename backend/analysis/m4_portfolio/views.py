@@ -199,6 +199,7 @@ def generate_views(
                 continue
             if v["type"] == "absolute" and not evidence.has_evidence(v["long"][0]):
                 warnings.append(f"{sid}: absolute view on {v['long'][0]} without news/disclosure evidence dropped")
+                no_ev.append(v["long"][0])  # 설명에는 남아 있다 (2026-11 평가 006: 'ASML 에 약한 하락 뷰' 를 말하는데 그 뷰는 빠져 있었다)
                 continue
             v["evidence_ids"] = ids
             v["rationale_ko"] = _strip_unlisted_ids(v.get("rationale_ko") or "", set(ids))

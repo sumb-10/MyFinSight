@@ -25,6 +25,12 @@ def sector_counts_ko(counts: dict[str, int]) -> str:
 THEME_KO = {"tobacco": "담배", "gambling": "도박", "fossil_fuels": "화석연료", "weapons": "무기", "defense": "방산", "alcohol": "주류", "adult_entertainment": "성인 산업",
             "nuclear": "원자력", "cannabis": "대마", "coal": "석탄", "oil_gas": "석유·가스", "animal_testing": "동물 실험", "fur": "모피", "crypto": "가상자산"}  # fmt: skip
 VOL_PREF_KO = {"low": "낮음", "medium": "중간", "high": "높음"}
+# 비교지수 이름 — 리포트 문장이 '069500.KS 비교지수' 처럼 코드로 불렀다 (2026-11 평가 077)
+BENCHMARK_KO = {"069500.KS": "KODEX 200(코스피200 추종 ETF)", "SPY": "SPY(S&P 500 추종 ETF)", "QQQ": "QQQ(나스닥100 추종 ETF)"}
+
+
+def benchmark_ko(ticker: str | None) -> str:
+    return BENCHMARK_KO.get(str(ticker or ""), str(ticker or ""))
 
 
 # 근거 출처 코드 → 사람이 읽는 이름 (023: 'GOOGLE_RSS', 029: 'NAVER_NEWS' 가 출처 칸·문장에 그대로 보였다)

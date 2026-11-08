@@ -314,8 +314,9 @@ class Audit:
                     b = base_wf["weights_by_date"][d]
                     diff = max(abs(bl["weights_by_date"][d].get(t, 0) - b.get(t, 0)) for t in b)
                     moved += diff > 1e-4
-                    # 모든 종목이 종목당 상한에 걸린 날은 뷰가 비중을 바꿀 수 없다 (018: 3종목 × 14% — 실패가 아니라 상한 묶임)
-                    is_cap = diff <= 1e-4 and all(abs(x - cap) < 1e-4 for x in b.values() if x > 1e-9)
+                    # 종목당 상한에 걸리지 않은 종목이 하나 이하면 뷰가 비중을 바꿀 수 없다 — 나머지 하나는 남은 비중으로 정해진다
+                    # (018: 3종목 × 14% 모두 상한. 2026-11 평가 073: 6종목 중 5종목 17% 상한 + 남은 15% 를 '안 바뀜' 으로 셌다)
+                    is_cap = diff <= 1e-4 and sum(1 for x in b.values() if x > 1e-9 and abs(x - cap) >= 1e-4) <= 1
                     capped += is_cap
                     # 뷰가 걸린 종목이 모두 '뷰 방향 유지' 경계에 묶인 날도 기준 비중이 최적이다 (080 재실행: 4일 — 정확한 풀이로도 같음)
                     legs = {t for v in vs for t in [*v.get("long", []), *v.get("short", [])]}

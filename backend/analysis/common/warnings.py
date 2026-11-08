@@ -55,6 +55,7 @@ CATALOG: dict[str, tuple[Level, str]] = {
     "broad_start_pool": ("user", "넓은 테마라 그날 후보 {n}개 전체에서 그날 지표로 다시 골랐습니다. 분석 모델이 판정하지 않은 종목은 제외 테마를 키워드로만 걸렀습니다{dropped}."),
     "utility_not_fossil": ("user", "화석연료 제외는 석유·가스·석탄을 생산·정제·운송하는 회사에 적용했습니다. 전기·가스를 공급하는 유틸리티 {tickers}은(는) 빼지 않았습니다."),
     # 필수 포함은 후보 단계의 최소 시가총액·거래대금 필터를 건너뛴다(정책) — 건너뛴 사실은 알린다 (018: 시작일 033780.KS 시가총액 76억 달러 < 최소 100억 달러인데 공지가 없었다)
+    "must_include_guard": ("user", "필수 포함 종목 {tickers}은(는) {detail}이지만 요청에 따라 포함했습니다."),
     "must_include_below_filters": ("user", "필수 포함 종목 {tickers}은(는) 후보 조건을 채우지 못했지만({detail}) 요청에 따라 포함했습니다."),
     # 최소 시가총액은 하드 필터 (2026-11 사용자 정책): 확인할 수 없는 종목은 뺀다. 팀 DB 는 XOM·BLK 같은 대형주도 과거 시가총액이 비어 있어 과거 시점에 빠지므로 알린다
     "min_mcap_missing": ("user", "시가총액 자료가 없어 최소 시가총액({min})을 확인할 수 없는 {n}개 종목({tickers})은 후보에서 뺐습니다."),
@@ -77,6 +78,19 @@ CATALOG: dict[str, tuple[Level, str]] = {
     "alternative_skipped": ("user", "조건을 통과한 포트폴리오가 없고 현금 혼합안도 만들 수 없었습니다 ({reason})."),
     # 어느 구성의 맞춤안인지 밝힌다 (064: 시가총액비중의 맞춤안은 있었는데 walk-forward 뉴스 뷰 BL 의 맞춤안을 못 만든 공지가 '맞춤안을 만들지 않았다' 로만 읽혔다)
     "no_dividend_dropped": ("user", "배당 기업 테마라 최근 12개월 배당을 확인할 수 없는 종목 {n}개({tickers})는 선정하지 않았습니다 (팀 데이터베이스 배당 자료가 없거나 0이고, 분석 기준일 테마 판정에서도 배당 기업으로 확인되지 않음)."),
+    # 아이디어의 뜻을 지표 하나로 못 담아 더한 보조 조건 (2026-11 평가)
+    # 사용자 말을 인용하지 않고 조건 이름으로 (2026-11 평가 012: 아이디어는 '꾸준히 많이 주는' 인데 공지가 "'배당을 꾸준히 늘린' 요청" 이라고 옮겼다)
+    "dividend_growth_dropped": ("user", "배당 성장 조건(최근 {years}년 동안 주당배당을 해마다 거의 빠짐없이 늘렸고 한 해도 깎지 않은 종목만)에 맞지 않는 종목 {n}개({tickers})는 선정하지 않았습니다. 아이디어의 '배당을 꾸준히 늘린' 을 담으려고 더한 조건입니다."),
+    "dividend_steady_dropped": ("user", "배당 안정 조건(최근 {years}년 동안 주당배당을 한 해도 깎지 않은 종목만)에 맞지 않는 종목 {n}개({tickers})는 선정하지 않았습니다. 아이디어의 꾸준한 배당을 담으려고 더한 조건입니다."),
+    "dividend_history_dropped": ("user", "배당 이력 조건(최근 {years}년)을 확인할 수 없는 종목 {n}개({tickers})는 선정하지 않았습니다 (배당을 시작한 지 얼마 안 됐거나 팀 데이터베이스 배당 자료가 빈 경우)."),
+    "high_leverage_dropped": ("user", "재무 건전성 조건(부채비율 = 부채총계 ÷ 자본총계 {lim} 이하)에 맞지 않거나 자본이 0 이하인 종목 {n}개({tickers})는 선정하지 않았습니다 (은행·보험 같은 금융업은 부채가 사업 자체라 이 기준을 쓰지 않았습니다)."),
+    "leverage_unknown": ("info", "재무상태표 자료가 없어 부채비율을 확인하지 못한 {n}개 종목({tickers})은 후보에 그대로 두었습니다."),
+    "low_margin_dropped": ("user", "이익률 조건(영업이익률이 같은 유니버스 비금융 종목의 중앙값 이상, 최근 4개 분기 기준)에 맞지 않는 종목 {n}개({tickers})는 선정하지 않았습니다 (중앙값 {med}, 금융업은 재지 않음)."),
+    "style_floor_fallback": ("user", "테마 후보 {n}개 모두 {what}이 같은 유니버스 중앙값({med})보다 {worse}, 후보 가운데 {what}이 {better} 절반({tickers})만 골랐습니다."),
+    "foreign_hq_dropped": ("user", "미국 기업 조건(법인 소재지가 미국인 기업만)에 맞지 않는 종목 {n}개({tickers})는 선정하지 않았습니다. 회사 소개의 정식 이름이 plc·N.V.·Ltd 같은 미국 밖 법인 형태인 기업입니다."),
+    "margin_unknown": ("info", "손익 자료가 없어 영업이익률을 확인하지 못한 {n}개 종목({tickers})은 후보에 그대로 두었습니다."),
+    "user_floor_dropped": ("user", "요청한 {kind}({min}) 조건 때문에 테마 관련 종목 {n}개({tickers})가 후보에서 빠졌습니다."),
+    "mega_cap_dropped": ("user", "초대형주 조건(선정일 시가총액 {k}위 안, 같은 시장 전체 상장 종목 기준이며 같은 회사의 주식 클래스는 한 회사로 셈)에 들지 않거나 시가총액 자료가 없는 종목 {n}개({tickers})는 선정하지 않았습니다."),
     "matched_floor": ("user", "{base}: 과거 최대낙폭을 낙폭 맞춤 목표({target}) 안으로 맞추려면 주식 비중을 {floor}보다 더 줄여야 해서 이 구성의 낙폭 맞춤안(주식 + 현금)은 만들지 않았습니다. 주식이 너무 적은 구성은 후보로 두지 않습니다."),
     # 참고 (파일에만)
     "descriptor_version_fallback": ("info", "{text}"),
@@ -119,6 +133,7 @@ _LEGACY: list[tuple[re.Pattern[str], str, tuple[str, ...]]] = [
     (re.compile(r"^(\S+): utility kept despite excluded theme "), "utility_not_fossil", ("tickers",)),
     (re.compile(r"^broad start pool (\d+) candidates; exclusion keywords dropped (\d+) unchecked names \[([^\]]*)\]"), "broad_start_pool", ("n", "k", "names")),
     (re.compile(r"^must_include (\S+): below candidate filters \((.*)\), kept"), "must_include_below_filters", ("tickers", "detail")),  # 아래 포괄 규칙보다 먼저
+    (re.compile(r"^must_include (\S+): ((?:market_cap_rank|dividend_not_growing|dividend_cut|dividend_history_short|debt_to_equity|operating_margin)\([^)]*\)), kept"), "must_include_guard", ("tickers", "detail")),
     (re.compile(r"^must_include (\S+): "), "must_include_forced", ("tickers",)),
     (re.compile(r"^(\S+): must_include but not in theme"), "must_include_off_theme", ("tickers",)),
     (re.compile(r"^original selection used at an earlier date"), "selection_lookahead", ()),
@@ -129,6 +144,18 @@ _LEGACY: list[tuple[re.Pattern[str], str, tuple[str, ...]]] = [
     (re.compile(r"^no portfolio passed the hard rules \(fail counts by rule: (.+)\)"), "no_portfolio_passed", ("rules",)),
     (re.compile(r"^alternative skipped: (.+)"), "alternative_skipped", ("reason",)),
     (re.compile(r"^dividend theme: dropped (\d+) candidates without a confirmed dividend in the last 12 months \[([^\]]*)\]"), "no_dividend_dropped", ("n", "tickers")),
+    (re.compile(r"^dividend growth \((\d+)y\): dropped (\d+) without steady growth \[([^\]]*)\]"), "dividend_growth_dropped", ("years", "n", "tickers")),
+    (re.compile(r"^dividend history \((\d+)y\): dropped (\d+) without dividend history \[([^\]]*)\]"), "dividend_history_dropped", ("years", "n", "tickers")),
+    (re.compile(r"^dividend steady \((\d+)y\): dropped (\d+) with a dividend cut \[([^\]]*)\]"), "dividend_steady_dropped", ("years", "n", "tickers")),
+    (re.compile(r"^balance sheet: dropped (\d+) with debt/equity above ([\d.]+) \[([^\]]*)\]"), "high_leverage_dropped", ("n", "lim", "tickers")),
+    (re.compile(r"^balance sheet: debt/equity unknown for (\d+) kept \[([^\]]*)\]"), "leverage_unknown", ("n", "tickers")),
+    (re.compile(r"^mega cap: dropped (\d+) outside market-cap rank (\d+) \[([^\]]*)\]"), "mega_cap_dropped", ("n", "k", "tickers")),
+    (re.compile(r"^profit margin: dropped (\d+) below (?:candidates'|the universe) median operating margin ([-\d.:;A-Z]+) \[([^\]]*)\]"), "low_margin_dropped", ("n", "med", "tickers")),
+    (re.compile(r"^us headquarters: dropped (\d+) with a legal domicile outside the US \[([^\]]*)\]"), "foreign_hq_dropped", ("n", "tickers")),
+    (re.compile(r"^style floor: all (\d+) candidates beyond the universe median ([-+\d.eE]+) for (\w+); kept the better half of theme candidates \(median [-+\d.eE]+\) \[([^\]]*)\]"),
+     "style_floor_fallback", ("n", "med", "metric", "tickers")),
+    (re.compile(r"^profit margin: operating margin unknown for (\d+) kept \[([^\]]*)\]"), "margin_unknown", ("n", "tickers")),
+    (re.compile(r"^user floor (min market cap|min avg daily volume) ([\d.]+) USD: dropped (\d+) theme candidates \[([^\]]*)\]"), "user_floor_dropped", ("kind", "min", "n", "tickers")),
     (re.compile(r"^matched variant skipped for (\S+): stocks below floor (\S+) would be needed to bring max drawdown within (\S+) "), "matched_floor", ("base", "floor", "target")),
     (re.compile(r"^fewer than target after matching; widened GICS codes one level up -> (\d+)"), "gics_widened", ("n",)),
     # 후보 단계 시가총액 하드 필터 (retrieve.mcap_warnings). 아래 시장모형 공지('market cap missing for …: treated as 0')와 앞말이 달라 서로 가리지 않는다
@@ -230,7 +257,20 @@ def from_text(stage: str, text: str, *, dates: list[str] | None = None) -> Warni
                 kw["sector"] = ", ".join(f"{sector_ko(a.strip())} {b.strip()}개" for a, b in pairs)
             subs = [x.strip().strip("'\"") for x in (kw.get("subs") or "").split(",") if x.strip()]
             kw["subs"] = f"({', '.join(subs[:5])}" + (f" 외 {len(subs) - 5}개" if len(subs) > 5 else "") + ")" if subs else ""
-        if code in ("min_mcap_missing", "mcap_estimated", "market_cap_missing", "no_dividend_dropped") and "tickers" in kw:  # 과거 시점에는 앞쪽이 빈 종목이 열 개 넘게 빠지기도 한다 → 앞 5개 + '외 N개'
+        if code == "high_leverage_dropped":  # '3' → '300%'
+            kw["lim"] = f"{float(kw['lim']) * 100:,.0f}%"
+        if code == "style_floor_fallback":  # 'pe_ttm', '13.8' → 'PER', '13.8배' / 배당은 %
+            div = kw.get("metric") == "dividend_yield_ttm"
+            kw.update({"what": "배당수익률" if div else "PER", "worse": "낮아" if div else "높아", "better": "높은" if div else "낮은",
+                       "med": metric_value_ko(kw.get("metric", ""), float(kw["med"]))})
+        if code == "low_margin_dropped":  # '0.1720' 또는 시장이 둘이면 'KR:0.0650;US:0.1720'
+            parts = [x.split(":") for x in str(kw["med"]).split(";")]
+            kw["med"] = ", ".join((f"{ {'US': '미국', 'KR': '한국'}.get(p[0], p[0])} " if len(p) == 2 else "") + f"{float(p[-1]) * 100:.1f}%" for p in parts)
+        if code == "user_floor_dropped":
+            kw["kind"] = "최소 시가총액" if kw.get("kind") == "min market cap" else "최소 일평균 거래대금"
+            kw["min"] = usd_ko(float(kw["min"]))
+        if code in ("min_mcap_missing", "mcap_estimated", "market_cap_missing", "no_dividend_dropped", "dividend_growth_dropped", "dividend_steady_dropped", "dividend_history_dropped",
+                    "high_leverage_dropped", "leverage_unknown", "mega_cap_dropped", "low_margin_dropped", "margin_unknown", "user_floor_dropped", "foreign_hq_dropped") and "tickers" in kw:  # fmt: skip  (과거 시점에는 앞쪽이 빈 종목이 열 개 넘게 빠지기도 한다 → 앞 5개 + '외 N개')
             names = [x.strip().strip("'\"") for x in kw.get("tickers", "").split(",") if x.strip()]
             kw["tickers"] = ", ".join(names[:5]) + (f" 외 {len(names) - 5}개" if len(names) > 5 else "")
             kw["n"] = len(names)
@@ -243,6 +283,8 @@ def from_text(stage: str, text: str, *, dates: list[str] | None = None) -> Warni
             kw["text"] = "시가총액 자료가 있는 후보가 하나도 없었습니다."
         if code == "matched_floor":
             kw["base"] = _plan_ko(kw.get("base", ""))
+        if code == "must_include_guard":
+            kw["detail"] = guard_reason_ko(kw.get("detail", "")) or kw.get("detail", "")
         if code == "must_include_no_metric":  # 적자 여부는 PER 에서만 안다 (배당·ROE·모멘텀은 그냥 자료 없음)
             kw["why"] = "(적자이거나 재무 자료 없음)" if kw.get("why") else ""
         if code == "must_include_out_of_range":
@@ -278,11 +320,44 @@ def _pct(x: float) -> str:
     return f"{x * 100:.0f}%"
 
 
+def guard_reason_ko(code: str) -> str | None:
+    """선정 보조 조건(screen._idea_guards)의 사유 코드 → 한국어. 'debt_to_equity(6.95>3)' → '부채비율 695%로 상한 300% 초과 (재무 건전성 조건)'. 모르는 코드는 None."""
+    key, _, arg = str(code).partition("(")
+    arg = arg.rstrip(")")
+    try:
+        if key in ("dividend_not_growing", "dividend_cut", "dividend_history_short"):
+            what = {"dividend_not_growing": "주당배당을 해마다 늘리지 않음(동결한 해가 많음)", "dividend_cut": "주당배당을 깎은 해가 있음",
+                    "dividend_history_short": "배당 이력 확인 안 됨"}[key]
+            return f"최근 {arg.rstrip('y')}년 {what} (배당 이력 조건)"
+        if key == "debt_to_equity":
+            v, _, lim = arg.partition(">")
+            head = "자본이 0 이하" if v == "inf" else f"부채비율 {float(v) * 100:,.0f}%로 상한 {float(lim) * 100:,.0f}% 초과"
+            return f"{head} (재무 건전성 조건)"
+        if key == "operating_margin":
+            v, _, med = arg.partition("<")
+            return f"영업이익률 {float(v) * 100:.1f}%로 중앙값 {float(med) * 100:.1f}% 미만 (이익률 조건)"
+        if key == "foreign_domicile":
+            return f"법인 소재지가 미국 밖 (정식 이름의 법인 형태 {arg}, 미국 기업 조건)"
+        if key == "market_cap_rank":
+            r, _, k = arg.partition(">")
+            return "시가총액 자료 없음 (초대형주 조건)" if r == "unknown" else f"시가총액 {r}위로 {k}위 밖 (초대형주 조건)"
+    except ValueError:
+        return None
+    return None
+
+
 def _out_of_range_ko(detail: str) -> str:
     """'roe_ttm=-0.1572, 범위 >0 ≤10' → 'ROE -15.7%, 자격선 0% 초과 1,000% 이하' (리포트 제외 사유와 같은 말, 009: 원문 소수가 공지에 그대로 나왔다).
     못 읽는 원문은 지표 이름만 바꾼다."""
     from backend.analysis.m2_data import metrics as M  # 늦은 import: metrics → market_data 를 경고 모듈이 처음부터 끌어오지 않게
 
+    m = re.match(r"^(\w+)=([-+\d.eE]+), 시장 중앙값 ([-+\d.eE]+) (미만|초과)", detail)
+    if m:  # 고배당·저PER 의 유니버스 중앙값 기준선 (screen._style_floor)
+        try:
+            met, v, med = m.group(1), float(m.group(2)), float(m.group(3))
+            return f"{M.METRIC_SHORT_KO.get(met, met)} {metric_value_ko(met, v)}로 같은 유니버스 중앙값 {metric_value_ko(met, med)} {m.group(4)}"
+        except ValueError:
+            pass
     m = re.match(r"^(\w+)=([-+\d.eE]+)", detail)
     if m and m.group(1) in M.ELIGIBLE_RANGE:
         try:

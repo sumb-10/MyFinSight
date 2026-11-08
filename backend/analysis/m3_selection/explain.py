@@ -17,7 +17,7 @@ from backend.analysis.schemas.intent import IntentSpec
 from backend.analysis.schemas.selection import Selection, Tagging
 
 STAGE = "06_explain"
-from backend.analysis.common.citations import CITE_RE  # 인용 ID 정규식은 한 곳에서
+from backend.analysis.common.citations import CITE_RE, split_grouped_in  # 인용 ID 정규식은 한 곳에서
 
 
 def _dc_date(r: dict[str, Any]) -> str:
@@ -120,8 +120,12 @@ def explain(
                 unknown[row["ticker"]] = bad
             if allowed and not CITE_RE.search(row.get("rationale_ko", "")):
                 raise ValueError(f"{row['ticker']}: rationale must cite at least one given id like [fin:...] or [ev123]")
+        missing = missing_cards(a, tickers)
+        if missing and attempt[0] == 1:  # 선정 종목마다 카드 하나 (2026-11 평가 077: 7종목 중 1종목만 쓴 답이 검사를 통과해 기업별 근거 6개가 비었다)
+            raise ValueError(f"per_ticker has no card for {missing}; write one card for every selected ticker")
 
-    ans = llm.complete_json(STAGE, messages_from_prompts(system, user), validator=_check)
+    ans = llm.complete_json(STAGE, messages_from_prompts(system, user), validator=lambda a: _check(split_grouped_in(a)))
+    split_grouped_in(ans)  # 캐시에서 꺼낸 응답에도 (검사기는 새 응답에서만 돈다)
     if unknown and isinstance(ans.get("per_ticker"), list):
         def _strip(text: str, ids: list[str]) -> str:
             return re.sub(r"\s*\[(?:" + "|".join(map(re.escape, ids)) + r")\]", "", text)
@@ -142,6 +146,12 @@ def explain(
                                      for r in ans["per_ticker"]]}  # fmt: skip
     return {"request_id": sel.request_id, "stage": "06_selection_explained", **ans,
             "citations_available": sorted(allowed)}  # fmt: skip
+
+
+def missing_cards(ans: dict[str, Any], tickers: set[str]) -> list[str]:
+    """선정 종목 중 내용 있는 카드(per_ticker[].rationale_ko)가 없는 종목."""
+    have = {r.get("ticker") for r in ans.get("per_ticker") or [] if isinstance(r, dict) and str(r.get("rationale_ko") or "").strip()}
+    return sorted(t for t in tickers if t not in have)
 
 
 def _no_column_name(text: str) -> str:

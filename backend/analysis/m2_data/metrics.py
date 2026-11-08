@@ -95,7 +95,11 @@ def dividend_yield_ttm(view: MarketDataView, tickers: Sequence[str]) -> tuple[pd
 # 선정 자격선 (2026-11 시나리오 QA, 사용자 정책 결정 3): 후보가 목표보다 적어도 이 범위 밖 종목은 뽑지 않는다 (강제 포함 제외).
 # (하한, 상한) — 하한은 초과(>), 상한은 이하(≤). 배당 상한 30% 는 정책이 아니라 자료 오류 거름 (000: STX 배당수익률 20541).
 # ROE 상한 1000% 도 자료 오류 거름: 자기자본이 0 근처·음수로 넘어가면 평균 자본이 작아 ROE 가 폭주한다 (005: AbbVie 141% → 15,367%, 장부가 음수로 PBR 없음).
-ELIGIBLE_RANGE: dict[str, tuple[float | None, float | None]] = {"pe_ttm": (0.0, 50.0), "roe_ttm": (0.0, 10.0), "dividend_yield_ttm": (0.0, 0.30)}
+# 모멘텀은 12-1 수익률이 0 초과 (2026-11 평가 008: 후보가 적어 −12% 인 MRVL 까지 '최근 주가 흐름이 강한 종목' 으로 담았다).
+# 저변동성은 고정 범위가 아니라 테마 후보 중 낮은 절반 (screen._low_vol_half) — 종목 변동성은 지수보다 늘 커서 시장 대비 고정 배수는 거의 다 걸러진다.
+# 고배당·저PER 은 이 범위에 더해 같은 유니버스(같은 시장) 종목의 중앙값보다 나아야 한다 (screen._style_floor, settings.selection.style_floor_median).
+ELIGIBLE_RANGE: dict[str, tuple[float | None, float | None]] = {"pe_ttm": (0.0, 50.0), "roe_ttm": (0.0, 10.0), "dividend_yield_ttm": (0.0, 0.30),
+                                                             "return_12m_1m": (0.0, None)}  # fmt: skip
 
 
 def eligible(metric: str, value: float | None, ranges: dict[str, tuple[float | None, float | None]] | None = None) -> bool:
@@ -128,6 +132,8 @@ METRIC_SHORT_KO = {"return_12m_1m": "모멘텀", "vol_60d": "변동성", "pe_ttm
 
 def eligible_range_ko(metric: str, ranges: dict[str, tuple[float | None, float | None]] | None = None) -> str:
     """자격선을 사람이 읽는 말로: roe_ttm (0, 10) → '0% 초과 1,000% 이하' ('범위 >0 ≤10' 이 퍼센트 값 옆에서 'ROE 10% 상한' 으로 읽혔다, 009)."""
+    if metric == "vol_60d" and not ranges:
+        return "테마 후보 중 변동성이 낮은 절반(중앙값 이하)"
     lo, hi = (ranges or ELIGIBLE_RANGE).get(metric, (None, None))
 
     def f(x: float) -> str:

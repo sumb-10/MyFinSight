@@ -151,9 +151,11 @@ def test_retrieve_drops_missing_keeps_estimated_and_forced(gap):
     assert by["MU"].forced and by["MU"].market_cap_usd is None  # 필수 포함은 후보 조건 밖 (자료가 없어도 남는다)
     assert by["AVGO"].market_cap_usd == pytest.approx(1.2e12) == md.view(AS_OF).market_cap_usd(["AVGO"])["AVGO"]  # 필터와 시가총액비중이 같은 값
     assert cand.stats["mcap_estimated"] == {"005930.KS": str(T0), "AVGO": str(T0)}
-    mw = [w for w in cand.warnings if "market cap" in w]
+    mw = [w for w in cand.warnings if "market cap" in w and not w.startswith("user floor")]
     assert mw == ["min market cap 1000000000 USD: dropped 2 candidates without market cap data ['CAT', 'XOM']",
                   "market cap estimated from last known shares (within 730 days) for ['005930.KS', 'AVGO']"]  # fmt: skip
+    # 최소 시가총액 미달로 뺀 테마 후보는 따로 공지한다 (2026-11 평가: 사용자 하한으로 빠진 테마 대표 종목을 알리지 않았다)
+    assert [w for w in cand.warnings if w.startswith("user floor")] == ["user floor min market cap 1000000000 USD: dropped 1 theme candidates [AMD]"]
     ws = [from_text("03_candidates", w) for w in mw]
     assert [(w.code, w.level) for w in ws] == [("min_mcap_missing", "user"), ("mcap_estimated", "user")]
     assert ws[0].message_ko == "시가총액 자료가 없어 최소 시가총액(10억 달러)을 확인할 수 없는 2개 종목(CAT, XOM)은 후보에서 뺐습니다."

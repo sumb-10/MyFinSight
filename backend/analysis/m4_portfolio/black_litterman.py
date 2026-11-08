@@ -25,8 +25,10 @@ def view_summary(v: dict[str, Any]) -> str:
     st = STRENGTH_KO.get(v.get("strength") or "", "")
     if v["type"] == "relative":
         shift = (float(v["expected_return_annual"]) - float(v["prior_return"])) * 100
+        # 반영 뒤에도 차이가 0 이하면 그 사실을 붙인다 (2026-11 평가 071: 'INTU > ORCL' 인데 뷰 값이 -6.7% 라 거꾸로 읽혔다)
+        still = " — 반영 뒤에도 " + "+".join(v["long"]) + " 쪽 기대가 낮음" if float(v["expected_return_annual"]) <= 0 else ""
         head = (f"[{kind}] {legs} ({st}) — 기대 차이를 {'+'.join(v['long'])} 쪽으로 {shift:+.1f}%p "
-                f"(사전 {v['prior_return']:+.1%} → 뷰 {v['expected_return_annual']:+.1%}/년)")
+                f"(사전 차이 {v['prior_return']:+.1%} → 뷰 반영 차이 {v['expected_return_annual']:+.1%}/년{still})")
     else:
         arrow = "오름" if v["direction"] == "up" else "내림"
         head = f"[{kind}] {legs} {arrow}({st}) — 사전 기대 {v['prior_return']:+.1%} → 뷰 {v['expected_return_annual']:+.1%}/년"

@@ -20,10 +20,12 @@ from typing import Any
 
 from backend.analysis.common.llm import make_llm
 from backend.analysis.common.store import ComparisonStore, JsonStore, RequestStore
+from backend.analysis.errors import public_message
 from backend.analysis.executor.context import RunContext
 from backend.analysis.executor.queue import Queue, pid_alive
 from backend.analysis.executor.runner import run
 from backend.analysis.m2_data.market_data import MarketData
+from backend.analysis.m2_data.price_cache import PriceBarCache
 from backend.analysis.m5_backtest_report.compare import compare
 from backend.analysis.m5_backtest_report.persist import db_step_hook, save_report, save_results
 from backend.analysis.m6_tracking.paper import refresh_all_papers
@@ -33,6 +35,7 @@ from backend.analysis.common.dbconn import open_analysis_repository
 from backend.analysis.settings import AnalysisSettings
 
 log = logging.getLogger(__name__)
+_PRICES = PriceBarCache()  # 실행끼리 가격 원자료를 나눠 쓴다 (01 단계의 DB 조회가 미국 유니버스만 55초였다 → 새 종목·구간만 받음)
 
 
 def _answered_fields(doc: Any) -> tuple[str, ...]:
@@ -61,7 +64,7 @@ def execute_run(entry_run_id: str, *, repo: Any, store: JsonStore, settings: Ana
         return "failed"
     rdir = run_dir(entry_run_id)
     llm = llm or make_llm(settings.llm, run_dir=rdir, run_id=entry_run_id)
-    md = MarketData(repo, settings)
+    md = MarketData(_PRICES.wrap(repo), settings)
     req = dict(doc.effective_request)
     bt_req = None
     if doc.overrides.get("_backtest_request"):
@@ -88,7 +91,7 @@ def execute_run(entry_run_id: str, *, repo: Any, store: JsonStore, settings: Ana
         except Exception as e:  # noqa: BLE001
             log.exception("persist failed")
             status = "failed"
-            queue.finish(entry_run_id, status, error_code="PERSIST_FAILED", error_message=f"{type(e).__name__}: {e}"[:500])
+            queue.finish(entry_run_id, status, error_code="PERSIST_FAILED", error_message=f"{type(e).__name__}: {public_message(e)}"[:500])
             return status
     if report_id and doc.mode == "revision" and doc.base_report_id:
         try:
@@ -124,7 +127,7 @@ def run_once(*, repo: Any, store: JsonStore, settings: AnalysisSettings, llm=Non
         return execute_run(entry.run_id, repo=repo, store=store, settings=settings, queue=queue, llm=llm)
     except Exception as e:  # noqa: BLE001
         log.exception("[worker] run %s crashed", entry.run_id)
-        queue.finish(entry.run_id, "failed", error_code="WORKER_ERROR", error_message=f"{type(e).__name__}: {e}"[:500])
+        queue.finish(entry.run_id, "failed", error_code="WORKER_ERROR", error_message=f"{type(e).__name__}: {public_message(e)}"[:500])  # 원문은 위 로그에
         return "failed"
 
 

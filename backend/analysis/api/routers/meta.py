@@ -8,6 +8,7 @@ from fastapi import APIRouter, Request
 
 from backend.analysis.api.routers import services
 from backend.analysis.common.dbconn import describe
+from backend.analysis.errors import public_message
 from backend.analysis.executor.queue import pid_alive
 from backend.analysis.schemas import request as R
 
@@ -23,7 +24,7 @@ def health(request: Request) -> dict[str, Any]:
         out["db"] = {"ok": True, "latest_trading_day": str(md.ceiling), "data_start": str(md.data_range()[0]), "where": describe()}
     except Exception as e:  # noqa: BLE001
         out["ok"] = False
-        out["db"] = {"ok": False, "error": f"{type(e).__name__}: {e}"[:200]}
+        out["db"] = {"ok": False, "error": f"{type(e).__name__}: {public_message(e)}"[:200]}
     runs = sv.queue.list()
     running = [r for r in runs if r.status == "running"]
     lock = sv.store.path("worker.lock")
@@ -61,5 +62,5 @@ def options(request: Request) -> dict[str, Any]:
         opts["latest_trading_day"] = str(md.ceiling)
     except Exception as e:  # noqa: BLE001
         opts["data_range"] = None
-        opts["data_error"] = f"{type(e).__name__}: {e}"[:200]
+        opts["data_error"] = f"{type(e).__name__}: {public_message(e)}"[:200]
     return opts
