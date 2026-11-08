@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react"
-import { Check, LogOut } from "lucide-react"
+import { Check, LogOut, MessagesSquare } from "lucide-react"
 import { useProfile, useService } from "../../app/providers"
 import { navigate } from "../../app/router"
 import { ApiError, errorMessage } from "../../api/client"
 import type { Options, ProfileFields, ProfileView, Tendency } from "../../api/types"
 import { useResource } from "../../state/useResource"
-import { clearLegacy, loadLegacyProfile } from "../../state/uiStorage"
+import { clearLegacy, loadLegacyProfile, loadUi, saveUi } from "../../state/uiStorage"
 import { Alert, Badge, Button, Chip, ErrorState, Field, inputClass, Loading } from "../../ui"
 import { ko } from "../../lib/format"
 import { QUESTIONS, TENDENCIES, TENDENCY_HELP, computeTendency, toRiskTolerance } from "./diagnosis"
@@ -118,14 +118,15 @@ const TICKER_INFO = <>회사 이름이 아니라 <b>종목 코드(티커)</b>로
 function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setup: boolean; onSaved: (v: ProfileView) => void }) {
   const svc = useService()
   const options = useResource(() => svc.options(), [svc])
-  const legacy = useMemo(() => (initial ? null : loadLegacyProfile()), [initial])
-  const [form, setForm] = useState<Form>(() => (initial ? structuredClone(initial) : { ...structuredClone(DEFAULT_FORM), ...(legacy ? fromLegacy(legacy) : {}) }))
+  const chatDraft = useMemo(() => (initial ? null : loadUi().profileDraft ?? null), [initial])  // 대화형 설정에서 넘어온 초안 (처음 설정만)
+  const legacy = useMemo(() => (initial || chatDraft ? null : loadLegacyProfile()), [initial, chatDraft])
+  const [form, setForm] = useState<Form>(() => (initial ? structuredClone(initial) : chatDraft ? structuredClone(chatDraft) : { ...structuredClone(DEFAULT_FORM), ...(legacy ? fromLegacy(legacy) : {}) }))
   const [step, setStep] = useState(0)
-  const [reached, setReached] = useState(initial ? STEPS.length - 1 : 0)  // 지금까지 들어가 본 가장 먼 단계 (수정이면 모든 단계 완료)
+  const [reached, setReached] = useState(initial || chatDraft ? STEPS.length - 1 : 0)  // 지금까지 들어가 본 가장 먼 단계 (수정·대화 초안이면 모든 단계 완료)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState("")
-  const [overrideOk, setOverrideOk] = useState(initial?.risk_type_overridden ?? false)
+  const [overrideOk, setOverrideOk] = useState(initial?.risk_type_overridden ?? chatDraft?.risk_type_overridden ?? false)
   const c0 = form.constraints
   const [openMore, setOpenMore] = useState(false)
   const [openLists, setOpenLists] = useState(c0.exclude_tickers.length + c0.must_include_tickers.length + c0.exclude_sectors.length + (c0.exclude_themes ?? []).length > 0)
@@ -179,6 +180,7 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
       const body: ProfileFields = { ...form, risk_type_overridden: form.diagnosis ? form.diagnosis.final_tendency !== computed : false, note: setup ? "첫 등록" : "수정" }
       const v = await svc.saveProfile(body)
       if (legacy) clearLegacy()
+      if (chatDraft) saveUi({ profileDraft: null })
       onSaved(v)
     } catch (ex) {
       if (ex instanceof ApiError && ex.fields) { setErrors(ex.fields); setSaveError("입력값에 오류가 있어 저장하지 못했습니다. 표시된 항목을 확인해 주세요.") }
@@ -202,9 +204,13 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">{setup ? "기본 투자조건을 알려주세요." : "저장된 투자조건을 수정합니다."}</h1>
           <p className="mt-2 text-sm leading-6 text-slate-600">금액과 기간, 투자성향, 종목 범위, 투자 전략을 설정합니다. 분석을 요청할 때 아이디어에 맞춰 일부를 바꿀 수 있습니다.</p>
         </div>
-        <div className="flex shrink-0 gap-2"><Button variant="neutral" onClick={() => navigate(setup ? { page: "reports" } : { page: "profile" })}><LogOut className="size-4" aria-hidden />저장하지 않고 나가기</Button></div>
+        <div className="flex shrink-0 gap-2">
+          {setup && svc.startProfileChat && <Button variant="secondary" onClick={() => navigate({ page: "profile", mode: "chat" })}><MessagesSquare className="size-4" aria-hidden />대화로 설정하기<MockTag /></Button>}
+          <Button variant="neutral" onClick={() => navigate(setup ? { page: "reports" } : { page: "profile" })}><LogOut className="size-4" aria-hidden />저장하지 않고 나가기</Button>
+        </div>
       </header>
       {legacy && setup && <div className="mt-6"><Alert title="이전 브라우저 저장 조건을 불러왔습니다" tone="info">예전 앱에 저장돼 있던 투자조건으로 미리 채웠습니다. 확인 후 저장하면 서버에 기록됩니다.</Alert></div>}
+      {chatDraft && setup && <div className="mt-6"><Alert title="대화에서 답한 내용으로 채웠습니다" tone="info">나머지 항목을 확인하고 마지막 단계에서 저장하세요.</Alert></div>}
       <nav aria-label="설정 단계" className="my-8">
         <ol className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {STEPS.map((label, i) => {

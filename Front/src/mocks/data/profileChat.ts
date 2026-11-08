@@ -18,7 +18,7 @@ interface Q {
   id: string
   label: string
   kind: ProposedChatKind
-  fields: string[]                                         // 이 답이 정하는 항목 (요약표에서 「답한 값」 표시)
+  fields: string[] | ((v: unknown) => string[])            // 이 답이 정하는 항목 = 요약표 행 키 (features/profile/compare.tsx profileRows)
   ask: (d: ProfileFields) => string                        // 봇 질문 (그때까지의 답이 반영된 초안을 보고 만든다)
   options: (d: ProfileFields) => Option[]
   input?: ProposedChatQuestion["input"]
@@ -53,7 +53,7 @@ const diagQ = (i: 0 | 1 | 2): Q => {
   const q = QUESTIONS[i]
   return {
     id: q.id, label: "투자성향 진단", kind: "choice",
-    fields: ["diagnosis", ...(q.id === "loss" ? ["risk.max_drawdown_tolerance"] : q.id === "reaction" ? ["risk.loss_reaction"] : [])],
+    fields: q.id === "loss" ? ["risk.max_drawdown_tolerance"] : q.id === "reaction" ? ["risk.loss_reaction"] : [],
     ask: () => (i === 0 ? `이제 투자성향을 알아볼게요. 질문 ${QUESTIONS.length}개만 답해 주세요.\n${q.question}` : q.question),
     options: () => q.options.map((o, idx) => ({ value: idx, label_ko: o.label })),
     apply: (d, v) => {
@@ -84,7 +84,7 @@ export const CHAT_QUESTIONS: Q[] = [
     say: (v) => won(v as number),
   },
   {
-    id: "monthly", label: "매월 추가 투자금", kind: "money", fields: ["capital.monthly_contribution"],
+    id: "monthly", label: "매월 추가 투자금", kind: "money", fields: ["capital.monthly"],
     ask: (d) => `매월 추가로 투자할 금액이 있나요? 있다면 매월 ${d.capital.contribution_day}일에 넣는 것으로 계산해요.`,
     options: () => [0, 300_000, 500_000, 1_000_000].map((v) => ({ value: v, label_ko: v ? `매월 ${won(v)}` : "추가 투자 없음" })),
     input: { min: 0, max: 100_000_000, step: 10_000, unit_ko: "원" },
@@ -101,7 +101,7 @@ export const CHAT_QUESTIONS: Q[] = [
   },
   diagQ(0), diagQ(1), diagQ(2),
   {
-    id: "tendency", label: "투자성향", kind: "choice", fields: ["tendency", "risk.risk_tolerance"],
+    id: "tendency", label: "투자성향", kind: "choice", fields: ["tendency"],
     ask: (d) => { const t = d.diagnosis!.computed_tendency; return `답변을 보면 ‘${t}’에 가까워요. ${TENDENCY_HELP[t]}\n이 성향으로 정할까요? 다른 성향을 고를 수도 있어요.` },
     options: (d) => TENDENCIES.map((t) => ({ value: t, label_ko: t === d.diagnosis!.computed_tendency ? `${t} (진단 결과)` : t, help_ko: TENDENCY_HELP[t], recommended: t === d.diagnosis!.computed_tendency })),
     apply: (d, v) => {
@@ -128,7 +128,7 @@ export const CHAT_QUESTIONS: Q[] = [
     say: (v) => `${v as number}개 정도요`,
   },
   {
-    id: "strategy", label: "종목을 고르는 기준", kind: "choice", fields: ["strategy_preference"],
+    id: "strategy", label: "종목을 고르는 기준", kind: "choice", fields: (v) => (v === "recommended" ? ["strategy.template", "strategy.weighting", "strategy.news"] : ["strategy.template"]),
     ask: (d) => `마지막으로 종목을 고르는 기준을 정해요. ‘${d.diagnosis!.final_tendency}’ 성향이면 첫 번째 추천을 먼저 권해요.`,
     options: (d) => {
       const rec = recommendation(d.diagnosis!.final_tendency).recommended
@@ -165,7 +165,7 @@ export function chatView(st: ProfileChatState): ProposedProfileChat {
     const a = st.answers[q.id]
     if (!a) { current = q; break }
     if ("skip" in a) messages.push({ id: `${q.id}:a`, role: "user", text_ko: "건너뛸게요 (기본값 사용)", question_id: q.id, editable: true })
-    else { q.apply(draft, a.v); q.fields.forEach((f) => asked.add(f)); messages.push({ id: `${q.id}:a`, role: "user", text_ko: q.say(a.v, draft), question_id: q.id, editable: true }) }
+    else { q.apply(draft, a.v); (typeof q.fields === "function" ? q.fields(a.v) : q.fields).forEach((f) => asked.add(f)); messages.push({ id: `${q.id}:a`, role: "user", text_ko: q.say(a.v, draft), question_id: q.id, editable: true }) }
     done++
   }
   if (current && st.error?.question_id === current.id) messages.push({ id: `${current.id}:retry`, role: "bot", text_ko: st.error.text_ko, question_id: current.id })

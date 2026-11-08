@@ -3,7 +3,7 @@ import { saveUi } from "../state/uiStorage"
 
 export type Route =
   | { page: "home" }
-  | { page: "profile"; mode?: "setup" | "edit" }
+  | { page: "profile"; mode?: "setup" | "edit" | "chat" }  // chat = 대화형 초기 설정 (제안 기능, 서비스에 대화 메서드가 있을 때만)
   | { page: "clarify"; requestId: string }
   | { page: "confirm"; requestId: string }
   | { page: "run"; runId: string }
@@ -17,7 +17,7 @@ export type Route =
 export const routePath = (r: Route): string => {
   switch (r.page) {
     case "home": return "#/home"
-    case "profile": return r.mode === "setup" ? "#/profile/setup" : r.mode === "edit" ? "#/profile/edit" : "#/profile"
+    case "profile": return r.mode ? `#/profile/${r.mode}` : "#/profile"
     case "clarify": return `#/analysis/${r.requestId}`
     case "confirm": return `#/analysis/${r.requestId}/confirm`
     case "run": return `#/runs/${r.runId}`
@@ -43,7 +43,7 @@ export const parseRoute = (hash: string = window.location.hash): Route => {
   const parts = pathname.split("/").filter(Boolean)
   const [a, b, c] = parts
   if (!a || a === "home") return { page: "home" }
-  if (a === "profile") return { page: "profile", mode: b === "setup" ? "setup" : b === "edit" ? "edit" : undefined }
+  if (a === "profile") return { page: "profile", mode: b === "setup" || b === "edit" || b === "chat" ? b : undefined }
   if (a === "analysis" && b && c === "confirm") return { page: "confirm", requestId: b }
   if (a === "analysis" && b) return { page: "clarify", requestId: b }
   if (a === "runs" && b) return { page: "run", runId: b }

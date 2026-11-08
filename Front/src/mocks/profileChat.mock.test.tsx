@@ -1,8 +1,18 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import type { ProposedChatAnswer, ProposedProfileChat } from "../api/proposed"
+import type { AnalysisService } from "../api/service"
+import App from "../app/App"
+import { Providers } from "../app/providers"
+import { ProfileChatScreen } from "../features/profile/chat/ProfileChatScreen"
+import { ProfileScreen } from "../features/profile/ProfileScreen"
 import { validateProfile } from "../features/profile/validate"
+import { loadUi } from "../state/uiStorage"
 import { CHAT_QUESTIONS, holdingsFor } from "./data/profileChat"
 import { MockService } from "./services/MockService"
+
+beforeAll(() => { globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver; Element.prototype.scrollIntoView = vi.fn() })
+afterEach(() => { window.history.replaceState(null, "", "/"); window.localStorage.clear() })
 
 // 대화형 초기 투자조건 (제안 기능 · 목업). 정해진 질문 순서·보기로만 묻고, 결과 초안은 폼과 같은 검사를 통과해야 한다.
 
@@ -38,7 +48,7 @@ describe("대화형 초기 투자조건 · 목업 규칙", () => {
     expect(d.constraints).toMatchObject({ universe: ["SP500"], num_holdings: { target: 5, min: 4, max: 6 }, max_weight_per_stock: 0.25 })
     expect(d.strategy_preference).toEqual({ template: "quality", baseline_weighting: "equal_weight", use_news_tilt: true })  // 위험중립형 추천 예시
     expect(validateProfile(d)).toEqual({})
-    expect(c.asked_fields).toEqual(expect.arrayContaining(["capital.initial_amount", "constraints.universe", "strategy_preference"]))
+    expect(c.asked_fields).toEqual(expect.arrayContaining(["capital.initial_amount", "capital.monthly", "tendency", "constraints.universe", "strategy.template", "strategy.weighting"]))
     expect(c.asked_fields).not.toContain("risk.benchmark")  // 묻지 않은 항목은 기본값
     expect(c.messages.at(-1)?.text_ko).toMatch(/요약을 확인하고 저장/)
   })
@@ -81,5 +91,81 @@ describe("대화형 초기 투자조건 · 목업 규칙", () => {
   it("종목 수에 맞춰 범위와 종목당 상한을 같이 정한다", () => {
     expect(holdingsFor(10)).toMatchObject({ num_holdings: { target: 10, min: 8, max: 12 }, max_weight_per_stock: 0.15 })
     expect(holdingsFor(3)).toMatchObject({ num_holdings: { min: 2, max: 4 }, max_weight_per_stock: 0.5, max_weight_per_sector: 0.5 })
+  })
+})
+
+/** 처음 사용자(투자조건 없음) 목업 서비스. */
+const firstUser = () => { const s = mock(); s.setProfileVariant("none"); return s }
+const show = (svc: AnalysisService, ui: React.ReactNode, hash = "") => { window.history.replaceState(null, "", `/?mock=1${hash}`); return render(<Providers service={svc}>{ui}</Providers>) }
+const pick = async (name: RegExp) => fireEvent.click(await screen.findByRole("button", { name }, { timeout: 5000 }))
+
+describe("대화형 초기 투자조건 화면 (목업)", () => {
+  it("보기를 눌러 끝까지 답하고 요약에서 저장하면 버전 1이 생기고 홈으로 간다", async () => {
+    const s = firstUser()
+    show(s, <ProfileChatScreen />)
+    expect(await screen.findByRole("heading", { level: 1, name: "대화로 기본 투자조건을 정해요" }, { timeout: 5000 })).toBeInTheDocument()
+    await pick(/^자산 증식/)
+    await pick(/^1,000만원/)
+    await pick(/^추가 투자 없음/)
+    await pick(/^5년/)
+    await pick(/^약 20% 하락까지/)
+    await pick(/^계획을 유지합니다/)
+    await pick(/^균형/)
+    await pick(/^위험중립형 \(진단 결과\)/)
+    await pick(/^S&P 500/)
+    await pick(/^선택 완료 \(1\)/)
+    await pick(/^10개/)
+    await pick(/^추천:/)
+    expect(await screen.findByRole("heading", { name: "이렇게 정리했어요" }, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.getByRole("progressbar", { name: "답한 질문" })).toHaveAttribute("aria-valuenow", String(CHAT_QUESTIONS.length))
+    fireEvent.click(screen.getByRole("button", { name: /이대로 저장/ }))
+    await waitFor(() => expect(window.location.hash).toBe("#/home"))
+    expect(await s.getProfile()).toMatchObject({ current_version: 1, profile: { note: "첫 등록", capital: { initial_amount: 10_000_000 }, constraints: { universe: ["SP500"] } } })
+  })
+  it("직접 입력한 금액이 범위 밖이면 다시 묻고, 「고치기」로 앞의 답을 다시 고를 수 있다", async () => {
+    show(firstUser(), <ProfileChatScreen />)
+    await pick(/^현금흐름\(배당\)/)
+    const input = await screen.findByRole("textbox", { name: "처음 투자할 금액 직접 입력" }, { timeout: 5000 })
+    fireEvent.change(input, { target: { value: "5,000" } })
+    expect(input).toHaveValue("5,000")
+    fireEvent.click(screen.getByRole("button", { name: /보내기/ }))
+    expect(await screen.findByText(/10만원 이상 100억원 이하로 알려 주세요/, {}, { timeout: 5000 })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "‘현금흐름(배당)’ 답 고치기" }))
+    expect(await screen.findByRole("button", { name: /^원금 보존/ }, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.queryByText("현금흐름(배당)", { selector: "p" })).toBeNull()
+  })
+  it("「폼으로 한 번에 입력」은 답한 내용을 넘기고, 처음 설정 폼이 그 값으로 미리 채운다", async () => {
+    const s = firstUser()
+    const { unmount } = show(s, <ProfileChatScreen />)
+    await pick(/^은퇴 대비/)
+    await pick(/^5,000만원/)
+    await screen.findByRole("button", { name: /^추가 투자 없음/ }, { timeout: 5000 })
+    fireEvent.click(screen.getByRole("button", { name: /폼으로 한 번에 입력/ }))
+    expect(window.location.hash).toBe("#/profile/setup")
+    expect(loadUi().profileDraft).toMatchObject({ capital: { initial_amount: 50_000_000 }, horizon: { purpose: "retirement" } })
+    unmount()
+    show(s, <ProfileScreen mode="setup" />)
+    expect(await screen.findByText("대화에서 답한 내용으로 채웠습니다", {}, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /대화로 설정하기/ })).toBeInTheDocument()
+  })
+  it("처음 사용자는 앱을 열면 대화형 설정으로 간다", async () => {
+    show(firstUser(), <App />, "#/home")
+    expect(await screen.findByRole("heading", { level: 1, name: "대화로 기본 투자조건을 정해요" }, { timeout: 5000 })).toBeInTheDocument()
+    expect(window.location.hash).toBe("#/profile/chat")
+  })
+})
+
+describe("일반 모드 (대화 메서드 없음)", () => {
+  const plain = (s: MockService): AnalysisService => Object.assign(Object.create(s), { mode: "api", startProfileChat: undefined, answerProfileChat: undefined, rewindProfileChat: undefined })
+  it("처음 사용자는 지금처럼 4단계 폼으로 가고, 폼에 「대화로 설정하기」가 없다", async () => {
+    window.history.replaceState(null, "", "/#/home")
+    render(<Providers service={plain(firstUser())}><App /></Providers>)
+    expect(await screen.findByRole("heading", { level: 1, name: "기본 투자조건을 알려주세요." }, { timeout: 5000 })).toBeInTheDocument()
+    expect(window.location.hash).toBe("#/profile/setup")
+    expect(screen.queryByRole("button", { name: /대화로 설정하기/ })).toBeNull()
+  })
+  it("주소로 대화형 화면을 열어도 4단계 폼을 보여 준다", async () => {
+    render(<Providers service={plain(firstUser())}><ProfileChatScreen /></Providers>)
+    expect(await screen.findByRole("heading", { level: 1, name: "기본 투자조건을 알려주세요." }, { timeout: 5000 })).toBeInTheDocument()
   })
 })
