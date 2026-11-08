@@ -9,6 +9,8 @@ import { exitMockHref } from "./mode"
 import { PAPERS, REPORTS, RUN_STATES } from "./scenarios"
 import type { MockService } from "./services/MockService"
 
+const VARIANT_LABEL = { default: "기본 (변경 이력 4개)", zero: "초기 투자금 0원", none: "처음 사용자 (투자조건 없음)" } as const
+
 export default function MockChrome() {
   const svc = useService() as unknown as MockService
   const { reload } = useProfile()
@@ -45,9 +47,9 @@ export default function MockChrome() {
             <p className={head}>모의투자</p>
             <button type="button" className={link} onClick={() => go({ page: "paper" })}>모의투자 목록 ({PAPERS.length}개, 같은 리포트에서 3개)</button>
             <p className={head}>내 투자조건</p>
-            <div className="flex gap-1 px-2.5 py-1">
-              {(["default", "zero"] as const).map((v) => (
-                <button key={v} type="button" aria-pressed={variant === v} onClick={() => { svc.setProfileVariant(v); setVariant(v); void reload() }} className={`rounded-lg border px-2 py-1 text-xs ${variant === v ? "border-amber-500 bg-amber-50 font-semibold text-amber-900" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>{v === "default" ? "기본 (변경 이력 4개)" : "초기 투자금 0원"}</button>
+            <div className="flex flex-wrap gap-1 px-2.5 py-1">
+              {(["default", "zero", "none"] as const).map((v) => (
+                <button key={v} type="button" aria-pressed={variant === v} onClick={() => { svc.setProfileVariant(v); setVariant(v); void reload(); if (v === "none") setOpen(false) }} className={`rounded-lg border px-2 py-1 text-xs ${variant === v ? "border-amber-500 bg-amber-50 font-semibold text-amber-900" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>{VARIANT_LABEL[v]}</button>
               ))}
             </div>
             <button type="button" className={link} onClick={() => go({ page: "profile" })}>내 투자조건 열기</button>

@@ -38,6 +38,8 @@ export function rebalanceText(rb: Rebalance): string {
 }
 
 export const ASSET_KO: Record<string, string> = { stock: "주식", etf: "ETF" }
+/** 투자 대상 지수 설명. 값(유니버스 ID)은 그대로 저장한다. */
+export const UNIVERSE_HELP: Record<string, string> = { SP500: "미국 대표 대형주 약 500개", NASDAQ100: "나스닥 상장 대형 비금융 기업 약 100개 (기술주 비중이 큼)", KOSPI200: "한국 유가증권시장 대표 기업 200개" }
 export const listText = (xs: string[] | undefined) => (xs?.length ? xs.join(", ") : "없음")
 
 // 비교지수 목록은 /meta/options(settings.py MarketSettings) 기준. 값(티커)은 그대로 저장하고 이름만 붙인다.

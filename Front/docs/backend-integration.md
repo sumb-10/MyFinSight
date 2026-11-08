@@ -188,6 +188,14 @@
 - **목업:** `MockService.seenSeed()` 로 시연용 시작값(가장 최근 리포트 1개·첫 모의투자의 마지막 리밸런싱을 '확인 안 함')을 준다. 목업 모의투자는 매월 첫 거래일 정기 리밸런싱에서 가격 변화로 틀어진 비중을 되돌리는 매수·매도 거래를 만든다 (`mocks/data/paper.ts`).
 - **프런트 파일:** `lib/seen.ts`, `features/attention.ts`(배지·목록 표시), `features/paper/rebalance.ts`(마지막 리밸런싱·다음 시점), `features/paper/RebalanceCard.tsx`(첫 화면 거래 카드·알림), `app/App.tsx`(사이드바), `ReportList.tsx`·`ReportDetail.tsx`·`PaperScreen.tsx`.
 
+### 2-15. 대화형 초기 투자조건 (처음 사용자)
+
+- **요약:** 투자조건이 없는 사용자가 챗봇처럼 필수 항목만 답해 기본 투자조건을 만든다 (`#/profile/chat`). 대화 API 는 초안만 만들고 저장은 기존 `PUT /profile`.
+- **API (제안):** `POST /profile/chat`, `POST /profile/chat/{id}/answers`, `POST /profile/chat/{id}/rewind` → `ProposedProfileChat`
+- **자세한 명세·정책:** [backend-requests-profile-chat.md](./backend-requests-profile-chat.md)
+- **목업:** `MockService.startProfileChat/answerProfileChat/rewindProfileChat`, `mocks/data/profileChat.ts`. **프런트 수정:** `api/service.ts`. 화면 `features/profile/chat/*`, 진입 `app/App.tsx`·`features/home/HomeScreen.tsx`.
+- **지금 일반 모드:** 대화 메서드가 없으므로 처음 사용자는 지금처럼 4단계 폼(`#/profile/setup`)으로 간다.
+
 ## 3. 일반 모드에 반영한 세 가지 (서버 추가 없이 기존 데이터만 사용)
 
 | 기능 | 기준 | 서버에 있으면 더 좋은 것 (제안) |
@@ -224,6 +232,7 @@
 9. 경고 ID·중복 기준(같은 문구 vs 같은 코드).
 10. 원화 성과의 대체 환율 정책(직전 영업일 몇 일까지 허용), 환율 1.00 처리, 시작일 환율이 없을 때 정책.
 11. 리밸런싱 알림을 언제까지 보여 줄지 (지금은 사용자가 「확인했어요」를 누를 때까지), 확인 기록을 서버에 둘지와 기기 간 공유 범위.
+12. 대화형 초기 투자조건: 묻지 않는 항목의 기본값 출처, 질문 수·순서와 성향 진단 문항 관리 주체, 저장하지 않은 대화 보관 기간, 자유 문장 답 해석 (자세히: backend-requests-profile-chat.md 1·2절).
 
 ---
 
@@ -260,6 +269,7 @@
 | `src/features/report/ReportName.tsx`, `src/lib/reportName.ts` | 리포트 이름 바꾸기 창 / 표시 이름 기준 |
 | `src/features/paper/PaperName.tsx`, `paperLabel.tsx`, `KrwPerformance.tsx` | 모의투자 이름 / 구분 표기 / 원화 성과 |
 | `src/features/profile/stocks.tsx`, `StrategyRecommend.tsx`, `compare.tsx` | 종목 검색·회사명 / 성향 기반 추천 / 버전 비교 |
+| `src/features/profile/chat/*`, `defaults.ts`, `validate.ts` | 대화형 초기 투자조건 화면 / 폼과 같이 쓰는 기본값·검사 |
 | `src/features/analysis/BatchQuestions.tsx`, `MessageOutcome.tsx` | 여러 질문 한 번에 / 말로 보태기 결과 |
 | `src/features/run/RunScreen.tsx`, `steps.ts` | 취소 결과·전체 경고 |
 | `src/mocks/**` | 목업 전용 (운영 빌드에 들어가지 않음) — 연동 후에도 디자인 확인용으로 유지 가능 |

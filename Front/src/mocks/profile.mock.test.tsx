@@ -24,6 +24,15 @@ const plain = (s: MockService): AnalysisService => Object.assign(Object.create(s
 const step = async (n: number, label: string) => fireEvent.click(await screen.findByRole("button", { name: new RegExp(`^${n}단계 ${label}`) }, { timeout: 5000 }))
 
 describe("목업 서비스 규칙", () => {
+  it("처음 사용자: 저장 전에는 투자조건이 없고, 처음 저장하면 버전 1이 된다", async () => {
+    const s = mock()
+    const { version: _v, created_at: _c, ...base } = await s.getProfileVersion(1)  // 저장할 값의 모양만 빌린다
+    s.setProfileVariant("none")
+    expect(await s.getProfile()).toBeNull()
+    const v = await s.saveProfile({ ...base, note: "첫 등록" })
+    expect(v).toMatchObject({ current_version: 1, versions: [{ version: 1, note: "첫 등록" }] })
+    expect((await s.getProfile())?.current_version).toBe(1)
+  })
   it("회사 이름·티커 검색 (티커·이름 앞부분이 먼저), 티커로 회사명 조회", async () => {
     const s = mock()
     expect((await s.searchStocks("마이크론"))[0].ticker).toBe("MU")

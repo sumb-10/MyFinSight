@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import { parseRoute, routePath, type Route } from "./router"
 
 const ROUTES: Route[] = [
-  { page: "home" }, { page: "profile" }, { page: "profile", mode: "setup" }, { page: "profile", mode: "edit" },
+  { page: "home" }, { page: "profile" }, { page: "profile", mode: "setup" }, { page: "profile", mode: "edit" }, { page: "profile", mode: "chat" },
   { page: "clarify", requestId: "req_1" }, { page: "confirm", requestId: "req_1" }, { page: "run", runId: "run_1" },
   { page: "reports" }, { page: "report", reportId: "run_1" }, { page: "paper" }, { page: "paper", paperId: "paper_20261024_abcd" },
   { page: "comparison", comparisonId: "cmp_run_1" },

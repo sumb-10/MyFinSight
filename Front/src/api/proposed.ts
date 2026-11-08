@@ -119,6 +119,27 @@ export interface ProposedQuestionBatch { request_id: string; questions: { seq: n
 export type ProposedBatchAnswer = { seq: number; option_value?: unknown; free_text?: string; skip?: boolean }
 export interface ProposedMessageResult { text: string; at: string; outcome: "applied" | "not_applied" | "needs_confirmation"; changes: { field: string; label_ko: string; before_ko: string; after_ko: string }[]; note_ko: string }
 
+/**
+ * 대화형 초기 투자조건 (처음 쓰는 사용자). 서버가 대화를 이끈다: 질문 순서·보기·답 반영·다시 묻기는 서버가 정하고, 화면은 받은 대로 그린다.
+ * 대화는 초안(draft)만 만든다 — 저장은 기존 PUT /profile(saveProfile)로 한다. draft 는 기본값이 채워진 완전한 모양.
+ * kind: choice = 보기 하나, multi = 보기 여러 개(값 배열), money = 원 단위 금액, number = 숫자. 금액·숫자는 보기(빠른 선택) + 직접 입력(input 범위).
+ */
+export type ProposedChatKind = "choice" | "multi" | "money" | "number"
+export interface ProposedChatQuestion { id: string; field_label_ko: string; kind: ProposedChatKind; options: { value: unknown; label_ko: string; help_ko?: string | null; recommended?: boolean }[]; input: { min: number; max: number; step: number; unit_ko: string } | null; allow_skip: boolean }
+/** editable = 사용자 답 말풍선의 「고치기」 대상 (그 질문만 다시 묻는다). */
+export interface ProposedChatMessage { id: string; role: "bot" | "user"; text_ko: string; question_id?: string | null; editable?: boolean }
+export interface ProposedProfileChat {
+  chat_id: string
+  state: "asking" | "review"                 // review = 필수 질문을 다 답함 → 화면은 요약·저장
+  messages: ProposedChatMessage[]
+  question: ProposedChatQuestion | null      // 지금 답할 질문 (review 면 null)
+  progress: { done: number; total: number }
+  draft: import("./types").ProfileFields
+  asked_fields: string[]                     // 답으로 정해진 항목 (점 경로). 나머지는 기본값
+}
+/** 답: 보기를 고르면 option_value(multi 는 배열), 직접 입력하면 number. skip 은 allow_skip 인 질문만. */
+export type ProposedChatAnswer = { question_id: string; option_value?: unknown; number?: number; skip?: boolean }
+
 /* ───────── 분석 진행 ───────── */
 export interface ProposedRunWarning { step: string; step_label_ko: string; message_ko: string; count: number }
 /** GET /runs/{id} 에 붙는 취소 결과. immediate = 서버가 진행 중인 작업을 바로 멈출 수 있음 (지금 서버는 단계가 끝날 때 멈춘다). */
@@ -152,6 +173,9 @@ export interface ProposedApi {
   getStocks(tickers: string[]): Promise<ProposedStock[]>   // 티커 → 회사명 (목록에 없는 티커는 빠진다)
   getProfileVersion(version: number): Promise<import("./types").ProfileVersion>
   recommendStrategy(tendency: Tendency): Promise<ProposedStrategyRecommendation>
+  startProfileChat(): Promise<ProposedProfileChat>   // 대화형 초기 투자조건: 새 대화 시작
+  answerProfileChat(chatId: string, answer: ProposedChatAnswer): Promise<ProposedProfileChat>
+  rewindProfileChat(chatId: string, questionId: string): Promise<ProposedProfileChat>   // 그 질문만 다시 묻기 (뒤의 답은 남기고, 그 답에 기대는 질문만 함께 다시 묻는다)
   getQuestionBatch(requestId: string): Promise<ProposedQuestionBatch | null>
   answerBatch(requestId: string, answers: ProposedBatchAnswer[]): Promise<import("./types").DialogState>
   getMessageResults(requestId: string): Promise<ProposedMessageResult[]>

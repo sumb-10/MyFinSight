@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useState } from "react"
-import { Check, LogOut } from "lucide-react"
+import { Check, LogOut, MessagesSquare } from "lucide-react"
 import { useProfile, useService } from "../../app/providers"
 import { navigate } from "../../app/router"
 import { ApiError, errorMessage } from "../../api/client"
 import type { Options, ProfileFields, ProfileView, Tendency } from "../../api/types"
 import { useResource } from "../../state/useResource"
-import { clearLegacy, loadLegacyProfile } from "../../state/uiStorage"
+import { clearLegacy, loadLegacyProfile, loadUi, saveUi } from "../../state/uiStorage"
 import { Alert, Badge, Button, Chip, ErrorState, Field, inputClass, Loading } from "../../ui"
 import { ko } from "../../lib/format"
 import { QUESTIONS, TENDENCIES, TENDENCY_HELP, computeTendency, toRiskTolerance } from "./diagnosis"
 import { InfoField, InfoTip, NumberInput, PercentSlider, SectorPicker, TagInput } from "./inputs"
 import { StrategyFields } from "./StrategyFields"
 import { strategySummary } from "./strategyInfo"
-import { ASSET_KO, benchName, listText, money, monthlyText, pctText, rebalanceText, usdFloor, yearsText } from "./format"
+import { ASSET_KO, UNIVERSE_HELP, benchName, listText, money, monthlyText, pctText, rebalanceText, usdFloor, yearsText } from "./format"
 import { Part, PartDisclosure } from "./parts"
 import { VersionHistory } from "./history"
 import { tendencyLabel } from "../../lib/tendency"
@@ -20,20 +20,10 @@ import { proposedRulesOf } from "../../api/proposed"
 import { MockTag } from "../report/proposedView"
 import { StockPicker, useStockNames } from "./stocks"
 import { StrategyRecommendation, asPref, useRecommendation } from "./StrategyRecommend"
+import { DEFAULT_FORM } from "./defaults"
+import { validateProfile } from "./validate"
 
 type Form = ProfileFields
-
-const DEFAULT_FORM: Form = {
-  profile: { user_id: "default", age_band: "30s", investment_experience: "beginner", financial_knowledge: "basic", investable_ratio_of_assets: 0.3 },
-  capital: { initial_amount: 10_000_000, currency: "KRW", trading_currency: "USD", monthly_contribution: 0, contribution_day: 25 },
-  horizon: { target_years: 5, purpose: "wealth_growth", backtest_years: 3 },
-  risk: { risk_tolerance: "moderate", max_drawdown_tolerance: 0.2, loss_reaction: "hold", target_annual_return: 0.08, benchmark: "SPY" },
-  constraints: { universe: ["SP500", "NASDAQ100"], asset_types: ["stock"], num_holdings: { target: 10, min: 8, max: 12 }, max_weight_per_stock: 0.15, max_weight_per_sector: 0.4, min_cash_ratio: 0, exclude_tickers: [], exclude_sectors: [], exclude_themes: [], must_include_tickers: [], rebalance: { count: 1, unit: "1q" }, allow_leverage: false, allow_short: false, min_market_cap_usd: 0, min_avg_daily_volume_usd: 0 },
-  strategy_preference: { template: "momentum", baseline_weighting: "equal_weight", use_news_tilt: true },
-  diagnosis: { answers: {}, computed_tendency: "위험중립형", final_tendency: "위험중립형", memo: "" },
-  risk_type_computed: "moderate",
-  risk_type_overridden: false,
-}
 
 function fromView(v: ProfileView): Form {
   const p = v.profile
@@ -61,8 +51,6 @@ export function ProfileScreen({ mode }: { mode: "setup" | "edit" | "view" }) {
   return <ProfileWizard initial={profile ? fromView(profile) : null} setup={!profile} onSaved={(v) => { set(v); void reload(); navigate({ page: profile ? "profile" : "home" }) }} />
 }
 
-// 투자 대상 지수 설명. 값(유니버스 ID)은 그대로 저장한다.
-const UNIVERSE_HELP: Record<string, string> = { SP500: "미국 대표 대형주 약 500개", NASDAQ100: "나스닥 상장 대형 비금융 기업 약 100개 (기술주 비중이 큼)", KOSPI200: "한국 유가증권시장 대표 기업 200개" }
 
 function ProfileSummary({ view }: { view: ProfileView }) {
   const p = view.profile
@@ -130,14 +118,17 @@ const TICKER_INFO = <>회사 이름이 아니라 <b>종목 코드(티커)</b>로
 function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setup: boolean; onSaved: (v: ProfileView) => void }) {
   const svc = useService()
   const options = useResource(() => svc.options(), [svc])
-  const legacy = useMemo(() => (initial ? null : loadLegacyProfile()), [initial])
-  const [form, setForm] = useState<Form>(() => (initial ? structuredClone(initial) : { ...structuredClone(DEFAULT_FORM), ...(legacy ? fromLegacy(legacy) : {}) }))
+  const chatDraft = useMemo(() => (initial ? null : loadUi().profileDraft ?? null), [initial])  // 대화형 설정에서 넘어온 초안 (처음 설정만)
+  const legacy = useMemo(() => (initial || chatDraft ? null : loadLegacyProfile()), [initial, chatDraft])
+  const [form, setForm] = useState<Form>(() => (initial ? structuredClone(initial) : chatDraft ? structuredClone(chatDraft) : { ...structuredClone(DEFAULT_FORM), ...(legacy ? fromLegacy(legacy) : {}) }))
   const [step, setStep] = useState(0)
-  const [reached, setReached] = useState(initial ? STEPS.length - 1 : 0)  // 지금까지 들어가 본 가장 먼 단계 (수정이면 모든 단계 완료)
+  const chatDone = useMemo(() => !!chatDraft && loadUi().profileChat?.state === "review", [chatDraft])  // 대화를 끝까지 하고 넘어왔는지
+  const resumable = useMemo(() => !!loadUi().profileChat, [])  // 폼으로 넘어오기 전의 대화가 있으면 「대화로 이어서 하기」
+  const [reached, setReached] = useState(initial || chatDone ? STEPS.length - 1 : 0)  // 지금까지 들어가 본 가장 먼 단계 (수정·대화를 끝낸 초안이면 모든 단계 완료, 대화 중간에 넘어왔으면 처음부터)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState("")
-  const [overrideOk, setOverrideOk] = useState(initial?.risk_type_overridden ?? false)
+  const [overrideOk, setOverrideOk] = useState(initial?.risk_type_overridden ?? chatDraft?.risk_type_overridden ?? false)
   const c0 = form.constraints
   const [openMore, setOpenMore] = useState(false)
   const [openLists, setOpenLists] = useState(c0.exclude_tickers.length + c0.must_include_tickers.length + c0.exclude_sectors.length + (c0.exclude_themes ?? []).length > 0)
@@ -151,21 +142,7 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
   const upd = (patch: (f: Form) => void) => setForm((f) => { const n = structuredClone(f); patch(n); return n })
   const err = (k: string) => errors[k]
 
-  const localCheck = (): Record<string, string> => {
-    const e: Record<string, string> = {}
-    const c = form.constraints
-    if (allowZero && form.capital.initial_amount === 0) { if (!(form.capital.monthly_contribution > 0)) e["capital.initial_amount"] = "처음 투자금을 0원으로 하려면 매월 추가 투자금을 정해 주세요 (목업 규칙)" }
-    else if (!(form.capital.initial_amount > 0)) e["capital.initial_amount"] = "투자금은 0보다 커야 합니다"
-    if (!(form.horizon.target_years >= 1 && form.horizon.target_years <= 10)) e["horizon.target_years"] = "투자기간은 1~10년입니다"
-    if (!(form.horizon.backtest_years > 0 && form.horizon.backtest_years <= 20)) e["horizon.backtest_years"] = "백테스트 기간은 0보다 크고 20년 이하입니다"
-    if (!(c.num_holdings.min <= c.num_holdings.target && c.num_holdings.target <= c.num_holdings.max)) e["constraints.num_holdings"] = "최소 ≤ 목표 ≤ 최대 순서여야 합니다"
-    if (c.max_weight_per_stock * c.num_holdings.min < 1 - c.min_cash_ratio - 1e-9) e["constraints.max_weight_per_stock"] = "종목당 상한 × 최소 종목 수가 투자 비율보다 작아 비중을 채울 수 없습니다"
-    if (c.max_weight_per_sector < c.max_weight_per_stock) e["constraints.max_weight_per_sector"] = "섹터당 상한은 종목당 상한 이상이어야 합니다"
-    if (!c.universe.length) e["constraints.universe"] = "유니버스를 하나 이상 고르세요"
-    const clash = c.must_include_tickers.filter((t) => c.exclude_tickers.includes(t))
-    if (clash.length) e["constraints.exclude_tickers"] = `같은 종목이 필수 포함과 제외에 함께 있습니다: ${clash.join(", ")}`
-    return e
-  }
+  const localCheck = (): Record<string, string> => validateProfile(form, { allowZero })
 
   /** i 단계를 넘어가기 위한 검사 (기존 「다음」 규칙 그대로). */
   const stepErrors = (i: number): Record<string, string> => {
@@ -205,6 +182,7 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
       const body: ProfileFields = { ...form, risk_type_overridden: form.diagnosis ? form.diagnosis.final_tendency !== computed : false, note: setup ? "첫 등록" : "수정" }
       const v = await svc.saveProfile(body)
       if (legacy) clearLegacy()
+      if (chatDraft || loadUi().profileChat) saveUi({ profileDraft: null, profileChat: null })
       onSaved(v)
     } catch (ex) {
       if (ex instanceof ApiError && ex.fields) { setErrors(ex.fields); setSaveError("입력값에 오류가 있어 저장하지 못했습니다. 표시된 항목을 확인해 주세요.") }
@@ -228,9 +206,13 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">{setup ? "기본 투자조건을 알려주세요." : "저장된 투자조건을 수정합니다."}</h1>
           <p className="mt-2 text-sm leading-6 text-slate-600">금액과 기간, 투자성향, 종목 범위, 투자 전략을 설정합니다. 분석을 요청할 때 아이디어에 맞춰 일부를 바꿀 수 있습니다.</p>
         </div>
-        <div className="flex shrink-0 gap-2"><Button variant="neutral" onClick={() => navigate(setup ? { page: "reports" } : { page: "profile" })}><LogOut className="size-4" aria-hidden />저장하지 않고 나가기</Button></div>
+        <div className="flex shrink-0 gap-2">
+          {setup && svc.startProfileChat && <Button variant="secondary" onClick={() => navigate({ page: "profile", mode: "chat" })}><MessagesSquare className="size-4" aria-hidden />{resumable ? "대화로 이어서 하기" : "대화로 설정하기"}<MockTag /></Button>}
+          <Button variant="neutral" onClick={() => navigate(setup ? { page: "reports" } : { page: "profile" })}><LogOut className="size-4" aria-hidden />저장하지 않고 나가기</Button>
+        </div>
       </header>
       {legacy && setup && <div className="mt-6"><Alert title="이전 브라우저 저장 조건을 불러왔습니다" tone="info">예전 앱에 저장돼 있던 투자조건으로 미리 채웠습니다. 확인 후 저장하면 서버에 기록됩니다.</Alert></div>}
+      {chatDraft && setup && <div className="mt-6"><Alert title="대화에서 답한 내용으로 채웠습니다" tone="info">나머지 항목을 확인하고 마지막 단계에서 저장하세요.</Alert></div>}
       <nav aria-label="설정 단계" className="my-8">
         <ol className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {STEPS.map((label, i) => {

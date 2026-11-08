@@ -6,6 +6,7 @@ import { useResource } from "../state/useResource"
 import { Badge, Button, EmptyState, Loading } from "../ui"
 import { HomeScreen } from "../features/home/HomeScreen"
 import { ProfileScreen } from "../features/profile/ProfileScreen"
+import { ProfileChatScreen } from "../features/profile/chat/ProfileChatScreen"
 import { ClarifyScreen } from "../features/analysis/ClarifyScreen"
 import { ConfirmScreen } from "../features/analysis/ConfirmScreen"
 import { RunScreen } from "../features/run/RunScreen"
@@ -94,7 +95,7 @@ function Screen({ route }: { route: Route }) {
   const { profile, status } = useProfile()
   switch (route.page) {
     case "home": return <HomeScreen />
-    case "profile": return <ProfileScreen mode={route.mode ?? (profile ? "view" : "setup")} />
+    case "profile": return route.mode === "chat" ? <ProfileChatScreen /> : <ProfileScreen mode={route.mode ?? (profile ? "view" : "setup")} />
     case "clarify": return <ClarifyScreen requestId={route.requestId} />
     case "confirm": return <ConfirmScreen requestId={route.requestId} />
     case "run": return <RunScreen runId={route.runId} />
@@ -124,9 +125,10 @@ function ModeBanner() {
 export default function App() {
   const route = useHashRoute()
   const { profile, status } = useProfile()
-  // 프로필이 없으면 처음 설정으로 안내 (프로필 화면·리포트 열람은 허용)
+  const svc = useService()
+  // 프로필이 없으면 처음 설정으로 안내 (프로필 화면·리포트 열람은 허용). 대화형 설정(제안 기능)이 있으면 대화로, 없으면 4단계 폼으로.
   if (status === "ready" && !profile && !["profile", "reports", "report", "tutorial", "not-found"].includes(route.page)) {
-    navigate({ page: "profile", mode: "setup" })
+    navigate({ page: "profile", mode: svc.startProfileChat ? "chat" : "setup" })
   }
   return (
     <>

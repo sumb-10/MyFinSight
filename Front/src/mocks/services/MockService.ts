@@ -2,17 +2,19 @@
 // 정해진 자료(리포트·백테스트·모의투자 시세)는 시나리오에서 결정적으로 만들고, 사용자가 바꾼 것(이름·조건·새 요청)은 store(sessionStorage)에 둔다.
 import { ApiError } from "../../api/client"
 import type { AnalysisService } from "../../api/service"
-import type { ProposedBatchAnswer, ProposedMessageResult, ProposedOptionsExt, ProposedPaperName, ProposedQuestionBatch, ProposedReportName, ProposedReportRowExt, ProposedRunWarning, ProposedStrategyRecommendation } from "../../api/proposed"
+import type { ProposedBatchAnswer, ProposedChatAnswer, ProposedProfileChat, ProposedMessageResult, ProposedOptionsExt, ProposedPaperName, ProposedQuestionBatch, ProposedReportName, ProposedReportRowExt, ProposedRunWarning, ProposedStrategyRecommendation } from "../../api/proposed"
 import type { CheckpointDetail, ComparisonDoc, DialogState, EvidencePage, EvidenceQuery, Health, Options, PaperDetail, PaperIn, PaperPreview, PaperSummary, ProfileFields, ProfileVersion, ProfileView, ReportDoc, ReportRow, RequestRow, RunPartial, RunRow, RunStatus, SeriesResponse, Tendency } from "../../api/types"
 import { MOCK_AS_OF, PAPERS, REPORTS, RUN_STATES, reportScenario, type PaperScenario, type ReportScenario } from "../scenarios"
 import { backtest, type Backtest } from "../data/backtest"
 import { applyField, applyOverrides, askingDialog, conditionRows, confirmedDialog, interpretMessage, readyDialog, requestFromProfile, requestRows } from "../data/dialog"
 import { recommendation } from "../data/strategy"
+import { answerChat, chatView, currentQuestion, newChat, rewindChat } from "../data/profileChat"
 import { buildPaper, paperPreview, type MockPaper } from "../data/paper"
 import { PROFILE_VERSIONS, profileView, ZERO_CAPITAL_VERSION } from "../data/profile"
 import { buildReport, checkpointDetail, type MockReportDoc } from "../data/report"
 import { CANCEL_MS, RUN_WARNINGS, STEPS, buckets, cancelInfo, liveStatus, runPartial, runRows, runStatus } from "../data/runs"
 import { STOCKS } from "../data/stocks"
+import { localIso } from "../data/util"
 import { clearState, initialState, loadState, saveState, type MockState } from "./store"
 import type { SeenSeed } from "../../lib/seen"
 
@@ -39,15 +41,18 @@ export class MockService implements AnalysisService {
   }
 
   /* ───────── 내부 ───────── */
-  private async wait<T>(f: () => T): Promise<T> {
-    if (this.latency > 0) await new Promise((r) => setTimeout(r, this.latency))
+  private async wait<T>(f: () => T, ms = this.latency): Promise<T> {
+    if (ms > 0) await new Promise((r) => setTimeout(r, ms))
     return clone(f())
   }
   private commit() { this.papers.clear(); if (this.persist) saveState(this.s) }
   private sc(id: string): ReportScenario { const sc = reportScenario(id); if (!sc) throw notFound("리포트"); return sc }
   private backtestOf(sc: ReportScenario) { let b = this.bt.get(sc.id); if (!b) { b = backtest(sc); this.bt.set(sc.id, b) } return b }
   private docOf(sc: ReportScenario) { let d = this.docs.get(sc.id); if (!d) { d = buildReport(sc); this.docs.set(sc.id, d) } return d }
-  private versions(): ProfileVersion[] { return [...PROFILE_VERSIONS, ...(this.s.profileVariant === "zero" ? [ZERO_CAPITAL_VERSION] : []), ...this.s.savedVersions] }
+  private versions(): ProfileVersion[] {
+    if (this.s.profileVariant === "none") return [...this.s.savedVersions]  // 처음 사용자: 저장하기 전에는 투자조건이 없다
+    return [...PROFILE_VERSIONS, ...(this.s.profileVariant === "zero" ? [ZERO_CAPITAL_VERSION] : []), ...this.s.savedVersions]
+  }
   private allPapers(): PaperScenario[] { return [...PAPERS, ...this.s.createdPapers] }
   reportDisplayName(id: string) { const sc = this.sc(id); return this.s.reportNames[sc.id] ?? sc.auto_name_ko }  // 리포트 ID·실행 ID 어느 쪽으로 불러도 같은 이름
   private paperName(ps: PaperScenario) { const n = this.s.paperNames[ps.id] ?? ps.name; return n.mode === "custom" ? n.name_ko : this.reportDisplayName(ps.report_id) }
@@ -77,15 +82,34 @@ export class MockService implements AnalysisService {
   options(): Promise<Options & ProposedOptionsExt> {
     return this.wait(() => ({ proposed_rules: { allow_zero_initial_amount: true }, universes: ["SP500", "NASDAQ100", "KOSPI200"], templates: ["low_per", "quality", "momentum", "low_volatility", "high_dividend"], weightings: ["equal_weight", "market_cap", "inverse_volatility", "min_variance"], risk_tolerance: ["conservative", "moderate", "aggressive"], rebalance_units: ["2w", "1m", "1q", "6m", "1y"], age_band: ["20s", "30s", "40s", "50s", "60s+"], investment_experience: ["none", "beginner", "intermediate", "advanced"], financial_knowledge: ["basic", "intermediate", "expert"], purpose: ["wealth_growth", "income", "capital_preservation", "retirement"], loss_reaction: ["sell", "hold", "buy_more"], benchmarks: ["SPY", "QQQ"], max_questions: 5, default_backtest_years: 3, markets: ["US", "KR"], labels_ko: {}, data_range: ["2020-01-02", MOCK_AS_OF] as [string, string], latest_trading_day: MOCK_AS_OF }))
   }
-  getProfile(): Promise<ProfileView | null> { return this.wait(() => profileView(this.versions())) }
+  getProfile(): Promise<ProfileView | null> { return this.wait(() => { const vs = this.versions(); return vs.length ? profileView(vs) : null }) }
   saveProfile(fields: ProfileFields): Promise<ProfileView> {
     const vs = this.versions()
-    const v: ProfileVersion = { ...clone(fields), version: vs[vs.length - 1].version + 1, created_at: new Date().toISOString().slice(0, 19) }
+    const v: ProfileVersion = { ...clone(fields), version: (vs.at(-1)?.version ?? 0) + 1, created_at: localIso() }  // 서버처럼 시간대 오프셋 포함 (UTC 를 떼면 9시간 이른 「저장 시각」)
     this.s.savedVersions.push(v); this.commit()
     return this.wait(() => profileView(this.versions()))
   }
   getProfileVersion(version: number): Promise<ProfileVersion> { return this.wait(() => { const v = this.versions().find((x) => x.version === version); if (!v) throw notFound("투자조건 버전"); return v }) }
   recommendStrategy(tendency: Tendency): Promise<ProposedStrategyRecommendation> { return this.wait(() => recommendation(tendency)) }  // 추천 규칙은 아직 없다 — 성향별 예시
+
+  /* 대화형 초기 투자조건: 정해진 질문 순서와 보기로만 묻는다 (data/profileChat.ts). 저장은 saveProfile 그대로.
+     봇이 답을 준비하는 「…」가 보이도록 대화 응답만 평소 지연의 5배 (기본 0.6초, 테스트 latencyMs 0 이면 0). */
+  private chatWait<T>(f: () => T) { return this.wait(f, this.latency * 5) }
+  startProfileChat(): Promise<ProposedProfileChat> {
+    return this.chatWait(() => { const id = this.nextId("mock_chat"); this.s.profileChats[id] = newChat(id); this.commit(); return chatView(this.s.profileChats[id]) })
+  }
+  answerProfileChat(chatId: string, answer: ProposedChatAnswer): Promise<ProposedProfileChat> {
+    return this.chatWait(() => {
+      const c = this.chatOf(chatId)
+      if (currentQuestion(c)?.id !== answer.question_id) throw new ApiError("CONFLICT", "[목업] 지금 답할 질문이 아닙니다", 409)
+      this.s.profileChats[chatId] = answerChat(c, answer); this.commit()
+      return chatView(this.s.profileChats[chatId])
+    })
+  }
+  rewindProfileChat(chatId: string, questionId: string): Promise<ProposedProfileChat> {
+    return this.chatWait(() => { this.s.profileChats[chatId] = rewindChat(this.chatOf(chatId), questionId); this.commit(); return chatView(this.s.profileChats[chatId]) })
+  }
+  private chatOf(id: string) { const c = this.s.profileChats[id]; if (!c) throw notFound("대화"); return c }
   searchStocks(q: string) {
     const k = q.trim().toLowerCase().replace(/\s+/g, "")
     const flat = (x: string) => x.toLowerCase().replace(/\s+/g, "")
@@ -97,7 +121,7 @@ export class MockService implements AnalysisService {
 
 
   /* ───────── 요청·질문 ───────── */
-  private base(): ProfileVersion { const vs = this.versions(); return vs[vs.length - 1] }
+  private base(): ProfileVersion { return this.versions().at(-1) ?? PROFILE_VERSIONS[0] }  // 처음 사용자는 화면이 투자조건 설정으로 보내지만, 고정 시나리오 요청은 기본 이력으로 연다
   private dialog(id: string): DialogState {
     if (this.s.requests[id]) return this.s.requests[id]
     if (id === "mock_req_asking") return askingDialog(this.base())

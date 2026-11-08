@@ -34,7 +34,7 @@ export function HomeScreen() {
 
   if (status === "loading") return <Loading />
   if (status === "error") return <ErrorState title="분석 서버에 연결할 수 없습니다" message={profileError ?? ""} retry={() => void reload()} />
-  if (!profile) return <EmptyState title="먼저 내 투자조건을 설정해주세요." description="분석에 사용할 금액, 기간, 투자성향과 제약을 저장합니다." action={<Button onClick={() => navigate({ page: "profile", mode: "setup" })}>투자조건 설정 시작</Button>} />
+  if (!profile) return <EmptyState title="먼저 내 투자조건을 설정해주세요." description="분석에 사용할 금액, 기간, 투자성향과 제약을 저장합니다." action={<Button onClick={() => navigate({ page: "profile", mode: svc.startProfileChat ? "chat" : "setup" })}>투자조건 설정 시작</Button>} />
   const p = profile.profile
 
   const submit = async () => {
