@@ -68,6 +68,7 @@ src/mocks/mocks.test.tsx       분리·일관성 테스트
 | `mock_run_*` | 대기·진행 중·경고 여러 건(중복 포함)·실패·취소 | |
 | `mock_req_asking` / `mock_req_ready` | 질문 3개 남은 요청 / 답변을 마친 요청 | |
 | 투자조건 | 버전 1~4 (변경 이력), 패널에서 「초기 투자금 0원」 버전으로 전환 | |
+| 처음 사용자 | 패널 「처음 사용자 (투자조건 없음)」: 저장하기 전까지 투자조건 없음 → 앱을 열면 대화형 초기 설정(`#/profile/chat`) | 저장하면 버전 1 |
 
 **일관성:** 리포트의 KPI·비교표·판단 이유·검증 문장·리밸런싱·요약 배분·매수 실행 예상·모의투자는 모두 같은 계산(`backtest.ts`)에서 나온다.
 예) 판단 이유의 「SPY 대비 초과 CAGR」 = 검증 규칙 문장, 최종 평가금액 = 리밸런싱 마지막 시점, 기업 카드 비중 = 선택 전략 비중,
@@ -104,6 +105,7 @@ src/mocks/mocks.test.tsx       분리·일관성 테스트
 | `searchStocks(q)` / `getStocks(tickers)` | 회사명·티커 검색, 티커 → 회사명 조회 (4단계) |
 | `getProfileVersion(v)` | 과거 투자조건 버전 값 전체 → 변경 전후 비교 (4단계) |
 | `recommendStrategy(tendency)` | 성향 기반 전략 추천 (목업 결과, 실제 규칙 아님) (4단계) |
+| `startProfileChat` / `answerProfileChat(id, ProposedChatAnswer)` / `rewindProfileChat(id, questionId)` | 대화형 초기 투자조건: 새 대화 / 지금 질문에 답 / 그 질문부터 다시 (15절) |
 | `getQuestionBatch` / `answerBatch(id, ProposedBatchAnswer[])` | 여러 질문 한 번에 답하기. 답마다 보기 값·자유 입력·`skip`(선택 질문만) (4단계) |
 | (옵션 필드) `proposed_rules.allow_zero_initial_amount` | `GET /options` 에 붙는 입력 규칙. 있으면 초기 투자금 0원 + 매월 추가 투자금 허용 (4단계) |
 | `getMessageResults` | 말로 보태기 결과 (반영됨/반영 안 됨/확인 필요, 바뀐 조건) (4단계) |
@@ -222,7 +224,7 @@ src/mocks/mocks.test.tsx       분리·일관성 테스트
 
 **하지 않은 것·남은 점:**
 - 홈 「상세 조건」 창은 손대지 않았다 (제외 항목). 0원 투자조건으로 그 창을 열어 적용하면 기존 검사 「투자금은 0보다 커야 합니다」가 그대로 나온다. 상세 조건 창 없이 바로 「투자조건 확인하기」로 가는 흐름은 0원으로 진행된다.
-- 목업 「조건 바꾸기」(updateOverrides)는 1단계 그대로 요청에 값만 저장하고 조건 행을 다시 계산하지 않는다 (4단계 범위 밖).
+- 목업 「조건 바꾸기」(updateOverrides)는 바꾼 값을 요청에 저장하고 조건 행도 다시 만든다 (`MockService.updateOverrides` → `withRows`).
 - 실제 서버의 질문 반복·자연어 해석 문제는 고친 것이 아니다 (작업 명세 11장의 백엔드 문제 그대로).
 
 **바꾼 파일:** `api/proposed.ts`(`getStocks`·`stockLabel`·`ProposedOptionsExt`·`ProposedBatchAnswer`), 새 파일 `features/profile/stocks.tsx`·`StrategyRecommend.tsx`·`compare.tsx`,
@@ -300,3 +302,19 @@ src/mocks/mocks.test.tsx       분리·일관성 테스트
 | 추가 납입 합계 | 모의투자 `contributions_total_usd` 를 서버 정의대로 적립금만으로 고쳤다 (전에는 초기 투자금이 섞여 적립이 없는 모의투자에도 「적립 포함」이 보였다) |
 | 선정 지표 설명 | 목업 문장에서도 지표 ID 를 뺐다 (퀄리티 지표 ID 는 서버와 같은 `roe_ttm`) |
 
+
+## 15. 대화형 초기 투자조건 (목업 전용)
+
+처음 쓰는 사용자가 챗봇처럼 필수 항목만 답해 기본 투자조건을 만든다. 백엔드 요청은 [backend-requests-profile-chat.md](./backend-requests-profile-chat.md).
+
+**여는 법:** `?mock=1` → 목업 패널 「내 투자조건」의 「처음 사용자 (투자조건 없음)」 → 앱이 `#/profile/chat` 으로 보낸다 (또는 주소를 바로 연다).
+
+| 항목 | 규칙 (`mocks/data/profileChat.ts`) |
+|---|---|
+| 질문 | 필수 11문항 고정 순서: 목적 → 처음 투자금 → 월 추가 투자 → 기간 → 성향 진단 3문항(`features/profile/diagnosis.ts`) → 성향 확인 → 투자 대상 지수(여러 개) → 종목 수 → 종목 고르는 기준(성향별 추천, `mocks/data/strategy.ts`) |
+| 답 | 보기 버튼, 금액·숫자 직접 입력. 자유 문장은 받지 않는다 |
+| 다시 묻기 | 범위 밖 금액·숫자, 없는 보기, 필수 건너뛰기 → 답을 저장하지 않고 봇이 다시 묻는다. 차례가 아닌 질문 ID 는 409 |
+| 고치기 | 사용자 답 말풍선의 「고치기」 → 그 질문부터 다시 (뒤의 답은 지운다) |
+| 초안 | 기본값(`features/profile/defaults.ts`)에 답을 반영. 종목 수에 맞춰 범위(±20%)·종목당 상한을 같이 정해 폼 검사(`validate.ts`)를 통과하게 한다 |
+| 저장 | 요약에서 「이대로 저장」 → 기존 `saveProfile` (note 「첫 등록」). 「폼에서 세부 수정」·「폼으로 한 번에 입력」은 초안을 ui 저장소(`profileDraft`)로 넘겨 4단계 폼이 미리 채운다 |
+| 일반 모드 | 대화 메서드가 없으므로 처음 사용자는 4단계 폼으로 간다. 폼의 「대화로 설정하기」도 보이지 않는다 |
