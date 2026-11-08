@@ -23,7 +23,9 @@ export function HomeScreen() {
   const [idea, setIdea] = useState(() => { const u = loadUi(); return u.prefillIdea ?? u.draftIdea ?? "" })
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
-  const [overrides, setOverrides] = useState<Overrides>(() => (loadUi().prefillOverrides as Overrides | null | undefined) ?? {})
+  // 상세 조건도 아이디어처럼 초안으로 남긴다 (전에는 다른 메뉴에 다녀오면 사라졌다). 새 요청으로 채워 온 값(prefill)이 있으면 그것이 먼저
+  const [overrides, setOverrides] = useState<Overrides>(() => { const u = loadUi(); return (u.prefillOverrides ?? u.draftOverrides ?? {}) as Overrides })
+  const [leftNote, setLeftNote] = useState(() => loadUi().prefillNote ?? "")  // 요청을 그만두고 돌아왔을 때: 왜 채워져 있는지
   const [detail, setDetail] = useState(false)
   const renamed = useRenameTick()
   const reports = useResource(() => svc.listReports(), [svc, renamed])
@@ -31,7 +33,8 @@ export function HomeScreen() {
   const example = ex.visible
   const [ui, setUi] = useState(() => loadUi())
   useEffect(() => { saveUi({ draftIdea: idea }) }, [idea])
-  useEffect(() => { const u = loadUi(); if (u.prefillIdea || u.prefillOverrides) setUi(saveUi({ prefillIdea: null, prefillOverrides: null })) }, [])  // 미리 채운 값(새 요청)은 한 번만 쓴다
+  useEffect(() => { saveUi({ draftOverrides: overrides }) }, [overrides])
+  useEffect(() => { const u = loadUi(); if (u.prefillIdea || u.prefillOverrides || u.prefillNote) setUi(saveUi({ prefillIdea: null, prefillOverrides: null, prefillNote: null })) }, [])  // 미리 채운 값(새 요청)은 한 번만 쓴다
 
   if (status === "loading") return <Loading />
   if (status === "error") return <ErrorState title="분석 서버에 연결할 수 없습니다" message={profileError ?? ""} retry={() => void reload()} />
@@ -43,8 +46,8 @@ export function HomeScreen() {
     setBusy(true); setError("")
     try {
       const st = await svc.createRequest({ idea: idea.trim(), mode: "new", overrides })
-      saveUi({ draftIdea: "", activeRequestId: st.request_id })
-      setIdea("")
+      saveUi({ draftIdea: "", draftOverrides: {}, activeRequestId: st.request_id })
+      setIdea(""); setOverrides({}); setLeftNote("")
       navigate({ page: "clarify", requestId: st.request_id })
     } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
   }
@@ -56,7 +59,8 @@ export function HomeScreen() {
         <h1 className="mt-5 text-4xl font-extrabold tracking-tight text-slate-950">투자 아이디어를 포트폴리오로 확인해보세요.</h1>
         <p className="mt-3 text-base text-slate-600">내 투자조건을 반영해 종목을 고르고, 과거 데이터로 성과와 위험을 검증합니다. 부족한 조건은 분석 모델이 {svc.getQuestionBatch && svc.answerBatch ? "골라서 한 번에" : "한 번에 하나씩"} 물어봅니다.</p>
         <div className="mt-4 flex justify-center"><Button variant="secondary" onClick={() => navigate({ page: "tutorial" })}><Compass className="size-4" />처음이신가요? 리포트 보는 법 둘러보기</Button></div>
-        <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm">
+        {leftNote && <div className="mt-8 text-left"><Alert tone="info" title="그만둔 요청을 홈에 채워 두었습니다">{leftNote}</Alert></div>}
+        <div className={`${leftNote ? "mt-4" : "mt-8"} rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm`}>
           <textarea value={idea} onChange={(e) => { setIdea(e.target.value); setError("") }} className="min-h-36 w-full resize-none rounded-xl border-0 p-3 text-base leading-7 outline-none placeholder:text-slate-400" placeholder="예: 미국과 한국의 반도체·메모리 기업에 분산 투자하고 싶어요. 특정 종목에 너무 집중하고 싶지는 않습니다." />
           {Object.keys(overrides).length > 0 && (
             <div className="flex flex-wrap items-center gap-2 px-2 pb-3">

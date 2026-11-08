@@ -9,12 +9,15 @@ import { ConfirmScreen } from "./ConfirmScreen"
 import { BatchResult } from "./BatchQuestions"
 import { RunScreen } from "../run/RunScreen"
 import { localIso } from "../../mocks/data/util"
-import { NOTE_BUTTON, NOTE_UNSENT, keepPendingNote, pendingNote } from "./flow"
+import { LEFT_NOTE, NOTE_BUTTON, NOTE_UNSENT, keepPendingNote, leaveFlowNotice, pendingNote } from "./flow"
+import { HomeScreen } from "../home/HomeScreen"
+import { loadUi, saveUi } from "../../state/uiStorage"
+import { MOCK_CANDIDATES } from "../../mocks/data/dialog"
 
 // 질문·확인 화면 편의성 개선: 취소 확인, 보내지 않은 문장 이어받기, 「말로 보태기」 이름 통일, 시작 줄 고정, 라벨 통일, 0원 규칙.
 
 beforeAll(() => { globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver; Element.prototype.scrollIntoView = vi.fn() })
-afterEach(() => { window.history.replaceState(null, "", "/"); keepPendingNote("mock_req_asking", ""); keepPendingNote("mock_req_ready", "") })
+afterEach(() => { window.history.replaceState(null, "", "/"); keepPendingNote("mock_req_asking", ""); keepPendingNote("mock_req_ready", ""); window.localStorage.clear() })
 
 const mock = () => new MockService({ latencyMs: 0, persist: false })
 const show = (svc: AnalysisService, ui: React.ReactNode) => render(<Providers service={svc}>{ui}</Providers>)
@@ -97,5 +100,75 @@ describe("상세 조건", () => {
     expect(msg(validate({ ...f, monthly_contribution: 0 }))).toBe("투자금은 0보다 커야 합니다")
     expect(msg(validate({ ...f, monthly_contribution: 500_000 }, { allowZero: true }))).toBeUndefined()
     expect(msg(validate({ ...f, monthly_contribution: 0 }, { allowZero: true }))).toMatch(/매월 추가 투자금을 정해/)
+  })
+})
+
+// 흐름 A1~A4: 요청을 그만둬도 아이디어를 잃지 않고, 확인 화면에도 나가는 길이 있고, 말없이 화면이 바뀌지 않는다.
+describe("흐름: 잃지 않기 · 막다른 길 없애기", () => {
+  it("A1 질문 화면에서 취소하면 홈에 아이디어·바꾼 조건과 안내를 채워 둔다", async () => {
+    const s = mock()
+    const st = await s.createRequest({ idea: "배당을 꾸준히 주는 미국 대형주", overrides: { "horizon.target_years": 3 } })
+    show(s, <ClarifyScreen requestId={st.request_id} />)
+    fireEvent.click(await screen.findByRole("button", { name: /취소하고 홈으로/ }, { timeout: 5000 }))
+    fireEvent.click(screen.getByRole("button", { name: "요청 취소" }))
+    await waitFor(() => expect(window.location.hash).toBe("#/home"))
+    expect(loadUi()).toMatchObject({ prefillIdea: "배당을 꾸준히 주는 미국 대형주", prefillOverrides: { "horizon.target_years": 3 }, prefillNote: LEFT_NOTE, activeRequestId: null })
+    expect((await s.getRequest(st.request_id)).status).toBe("cancelled")
+  })
+  it("A1 홈은 채워 둔 아이디어와 「그만둔 요청을 홈에 채워 두었습니다」 안내를 한 번 보여 준다", async () => {
+    saveUi({ prefillIdea: "배당을 꾸준히 주는 미국 대형주", prefillOverrides: { "horizon.target_years": 3 }, prefillNote: LEFT_NOTE })
+    show(mock(), <HomeScreen />)
+    expect(await screen.findByText("그만둔 요청을 홈에 채워 두었습니다", {}, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.getByDisplayValue("배당을 꾸준히 주는 미국 대형주")).toBeInTheDocument()
+    expect(screen.getByText(/이번 분석에만 적용/)).toBeInTheDocument()
+    expect(loadUi().prefillNote).toBeNull()  // 한 번만
+  })
+  it("A2 확인 화면에도 「취소하고 홈으로」가 있고, 한 번 더 확인한 뒤 요청을 닫고 홈에 채워 둔다", async () => {
+    const s = mock()
+    show(s, <ConfirmScreen requestId="mock_req_ready" />)
+    fireEvent.click(await screen.findByRole("button", { name: /취소하고 홈으로/ }, { timeout: 5000 }))
+    expect(screen.getByRole("alertdialog", { name: "요청 취소 확인" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "계속 확인하기" }))
+    expect(screen.queryByRole("alertdialog", { name: "요청 취소 확인" })).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: /취소하고 홈으로/ }))
+    fireEvent.click(screen.getByRole("button", { name: "요청 취소" }))
+    await waitFor(() => expect(window.location.hash).toBe("#/home"))
+    expect((await s.getRequest("mock_req_ready")).status).toBe("cancelled")
+    expect(loadUi().prefillIdea).toBeTruthy()
+  })
+  it("A2 수정안 확인 화면은 취소 대신 「원안 리포트로 돌아가기」만 둔다", async () => {
+    const s = mock()
+    const rev = await s.createRevision("mock_rep_normal", "종목은 8개만")
+    await s.answerBatch(rev.request_id, [{ seq: 1, option_value: 0.2 }, { seq: 2, skip: true }, { seq: 3, option_value: 0.2 }])
+    show(s, <ConfirmScreen requestId={rev.request_id} />)
+    fireEvent.click(await screen.findByRole("button", { name: /원안 리포트로 돌아가기/ }, { timeout: 5000 }))
+    expect(screen.queryByRole("button", { name: /취소하고 홈으로/ })).toBeNull()
+    expect(window.location.hash).toBe("#/reports/mock_rep_normal")
+  })
+  it("A3 (목업 규칙) 종목 수 최소를 후보보다 크게 바꾸면 실행 전 점검 질문이 생겨 다시 「질문 중」이 된다", async () => {
+    const s = mock()
+    const st = await s.updateOverrides("mock_req_ready", { "constraints.num_holdings": { target: 30, min: MOCK_CANDIDATES + 5, max: 35 } })
+    expect(st).toMatchObject({ state: "asking", question: { kind: "feasibility", field: "constraints.num_holdings" } })
+    const done = await s.answer("mock_req_ready", st.question!.seq, { option_value: st.question!.options[0].value })
+    expect(done.state).toBe("ready")
+    expect(done.overrides?.["constraints.num_holdings"]).toEqual({ target: 10, min: 8, max: 12 })  // 다시 「조건 바꾸기」를 열면 고른 값
+  })
+  it("A3 확인 화면에서 바꾼 것 때문에 돌아오면 질문 화면 맨 위에 이유와 바뀐 조건을 보여 준다", async () => {
+    const s = mock()
+    await s.updateOverrides("mock_req_ready", { "constraints.num_holdings": { target: 30, min: 20, max: 35 } })
+    leaveFlowNotice("mock_req_ready", { what: "바꾼 조건", changes: [{ label: "종목 수", before: "목표 10개 (8~12)", after: "목표 30개 (20~35)" }] })
+    show(s, <ClarifyScreen requestId="mock_req_ready" />)
+    expect(await screen.findByText(/방금 바꾼 조건 때문에 분석 전에 다시 확인할 것이 생겨/, {}, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.getByText(/종목 수: 목표 10개 \(8~12\) →/)).toBeInTheDocument()
+  })
+  it("A4 홈 상세 조건은 초안으로 남고, 제출하면 비워진다", async () => {
+    saveUi({ draftIdea: "배당을 꾸준히 주는 미국 대형주", draftOverrides: { "horizon.target_years": 3 } })
+    const s = mock()
+    const { unmount } = show(s, <HomeScreen />)
+    expect(await screen.findByText(/이번 분석에만 적용/, {}, { timeout: 5000 })).toBeInTheDocument()  // 다른 메뉴에 다녀와도 그대로
+    fireEvent.click(screen.getByRole("button", { name: /투자조건 확인하기/ }))
+    await waitFor(() => expect(window.location.hash).toMatch(/^#\/analysis\//))
+    expect(loadUi()).toMatchObject({ draftIdea: "", draftOverrides: {} })
+    unmount()
   })
 })

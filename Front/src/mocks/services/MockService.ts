@@ -6,7 +6,7 @@ import type { ProposedBatchAnswer, ProposedMessageResult, ProposedOptionsExt, Pr
 import type { CheckpointDetail, ComparisonDoc, DialogState, EvidencePage, EvidenceQuery, Health, Options, PaperDetail, PaperIn, PaperPreview, PaperSummary, ProfileFields, ProfileVersion, ProfileView, ReportDoc, ReportRow, RequestRow, RunPartial, RunRow, RunStatus, SeriesResponse, Tendency } from "../../api/types"
 import { MOCK_AS_OF, PAPERS, REPORTS, RUN_STATES, reportScenario, type PaperScenario, type ReportScenario } from "../scenarios"
 import { backtest, type Backtest } from "../data/backtest"
-import { applyField, applyOverrides, askingDialog, conditionRows, confirmedDialog, interpretMessage, readyDialog, requestFromProfile, requestRows } from "../data/dialog"
+import { MOCK_CANDIDATES, applyField, applyOverrides, askingDialog, conditionRows, confirmedDialog, feasibilityQuestion, interpretMessage, readyDialog, requestFromProfile, requestRows } from "../data/dialog"
 import { recommendation } from "../data/strategy"
 import { buildPaper, paperPreview, type MockPaper } from "../data/paper"
 import { PROFILE_VERSIONS, profileView, ZERO_CAPITAL_VERSION } from "../data/profile"
@@ -135,7 +135,9 @@ export class MockService implements AnalysisService {
     if (q && value) { dr.req = applyField(dr.req, q.field, value.v); if (!dr.touched.includes(q.field)) dr.touched.push(q.field) }
     const questions = d.questions.map((x) => (x.seq === seq ? { ...x, answer, skipped: answer === null, answered_at: new Date().toISOString() } : x))
     const next = questions.find((x) => !x.answered_at) ?? null
-    return this.withRows({ ...d, questions, question: next, turn: d.turn + 1, state: next ? "asking" : "ready" })
+    // 점검 질문처럼 바꾼 조건(overrides)을 다시 정하는 답이면 그 값도 고친다 (다시 「조건 바꾸기」를 열 때 맞는 값이 보이게)
+    const overrides = q && value && d.overrides && q.field in d.overrides ? { ...d.overrides, [q.field]: value.v } : d.overrides
+    return this.withRows({ ...d, overrides, questions, question: next, turn: d.turn + 1, state: next ? "asking" : "ready" })
   }
   private pickOf(id: string, seq: number, input: { option_value?: unknown; free_text?: string }) {
     const o = this.dialog(id).questions.find((x) => x.seq === seq)?.options.find((x) => input.option_value !== undefined && JSON.stringify(x.value) === JSON.stringify(input.option_value))
@@ -154,6 +156,13 @@ export class MockService implements AnalysisService {
     for (const [k, v] of Object.entries(overrides)) {
       if (v === null) { delete merged[k]; dr.touched = dr.touched.filter((f) => f !== k) }
       else { merged[k] = v; if (!dr.touched.includes(k)) dr.touched.push(k) }
+    }
+    // 실행 전 점검 (목업 규칙): 종목 수 최소가 후보보다 많으면 점검 질문을 내고 다시 「질문 중」으로. 실제 서버(dialog.py _turn)가 조건 변경 뒤 새 질문을 고르는 경우를 흉내 낸다.
+    const nh = merged["constraints.num_holdings"] as { min?: number } | undefined
+    const min = nh?.min ?? (merged["constraints.num_holdings.min"] as number | undefined)
+    if (typeof min === "number" && min > MOCK_CANDIDATES && !d.questions.some((x) => !x.answered_at && x.field === "constraints.num_holdings")) {
+      const fq = feasibilityQuestion(d.questions.length + 1, min)
+      return this.wait(() => this.put(this.withRows({ ...d, overrides: merged, state: "asking", status: "draft", question: fq, questions: [...d.questions, fq] })))
     }
     return this.wait(() => this.put(this.withRows({ ...d, overrides: merged })))
   }

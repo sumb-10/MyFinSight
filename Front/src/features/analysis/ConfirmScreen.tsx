@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { MessageSquareText, Play, SlidersHorizontal } from "lucide-react"
+import { ArrowLeft, MessageSquareText, Play, SlidersHorizontal } from "lucide-react"
 import { useProfile, useService } from "../../app/providers"
 import { navigate } from "../../app/router"
 import { errorMessage } from "../../api/client"
@@ -9,10 +9,9 @@ import { saveUi } from "../../state/uiStorage"
 import { Alert, Button, EmptyState, ErrorState, Loading, inputClass } from "../../ui"
 import { ko } from "../../lib/format"
 import { RevisionCard } from "./RevisionCard"
-import { startNewWith } from "./ClarifyScreen"
 import { DetailConditionsDialog } from "../home/DetailConditions"
 import { Part } from "../profile/parts"
-import { ActionError, AllConditions, AnsweredList, ChangedConditions, FlowHeader, FlowSteps, IdeaPart, LLM_DETAIL, NOTE_BUTTON, NOTE_DESC, NOTE_UNSENT, Pending, ResultNote, diffRows, keepPendingNote, pendingNote, useStickyInMain, type RowChange } from "./flow"
+import { ActionError, AllConditions, AnsweredList, CancelRequestButton, CancelRequestConfirm, ChangedConditions, FlowHeader, FlowSteps, IdeaPart, LLM_DETAIL, NOTE_BUTTON, NOTE_DESC, NOTE_UNSENT, Pending, ResultNote, diffRows, keepPendingNote, leaveFlowNotice, pendingNote, startNewWith, useLeaveRequest, useStickyInMain, type RowChange } from "./flow"
 import type { ProposedMessageResult } from "../../api/proposed"
 import { MessageOutcome } from "./MessageOutcome"
 
@@ -36,6 +35,7 @@ export function ConfirmScreen({ requestId }: { requestId: string }) {
   useStickyInMain()  // 「분석 시작」 줄
   const noteRef = useRef<HTMLDivElement>(null)
   const st = local ?? res.data
+  const leave = useLeaveRequest(requestId, st)  // 확인 화면에서도 그만둘 수 있게 (전에는 사이드바로 빠져나가 요청이 열린 채 남았다)
   if (res.status === "loading" && !st) return <Loading label="확정 조건을 불러오는 중…" />
   if (!st) return <ErrorState message={res.error ?? ""} retry={res.reload} />
   if (st.status === "cancelled") return <EmptyState title="취소된 요청입니다" description="이 요청은 취소되어 분석을 시작할 수 없습니다. 같은 아이디어와 조건으로 새 요청을 시작할 수 있습니다." action={<div className="flex gap-2"><Button onClick={() => startNewWith(st.idea, st.overrides)}>같은 조건으로 새 요청</Button><Button variant="ghost" onClick={() => navigate({ page: "home" })}>홈으로</Button></div>} />
@@ -67,7 +67,11 @@ export function ConfirmScreen({ requestId }: { requestId: string }) {
       try {
         const next = await fn()
         if (kind === "message") setNote("")
-        if (next.state === "asking" || next.hard_errors.length > 0) { navigate({ page: "clarify", requestId }); return }
+        if (next.state === "asking" || next.hard_errors.length > 0) {
+          // 바꾼 조건 때문에 다시 물을 것(또는 고칠 오류)이 생겼다: 말없이 넘어가지 않도록 이유와 바뀐 조건을 질문 화면에 남긴다
+          leaveFlowNotice(requestId, { what: kind === "overrides" ? "바꾼 조건" : "말로 보탠 요청", changes: diffRows(rows, next.conditions ?? next.confirmation?.rows ?? []) })
+          navigate({ page: "clarify", requestId }); return
+        }
         setResult({ kind, changes: diffRows(rows, next.confirmation?.rows ?? []) })
         setLocal(next)
       } catch (e) { setErr({ kind, message: errorMessage(e), retry: run }) } finally { setBusy("") }
@@ -89,7 +93,11 @@ export function ConfirmScreen({ requestId }: { requestId: string }) {
   return (
     <div className="mx-auto max-w-4xl space-y-8">
       <FlowHeader eyebrow={`${ko(st.mode)} · 조건 확인`} title={revision ? "이 수정안으로 분석을 시작할까요?" : "이 조건으로 분석을 시작할까요?"}
-        desc={revision ? "원안의 조건에 수정 요청을 반영한 최종 조건입니다. 분석이 끝나면 원안과 비교한 결과를 볼 수 있습니다." : "기본 투자조건에 답변과 변경을 반영한 최종 조건입니다. 「분석 시작」을 누르기 전에는 분석이 실행되지 않으며, 아직 바꿀 수 있습니다."} />
+        desc={revision ? "원안의 조건에 수정 요청을 반영한 최종 조건입니다. 분석이 끝나면 원안과 비교한 결과를 볼 수 있습니다." : "기본 투자조건에 답변과 변경을 반영한 최종 조건입니다. 「분석 시작」을 누르기 전에는 분석이 실행되지 않으며, 아직 바꿀 수 있습니다."}
+        action={revision
+          ? (st.base_report_id ? <Button variant="ghost" onClick={() => navigate({ page: "report", reportId: st.base_report_id! })}><ArrowLeft className="size-4" />원안 리포트로 돌아가기</Button> : undefined)
+          : <CancelRequestButton c={leave} disabled={locked} />} />
+      {!revision && <CancelRequestConfirm c={leave} keepLabel="계속 확인하기" disabled={locked} />}
       <FlowSteps current={1} />
       <IdeaPart st={st} />
       {st.revision && <RevisionCard rev={st.revision} />}

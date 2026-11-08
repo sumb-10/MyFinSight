@@ -85,6 +85,7 @@ export function applyField(req: UserRequest, field: string, value: unknown): Use
   if (field === "constraints.max_weight_per_stock" && typeof value === "number") r.constraints.max_weight_per_stock = value
   else if (field === "risk.max_drawdown_tolerance" && typeof value === "number") r.risk.max_drawdown_tolerance = value
   else if (field === "constraints.must_include_tickers" && Array.isArray(value)) { r.constraints.must_include_tickers = [...new Set([...r.constraints.must_include_tickers, ...value as string[]])]; r.constraints.exclude_tickers = r.constraints.exclude_tickers.filter((t) => !(value as string[]).includes(t)) }
+  else if (field === "constraints.num_holdings" && value && typeof value === "object") r.constraints.num_holdings = { ...(value as UserRequest["constraints"]["num_holdings"]) }
   else if (field === "constraints.exclude_tickers" && Array.isArray(value)) { r.constraints.exclude_tickers = [...new Set([...r.constraints.exclude_tickers, ...value as string[]])]; r.constraints.must_include_tickers = r.constraints.must_include_tickers.filter((t) => !(value as string[]).includes(t)) }
   return r
 }
@@ -124,6 +125,19 @@ export function confirmedDialog(sc: ReportScenario): DialogState {
     confirmation: { effective_request: req, rows, all_supported: true }, unresolved: [],
     summary: { interpretation_summary_ko: `[목업] ${sc.themes.map((t) => t.label).join("·")} 기업에 투자하려는 요청으로 이해했습니다.`, themes: sc.themes.map((t, i) => ({ id: `t${i + 1}`, label_ko: t.label, description_ko: t.desc })), derived: req.derived, changed_fields: rows.filter((r) => r.changed).map((r) => r.field) },
     revision: null, run_id: sc.run_id, warnings: [], conditions: rows, overrides: {},
+  }
+}
+
+/** 목업 실행 전 점검: 이 아이디어로 고를 수 있는 후보 수 (실제 서버는 종목 사전·DB 로 센다). */
+export const MOCK_CANDIDATES = 15
+/** 실행 전 점검 질문 (목업): 종목 수 최소가 후보보다 많을 때. 확인 화면에서 조건을 바꿨더니 다시 「질문 중」이 되는 경우를 재현한다. */
+export function feasibilityQuestion(seq: number, min: number, candidates = MOCK_CANDIDATES): Question {
+  const lo = Math.max(2, candidates - 5)
+  return {
+    ...q(seq, "constraints.num_holdings", `이 아이디어로 고를 수 있는 후보가 ${candidates}개라 최소 ${min}개를 채울 수 없습니다. 종목 수를 어떻게 할까요?`,
+      [[{ target: 10, min: 8, max: 12 }, "8~12개로 줄이기 (목표 10개)"], [{ target: candidates, min: lo, max: candidates }, `후보에 맞춰 ${lo}~${candidates}개로`]],
+      undefined, `[목업] 바꾼 종목 수(최소 ${min}개)가 고를 수 있는 후보(${candidates}개)보다 많아, 분석을 시작하기 전에 확인합니다.`),
+    field_label_ko: "종목 수", kind: "feasibility", asked_at: new Date().toISOString(),
   }
 }
 

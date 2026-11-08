@@ -222,7 +222,9 @@ src/mocks/mocks.test.tsx       분리·일관성 테스트
 
 **하지 않은 것·남은 점:**
 - 홈 「상세 조건」 창은 손대지 않았다 (제외 항목). 0원 투자조건으로 그 창을 열어 적용하면 기존 검사 「투자금은 0보다 커야 합니다」가 그대로 나온다. 상세 조건 창 없이 바로 「투자조건 확인하기」로 가는 흐름은 0원으로 진행된다.
-- 목업 「조건 바꾸기」(updateOverrides)는 1단계 그대로 요청에 값만 저장하고 조건 행을 다시 계산하지 않는다 (4단계 범위 밖).
+- 목업 「조건 바꾸기」(updateOverrides)는 값을 저장하고 조건 행을 다시 계산한다. 질문을 다시 만들지는 않는데, 예외가 하나 있다.
+  종목 수 최소를 고를 수 있는 후보(`MOCK_CANDIDATES` = 15개)보다 크게 바꾸면 실행 전 점검 질문(`feasibilityQuestion`)을 내고 다시 「질문 중」이 된다.
+  실제 서버(`dialog.py` `_turn`)가 조건 변경 뒤 새 질문을 고르는 경우를 흉내 낸 것이다. 확인 화면 → 질문 화면으로 돌아갈 때 이유 안내(`flowNotice`)를 확인하는 용도.
 - 실제 서버의 질문 반복·자연어 해석 문제는 고친 것이 아니다 (작업 명세 11장의 백엔드 문제 그대로).
 
 **바꾼 파일:** `api/proposed.ts`(`getStocks`·`stockLabel`·`ProposedOptionsExt`·`ProposedBatchAnswer`), 새 파일 `features/profile/stocks.tsx`·`StrategyRecommend.tsx`·`compare.tsx`,

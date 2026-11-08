@@ -1,29 +1,22 @@
 import { useEffect, useState } from "react"
-import { ArrowLeft, MessageSquareText, SlidersHorizontal } from "lucide-react"
+import { MessageSquareText, SlidersHorizontal } from "lucide-react"
 import { useProfile, useService } from "../../app/providers"
 import { navigate } from "../../app/router"
 import { errorMessage } from "../../api/client"
 import type { DialogState, Question } from "../../api/types"
 import { useResource } from "../../state/useResource"
-import { saveUi } from "../../state/uiStorage"
 import { Alert, Badge, Button, EmptyState, ErrorState, Loading, inputClass } from "../../ui"
 import { ko } from "../../lib/format"
 import { RevisionCard } from "./RevisionCard"
 import { DetailConditionsDialog, OVERRIDE_LABELS, overrideText } from "../home/DetailConditions"
 import { Part } from "../profile/parts"
-import { ActionError, AllConditions, AnsweredList, ChangedConditions, FlowHeader, FlowSteps, IdeaPart, KIND_HELP, LLM_DETAIL, NOTE_BUTTON, NOTE_DESC, NOTE_UNSENT, Pending, ResultNote, diffRows, keepPendingNote, pendingNote, type RowChange } from "./flow"
+import { ActionError, AllConditions, AnsweredList, BackToQuestions, CancelRequestButton, CancelRequestConfirm, ChangedConditions, FlowHeader, FlowSteps, IdeaPart, KIND_HELP, LLM_DETAIL, NOTE_BUTTON, NOTE_DESC, NOTE_UNSENT, Pending, ResultNote, diffRows, keepPendingNote, pendingNote, startNewWith, useFlowNotice, useLeaveRequest, type RowChange } from "./flow"
 import type { ProposedMessageResult } from "../../api/proposed"
 import { BatchQuestions, BatchResult, type Submitted } from "./BatchQuestions"
 import { MessageOutcome } from "./MessageOutcome"
 
-/** 같은 아이디어·조건으로 새 요청을 시작할 수 있게 홈에 미리 채워 둔다 (프로필을 바꿔도 진행 중 요청에는 적용되지 않으므로). */
-export function startNewWith(idea: string, overrides: Record<string, unknown> | undefined) {
-  saveUi({ prefillIdea: idea, prefillOverrides: overrides ?? {}, activeRequestId: null })
-  navigate({ page: "home" })
-}
-
-type Busy = "" | "answer" | "skip" | "message" | "overrides" | "cancel"
-const PENDING: Record<Exclude<Busy, "" | "cancel">, string> = {
+type Busy = "" | "answer" | "skip" | "message" | "overrides"
+const PENDING: Record<Exclude<Busy, "">, string> = {
   answer: "답변을 반영하고 다음 질문을 준비하고 있습니다.", skip: "기본값으로 두고 다음 질문을 준비하고 있습니다.",
   message: "추가 요청을 처리하고 있습니다.", overrides: "투자 조건 변경 요청을 처리하고 있습니다.",
 }
@@ -36,12 +29,11 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
   const [st, setSt] = useState<DialogState | null>(null)
   const [busy, setBusy] = useState<Busy>("")
   const [qErr, setQErr] = useState<{ message: string; retry: () => void } | null>(null)
-  const [toolErr, setToolErr] = useState<{ kind: "message" | "overrides" | "cancel"; message: string; retry: () => void } | null>(null)
+  const [toolErr, setToolErr] = useState<{ kind: "message" | "overrides"; message: string; retry: () => void } | null>(null)
   const [result, setResult] = useState<{ kind: "message" | "overrides"; changes: RowChange[] } | null>(null)
   const [text, setText] = useState("")
   const [note, setNote] = useState(() => pendingNote(requestId))
   const [noteHint, setNoteHint] = useState("")
-  const [confirmCancel, setConfirmCancel] = useState(false)  // 「취소하고 홈으로」를 한 번 더 확인한다 (답한 내용이 이 요청과 함께 닫힘)
   useEffect(() => { keepPendingNote(requestId, note) }, [requestId, note])
   const [qHint, setQHint] = useState("")
   const [picked, setPicked] = useState<unknown>(undefined)
@@ -49,6 +41,8 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
   const batchMode = !!(svc.getQuestionBatch && svc.answerBatch)  // 제안 기능: 여러 질문 한 번에 (목업에서만)
   const [batchDone, setBatchDone] = useState<{ sent: Submitted[]; changes: RowChange[] } | null>(null)
   const [msgs, setMsgs] = useState<ProposedMessageResult[] | null>(null)  // 제안 기능: 말로 보태기 처리 결과 (목업에서만)
+  const leave = useLeaveRequest(requestId, st)  // 취소·아이디어 고쳐 다시 시작: 요청을 닫고 아이디어·조건을 홈에 채워 둔다
+  const notice = useFlowNotice(requestId)        // 확인 화면에서 바꾼 것 때문에 돌아왔으면 그 이유
   useEffect(() => { if (res.data) setSt(res.data) }, [res.data])
   useEffect(() => { const q0 = st?.question; if (q0 && q0.options.length === 1) setPicked(q0.options[0].value) }, [st?.question?.seq])  // eslint-disable-line react-hooks/exhaustive-deps -- 보기가 하나면 미리 고른다
   useEffect(() => {
@@ -63,9 +57,9 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
 
   const q = st.question
   const rows = st.conditions ?? []
-  const locked = busy !== ""
+  const locked = busy !== "" || leave.busy
   /** 요청 하나 실행. 성공한 동작의 입력만 비우고, 실패하면 입력을 남긴 채 원인과 다시 시도를 보여 준다. */
-  const act = (kind: Exclude<Busy, "" | "cancel">, fn: () => Promise<DialogState>) => {
+  const act = (kind: Exclude<Busy, "">, fn: () => Promise<DialogState>) => {
     const run = async () => {
       setBusy(kind); setQErr(null); setToolErr(null); setResult(null); setQHint("")
       try {
@@ -80,10 +74,6 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
       } finally { setBusy("") }
     }
     void run()
-  }
-  const cancelAndHome = async () => {
-    setBusy("cancel"); setToolErr(null)
-    try { await svc.cancelRequest(requestId); saveUi({ activeRequestId: null }); navigate({ page: "home" }) } catch (e) { setToolErr({ kind: "cancel", message: errorMessage(e), retry: () => void cancelAndHome() }) } finally { setBusy("") }
   }
   const submit = () => {
     if (!q) return
@@ -108,25 +98,16 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
   return (
     <div className="mx-auto max-w-4xl space-y-8">
       <FlowHeader eyebrow={`${ko(st.mode)} · 조건 확인`} title="부족한 조건을 함께 정합니다" desc={`분석 모델이 아이디어를 해석하고, 결과가 달라질 항목만 ${batchMode ? "골라 한 번에" : "하나씩"} 묻습니다. 답하지 않은 조건은 기본 투자조건을 그대로 씁니다.`}
-        action={<Button variant="ghost" onClick={() => setConfirmCancel(true)} disabled={locked || confirmCancel}><ArrowLeft className="size-4" />취소하고 홈으로</Button>} />
-      {confirmCancel && (
-        <div role="alertdialog" aria-label="요청 취소 확인" className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-900">
-          <p className="font-semibold">이 요청을 취소할까요?</p>
-          <p className="mt-1">지금까지 답한 내용과 바꾼 조건은 이 요청과 함께 닫히고, 분석은 시작되지 않습니다.</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button variant="danger" onClick={() => void cancelAndHome()} disabled={locked}>{busy === "cancel" ? "취소하는 중…" : "요청 취소"}</Button>
-            <Button variant="ghost" onClick={() => setConfirmCancel(false)} disabled={locked}>계속 답하기</Button>
-          </div>
-        </div>
-      )}
+        action={<CancelRequestButton c={leave} disabled={busy !== ""} />} />
+      <CancelRequestConfirm c={leave} keepLabel="계속 답하기" disabled={busy !== ""} />
       <FlowSteps current={0} />
-      {toolErr?.kind === "cancel" && <ActionError title="요청을 취소하지 못했습니다" message={toolErr.message} retry={toolErr.retry} />}
+      {notice && st.state !== "ready" && <BackToQuestions n={notice} hardErrors={st.hard_errors.length > 0} />}
       <IdeaPart st={st} />
       {st.revision && <RevisionCard rev={st.revision} />}
       {st.hard_errors.length > 0 && (
         <Alert title="입력 조건에 오류가 있어 먼저 수정이 필요합니다" tone="error">
           <ul className="list-disc pl-5">{st.hard_errors.map((e) => <li key={e.field}>{e.message_ko}</li>)}</ul>
-          <div className="mt-3 flex flex-wrap items-center gap-2">{profile && <Button variant="secondary" onClick={() => setEditing(true)} disabled={locked}>이번 조건 고치기</Button>}<Button variant="ghost" onClick={() => startNewWith(st.idea, st.overrides)}>조건 그대로 새 요청</Button></div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">{profile && <Button variant="secondary" onClick={() => setEditing(true)} disabled={locked}>이번 조건 고치기</Button>}<Button variant="ghost" onClick={() => void leave.leave()} disabled={locked}>조건 그대로 새 요청</Button></div>
           <p className="mt-2 text-xs">기본 투자조건(내 투자조건)을 바꿔도 진행 중인 이 요청에는 적용되지 않습니다.</p>
         </Alert>
       )}
@@ -134,7 +115,7 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
         <Alert title={`보충 질문 ${st.max_questions}개를 모두 썼지만 정해지지 않은 항목이 남았습니다`} tone="warning">
           <ul className="list-disc pl-5">{st.unresolved.map((u) => <li key={u.field}><b>{u.label_ko}</b>: {u.hint_ko}{u.examples_ko.length ? ` (예: ${u.examples_ko.join(", ")})` : ""}</li>)}</ul>
           <p className="mt-2">남은 항목은 「조건 바꾸기」로 직접 정하거나, 아이디어를 수정해 다시 시작해 주세요. 분석은 시작되지 않았습니다.</p>
-          <div className="mt-3 flex gap-2">{profile && <Button variant="secondary" onClick={() => setEditing(true)} disabled={locked}>조건 바꾸기</Button>}<Button variant="ghost" onClick={() => navigate({ page: "home" })}>아이디어 수정</Button></div>
+          <div className="mt-3 flex gap-2">{profile && <Button variant="secondary" onClick={() => setEditing(true)} disabled={locked}>조건 바꾸기</Button>}<Button variant="ghost" onClick={() => void leave.leave()} disabled={locked}>아이디어 고쳐 다시 시작</Button></div>
         </Alert>
       )}
       {batchDone && <BatchResult requestId={requestId} sent={batchDone.sent} changes={batchDone.changes} />}
