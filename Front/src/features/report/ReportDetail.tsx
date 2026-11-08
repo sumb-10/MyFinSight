@@ -81,7 +81,7 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
   const [openCompany, setOpenCompany] = useState<string | null>(company ?? null)
   const cmp = useResource(() => svc.getReportComparison(reportId), [svc, reportId])
   const renamed = useRenameTick()
-  const name = useResource(() => (svc.getReportName ? svc.getReportName(reportId) : Promise.resolve(null)), [svc, reportId, renamed]).data  // 제안 기능: 목업에서만 값이 있다
+  const name = useResource(() => (svc.getReportName ? svc.getReportName(reportId) : Promise.resolve(null)), [svc, reportId, renamed]).data
   const rows = useResource(() => svc.listReports(), [svc, renamed])  // 목록 행: 바꾼 이름(제안 기능)과 삭제 창의 이름(lib/reportName)
   const row = findReportRow(rows.data, reportId)
   const [rename, setRename] = useState(false)

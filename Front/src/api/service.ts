@@ -1,7 +1,7 @@
 // 화면이 쓰는 단일 서비스 계약 (Front/docs/04 §8). 일반 모드에서는 서버(backend/analysis/api) 만 데이터 원천이다.
 // 개발용 목업 모드(?mock=1, src/mocks)는 같은 계약을 목업 자료로 구현한다 — main.tsx 가 처음에 하나를 골라 꽂는다.
 import { api, ApiError, LLM_TIMEOUT_MS } from "./client"
-import type { ProposedApi } from "./proposed"
+import type { ProposedApi, ProposedReportName } from "./proposed"
 import type { CheckpointDetail, ComparisonDoc, DialogState, EvidenceDetail, EvidencePage, EvidenceQuery, Health, Options, PaperDetail, PaperIn, PaperPreview, PaperSummary, ProfileFields, ProfileView, ReportDoc, ReportRow, RequestRow, RunPartial, RunRow, RunStatus, SeriesResponse } from "./types"
 
 const LLM = { timeoutMs: LLM_TIMEOUT_MS }
@@ -93,6 +93,9 @@ export class HttpService implements AnalysisService {
   getRunPartial(id: string) { return orNull(api.get<RunPartial>(`/runs/${id}/partial`)) }
   listReports() { return api.get<ReportRow[]>("/reports") }
   getReport(id: string) { return api.get<ReportDoc>(`/reports/${id}`) }
+  getReportName(id: string) { return api.get<ProposedReportName>(`/reports/${id}/name`) }
+  renameReport(id: string, name: string | null) { return api.put<ProposedReportName>(`/reports/${id}/name`, { name }) }
+  async deleteReport(id: string) { await api.del(`/reports/${id}`) }
   rerun(reportId: string) { return api.post<DialogState>(`/reports/${reportId}/rerun`, undefined, LLM) }
   previewPaper(input: PaperIn) { return api.post<PaperPreview>("/paper/preview", input) }
   createPaper(input: PaperIn) { return api.post<PaperDetail>("/paper", input) }

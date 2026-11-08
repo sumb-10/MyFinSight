@@ -147,7 +147,7 @@ export interface ProposedPaperName { name_ko: string; mode: "linked" | "custom";
 export interface ProposedApi {
   getReportName(reportId: string): Promise<ProposedReportName>
   renameReport(reportId: string, name: string | null): Promise<ProposedReportName>   // null = 자동 이름으로 되돌리기
-  deleteReport(reportId: string): Promise<void>   // 저장된 리포트 삭제 (실제 서버에는 아직 삭제 API가 없다)
+  deleteReport(reportId: string): Promise<void>   // 저장된 리포트 삭제 (실제 서버는 목록·조회에서 숨긴다)
   searchStocks(q: string): Promise<ProposedStock[]>
   getStocks(tickers: string[]): Promise<ProposedStock[]>   // 티커 → 회사명 (목록에 없는 티커는 빠진다)
   getProfileVersion(version: number): Promise<import("./types").ProfileVersion>
