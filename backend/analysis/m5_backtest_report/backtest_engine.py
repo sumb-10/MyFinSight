@@ -117,7 +117,12 @@ def run_dynamic_portfolio(pid, weights_by_date: dict, data: pd.DataFrame, initia
 
 
 def extract_raw(b, res, first_date) -> dict:
-    """지표 계층용 원시 시계열. bt 가 앞에 붙이는 전액 현금 행(자료 시작 하루 전)은 버리고 초기자본 유입을 첫 거래일로 옮긴다."""
+    """지표 계층용 원시 시계열. bt 가 앞에 붙이는 전액 현금 행(자료 시작 하루 전)은 버리고 초기자본 유입을 첫 거래일로 옮긴다.
+
+    지수(index)는 평가액·현금흐름으로 다시 계산한 시간가중 수익률이다. 적립금은 그날 종가에 사므로(ContributeOnDates)
+    거래일 끝 유입 식 r_t = (V_t − C_t) / V_(t−1) − 1 을 쓴다 (Module5 §4 '엔진의 실제 적립 시점에 맞는 정의').
+    bt 의 가격 지수(res.prices)는 유입을 거래일 시작에 넣어(V_t / (V_(t−1) + C_t) − 1) 적립일 수익률이 적립금 비율만큼
+    줄었다 (2026-11 평가: 월 적립 시나리오 CAGR 최대 0.41%p 차이). 적립이 없으면 두 식이 같다."""
     first = pd.Timestamp(first_date)
 
     def cut(x):
@@ -127,11 +132,13 @@ def extract_raw(b, res, first_date) -> dict:
     initial = float(flows[flows.index < first].sum())
     flows = cut(flows).copy()
     flows.iloc[0] += initial
-    idx = cut(res.prices[b.name].astype(float))
-    idx = idx / idx.iloc[0] * 100.0
+    values = cut(b.strategy.values.astype(float))
+    r = (values - flows) / values.shift(1) - 1.0
+    r.iloc[0] = 0.0  # 첫날 흐름은 초기 투자금 (기준점 100)
+    idx = (100.0 * (1.0 + r).cumprod()).rename(b.name)
     tx = res.get_transactions()
     tx = tx.reset_index() if tx is not None and len(tx) else pd.DataFrame(columns=["Date", "Security", "price", "quantity"])
-    return {"id": b.name, "index": idx, "values": cut(b.strategy.values.astype(float)), "flows": flows,
+    return {"id": b.name, "index": idx, "values": values, "flows": flows,
             "security_weights": cut(b.security_weights.astype(float)), "positions": cut(b.positions.astype(float)),
             "turnover": cut(b.turnover.astype(float)), "transactions": tx}  # fmt: skip
 

@@ -112,8 +112,8 @@ def answer_questions(api: Api, rid: str, state: dict[str, Any], policy: str, log
 TERMINAL = ("success", "partial", "failed", "cancelled")
 
 
-def wait_for_run(api: Api, run_id: str, timeout_s: float, poll_s: float = 10.0) -> dict[str, Any]:
-    """다른 일꾼이 잠금을 쥐고 있어 `worker --once` 가 바로 끝났을 때, 실행이 끝날 때까지 상태를 본다."""
+def wait_for_run(api: Api, run_id: str, timeout_s: float, poll_s: float = 3.0) -> dict[str, Any]:
+    """다른 일꾼이 잠금을 쥐고 있어 `worker --once` 가 바로 끝났을 때, 실행이 끝날 때까지 상태를 본다 (10초 간격이면 실행마다 평균 5초를 그냥 기다렸다)."""
     t0 = time.time()
     run = api.ok("GET", f"/runs/{run_id}")
     while run.get("status") not in TERMINAL and time.time() - t0 < timeout_s:

@@ -19,6 +19,8 @@ from backend.analysis.errors import (
     NotFound,
     QueueError,
     RequestInvalid,
+    public_message,
+    redact,
 )
 from backend.schemas.errors import DataQualityError, MyFinSightError, RepositoryError
 
@@ -50,8 +52,8 @@ def install(app: FastAPI) -> None:
         status = next((s for cls, s in STATUS.items() if isinstance(exc, cls)), 500)
         details = dict(exc.details or {})
         fields = details.pop("fields", None)
-        msg = str(exc) or MESSAGE_KO.get(exc.code, exc.code)
-        safe = {k: v for k, v in details.items() if k not in ("report",)}
+        msg = public_message(exc) or MESSAGE_KO.get(exc.code, exc.code)  # DB 오류 원문(호스트 포함)은 로그에만
+        safe = {k: redact(v) if isinstance(v, str) else v for k, v in details.items() if k not in ("report",)}
         return JSONResponse(status_code=status, content=envelope(exc.code, msg, fields=fields, details=safe or None))
 
     @app.exception_handler(RequestValidationError)

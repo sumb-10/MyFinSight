@@ -252,3 +252,46 @@ def test_waves_and_parallel_stage_failure(tmp_path, seeded_repo, settings):
     ctx3 = _ctx(tmp_path, seeded_repo, settings)
     run(ctx3, stages=stages3, dump=False)
     assert [w.stage for w in ctx3.warnings] == ["b", "c", "d"]
+
+
+def test_stage_starts_when_its_own_deps_finish(tmp_path, seeded_repo, settings):
+    """웨이브 장벽 없음 (2026-11 속도 개선): 07 이 끝나면 06 이 아직 돌아도 10·10w 가 바로 시작한다.
+    여기서는 b(느림)·c(빠름)가 a 뒤에 같이 시작하고, c 에만 의존하는 d 는 b 가 끝나기 전에 시작한다. e(b·d 뒤)는 둘 다 끝난 뒤."""
+    import threading
+    import time
+
+    t: dict[str, list[float]] = {}
+    lock = threading.Lock()
+
+    def timed(name, sec):
+        def f(c):
+            with lock:
+                t[name] = [time.monotonic()]
+            time.sleep(sec)
+            with lock:
+                t[name].append(time.monotonic())
+            c.warn(name, "weight_capacity", capacity=0.9)
+            return name
+
+        return f
+
+    def mk(name, sec, deps):
+        return Stage(name, name, "candidates", timed(name, sec), deps=deps)
+
+    stages = [mk("a", 0.0, ()), mk("b", 0.4, ("a",)), mk("c", 0.0, ("a",)), mk("d", 0.05, ("c",)), mk("e", 0.0, ("b", "d"))]
+    par = replace_settings(settings, executor=replace_settings(settings.executor, max_parallel_stages=4))
+    ctx = _ctx(tmp_path, seeded_repo, par)
+    out = run(ctx, stages=stages, dump=False)
+    assert out.status == "partial"  # 단계마다 '확인 필요' 경고를 하나씩 남겼다
+    assert t["d"][0] < t["b"][1]  # d 는 b 를 기다리지 않았다
+    assert t["e"][0] >= max(t["b"][1], t["d"][1])
+    assert [w.stage for w in ctx.warnings] == ["a", "b", "c", "d", "e"]  # 끝난 순서(a c d b e)가 아니라 단계 순서
+    # 실패: b 가 터지면 이미 끝났거나 도는 단계는 그대로, b 뒤의 e 는 CANCELLED
+    def boom(c):
+        time.sleep(0.1)
+        raise ValueError("kaput")
+
+    stages2 = [mk("a", 0.0, ()), Stage("b", "b", "candidates", boom, deps=("a",)), mk("c", 0.0, ("a",)), mk("d", 0.0, ("c",)), mk("e", 0.0, ("b", "d"))]
+    out2 = run(_ctx(tmp_path, seeded_repo, par), stages=stages2, dump=False)
+    assert out2.status == "failed" and out2.error["step"] == "b"
+    assert {s.name: s.status for s in out2.steps} == {"a": "PARTIAL", "b": "FAILED", "c": "PARTIAL", "d": "PARTIAL", "e": "CANCELLED"}

@@ -170,26 +170,19 @@ def money_metrics(values: pd.Series, flows: pd.Series, xirr_fn, td: int):
 
 
 # ───────────────────────── composition / trading ─────────────────────────
-def linked_contribution(w: pd.DataFrame, r: pd.DataFrame, idx: pd.Series, values: pd.Series | None = None,
-                        flows: pd.Series | None = None) -> tuple[pd.Series, float]:  # fmt: skip
+def linked_contribution(w: pd.DataFrame, r: pd.DataFrame, idx: pd.Series) -> tuple[pd.Series, float]:
     """종목별 기간 수익 기여 (Carino 로그 연결)와 잔차. Σ 기여 + 잔차 = 지수 기간 수익률 (헤드라인 period_return 과 같은 지수).
 
     일별 기여 w_i(t−1)·r_i(t) 를 그냥 더하면 복리로 불어난 기간 수익률과 합이 맞지 않는다 (시나리오 002: 80.9%p + 44.5%p 인데 기간 수익률 205.4%).
     날마다 k_t/K 를 곱하면 (k_t = ln(1+R_t)/R_t, K = ln(1+R)/R) Σ_t k_t·R_t = ln(1+R) 이라 합이 R 이 된다. 현금은 수익 0 이라 기여도 0.
-    적립일에는 bt 가 그날 적립금을 분모에 넣어(R_t = V(t−1)·Σw·r / (V(t−1)+F(t))) 지수 수익이 희석된다 → values·flows 를 주면 같은 비율로 비중을 줄여,
-    남는 잔차가 거래비용만 되게 한다 (검토: 적립이 큰 실행에서 수수료 0 인데도 잔차가 −3.4%p 였다).
+    지수가 적립금을 거래일 끝에 넣는 시간가중 수익률이라(extract_raw) 적립일에도 R_t = Σ w(t−1)·r(t) − 수수료 ÷ V(t−1) 이다 → 잔차는 거래비용만 남는다.
+    (예전 bt 지수는 적립일 수익을 적립금 비율만큼 희석해서 values·flows 로 비중을 줄여 맞췄다 — 2026-11 평가에서 지수를 고치며 뺐다)
     """
     rp = daily_returns(idx).reindex(w.index).fillna(0.0)
     R = total_return(idx)
     k = (np.log1p(rp) / rp).where(rp.abs() > 1e-12, 1.0)  # R_t≈0 이면 극한값 1 (0/0 방지)
     K = np.log1p(R) / R if abs(R) > 1e-12 else 1.0
-    wl = w.shift(1)
-    if values is not None and flows is not None:
-        f = flows.reindex(w.index).fillna(0.0)
-        f.iloc[0] = 0.0  # 첫날 흐름 = 초기 투자금 (수익 계산과 무관)
-        v0 = values.reindex(w.index).shift(1)
-        wl = wl.mul((v0 / (v0 + f)).where((v0 + f) > 0).fillna(1.0), axis=0)
-    contrib = (wl * r).mul(k / K, axis=0).sum()
+    contrib = (w.shift(1) * r).mul(k / K, axis=0).sum()
     return contrib, float(R - contrib.sum())
 
 
@@ -208,12 +201,12 @@ def cash_floor(sec_w: pd.DataFrame, min_cash: float = 0.0, noise: float = 5e-4) 
 
 
 def composition_metrics(sec_w: pd.DataFrame, asset_px: pd.DataFrame, targets: dict, sectors: dict, max_stock, max_sector, drift_tol: float, idx: pd.Series,
-                        values: pd.Series | None = None, flows: pd.Series | None = None, targets_by_date: dict | None = None, min_cash: float = 0.0):  # fmt: skip
+                        targets_by_date: dict | None = None, min_cash: float = 0.0):  # fmt: skip
     names = list(targets) + [c for v in (targets_by_date or {}).values() for c in v if c not in targets]
     cols = [c for c in dict.fromkeys(names) if c in sec_w.columns]
     w = sec_w[cols].fillna(0.0)
     r = asset_px[cols].pct_change().reindex(w.index).fillna(0.0)
-    contrib, resid = linked_contribution(w, r, idx, values, flows)  # 연결 안 한 단순합은 기간 수익률과 합이 안 맞아 보고서 막대가 틀렸다 (시나리오 002·003)
+    contrib, resid = linked_contribution(w, r, idx)  # 연결 안 한 단순합은 기간 수익률과 합이 안 맞아 보고서 막대가 틀렸다 (시나리오 002·003)
     avg = w.mean()
     sec_set = {sectors[c] for c in cols}
     sec_w_t = pd.DataFrame({s: w[[c for c in cols if sectors[c] == s]].sum(axis=1) for s in sec_set})
@@ -398,7 +391,7 @@ def compute_all(raw, bench_idx, asset_px, targets, sectors, rebal_dates, rf, tar
     dd_ = downside_deviation(r, rf, te_)
     var, cvar = var_cvar(mr)
     comp = composition_metrics(raw["security_weights"], asset_px, targets, sectors, max_stock, max_sector, settings.drift_tolerance, idx,
-                               values=raw.get("values"), flows=raw.get("flows"), targets_by_date=targets_by_date, min_cash=min_cash)  # fmt: skip
+                               targets_by_date=targets_by_date, min_cash=min_cash)  # fmt: skip
     m = {
         "return": {"total_return": _r(total_return(idx)), "cagr": _r(cg), "best_month": _r(mr.max()), "worst_month": _r(mr.min()),
                    "positive_months_ratio": _r((mr > 0).mean()), "rolling_12m": rolling_12m(idx, target_return, td)},

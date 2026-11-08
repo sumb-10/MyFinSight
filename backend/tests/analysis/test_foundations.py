@@ -20,6 +20,44 @@ MOCKUP_INPUT = REPO_ROOT / "module_mockup" / "input"
 
 
 # ───────────────────────── settings ─────────────────────────
+def test_llm_stage_model_and_reasoning_effort(tmp_path):
+    """단계별 모델·추론 강도 (2026-11 속도 개선): 요청 인자·캐시 키·비용이 단계 설정을 따른다. 정하지 않은 단계는 예전 키 그대로."""
+    from backend.analysis.common.jsonio import sha256_hex
+    from backend.analysis.settings import LlmSettings, replace_settings
+
+    sent: list[dict] = []
+
+    class _Comp:
+        def create(self, **kw):
+            sent.append(kw)
+            r = _FakeResp('{"ok": 1}')
+            r.model = kw["model"] + ("-2024-07-18" if kw["model"] == "gpt-4o-mini" else "")  # 응답 모델 이름에는 날짜가 붙을 수 있다
+            return r
+
+    class _Client:
+        class chat:
+            completions = _Comp()
+
+    s = replace_settings(LlmSettings(), stage_overrides={"09_views_news": {"model": "gpt-4o-mini", "temperature": 0}, "06_explain": {"reasoning_effort": "low"}})
+    llm = OpenAiLlm(s, run_dir=tmp_path / "run", cache_dir=tmp_path / "cache", client=_Client(), run_id="r1")
+    msgs = messages_from_prompts("s", "u")
+    llm.complete_json("09_views_news_2024-01-02_wf", msgs)
+    llm.complete_json("14b_narrate", msgs)
+    llm.complete_json("06_explain", msgs)
+    assert [k["model"] for k in sent] == ["gpt-4o-mini", "gpt-6-luna", "gpt-6-luna"]
+    assert sent[0]["temperature"] == 0 and "reasoning_effort" not in sent[0] and "temperature" not in sent[1]
+    assert sent[2]["reasoning_effort"] == "low" and "reasoning_effort" not in sent[1]
+    recs = [json.loads(x) for x in (tmp_path / "run" / "llm_usage.jsonl").read_text().splitlines()]
+    assert recs[0]["cost_usd"] == round((100 * 0.15 + 20 * 0.60) / 1e6, 6)  # 날짜 붙은 이름이어도 gpt-4o-mini 값
+    assert recs[1]["cost_usd"] == round((100 * 0.10 + 20 * 0.50) / 1e6, 6)
+    assert llm.usage_summary()["models"] == ["gpt-4o-mini-2024-07-18", "gpt-6-luna"]
+    # 캐시 키: 단계 설정이 없는 단계는 예전 식(모델|단계|메시지) 그대로, 모델·추론 강도가 다르면 다른 키
+    plain = OpenAiLlm(LlmSettings(stage_overrides={}), cache_dir=tmp_path / "c2", client=_Client())
+    assert llm.cache_key("14b_narrate", msgs) == plain.cache_key("14b_narrate", msgs) == sha256_hex("|".join(["gpt-6-luna", "14b_narrate", canonical_json(list(msgs))]), 24)
+    assert llm.cache_key("09_views_news_2024-01-02_wf", msgs) != plain.cache_key("09_views_news_2024-01-02_wf", msgs)
+    assert llm.cache_key("06_explain", msgs) != plain.cache_key("06_explain", msgs)
+
+
 def test_settings_defaults_and_env(monkeypatch):
     monkeypatch.setenv("MYFINSIGHT_LLM", "stub")
     s = AnalysisSettings.load()

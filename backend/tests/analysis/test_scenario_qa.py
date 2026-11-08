@@ -1567,10 +1567,16 @@ def test_matched_note_advice_depends_on_why_no_plan_was_built():
                 "portfolio": {"targets": {"baseline": {"id": "equal_weight"}}}, "parameters": {"backtest": {"matched_min_invested": 0.3}}}  # fmt: skip
 
     within = _matched_note(R(-0.08))
-    # 목표가 기준 낙폭(8.0%)보다 작아져야 생기고, 그래도 하한에 막힐 수 있어 '만들 수 있습니다' (검토: '만들어집니다' 는 단정)
-    assert "만들 필요가 없었습니다" in within and "목표가 8.0%보다 작아지도록" in within and within.endswith("다시 분석하면 만들 수 있습니다.")
+    # 2026-11 평가: '손실 감내 수준을 낮춰 다시 분석하면' 도 사용자 조건을 바꾸라는 안내로 지적됐다 → 사실만 (바탕 구성의 낙폭이 이미 목표 안)
+    assert "만들지 않았습니다" in within and "가장 큰 값 8.0%" in within and "다시 분석" not in within and within.endswith(".")
     floor = _matched_note(R(-0.40))
-    assert "만들지 않았습니다" in floor and "더 엄격해져 역시 만들 수 없으니" in floor and "다시 분석하면" not in floor
+    # 2026-11 평가: 사용자 조건(허용 낙폭)을 결과에 맞춰 바꾸라고 하지 않는다 — 사실만. 맞춤 목표(10%)가 허용 낙폭(12%)보다 엄격하면
+    # '맞춤안을 못 만듦' 이 '허용 낙폭 안 구성이 불가능' 을 뜻하지 않는다 (072·074)
+    assert "만들지 않았습니다" in floor and "허용 낙폭(12.0%) 안에 든 안은 없었습니다" in floor and "불가능하다는 뜻은 아닙니다" in floor
+    assert "다시 분석하면" not in floor and "다시 생각" not in floor
+    same = R(-0.40)
+    same["intent"]["risk_params"]["effective_max_drawdown"] = 0.12  # 목표 = 허용 낙폭이면 허용 낙폭 안 후보가 없었다는 뜻
+    assert "허용 낙폭 안에 드는 후보가 없었다는 뜻" in _matched_note(same)
 
 
 def test_dashboard_notices_skip_the_period_note_sentence():

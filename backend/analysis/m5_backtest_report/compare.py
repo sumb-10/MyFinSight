@@ -118,16 +118,18 @@ def compare(base: dict[str, Any], revised: dict[str, Any], *, base_report_id: st
         bp, rp, bm = _perf(bport), _perf(rport), _perf(bench)
         for key, lab, kind in PERF_ROWS:
             perf_table.append({"metric": key, "label_ko": lab, "base": bp.get(key), "revised": rp.get(key), "benchmark": bm.get(key) if key not in ("profit_usd", "irr_annual") else bm.get(key), "format": kind})
-        def _say(key: str, lab: str, kind: str, higher_better: bool) -> None:
+        def _say(key: str, lab: str, kind: str, higher_better: bool, by_size: bool = False) -> None:
             a, b = bp.get(key), rp.get(key)
             if a is None or b is None:
                 return
-            better = (b > a) if higher_better else (b < a)
+            x, y = (abs(a), abs(b)) if by_size else (a, b)
+            better = (y > x) if higher_better else (y < x)
             if abs(b - a) < (1e-4 if kind == "pct" else 1e-3):
                 return
             (pros if better else cons).append(f"{lab}: 수정안 {_f(b, kind)} vs 원안 {_f(a, kind)}")
         _say("cagr", "연평균 수익률", "pct", True)
-        _say("max_drawdown", "최대 낙폭", "pct", False)
+        # 최대낙폭은 음수로 저장된다(−0.178) → 크기가 작을수록 낫다. 값 그대로 '작을수록' 을 보면 덜 빠진 수정안이 단점으로 갔다 (2026-11 평가)
+        _say("max_drawdown", "최대 낙폭", "pct", False, by_size=True)
         _say("sharpe", "샤프 비율", "num", True)
         _say("ann_vol", "연 변동성", "pct", False)
         if rsum and bsum:

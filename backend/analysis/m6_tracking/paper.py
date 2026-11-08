@@ -23,7 +23,7 @@ from typing import Any, Literal
 import pandas as pd
 
 from backend.analysis.common.store import JsonStore, PaperStore, new_paper_id
-from backend.analysis.errors import Conflict, DataMissing, NotFound, RequestInvalid
+from backend.analysis.errors import Conflict, DataMissing, NotFound, RequestInvalid, public_message
 from backend.analysis.m2_data import descriptor as D
 from backend.analysis.m2_data.market_data import MarketData, MarketDataView
 from backend.analysis.m4_portfolio.construct import construct
@@ -564,7 +564,7 @@ class PaperService:
             except Exception as e:  # noqa: BLE001
                 log.exception("paper %s refresh failed", doc["paper_id"])
                 d2 = self.papers.load(doc["paper_id"])
-                d2.setdefault("history", []).append({"at": _now(), "event": "refresh_failed", "note": f"{type(e).__name__}: {e}"[:300]})
+                d2.setdefault("history", []).append({"at": _now(), "event": "refresh_failed", "note": f"{type(e).__name__}: {public_message(e)}"[:300]})  # 원문은 위 로그에
                 self.papers.save(d2)
         return out
 

@@ -10,6 +10,7 @@ from typing import Any
 
 from backend.analysis.common.jsonio import now_iso
 from backend.analysis.common.labels import FACT_SOURCE_KO, NEWS_SOURCE_KO, theme_ko, usd_ko
+from backend.analysis.common.warnings import _out_of_range_ko, guard_reason_ko
 from backend.analysis.m2_data import descriptor as D
 from backend.analysis.m2_data import metrics as M
 from backend.analysis.schemas.results import ResultsBundle
@@ -161,10 +162,12 @@ def build_results(
     order = {"sector_preference": 0, "sector_preference_lower": 0, "metric_out_of_range": 1, "no_dividend": 1, "rank_beyond_n": 2}
     rej = sorted(sel["rejected"], key=lambda r: order.get(str(r["reason"]).split("(")[0], 3))
     def _reason(r: dict[str, Any]) -> str:
+        if r["reason"].startswith("metric_out_of_range(") and "시장 중앙값" in r["reason"]:  # 고배당·저PER 의 유니버스 중앙값 기준선 (screen._style_floor)
+            return f"중앙값 기준선 밖 ({_out_of_range_ko(r['reason'][len('metric_out_of_range('):].rstrip(')'))})"
         if r["reason"].startswith("metric_out_of_range("):  # 'roe_ttm=-0.1572, 범위 >0 ≤10' → 'ROE -15.7%, 자격선 0% 초과 1,000% 이하' (009)
             met = r["reason"].split("(", 1)[1].split("=", 1)[0]
             return f"자격선 밖 ({M.METRIC_SHORT_KO.get(met, met)} {M.display_metric(met, r.get('metric_value'))}, 자격선 {M.eligible_range_ko(met)})"
-        return reason_ko.get(r["reason"], r["reason"])
+        return reason_ko.get(r["reason"]) or guard_reason_ko(r["reason"]) or r["reason"]
 
     excluded = [{"ticker": r["ticker"], "name": (desc.by_ticker(r["ticker"]) or {}).get("name", r["ticker"]), "reason": _reason(r),
                  "metric_value": r.get("metric_value")} for r in rej[:8]]  # fmt: skip
@@ -188,7 +191,7 @@ def build_results(
         key = str(code).split("(")[0].split(":")[0]
         if key == "metric_out_of_range":
             return "자격선 밖"
-        return filt_ko.get(key) or sel_ko.get(code) or sel_ko.get(key) or code
+        return filt_ko.get(key) or sel_ko.get(code) or sel_ko.get(key) or guard_reason_ko(code) or code
 
     rm_why = (spec["selection"].get("diff_vs_original") or {}).get("removed_reasons") or {}
     removed_ko = [{"ticker": t, "name": (desc.by_ticker(t) or {}).get("name", t), "reason_ko": _why_ko(c)} for t, c in rm_why.items()]
@@ -322,12 +325,27 @@ def build_results(
 
     snap = settings.snapshot()
     parameters = {"portfolio": snap["portfolio"], "backtest": snap["backtest"], "news": snap["news"], "disclosures": snap.get("disclosures"), "llm": {"model": snap["llm"]["model"], "provider": snap["llm"]["provider"],
-                  "mode": snap["llm"]["mode"]}, "market": snap["market"], "descriptor": descriptor_info, "execution_rule": spec.get("execution_rule")}  # fmt: skip
+                  "mode": snap["llm"]["mode"], "stage_models": _stage_models(snap["llm"])}, "market": snap["market"], "descriptor": descriptor_info, "execution_rule": spec.get("execution_rule")}  # fmt: skip
     bundle = ResultsBundle(request_id=req["request_id"], run_id=run_id, generated_at=now_iso(), pipeline_version=settings.pipeline_version,
                            request=req, intent=intent, selection=selection, portfolio=portfolio, backtest=bt, validation=val, money_krw=money_krw,
                            evidence_index=evidence_index, data_quality=bt.get("data_quality"), llm_usage=llm_usage or {"available": False},
                            sources=DB_SOURCES, parameters=parameters, warnings=warnings, warnings_summary=warnings_summary, notices=notices, notices_ko=notices_ko)  # fmt: skip
-    return bundle.model_dump(mode="json")
+    out = bundle.model_dump(mode="json")
+    # 지금 구성(분석 기준일)의 예상 연변동성 근거 — 없어서 리포트가 백테스트 실현 변동성 id 를 대신 붙였다 (2026-11 평가 001·007)
+    from backend.analysis.m5_backtest_report import report_blocks as B  # 늦은 import: report_blocks 가 검증·맞춤안 모듈을 끌어온다
+
+    ch, _ = B.chosen_portfolio_id(out)
+    if (ev := B.current_ex_ante_vol(out, ch)) is not None:
+        out["evidence_index"][f"calc:ex_ante_vol_now:{ch}"] = {
+            "id": f"calc:ex_ante_vol_now:{ch}", "kind": "calc", "title": "지금 구성(분석 기준일 제안)의 예상 연변동성 — 최근 가격 자료로 추정, 백테스트 결과 아님",
+            "source": FACT_SOURCE_KO["backtest"], "value": round(float(ev), 6), "unit": "ratio", "tickers": [],
+            "data_as_of": (out["portfolio"].get("forward") or {}).get("as_of") or out["request"]["derived"]["as_of"]}  # fmt: skip
+    return out
+
+
+def _stage_models(llm: dict[str, Any]) -> dict[str, str]:
+    """기본 모델과 다른 모델을 쓰는 단계 (settings.llm.stage_overrides[단계]['model'])."""
+    return {k: v["model"] for k, v in (llm.get("stage_overrides") or {}).items() if v.get("model") and v["model"] != llm["model"]}
 
 
 def _finite(x: Any) -> bool:

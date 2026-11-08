@@ -30,7 +30,11 @@ def signature(normalized: dict[str, Any], intent: dict[str, Any], *, reselect: b
     d = normalized["derived"]
     c = normalized["constraints"]
     # v3: 최소 시가총액 자료가 없으면 제외(정책 결정 7) — 예전 규칙으로 센 점검 결과를 다시 쓰지 않게. v4: 시작일에 빠지는 사유(dropped_by). v5: start_impossible
-    src = {"v": 5, "as_of": str(d["as_of"]), "bt_start": str(d["backtest_start"]), "metric": (intent.get("screen") or {}).get("metric"),
+    # v6: 선정 보조 조건(배당 성장·부채비율·시가총액 순위)이 점검 숫자를 바꾼다 → 키에 넣는다
+    # v7: 미국 법인 조건, 고배당·저PER 의 유니버스 중앙값 기준선, 이익률 기준을 유니버스 중앙값으로 (2026-11 평가)
+    scr = intent.get("screen") or {}
+    src = {"v": 7, "as_of": str(d["as_of"]), "bt_start": str(d["backtest_start"]), "metric": scr.get("metric"),
+           "guards": {k: scr.get(k) for k in ("dividend_growth_years", "dividend_require_growth", "max_debt_to_equity", "mega_cap_rank", "high_margin", "us_hq_only")},
            "themes": [{k: t.get(k) for k in ("gics_codes", "keywords", "example_tickers", "label_ko", "description_ko")} for t in (intent.get("interpretation") or {}).get("themes", [])],
            "rules": intent.get("exclude_theme_rules"), "reselect": reselect, "classified": classified,
            "cons": {k: c.get(k) for k in ("universe", "num_holdings", "exclude_tickers", "exclude_sectors", "exclude_themes", "must_include_tickers",

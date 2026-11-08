@@ -1,8 +1,10 @@
-"""러너 (M0-05): 단계를 의존 순서대로 실행하며 상태를 기록한다. 의존이 끝난 단계는 묶어서(웨이브) 동시에 돈다 (라운드 4).
+"""러너 (M0-05): 단계를 의존 순서대로 실행하며 상태를 기록한다. 의존이 끝난 단계는 바로 시작해 동시에 돈다 (라운드 4 웨이브 →
+2026-11 속도 개선: 웨이브 장벽을 없앴다. 예전에는 07 이 1초에 끝나도 같은 웨이브의 06(LLM 30~100초)을 기다린 뒤에야 10·10w 가 시작했다).
 
 - 시작 시 모든 단계 QUEUED → 단계마다 STARTED → SUCCESS/PARTIAL(행동 필요 경고 있음) → 예외면 FAILED, 남은 단계 CANCELLED.
-- 취소는 단계 시작 전(웨이브 안 포함)과 긴 단계 내부(10w 날짜 풀)에서 확인한다. 실패한 실행은 자동으로 다시 돌리지 않는다.
-- 같은 웨이브의 다른 단계가 실패해도 진행 중인 단계는 끝까지 돈다(스레드는 중단할 수 없음). 그 뒤 웨이브부터 CANCELLED.
+- 취소는 단계 시작 전과 긴 단계 내부(10w 날짜 풀)에서 확인한다. 실패한 실행은 자동으로 다시 돌리지 않는다.
+- 다른 단계가 실패해도 진행 중인 단계는 끝까지 돈다(스레드는 중단할 수 없음). 아직 시작하지 않은 단계는 CANCELLED.
+- 결과는 순차 실행과 같다: 경고 목록은 도는 단계가 없을 때마다 단계 순서로 정렬하고, 13(결과 통합)은 다른 단계가 모두 끝난 뒤에 돈다.
 - 상태 기록 콜백(`on_step`)은 B3 에서 Repository.save_step 으로 연결한다. 산출물은 run_dir/NN_*.json 으로 덤프한다.
 """
 
@@ -12,14 +14,14 @@ import logging
 import threading
 import time
 import traceback
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from backend.analysis.common.jsonio import dump_json, now_iso
 from backend.analysis.common.warnings import merge, render
-from backend.analysis.errors import CancelRequested, StageFailed
+from backend.analysis.errors import CancelRequested, StageFailed, public_message
 from backend.analysis.executor.context import RunContext
 from backend.analysis.executor.stages import OUTPUT_FILES, STAGES, Stage
 from backend.schemas.errors import MyFinSightError
@@ -69,13 +71,19 @@ def _dump_outputs(ctx: RunContext) -> None:
             log.warning("daily panel not saved: %r", e)
 
 
-def waves(stages: Sequence[Stage]) -> list[list[Stage]]:
-    """의존이 모두 끝난 단계를 한 묶음(웨이브)으로. deps=None 인 단계는 목록상 바로 앞 단계에 의존한다(순차)."""
+def stage_deps(stages: Sequence[Stage]) -> dict[str, set[str]]:
+    """단계별 선행 단계. deps=None 인 단계는 목록상 바로 앞 단계에 의존한다(순차)."""
     names = [s.name for s in stages]
     deps: dict[str, set[str]] = {}
     for i, s in enumerate(stages):
         d = set(s.deps) if s.deps is not None else ({names[i - 1]} if i > 0 else set())
         deps[s.name] = {x for x in d if x in names}  # when() 으로 빠진 선행 단계는 무시
+    return deps
+
+
+def waves(stages: Sequence[Stage]) -> list[list[Stage]]:
+    """의존이 모두 끝난 단계를 한 묶음(웨이브)으로 (순차 실행 순서·의존 점검용)."""
+    deps = stage_deps(stages)
     done: set[str] = set()
     remaining = list(stages)
     out: list[list[Stage]] = []
@@ -89,13 +97,37 @@ def waves(stages: Sequence[Stage]) -> list[list[Stage]]:
     return out
 
 
+def run_by_deps(stages: Sequence[Stage], fn: Callable[[Stage], None], max_workers: int, *, on_idle: Callable[[], None] | None = None) -> None:
+    """선행 단계가 모두 끝난 단계를 바로 시작한다 (웨이브 장벽 없음). 동시에 시작할 수 있으면 목록 순서대로.
+    on_idle: 도는 단계가 하나도 없을 때마다 부른다 (다른 스레드가 경고를 덧붙이는 중에 정렬하지 않게)."""
+    deps = stage_deps(stages)
+    waves(stages)  # 순환 의존이면 시작 전에 ValueError
+    pending, done = list(stages), set()
+    running: dict[Future[None], Stage] = {}
+    with ThreadPoolExecutor(max_workers=max(1, max_workers), thread_name_prefix="mfs-stage") as pool:
+        while pending or running:
+            for s in [s for s in pending if deps[s.name] <= done]:
+                if len(running) >= max_workers:
+                    break
+                pending.remove(s)
+                running[pool.submit(fn, s)] = s
+            if not running:  # waves() 가 순환을 걸러서 오지 않는다 (빈 wait 로 무한히 돌지 않게)
+                raise ValueError(f"no runnable stage among {[s.name for s in pending]}")
+            finished, _ = wait(running, return_when=FIRST_COMPLETED)
+            for f in finished:
+                done.add(running.pop(f).name)
+                f.result()  # fn 이 잡지 못한 예외는 그대로 올린다 (순차 실행과 같게)
+            if not running and on_idle:
+                on_idle()
+
+
 def run(ctx: RunContext, *, stages: Sequence[Stage] | None = None, on_step: StepHook | None = None, dump: bool = True) -> RunOutcome:
     stages = [s for s in (stages or STAGES) if s.when(ctx)]
     order = {s.name: i for i, s in enumerate(stages)}
     outcome = RunOutcome(run_id=ctx.run_id, status="running")
     results = {s.name: StepResult(name=s.name, status="QUEUED") for s in stages}
     by_name = {s.name: s for s in stages}
-    io_lock = threading.Lock()  # 상태 콜백·파일 덤프는 한 번에 하나씩 (병렬 웨이브)
+    io_lock = threading.Lock()  # 상태 콜백·파일 덤프는 한 번에 하나씩 (동시에 도는 단계)
     _hook = on_step or (lambda *_: None)
 
     def hook(step: str, status: str, info: dict[str, Any]) -> None:
@@ -152,8 +184,8 @@ def run(ctx: RunContext, *, stages: Sequence[Stage] | None = None, on_step: Step
             r.ended_at, r.elapsed_s = now_iso(), round(time.time() - t0, 2)
             r.status = "FAILED"
             r.error_code = e.code if isinstance(e, MyFinSightError) else StageFailed.code
-            r.error_message = f"{type(e).__name__}: {e}"[:1000]
-            log.error("[%s] %s FAILED: %s\n%s", ctx.run_id, s.name, r.error_message, traceback.format_exc())
+            r.error_message = f"{type(e).__name__}: {public_message(e)}"[:1000]  # 화면·API 로 나가는 문장 (DB 주소 등은 지움)
+            log.error("[%s] %s FAILED: %s: %s\n%s", ctx.run_id, s.name, type(e).__name__, e, traceback.format_exc())
             if state["failed"] is None or order[s.name] < order[state["failed"].name]:
                 state["failed"] = r
         hook(s.name, r.status, {"label_ko": s.label_ko, "bucket": s.bucket, "started_at": r.started_at, "ended_at": r.ended_at,
@@ -162,15 +194,17 @@ def run(ctx: RunContext, *, stages: Sequence[Stage] | None = None, on_step: Step
             with io_lock:
                 _dump_outputs(ctx)
 
+    def _sort_warnings() -> None:  # 안정 정렬: 단계 순서로 (동시 실행이어도 결과 파일의 순서가 같게). 도는 단계가 없을 때만 부른다
+        ctx.warnings.sort(key=lambda w: order.get(w.stage, len(order)))
+
     max_par = max(1, ctx.settings.executor.max_parallel_stages)
-    for wave in waves(stages):
-        if len(wave) > 1 and max_par > 1 and not (state["cancelled"] or state["failed"]):
-            with ThreadPoolExecutor(max_workers=min(max_par, len(wave)), thread_name_prefix="mfs-stage") as pool:
-                list(pool.map(_run_stage, wave))
-        else:
+    if max_par > 1:
+        run_by_deps(stages, _run_stage, max_par, on_idle=_sort_warnings)
+    else:
+        for wave in waves(stages):
             for s in wave:
                 _run_stage(s)
-        ctx.warnings.sort(key=lambda w: order.get(w.stage, len(order)))  # 안정 정렬: 단계 순서로 (동시 실행이어도 결과 파일의 순서가 같게)
+            _sort_warnings()
     outcome.steps = list(results.values())
     failed = state["failed"]
     if failed:

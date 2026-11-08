@@ -30,7 +30,7 @@
 
 ## 조건
 
-- 세트 수: {{n_sets}}, 세트당 뷰 수: {{views_per_set}} (absolute ≥ 1, relative ≥ 1)
+- 세트 수: 최대 {{n_sets}}, 세트당 뷰 수: 최대 {{views_per_set}} (상한입니다. 근거가 적으면 더 적게 만들고, 근거가 충분하면 세트마다 absolute ≥ 1, relative ≥ 1)
 - confidence 범위: 0.1 ~ {{max_conf}} (공시만 인용한 뷰는 {{dc_only_max_conf}} 이하, 근거 1건뿐인 뷰는 {{single_max_conf}} 이하)
 - 숫자 대신 `direction`(절대 뷰: up/down)과 `strength`(weak/medium/strong)를 씁니다
 - 모든 뷰는 `evidence_ids` 를 1개 이상 인용

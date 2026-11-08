@@ -310,6 +310,21 @@ def retrieve(
         warnings=warnings,
     )  # fmt: skip
     out.warnings += mcap_warnings(out, cons, view.s.market.mcap_fallback_max_days)
+    out.warnings += floor_warnings(out, cons, desc, broad=len({str(c)[:2] for th in themes for c in th.get('gics_codes', []) if str(c).strip()}) >= broad_min_sectors)
+    return out
+
+
+def floor_warnings(cand: Candidates, cons: dict[str, Any], desc: Descriptor, *, broad: bool) -> list[str]:
+    """사용자가 정한 최소 시가총액·일평균 거래대금 때문에 빠진 테마 관련 종목 — 리포트 깔때기에만 있고 공지가 없어 '테마 대표 종목을 알리지 않고 뺐다' 로
+    읽혔다 (2026-11 평가 079·081·091·094: 농심·오뚜기, 한전기술·한전KPS). 넓은 테마(업종 무관)는 빠진 종목이 많고 테마 대표가 아니라 내지 않는다."""
+    if broad:
+        return []
+    out = []
+    for key, label in (("min_market_cap_usd", "min market cap"), ("min_avg_daily_volume_usd", "min avg daily volume")):
+        hit = [f.ticker for f in cand.filtered_out if str(f.reason).split("(")[0] == key]
+        if hit:
+            names = [str((desc.by_ticker(t) or {}).get("name") or t) if t.endswith((".KS", ".KQ")) else t for t in hit]
+            out.append(f"user floor {label} {float(cons.get(key) or 0):.0f} USD: dropped {len(hit)} theme candidates [{', '.join(names)}]")
     return out
 
 

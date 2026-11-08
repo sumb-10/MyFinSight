@@ -1,7 +1,8 @@
 """LLM 호출기 (M0-03). 모든 LLM 호출은 이 모듈을 거친다.
 
 - `LlmClient.complete_json(stage, messages, ...)`: 메시지 목록(멀티턴 가능) → JSON dict.
-- `OpenAiLlm`: OpenAI chat completions. 캐시 키 = sha256(model | stage | canonical(messages)) 이라
+- `OpenAiLlm`: OpenAI chat completions. 단계마다 모델·추론 강도를 따로 정할 수 있다 (settings.llm.stage_overrides).
+  캐시 키 = sha256(단계 모델 | stage | [추론 강도 |] canonical(messages)) 이라
   같은 대화는 같은 답을 돌려준다 (재현성, 요구 14). 형식·검증 실패 시 오류를 되먹여 1회 재시도.
   호출마다 토큰·비용을 기록한다 (K10: 상한 없음, 로그만).
 - `StubLlm`: stubs/<key>.example.json 또는 주입된 dict/list 를 돌려준다 (개발·테스트, API 호출 없음).
@@ -86,6 +87,7 @@ class _Base:
         calls = self.calls
         return {
             "model": getattr(getattr(self, "settings", None), "model", "stub"),
+            "models": sorted({c["model"] for c in calls if c.get("model")}),  # 실제로 부른 모델 (단계별 모델을 쓰면 둘 이상)
             "calls": len(calls),
             "cache_hits": sum(1 for c in calls if c.get("cache_hit")),
             "prompt_tokens": sum(c.get("prompt_tokens", 0) for c in calls),
@@ -198,6 +200,10 @@ class OpenAiLlm(_Base):
                 return ov[key][name]
         return getattr(self.settings, name)
 
+    def model_of(self, stage: str) -> str:
+        """단계별 모델: stage_overrides[단계]['model'], 없으면 기본 모델 (단순한 단계는 빠른 작은 모델로, 2026-11 속도 개선)."""
+        return self._setting(stage, "model")
+
     def _client_openai(self) -> Any:
         if self._client is None:
             with self._lock:
@@ -223,8 +229,10 @@ class OpenAiLlm(_Base):
             pass
         return delay
 
-    def _cost_usd(self, model: str, prompt: int, cached: int, completion: int, cache_write: int = 0) -> float | None:
-        p = self.settings.pricing_usd_per_1m.get(model) or self.settings.pricing_usd_per_1m.get(self.settings.model)
+    def _cost_usd(self, model: str, prompt: int, cached: int, completion: int, cache_write: int = 0, *, requested: str | None = None) -> float | None:
+        # 응답의 모델 이름은 날짜가 붙을 수 있다 ('gpt-4o-mini-2024-07-18') → 요청한 모델 이름으로도 찾는다
+        pr = self.settings.pricing_usd_per_1m
+        p = pr.get(model) or (pr.get(requested) if requested else None) or pr.get(self.settings.model)
         if not p:
             return None
         return round(
@@ -239,7 +247,12 @@ class OpenAiLlm(_Base):
         )
 
     def cache_key(self, stage: str, messages: Sequence[Message]) -> str:
-        return sha256_hex("|".join([self.settings.model, stage, canonical_json(list(messages))]), 24)
+        # 답을 바꾸는 호출 설정(모델·추론 강도)이 다르면 다른 키. 추론 강도를 정하지 않은 단계는 예전 키 그대로 (저장된 답 재사용)
+        parts = [self.model_of(stage), stage, canonical_json(list(messages))]
+        effort = self._setting(stage, "reasoning_effort")
+        if effort is not None:
+            parts.insert(2, f"reasoning_effort={effort}")
+        return sha256_hex("|".join(parts), 24)
 
     # -- 호출 ---------------------------------------------------------------
     def _call(self, stage: str, messages: Sequence[Message], batch: int | None) -> dict[str, Any]:
@@ -254,8 +267,9 @@ class OpenAiLlm(_Base):
         import openai
 
         client = self._client_openai()
+        model = self.model_of(stage)
         kw: dict[str, Any] = {
-            "model": self.settings.model,
+            "model": model,
             "messages": list(messages),
             "max_completion_tokens": self._setting(stage, "max_output_tokens"),
         }
@@ -301,7 +315,7 @@ class OpenAiLlm(_Base):
             "completion_tokens": u.completion_tokens,
             "reasoning_tokens": reasoning,
             "cache_write_tokens": cache_write,
-            "cost_usd": self._cost_usd(resp.model, u.prompt_tokens, cached, u.completion_tokens, cache_write),
+            "cost_usd": self._cost_usd(resp.model, u.prompt_tokens, cached, u.completion_tokens, cache_write, requested=model),
             "elapsed_s": elapsed,
             "finish_reason": resp.choices[0].finish_reason,
             "cache_hit": False,

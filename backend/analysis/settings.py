@@ -164,22 +164,29 @@ class LlmSettings:
     stage_overrides: dict[str, dict[str, Any]] = field(
         default_factory=lambda: {
             "04_classify": {"max_output_tokens": 6000},
-            "09_views_news": {"max_output_tokens": 8000},  # 현재 구성은 세트 5×뷰 4 라 JSON 이 길다 (잘리면 두 배로 재시도)
-            "14a_interpret": {"max_output_tokens": 8000},
-            "14b_narrate": {"max_output_tokens": 10000},
+            # 현재 구성은 세트 5×뷰 4 라 JSON 이 길다 (잘리면 두 배로 재시도). 실행 한 번에 16번쯤 불러 가장 오래 걸리던 단계 →
+            # 추론을 짧게 (2026-11 속도 개선: 저장된 프롬프트 12개에서 호출당 중앙값 20초 → 11.5초, 규칙 위반 0건.
+            # gpt-4o-mini 는 9.4초였지만 근거 1건 신뢰도 초과 10건·다른 회사 기사 인용 6건이라 쓰지 않음, 'none' 은 없는 근거 id 3건)
+            "09_views_news": {"max_output_tokens": 8000, "reasoning_effort": "low"},
+            # 출력 상한은 추론 토큰까지 센다. 잘리면 상한을 두 배로 올려 같은 호출을 다시 하므로(시간 두 배) 넉넉히 둔다 — 상한은 답 내용을 바꾸지 않는다.
+            # 2026-11-05~08 최대 출력: 06 7,536 · 14a 7,866 · 14b 8,734 토큰 (14a 는 8,000 에서 3번 잘렸다)
+            "06_explain": {"max_output_tokens": 12000},
+            "14a_interpret": {"max_output_tokens": 12000},
+            "14b_narrate": {"max_output_tokens": 12000},
         }
     )
     max_output_tokens_ceiling: int = 16000  # 잘린 응답 재시도 때 올릴 수 있는 상한
     timeout_s: int = 180
     retries: int = 3
     retry_backoff_max_s: int = 60  # 지수 백오프 상한 (지터 포함)
-    max_concurrency: int = 4  # 동시 LLM 호출 상한 (리밸런싱 뷰·분류 배치·리포트 호출이 공유). env ANALYSIS_LLM_CONCURRENCY
+    max_concurrency: int = 8  # 동시 LLM 호출 상한 (리밸런싱 뷰·분류 배치·리포트 호출이 공유). env ANALYSIS_LLM_CONCURRENCY. 계정 한도는 분당 1만 건·1천만 토큰 (2026-11)
     retry_backoff_s: int = 15
     cache: bool = True
     api_key_env: str = "OPENAI_API_KEY"
     pricing_usd_per_1m: dict[str, dict[str, float]] = field(
         default_factory=lambda: {
             "gpt-6-luna": {"input": 0.10, "cached_input": 0.01, "cache_write": 0.125, "output": 0.50},
+            "gpt-4o-mini": {"input": 0.15, "cached_input": 0.075, "output": 0.60},  # stage_overrides[단계]['model'] 로 쓸 때
         }
     )
 
@@ -191,6 +198,24 @@ class SelectionSettings:
     max_candidates: int = 120
     broad_theme_min_sectors: int = 6
     metric_prefilter: bool = True
+    # 아이디어가 템플릿 지표 하나로 못 담는 뜻의 보조 조건 (2026-11 평가: '배당을 꾸준히 늘린'·'재무가 탄탄한' 을 배당수익률·ROE 하나로만 골랐다)
+    # '배당을 꾸준히 늘려 온' (성장 문구) → 최근 N년 해마다 거의 빠짐없이 인상(한 해만 쉬어도 됨)·한 해도 깎지 않은 종목만.
+    # 3년·동결 허용이었을 때 2020년에 깎은 SPG, 2022년부터 묶어 둔 TFC·HBAN 이 들어갔다 (2026-11 평가 000·086)
+    dividend_growth_years: int = 5
+    # '배당을 꾸준히 (많이) 주는' (안정 문구) → 최근 N년 한 해도 깎지 않은 종목만 (성장은 요구하지 않음 — 012: '꾸준히 많이 주는' 을 '늘린' 으로 바꿔 걸러 BNK 가 빠졌다)
+    dividend_steady_years: int = 3
+    dividend_raise_min: float = 0.005  # 한 해 주당배당이 이만큼 넘게 늘어야 '인상' (지급 시점 흔들림과 동결을 가른다)
+    dividend_cut_tolerance: float = 0.05  # 한 해에 이 비율보다 더 줄면 '줄임' (지급 시점·반올림의 작은 흔들림은 넘어간다)
+    # 고배당·저PER 선정은 같은 유니버스(같은 시장) 전체 종목의 중앙값보다 나은 종목만 (2026-11 평가 사용자 결정, 정책 결정 3 의 자격선에 더함):
+    # 후보가 목표보다 적어 모두 담을 때 배당 0.12% 인 CEG 가 '배당을 많이 주는', PER 25 인 카카오뱅크가 '실적 대비 싼' 종목으로 들어갔다 (062·079 등 12건)
+    style_floor_median: bool = True
+    # '미국 기업' 아이디어에서 법인 소재지가 미국 밖인 기업(회사 소개 첫 문장의 정식 이름이 plc·N.V.·Ltd 등)을 뺀다. 미국 법인인데 이름이 Limited 인 예외
+    us_domicile_exceptions: tuple[str, ...] = ("WYNN",)
+    max_debt_to_equity: float = 3.0  # 부채비율(부채총계 ÷ 자본총계) 상한. 200% 면 자사주 매입으로 자본이 작은 애플(2.5)까지 빠진다. 금융 섹터는 재지 않음
+    # '빅테크·초대형주' → 선정일 같은 시장 주식(팀 DB 전체, 미국은 S&P 500 ∪ 나스닥 100) 중 시가총액 순위 상한 (같은 회사의 주식 클래스는 한 회사).
+    # 30위 안 기술·플랫폼 기업: 2026-10 NVDA·AAPL·GOOGL·MSFT·AMZN·META·AVGO·TSLA·AMD·INTC·PLTR·CSCO·ORCL (메모리 MU 는 테마 경계가 뺀다),
+    # 2016-10 AAPL·GOOGL·MSFT·AMZN·META·INTC·ORCL·CSCO·IBM (25위면 2016 년에 6개뿐)
+    mega_cap_rank: int = 30
 
 
 @dataclass(frozen=True)
@@ -248,7 +273,7 @@ class ReportSettings:
 class ExecutorSettings:
     """병렬 실행 (라운드 4, 결정 R2 "병렬 실행만"). 결과값은 순차 실행과 같고 시간만 줄인다. env ANALYSIS_PARALLEL=0 이면 전부 순차."""
 
-    max_parallel_stages: int = 3  # 의존이 끝난 단계 묶음(웨이브)을 동시에: 06·07·10f / 10·10w
+    max_parallel_stages: int = 4  # 의존이 끝난 단계를 바로 동시에 (웨이브 장벽 없음): 06·10f 가 도는 동안 07 → 10·10w → 11 → 12
     walkforward_workers: int = 0  # 10w 리밸런싱일 동시 처리 수 (0 = llm.max_concurrency)
     classify_workers: int = 0  # 04 분류 배치 동시 처리 수 (0 = llm.max_concurrency)
     parallel_report_calls: bool = True  # 14a(해석) ∥ 14c(시장) 동시 호출, 재시도는 오류 낸 호출만

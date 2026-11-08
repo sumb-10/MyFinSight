@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 
 from backend.analysis.api.routers import services
+from backend.analysis.errors import redact
 from backend.analysis.executor.stages import STAGES
 from backend.analysis.m5_backtest_report.persist import bucket_status, steps_for_api
 from backend.analysis.schemas.run import BUCKETS, RunStatus
@@ -19,6 +20,9 @@ LABELS["14_report"] = ("리포트 문서 생성·검증", "report")
 def run_status(sv, run_id: str) -> RunStatus:
     e = sv.queue.get(run_id)
     steps = steps_for_api(sv.repo, run_id, LABELS)
+    for st in steps:  # 예전 실행의 오류 문장에 남은 DB 주소 등은 내보내기 전에 지운다 (2026-11 평가)
+        if st.get("error_message"):
+            st["error_message"] = redact(st["error_message"])
     if not steps:  # 아직 시작 전: 레지스트리 전체를 QUEUED 로 보여 준다
         steps = [{"step": s.name, "label_ko": s.label_ko, "bucket": s.bucket, "status": "QUEUED"} for s in STAGES]
     buckets = bucket_status(steps)
@@ -31,7 +35,7 @@ def run_status(sv, run_id: str) -> RunStatus:
     error = None
     if e.status == "failed":
         failed = next((s for s in steps if s["status"] == "FAILED"), None)
-        error = {"code": e.error_code or (failed or {}).get("error_code") or "STAGE_FAILED", "message_ko": e.error_message or (failed or {}).get("error_message") or "실행에 실패했습니다",
+        error = {"code": e.error_code or (failed or {}).get("error_code") or "STAGE_FAILED", "message_ko": redact(e.error_message) or (failed or {}).get("error_message") or "실행에 실패했습니다",
                  "step": (failed or {}).get("step"), "actions": ["edit_conditions", "retry", "home"]}  # fmt: skip
     return RunStatus(run_id=e.run_id, request_id=e.request_id, status=status, queue_position=sv.queue.position(run_id) if e.status == "queued" else None,
                      queued_at=e.queued_at, started_at=e.started_at, finished_at=e.finished_at, buckets=buckets, steps=steps, report_id=e.report_id, error=error)  # fmt: skip
@@ -39,7 +43,7 @@ def run_status(sv, run_id: str) -> RunStatus:
 
 @router.get("/runs", response_model=list[dict[str, Any]])
 def list_runs(request: Request, limit: int = 50) -> list[dict[str, Any]]:
-    return [e.model_dump(mode="json") for e in services(request).queue.list(limit)]
+    return [{**d, "error_message": redact(d.get("error_message"))} for d in (e.model_dump(mode="json") for e in services(request).queue.list(limit))]
 
 
 @router.get("/runs/{run_id}", response_model=RunStatus)

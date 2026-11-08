@@ -87,15 +87,16 @@ def default_repo() -> Any:
     return open_analysis_repository()
 
 
-def _host(url: str) -> str:
+def _kind(url: str) -> str:
+    """화면용 저장소 이름: PostgreSQL 은 종류만(호스트·계정을 숨김), SQLite 는 로컬 파일 경로만."""
     if url.startswith("sqlite"):
-        return url
-    return "PostgreSQL " + url.split("@")[-1].split("/")[0]
+        return "SQLite " + (url.split("///", 1)[1] if "///" in url else "(메모리)")
+    return "PostgreSQL"
 
 
 def describe() -> str:
-    """로그·화면용. 비밀번호는 보여 주지 않는다."""
+    """/health 에 싣는 저장소 설명. DB 호스트·계정·비밀번호는 보여 주지 않는다 (2026-11 평가: 호스트가 응답에 그대로 나왔다)."""
     url = database_url()
-    market = _host(url) if url else "로컬 SQLite (data/myfinsight.db)"
+    market = _kind(url) if url else "로컬 SQLite (data/myfinsight.db)"
     rurl = results_url(url)
-    return market if not rurl else f"읽기 {market} / 결과 {rurl}"
+    return market if not rurl else f"읽기 {market} / 결과 {_kind(rurl)}"

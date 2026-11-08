@@ -12,6 +12,7 @@ from backend.analysis.common.store import JsonStore, ProfileStore, RequestStore
 from backend.analysis.executor.queue import Queue
 from backend.analysis.m1_request.dialog import DialogService
 from backend.analysis.m2_data.market_data import MarketData
+from backend.analysis.m2_data.price_cache import PriceBarCache
 from backend.analysis.m6_tracking.paper import PaperService
 from backend.analysis.paths import output_root
 from backend.analysis.settings import AnalysisSettings
@@ -24,6 +25,7 @@ class Services:
     settings: AnalysisSettings
     llm_factory: Callable[[], LlmClient] | None = None
     _md: MarketData | None = field(default=None, repr=False)
+    _prices: PriceBarCache = field(default_factory=PriceBarCache, repr=False)  # 범위·종목이 늘 때 받아 둔 가격을 다시 받지 않게 (예전에는 전체를 다시 받았다)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _results_cache: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)  # report_id → 13_results (불변; 최근 8개)
 
@@ -52,14 +54,14 @@ class Services:
         with self._lock:
             repo = self.repo
             if self._md is None:
-                self._md = MarketData(repo, self.settings)
+                self._md = MarketData(self._prices.wrap(repo), self.settings)
             else:
                 try:
                     latest = self._md.latest_trading_day()
                     if latest != self._md.ceiling:
-                        self._md = MarketData(repo, self.settings)
+                        self._md = MarketData(self._prices.wrap(repo), self.settings)
                 except Exception:  # noqa: BLE001
-                    self._md = MarketData(repo, self.settings)
+                    self._md = MarketData(self._prices.wrap(repo), self.settings)
             return self._md
 
     def dialog(self) -> DialogService:

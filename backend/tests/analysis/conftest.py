@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -66,7 +67,9 @@ def business_days(start: dt.date, end: dt.date, holidays: set[dt.date]) -> list[
 
 
 def gbm(ticker: str, n: int, start_price: float) -> np.ndarray:
-    rng = np.random.default_rng(abs(hash(ticker)) % (2**32))
+    # 종목 이름으로 씨앗을 정한다. hash() 는 프로세스마다 달라(PYTHONHASHSEED) 합성 가격이 실행마다 바뀌었다 →
+    # 모멘텀 자격선(12-1 수익률 > 0, 2026-11 평가) 이 들어간 뒤 시험이 실행마다 다른 질문을 했다
+    rng = np.random.default_rng(zlib.crc32(ticker.encode()))
     r = rng.normal(0.0004, 0.015, n)
     return start_price * np.exp(np.cumsum(r))
 
@@ -182,6 +185,31 @@ def seed_repository(repo, *, start: dt.date = START, end: dt.date = END) -> dict
         _d(sym, "SEC_EDGAR", "8-K", "1.01", "8-K", dt.date(2023, 12, 12), dt.date(2023, 12, 13), "material_agreement")
     repo.upsert_disclosures(discl)
     return {"us_days": us_days, "kr_days": kr_days, "snapshot": snap}
+
+
+from backend.analysis.m2_data import metrics as _metrics  # noqa: E402
+from backend.analysis.m3_selection import screen as _screen  # noqa: E402
+
+REAL_LOW_VOL_HALF = _screen._low_vol_half
+REAL_MOMENTUM_RANGE = _metrics.ELIGIBLE_RANGE["return_12m_1m"]
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _legacy_eligibility_lines_off():
+    """2026-11 평가에서 더한 자격선 둘(모멘텀 12-1 수익률 > 0, 저변동성은 테마 후보 중 낮은 절반)은 종목 6개 안팎인 합성 자료에서
+    후보를 크게 줄여, 그 전에 쓴 시험의 대화·선정 흐름을 바꾼다 (시작일 종목 부족 질문이 먼저 나온다). 예전 시험에서는 끄고,
+    그 규칙을 직접 보는 시험(test_eval_2026_11)만 `eligibility_lines_on` 으로 다시 켠다. 세션 범위 준비(파이프라인 한 번 실행)도 끈 채로 돈다."""
+    mp = pytest.MonkeyPatch()
+    mp.setitem(_metrics.ELIGIBLE_RANGE, "return_12m_1m", (None, None))
+    mp.setattr(_screen, "_low_vol_half", lambda pool, forced, rejected: pool)
+    yield
+    mp.undo()
+
+
+@pytest.fixture
+def eligibility_lines_on(monkeypatch):
+    monkeypatch.setitem(_metrics.ELIGIBLE_RANGE, "return_12m_1m", REAL_MOMENTUM_RANGE)
+    monkeypatch.setattr(_screen, "_low_vol_half", REAL_LOW_VOL_HALF)
 
 
 @pytest.fixture(scope="session")

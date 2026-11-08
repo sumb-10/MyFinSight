@@ -92,6 +92,7 @@ class _Cache:
     imp_median: dict[tuple[dt.date, str], dict[str, Any] | None] = field(default_factory=dict)  # (d, asset_id) → 시가총액 이상값 검사용 주식수 중앙값 (없음도 기억)
     mcap_repairs: dict[tuple[str, dt.date], float] = field(default_factory=dict)  # (종목, 행 날짜) → 고치기 전 시가총액 ÷ 중앙값 시가총액
     news: dict[tuple, EvidenceWindow] = field(default_factory=dict)
+    margin: dict[tuple[dt.date, str], float | None] = field(default_factory=dict)  # (기준일, 종목) → 영업이익률 (유니버스 중앙값을 날짜마다 한 번만 읽게)
 
 
 class MarketData:
@@ -439,6 +440,57 @@ class MarketDataView:
         df = pd.DataFrame(recs, columns=cols).set_index("ticker").reindex(tickers)
         self.md._c.valuation[key] = df
         return df
+
+    def dps_history(self, tickers: Sequence[str], years: int, *, strict_before: bool | None = None) -> dict[str, list[float | None]]:
+        """종목별 주당배당(최근 12개월, 종목 통화) [기준일, 1년 전, …, years 년 전]. 그날 앞 40일 안에 가치평가 행이 없으면 None.
+        '배당을 꾸준히 늘려 온' 보조 조건(screen)에 쓴다 — 기준일 이전 자료만 읽는다."""
+        d = self._end(None, strict_before)
+        tickers = [normalize_ticker(t) for t in tickers]
+        ids = {self.md.asset_id(t): t for t in tickers}
+        out: dict[str, list[float | None]] = {t: [] for t in tickers}
+        for k in range(years + 1):
+            rows = self.md.repo.get_valuation_asof(list(ids), d - dt.timedelta(days=365 * k), max_staleness_days=40)
+            for aid, t in ids.items():
+                v = (rows.get(aid) or {}).get("dps_ttm")
+                out[t].append(None if v is None else float(v))
+        return out
+
+    def debt_to_equity(self, tickers: Sequence[str], *, strict_before: bool | None = None) -> dict[str, float | None]:
+        """종목별 부채비율 = 부채총계 ÷ 자본총계 (기준일 이전 공시 재무상태표). 부채총계가 빈 회사(미국 일부)는 자산총계 − 자본총계.
+        자본이 0 이하이면 inf, 자료가 없으면 None. 리더가 없는 저장소(시험용 가짜)는 모두 None."""
+        reader = getattr(self.md.repo, "get_balance_sheet_asof", None)
+        tickers = [normalize_ticker(t) for t in tickers]
+        if reader is None:
+            return dict.fromkeys(tickers)
+        ids = {self.md.asset_id(t): t for t in tickers}
+        rows = reader(list(ids), self._end(None, strict_before), ("부채총계", "자본총계", "자산총계"))
+        out: dict[str, float | None] = {}
+        for aid, t in ids.items():
+            r = rows.get(aid) or {}
+            eq, liab, assets = r.get("자본총계"), r.get("부채총계"), r.get("자산총계")
+            if liab is None and assets is not None and eq is not None:
+                liab = assets - eq
+            out[t] = None if eq is None or liab is None else (float("inf") if eq <= 0 else liab / eq)
+        return out
+
+    def operating_margin_ttm(self, tickers: Sequence[str], *, strict_before: bool | None = None) -> dict[str, float | None]:
+        """종목별 영업이익률 = 최근 4개 분기 영업이익 합 ÷ 매출액 합 (기준일 이전 공시). 매출이 0 이하이거나 자료가 없으면 None.
+        리더가 없는 저장소(시험용 가짜)는 모두 None."""
+        reader = getattr(self.md.repo, "get_income_ttm_asof", None)
+        tickers = [normalize_ticker(t) for t in tickers]
+        if reader is None:
+            return dict.fromkeys(tickers)
+        d = self._end(None, strict_before)
+        c = getattr(self.md, "_c", None)  # 시험용 가짜 MarketData 에는 캐시가 없다
+        cache = c.margin if c is not None else {}
+        ids = {self.md.asset_id(t): t for t in tickers if (d, t) not in cache}
+        if ids:
+            rows = reader(list(ids), d, ("매출액(분기)", "영업이익(분기)"))
+            for aid, t in ids.items():
+                r = rows.get(aid) or {}
+                rev, op = r.get("매출액(분기)"), r.get("영업이익(분기)")
+                cache[(d, t)] = None if rev is None or op is None or rev <= 0 else op / rev
+        return {t: cache[(d, t)] for t in tickers}
 
     def _mcap_fallback(self, rows: dict[str, dict[str, Any]], d: dt.date) -> dict[str, tuple[float, dt.date]]:
         """시가총액이 빈 가치평가 행의 대체값 {asset_id: (종목 통화 시가총액, 주식수 기준일)}. 팀 DB 는 주식수가 빈 구간이 있다 (SCHW 2022-02 ~).

@@ -136,6 +136,57 @@ def build_messages(req: dict[str, Any], desc: Descriptor, *, as_of: str, initial
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
+# 아이디어가 템플릿 지표 하나로 못 담는 뜻 (2026-11 평가: '배당을 꾸준히 늘린' 을 현재 배당수익률로만, '재무가 탄탄한' 을 ROE 로만 골라
+# 배당을 깎은 F·DOW, 자본이 얇은 GDDY·NTAP 가 들어갔다. 078·086 은 해석이 차이를 알아채고도 고를 보기가 없어 묻지 못했다)
+_STEADY_DIVIDEND = re.compile(r"배당[^.,!?]{0,20}(꾸준|늘려|늘린|늘어|늘고|성장|증가|연속|안정)|(꾸준|연속|안정)[^.,!?]{0,12}배당")
+_DIVIDEND_GROWTH = re.compile(r"배당[^.,!?]{0,20}(늘려|늘린|늘어|늘고|성장|증가|인상|올려|올린)|(연속|꾸준히?)[^.,!?]{0,6}(인상|증가)[^.,!?]{0,6}배당")
+_SOUND_BALANCE = re.compile(r"재무[^.,!?]{0,8}(탄탄|건전|튼튼|안정|우량)|부채[^.,!?]{0,6}(적|낮|없)")
+# '빅테크 대형주' 를 업종 코드로만 잡으면 기술주 전체가 후보가 된다 (평가 019·022·063·070·073·084·095: FTNT·HPQ·SNDK 가 뽑히고 AAPL·MSFT·NVDA 는 빠졌다)
+_MEGA_CAP = re.compile(r"빅\s?테크|메가\s?캡|초대형|매그니피센트|시가총액\s*(최)?상위|시총\s*(최)?상위|\bM7\b", re.IGNORECASE)
+# '이익률이 높은' 을 ROE 로만 재면 이익률은 보지 않는다 (2026-11 평가: 퀄리티 아이디어 28개의 공통 문구, 심사가 '이익률은 재지 않음' 으로 E2 감점)
+_HIGH_MARGIN = re.compile(r"(이익률|마진|영업이익률)[^.,!?]{0,6}(높|좋|우수|탄탄)")
+
+
+# '미국 기업' 이라고 하면 본사가 미국인 기업 — 유니버스(S&P 500·나스닥 100)에는 해외 본사 기업(ASML·PDD·MELI·NBIS 등)이 있다.
+# 프롬프트 규칙만으로는 테마 설명에 빠지는 일이 있어(평가 075: NBIS) 코드가 경계 문장을 붙이고, 분류(04)가 본사 기준으로 판정한다.
+_US_COMPANY = re.compile(r"미국\s*(?:\S+\s*){0,2}?(?:기업|회사|대형주|주식|종목)")
+
+
+def us_headquarters_boundary(req: dict[str, Any], themes: list[dict[str, Any]]) -> list[str]:
+    idea = str((req.get("natural_language") or {}).get("idea") or "")
+    if not _US_COMPANY.search(idea):
+        return []
+    out = []
+    for th in themes:
+        d = str(th.get("description_ko") or "").rstrip()
+        if "본사" not in d:
+            th["description_ko"] = (d.rstrip(".") + ". " if d else "") + "본사가 미국이 아닌 기업(미국에 상장한 해외 기업)은 넣지 않음."
+            out.append(f"theme {th.get('id')}: added US-headquarters boundary from the idea")
+    return out
+
+
+def idea_screen_guards(req: dict[str, Any], scr: dict[str, Any], settings: AnalysisSettings) -> list[str]:
+    """아이디어 문장으로 선정 보조 조건을 정한다 — 코드가 정해 LLM 이 빠뜨리거나 다른 숫자를 써도 같은 결과가 나오게 한다.
+    '배당을 꾸준히 늘린' → 최근 5년 해마다 거의 빠짐없이 인상·삭감 없음, '배당을 꾸준히 주는' → 최근 3년 삭감 없음, '재무가 탄탄한' → 부채비율 상한 (금융 섹터 제외),
+    '빅테크·초대형주' → 선정일 시가총액 순위 상한, '이익률이 높은' → 영업이익률이 같은 유니버스 비금융 종목 중앙값 이상,
+    '미국 기업' → 법인 소재지가 미국 밖인 기업 제외 (테마 경계 문장은 us_headquarters_boundary 가 붙이고, 여기서는 코드로 거른다)."""
+    idea = str((req.get("natural_language") or {}).get("idea") or "")
+    sel = settings.selection
+    growth = bool(_DIVIDEND_GROWTH.search(idea))  # '늘려 온' 은 성장, '꾸준히 많이 주는' 은 안정 (삭감 없음만)
+    years = sel.dividend_growth_years if growth else sel.dividend_steady_years if _STEADY_DIVIDEND.search(idea) else 0
+    scr["dividend_require_growth"] = growth
+    de = sel.max_debt_to_equity if _SOUND_BALANCE.search(idea) else None
+    rank = sel.mega_cap_rank if _MEGA_CAP.search(idea) else None
+    margin = bool(_HIGH_MARGIN.search(idea))
+    us = bool(_US_COMPANY.search(idea))
+    out = []
+    for k, v in (("dividend_growth_years", years), ("max_debt_to_equity", de), ("mega_cap_rank", rank), ("high_margin", margin), ("us_hq_only", us)):
+        if scr.get(k) not in (None, 0) and scr.get(k) != v:
+            out.append(f"screen.{k}: LLM gave {scr.get(k)!r}, set from the idea {v!r}")
+        scr[k] = v
+    return out
+
+
 def effective_max_drawdown(req: dict[str, Any]) -> float:
     """낙폭 맞춤안 목표 (코드 규칙, 프롬프트 02_intent 와 같은 규칙): 요청값 × 0.8(loss_reaction=sell) × 0.9(investment_experience=none).
     라운드 5 부터 검증·표시의 허용 낙폭은 요청값 그대로이고, 이 값은 낙폭 맞춤안(dd_match_*)이 맞추는 목표에만 쓴다."""
@@ -193,6 +244,7 @@ def interpret(
             th["example_tickers"] = [t for t in th["example_tickers"] if t in universe]
     warnings += clean_exclude_rules(ans.get("exclude_theme_rules", []))
     warnings += broaden_industry_agnostic(ans["interpretation"]["themes"])
+    warnings += us_headquarters_boundary(req, ans["interpretation"]["themes"])
     ans["request_id"] = req["request_id"]
     sp, cons = req["strategy_preference"], req["constraints"]
     metric, direction = TEMPLATE_METRICS[sp["template"]]
@@ -204,6 +256,7 @@ def interpret(
             if ans["screen"].get(k) is not None:
                 warnings.append(f"screen.{k}: LLM gave {ans['screen'].get(k)!r}, enforced {v!r}")
             ans["screen"][k] = v
+    warnings += idea_screen_guards(req, ans["screen"], settings)
     ans["news_tilt"]["enabled"] = bool(sp["use_news_tilt"])
     # 숫자는 코드가 정한다 (HARD 필드): 허용 낙폭·목표수익·비교지수·투자기간. LLM 값은 경고만 남기고 덮어쓴다.
     eff = effective_max_drawdown(req)
