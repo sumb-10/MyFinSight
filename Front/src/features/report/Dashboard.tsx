@@ -152,8 +152,8 @@ export function requestedAmount(doc?: ReportDoc): string | null {
 const TOP_N = 8
 
 /** 카드 2: 어떤 주식에 얼마를 투자하면 될까요? 서버 배분 표의 종목별 금액을 먼저, 비중은 보조로.
- *  서버는 매수 수량·수수료·잔여 현금·현금 금액을 주지 않아 계산하지 않는다. 보여 주는 구성은 서버 배분 하나(분석 기준일 「현재 구성」)뿐이다 —
- *  여러 구성을 고르는 버튼은 헷갈려서 두지 않는다. 제안 계약(proposed)에 현금 금액·예상 매수 주문이 있으면(지금은 목업만) 함께 보여 준다. */
+ *  화면은 매수 수량·수수료·잔여 현금을 계산하지 않고 서버가 준 값만 쓴다. 보여 주는 구성은 서버 배분 하나(분석 기준일 「현재 구성」)뿐이다 —
+ *  여러 구성을 고르는 버튼은 헷갈려서 두지 않는다. 제안 계약(proposed)에 예상 매수 주문이 있으면(서버 또는 목업) 함께 보여 준다. */
 export function AllocationCard({ a, doc, onMore }: { a: NonNullable<ReportSummary["allocation"]>; doc?: ReportDoc; onMore: () => void }) {
   const p = proposed(doc)
   const bases = p?.allocations ?? null
@@ -234,7 +234,7 @@ function ExecutionOrders({ e, usdOnly, doc }: { e: NonNullable<ReturnType<typeof
   return (
     <Disclosure size="sm" title={<span className="inline-flex items-center">예상 매수 주문<MockTag /></span>} summary={`${e.share_basis === "integer" ? "1주 단위" : "소수점"} · ${e.items.length}종목`}>
       <div className="space-y-3">
-        <p className="text-xs leading-5 text-slate-600">위 배분({e.strategy_label_ko})의 비중을 분석 기준일({e.as_of}) 주가와 환율(1 USD = {fx.toLocaleString("en-US")}원)로 실제 주문 단위로 바꾼 예상입니다. {e.share_basis === "integer" ? "주식은 1주 단위로만 살 수 있어" : "소수점 주식으로 사도"} 목표 배분액과 금액이 조금 다르고, 남는 돈은 현금으로 남습니다. 거래 수수료는 거래대금의 {e.commission_bps / 100}%로 가정했습니다.</p>
+        <p className="text-xs leading-5 text-slate-600">위 배분({e.strategy_label_ko})의 비중을 분석 기준일({e.as_of}) 주가{!usdOnly && <>와 환율(1 USD = {fx.toLocaleString("en-US")}원)</>}로 실제 주문 단위로 바꾼 예상입니다. {e.share_basis === "integer" ? "주식은 1주 단위로만 살 수 있어" : "소수점 주식으로 사도"} 목표 배분액과 금액이 조금 다르고, 남는 돈은 현금으로 남습니다. 거래 수수료는 거래대금의 {e.commission_bps / 100}%로 가정했습니다.</p>
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="w-full min-w-[620px] text-sm">
             <thead><tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold text-slate-600"><th className="px-3 py-2">종목</th><th className="px-3 py-2 text-right">기준 주가</th><th className="px-3 py-2 text-right">목표 배분액</th><th className="px-3 py-2 text-right">주식 수</th><th className="px-3 py-2 text-right">예상 매수 금액</th><th className="px-3 py-2 text-right">수수료</th></tr></thead>

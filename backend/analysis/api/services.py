@@ -13,6 +13,7 @@ from backend.analysis.executor.queue import Queue
 from backend.analysis.m1_request.dialog import DialogService
 from backend.analysis.m2_data.market_data import MarketData
 from backend.analysis.m2_data.price_cache import PriceBarCache
+from backend.analysis.m5_backtest_report.execution_orders import compute_execution, with_execution
 from backend.analysis.m6_tracking.paper import PaperService
 from backend.analysis.paths import output_root
 from backend.analysis.settings import AnalysisSettings
@@ -28,6 +29,7 @@ class Services:
     _prices: PriceBarCache = field(default_factory=PriceBarCache, repr=False)  # 범위·종목이 늘 때 받아 둔 가격을 다시 받지 않게 (예전에는 전체를 다시 받았다)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _results_cache: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)  # report_id → 13_results (불변; 최근 8개)
+    _orders_cache: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)  # report_id → 예상 매수 주문 (기준일 값이라 불변; 최근 32개)
 
     @property
     def repo(self) -> Any:
@@ -69,6 +71,25 @@ class Services:
 
     def paper(self) -> PaperService:
         return PaperService(self.store, self.repo, self.market_data(), self.llm(), self.settings)
+
+    def with_orders(self, report_id: str, doc: dict[str, Any]) -> dict[str, Any]:
+        """저장 문서에 예상 매수 주문이 없으면(예전 리포트) 계산해 응답에만 붙인다. 계산하지 못하면 문서 그대로."""
+        if (doc.get("proposed") or {}).get("execution"):
+            return doc
+        with self._lock:
+            cached = self._orders_cache.get(report_id)
+        if cached:
+            return with_execution(doc, cached)
+        try:
+            execution = compute_execution(doc, self.market_data())
+        except Exception:  # noqa: BLE001  # DB 연결 실패여도 리포트는 열려야 한다
+            return doc
+        if execution:
+            with self._lock:
+                if len(self._orders_cache) >= 32:
+                    self._orders_cache.pop(next(iter(self._orders_cache)))
+                self._orders_cache[report_id] = execution
+        return with_execution(doc, execution)
 
     def results(self, report_id: str) -> dict[str, Any] | None:
         """저장된 13_results 묶음 (근거 색인·체크포인트·시계열 조회용). 리포트는 불변이라 최근 8개를 메모리에 둔다."""

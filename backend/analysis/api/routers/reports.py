@@ -49,9 +49,9 @@ def get_report(report_id: str, request: Request) -> dict[str, Any]:
             raise NotFound(f"실행이 {e.status} 상태라 리포트가 없습니다", code="REPORT_BLOCKED", details={"run_status": e.status, "error": e.error_message})
         raise NotFound("리포트가 아직 만들어지지 않았습니다", code="REPORT_NOT_READY", details={"run_status": e.status})
     doc = row["doc"] if isinstance(row, dict) and "doc" in row else row
-    if doc.get("doc_version", 1) >= 2:
-        return doc
-    return present_doc(doc, sv.results(report_id))  # 라운드 3 이전 문서: 읽을 때 근거 슬림·요약 보강 (저장 문서는 그대로)
+    if doc.get("doc_version", 1) < 2:
+        doc = present_doc(doc, sv.results(report_id))  # 라운드 3 이전 문서: 읽을 때 근거 슬림·요약 보강 (저장 문서는 그대로)
+    return sv.with_orders(report_id, doc)
 
 
 _KIND_ORDER = {"news": 0, "disclosure": 1, "financial": 2, "calc": 3, "data_quality": 4}

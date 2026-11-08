@@ -27,6 +27,7 @@ from backend.analysis.executor.runner import run
 from backend.analysis.m2_data.market_data import MarketData
 from backend.analysis.m2_data.price_cache import PriceBarCache
 from backend.analysis.m5_backtest_report.compare import compare
+from backend.analysis.m5_backtest_report.execution_orders import compute_execution, with_execution
 from backend.analysis.m5_backtest_report.persist import db_step_hook, save_report, save_results
 from backend.analysis.m6_tracking.paper import refresh_all_papers
 from backend.analysis.paths import run_dir
@@ -92,7 +93,7 @@ def execute_run(entry_run_id: str, *, repo: Any, store: JsonStore, settings: Ana
             params = {**settings.snapshot(), "descriptor": ctx.desc_info, "stages": [s.__dict__ for s in outcome.steps]}
             save_results(repo, entry_run_id, ctx.request_id, results, params, llm.usage_summary())
             if "14_report" in ctx.outputs:
-                doc14 = ctx.outputs["14_report"]
+                doc14 = with_execution(ctx.outputs["14_report"], compute_execution(ctx.outputs["14_report"], md))
                 save_report(repo, entry_run_id, doc14, strategy_name=doc14["header"].get("chosen_label_ko"),
                             request_summary=doc14["header"].get("subtitle_ko"), as_of=dt.date.fromisoformat(str(ctx.request["derived"]["as_of"])))  # fmt: skip
                 report_id = entry_run_id
