@@ -17,11 +17,32 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 PROPOSED_CONTRACT = "proposed-0.1"
-NOTE_KO = "정수 주식 기준입니다. 분석 기준일 종가로 계산한 추정치이며, 실제 주문 시 가격이 달라집니다."
+FRACTION_DIGITS = 4  # 미국 주식 소수점 주문의 자릿수 (이 자리까지 내림). 최소 주문 금액은 두지 않는다
+KR_SUFFIXES = (".KS", ".KQ")
+BASIS_NOTE_KO = {
+    "integer": "정수 주식 기준입니다.",
+    "fractional": f"소수점 주식(소수 {FRACTION_DIGITS}째 자리까지) 기준입니다.",
+    "mixed": f"미국 주식은 소수점(소수 {FRACTION_DIGITS}째 자리까지), 한국 주식은 1주 단위 기준입니다.",
+}
+NOTE_TAIL_KO = " 분석 기준일 종가로 계산한 추정치이며, 실제 주문 시 가격이 달라집니다."
+
+
+def share_basis_of(ticker: str) -> str:
+    """미국 주식은 소수점, 한국 주식은 1주 단위."""
+    return "integer" if ticker.endswith(KR_SUFFIXES) else "fractional"
+
+
+def _shares(target_usd: float, price: float, fee_rate: float, basis: str) -> int | float:
+    """수수료까지 목표 금액 안에 들어오는 수량을 내림한다."""
+    raw = target_usd / (price * (1 + fee_rate))
+    if basis == "integer":
+        return max(0, math.floor(raw))
+    unit = 10**FRACTION_DIGITS
+    return max(0.0, math.floor(raw * unit) / unit)
 
 
 def estimate_orders(doc: dict[str, Any], prices_usd: dict[str, float]) -> dict[str, Any] | None:
-    """문서의 배분과 종가(USD)로 주문을 계산한다. 수량은 수수료까지 목표 금액 안에 들어오도록 내림한다."""
+    """문서의 배분과 종가(USD)로 주문을 계산한다. 수량은 수수료까지 목표 금액 안에 들어오도록 내림한다 (미국 소수점, 한국 1주 단위)."""
     header = doc.get("header") or {}
     alloc = (doc.get("summary") or {}).get("allocation") or {}
     items = alloc.get("items") or []
@@ -39,21 +60,24 @@ def estimate_orders(doc: dict[str, Any], prices_usd: dict[str, float]) -> dict[s
         if not price or price <= 0:
             return None  # 한 종목이라도 가격이 없으면 합계가 틀리므로 표 전체를 만들지 않는다
         target = float(it["usd"])
-        shares = max(0, math.floor(target / (price * (1 + fee_rate))))
+        basis = share_basis_of(it["ticker"])
+        shares = _shares(target, price, fee_rate, basis)
         cost = round(shares * price, 2)
         rows.append({"ticker": it["ticker"], "name": it.get("name") or it["ticker"], "price_usd": price, "target_weight": it["weight"], "target_usd": round(target, 2),
-                     "target_krw": it.get("krw", round(target * fx)), "shares": shares, "cost_usd": cost, "fee_usd": round(cost * fee_rate, 2), "cost_krw": round(cost * fx)})  # fmt: skip
+                     "target_krw": it.get("krw", round(target * fx)), "share_basis": basis, "shares": shares, "cost_usd": cost, "fee_usd": round(cost * fee_rate, 2), "cost_krw": round(cost * fx)})  # fmt: skip
     invested = round(sum(r["cost_usd"] for r in rows), 2)
     fees = round(sum(r["fee_usd"] for r in rows), 2)
     left = round(float(capital) - invested - fees, 2)
     cash_target = round(float(capital) * max(0.0, float(alloc.get("cash_weight") or 0.0)), 2)
     label = re.search(r"\((.+)\)\s*$", alloc.get("basis_ko") or "")
+    bases = {r["share_basis"] for r in rows}
+    overall = bases.pop() if len(bases) == 1 else "mixed"
     return {
         "as_of": str(as_of), "strategy_id": header.get("chosen_portfolio_id") or "", "strategy_label_ko": label.group(1) if label else (header.get("chosen_label_ko") or ""),
-        "share_basis": "integer", "commission_bps": bps, "fx": {"rate": round(fx, 2), "date": str(as_of), "source_ko": "분석 기준일 환율"},
+        "share_basis": overall, "commission_bps": bps, "fx": {"rate": round(fx, 2), "date": str(as_of), "source_ko": "분석 기준일 환율"},
         "capital": {"amount": round(float(capital), 2), "currency": "USD", "usd": round(float(capital), 2)}, "items": rows,
         "totals": {"invested_usd": invested, "fee_usd": fees, "cash_left_usd": left, "cash_left_krw": round(left * fx), "cash_target_usd": cash_target, "cash_target_krw": round(cash_target * fx)},
-        "note_ko": NOTE_KO,
+        "note_ko": BASIS_NOTE_KO[overall] + NOTE_TAIL_KO,
     }  # fmt: skip
 
 

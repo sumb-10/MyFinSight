@@ -13,17 +13,40 @@ from backend.analysis.m5_backtest_report.report_meta import ReportMetaStore, aut
 from backend.tests.analysis.test_paper import RID, paper_run  # noqa: F401  # 합성 DB 리포트 fixture
 
 
-def _doc(basis: str = "forward", fx: float = 1350.0, bps: float | None = 5) -> dict:
+def _doc(basis: str = "forward", fx: float = 1350.0, bps: float | None = 5, a: str = "AAA.KS", b: str = "BBB.KS") -> dict:
     return {
         "header": {"data_as_of": "2026-11-06", "chosen_portfolio_id": "p1", "chosen_label_ko": "선택안"},
         "parameters": {"backtest": {} if bps is None else {"commission_bps": bps}},
         "summary": {"allocation": {"basis": basis, "basis_ko": "분석 기준일 2026-11-06 구성 (낙폭 맞춤안 (주식 90%))", "cash_weight": 0.1, "initial_amount_usd": 10000.0, "fx_rate": fx,
-                                   "items": [{"ticker": "AAA", "name": "에이", "weight": 0.6, "usd": 6000.0, "krw": 8100000}, {"ticker": "BBB", "name": "비", "weight": 0.3, "usd": 3000.0, "krw": 4050000}]}},
+                                   "items": [{"ticker": a, "name": "에이", "weight": 0.6, "usd": 6000.0, "krw": 8100000}, {"ticker": b, "name": "비", "weight": 0.3, "usd": 3000.0, "krw": 4050000}]}},
     }  # fmt: skip
 
 
+def _balanced(e: dict) -> bool:
+    t = e["totals"]
+    return t["invested_usd"] + t["fee_usd"] + t["cash_left_usd"] == pytest.approx(e["capital"]["usd"], abs=0.01)
+
+
+def test_us_orders_are_fractional_to_four_decimals():
+    e = estimate_orders(_doc(a="AAA", b="BBB"), {"AAA": 100.0, "BBB": 7000.0})
+    a, b = e["items"]
+    assert e["share_basis"] == "fractional" and a["share_basis"] == "fractional" and "소수 4째 자리" in e["note_ko"]
+    assert a["shares"] == 59.97 and a["cost_usd"] == 5997.0 and a["fee_usd"] == 3.0
+    assert b["shares"] == 0.4283 and b["cost_usd"] == 2998.1 and b["fee_usd"] == 1.5
+    assert e["totals"]["cash_left_usd"] == 1000.4 and _balanced(e)
+    assert all(x["cost_usd"] + x["fee_usd"] <= x["target_usd"] for x in e["items"])
+
+
+def test_mixed_orders_keep_korean_shares_whole():
+    e = estimate_orders(_doc(a="AAA", b="BBB.KQ"), {"AAA": 100.0, "BBB.KQ": 700.0})
+    a, b = e["items"]
+    assert e["share_basis"] == "mixed" and "한국 주식은 1주 단위" in e["note_ko"]
+    assert (a["share_basis"], a["shares"]) == ("fractional", 59.97)
+    assert (b["share_basis"], b["shares"]) == ("integer", 4) and isinstance(b["shares"], int) and _balanced(e)
+
+
 def test_orders_round_down_with_fee_and_keep_totals():
-    e = estimate_orders(_doc(), {"AAA": 100.0, "BBB": 7000.0})
+    e = estimate_orders(_doc(), {"AAA.KS": 100.0, "BBB.KS": 7000.0})
     a, b = e["items"]
     assert a["shares"] == 59 and a["cost_usd"] == 5900.0 and a["fee_usd"] == 2.95  # 60주면 수수료까지 6000 을 넘는다
     assert b["shares"] == 0 and b["cost_usd"] == 0.0  # 1주 값이 목표 금액보다 크면 0주
@@ -34,7 +57,7 @@ def test_orders_round_down_with_fee_and_keep_totals():
     assert e["strategy_label_ko"] == "낙폭 맞춤안 (주식 90%)" and e["fx"]["rate"] == 1350.0 and e["capital"]["usd"] == 10000.0
 
 
-@pytest.mark.parametrize("doc,prices", [(_doc(), {"AAA": 100.0}), (_doc(basis="backtest"), {"AAA": 1.0, "BBB": 1.0}), (_doc(bps=None), {"AAA": 1.0, "BBB": 1.0}), (_doc(fx=0), {"AAA": 1.0, "BBB": 1.0}), ({}, {})])
+@pytest.mark.parametrize("doc,prices", [(_doc(), {"AAA.KS": 100.0}), (_doc(basis="backtest"), {"AAA.KS": 1.0, "BBB.KS": 1.0}), (_doc(bps=None), {"AAA.KS": 1.0, "BBB.KS": 1.0}), (_doc(fx=0), {"AAA.KS": 1.0, "BBB.KS": 1.0}), ({}, {})])
 def test_orders_absent_when_inputs_missing(doc, prices):
     assert estimate_orders(doc, prices) is None
 

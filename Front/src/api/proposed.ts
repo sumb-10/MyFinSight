@@ -14,11 +14,11 @@ export const PROPOSED_CONTRACT_VERSION = "proposed-0.1"
 export interface ProposedExecution {
   as_of: string                          // 가격·환율 기준일
   strategy_id: string; strategy_label_ko: string
-  share_basis: "integer" | "fractional"  // 정수 주식 / 소수점 주식
+  share_basis: "integer" | "fractional" | "mixed"  // 정수 주식 / 소수점 주식 / 혼합 (미국 소수점 · 한국 1주 단위)
   commission_bps: number                 // 거래 수수료 (bp)
   fx: { rate: number; date: string; source_ko: string }  // 1 USD = rate KRW
   capital: { amount: number; currency: "KRW" | "USD"; usd: number }
-  items: { ticker: string; name: string; price_usd: number; target_weight: number; target_usd: number; target_krw: number; shares: number; cost_usd: number; fee_usd: number; cost_krw: number }[]
+  items: { ticker: string; name: string; price_usd: number; target_weight: number; target_usd: number; target_krw: number; share_basis?: "integer" | "fractional"; shares: number; cost_usd: number; fee_usd: number; cost_krw: number }[]
   totals: { invested_usd: number; fee_usd: number; cash_left_usd: number; cash_left_krw: number; cash_target_usd: number; cash_target_krw: number }
   note_ko?: string
 }
