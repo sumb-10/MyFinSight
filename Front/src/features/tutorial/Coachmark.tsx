@@ -6,6 +6,8 @@ const PAD = 8  // 하이라이트 여백
 const GAP = 12  // 하이라이트와 말풍선 사이
 const W = 340  // 말풍선 너비
 const TOP_GAP = 72  // 긴 대상을 맞출 때 위쪽 여백 (고정 탭 48px + 여유)
+const EDGE = 12  // 강조 테두리와 화면 위 끝 사이 최소 여백
+const STICKY_GAP = 16  // 고정 탭 줄을 비출 때 줄을 내리는 거리
 
 export type Box = { top: number; left: number; width: number; height: number }
 
@@ -19,7 +21,19 @@ function boxOf(el: HTMLElement): Box | null {
   const tip = el.querySelector<HTMLElement>('[role="dialog"]')?.getBoundingClientRect()
   const top = Math.min(r.top, tip?.top ?? r.top), left = Math.min(r.left, tip?.left ?? r.left)
   const right = Math.max(r.right, tip?.right ?? r.right), bottom = Math.max(r.bottom, tip?.bottom ?? r.bottom)
-  return { top: top - PAD, left: left - PAD, width: right - left + PAD * 2, height: bottom - top + PAD * 2 }
+  const boxTop = Math.max(EDGE, top - PAD)  // 테두리가 화면 위 끝에 붙어 잘리지 않게
+  return { top: boxTop, left: left - PAD, width: right - left + PAD * 2, height: bottom + PAD - boxTop }
+}
+
+/** 요소가 든 고정(sticky) 줄을 화면 위에서 띄운다. 맨 위에 붙은 줄 안의 요소도 테두리 여백이 생긴다. 돌려주는 함수가 원래대로 되돌린다. */
+export function liftSticky(el: HTMLElement): (() => void) | null {
+  for (let p: HTMLElement | null = el; p; p = p.parentElement) {
+    if (getComputedStyle(p).position !== "sticky") continue
+    const bar = p, prev = bar.style.top
+    bar.style.top = `${STICKY_GAP}px`
+    return () => { bar.style.top = prev }
+  }
+  return null
 }
 
 const LEFT_MIN = 200  // 왼쪽 배치에 필요한 최소 폭 (이보다 좁으면 기본 배치)
@@ -88,21 +102,19 @@ export function Coachmark({ steps, index, onPrev, onNext, onClose }: { steps: To
     let timer = 0
     let revealed = !step.reveal
     let opened = false
+    const unlift = (step.also ?? []).flatMap((t) => { const x = findTarget(t); const undo = x ? liftSticky(x) : null; return undo ? [undo] : [] })
     const go = () => {
       const el = findTarget(step.target)
       if (el) {
         if (!revealed) {  // 접이식·도움말을 먼저 펼치고, 펼친 뒤의 크기로 위치를 잰다
           revealed = true
           const b = revealButton(step.reveal!)
-          if (b?.getAttribute("aria-expanded") === "false") { b.click(); opened = true; timer = window.setTimeout(go, 80); return }
+          if (b?.getAttribute("aria-expanded") === "false") { b.click(); opened = true; measure(); timer = window.setTimeout(go, 80); return }
         }
         // 즉시 이동 (index.css 의 scroll-behavior: smooth 를 따르면 움직이는 도중에 위치를 재게 된다). 화면보다 긴 대상은 위쪽(고정 탭 아래)에 맞춘다
         const tall = el.getBoundingClientRect().height > window.innerHeight * 0.6
         if (tall) window.scrollTo?.({ top: window.scrollY + el.getBoundingClientRect().top - TOP_GAP, behavior: "instant" })
         else el.scrollIntoView?.({ block: "center", behavior: "instant" })
-        const f = step.focus ? findTarget(step.focus)?.getBoundingClientRect() : null
-        const over = f ? f.bottom + 16 - window.innerHeight : 0  // 긴 대상의 아랫부분(focus)이 화면 밖이면 그만큼 더 내린다 (focus 위쪽이 고정 탭에 가리지 않는 만큼만)
-        if (f && over > 0) window.scrollTo?.({ top: window.scrollY + Math.min(over, f.top - TOP_GAP), behavior: "instant" })
         measure(); timer = window.setTimeout(measure, 120)
       }
       else if (tries++ < 20) timer = window.setTimeout(go, 150)
@@ -111,10 +123,11 @@ export function Coachmark({ steps, index, onPrev, onNext, onClose }: { steps: To
     go()
     return () => {
       window.clearTimeout(timer)
+      unlift.forEach((undo) => undo())
       const b = opened && step.reveal ? revealButton(step.reveal) : null  // 이 단계에서 펼친 것만 원래대로 접는다
       if (b?.getAttribute("aria-expanded") === "true") b.click()
     }
-  }, [step.target, step.reveal, step.focus, measure])
+  }, [step.target, step.reveal, step.also, measure])
 
   useEffect(() => {  // 창 크기가 바뀌거나 코드로 스크롤된 뒤에 위치를 다시 잰다 (사용자 스크롤은 잠겨 있어 이 경우만 생긴다)
     const on = () => measure()

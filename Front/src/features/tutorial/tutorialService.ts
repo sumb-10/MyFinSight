@@ -58,7 +58,7 @@ export async function loadTutorialDoc(): Promise<ReportDoc> {
 
 /** 목업 자료의 문장 속 「목업」을 「예시」로 (예: 「[목업] 동일비중이…」 → 「[예시] 동일비중이…」). 목업 원본은 그대로 두고 예시 화면에서만 바꾼다. */
 export function asExample<T>(v: T): T {
-  if (typeof v === "string") return v.replace(/목업/g, "예시") as T
+  if (typeof v === "string") return v.replace(/목업( 예시)?/g, "예시") as T
   if (Array.isArray(v)) return v.map(asExample) as T
   if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, asExample(x)])) as T
   return v

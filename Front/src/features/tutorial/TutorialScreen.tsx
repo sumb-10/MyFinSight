@@ -12,7 +12,7 @@ import { TOUR_STEPS } from "./steps"
 import { createTutorialService, loadTutorialDoc, TUTORIAL_REPORT_ID } from "./tutorialService"
 
 /** 예시 리포트 화면. 두 가지로 연다.
- *  - 「리포트 보는 법 둘러보기」(#/tutorial, startTour): 코치마크로 7단계를 안내한다.
+ *  - 「리포트 보는 법 둘러보기」(#/tutorial, startTour): 코치마크로 단계별로 안내한다.
  *  - 목록의 「[예시]」 리포트(#/reports/example): 일반 리포트처럼 열고, 띠의 버튼으로 둘러보기를 시작할 수 있다. 더보기에서 목록에서 지울 수 있다.
  *  실제 서버·목업 서비스와 상관없이 예시 데이터만 쓰고, 쓰기 동작은 모두 막는다. */
 export function TutorialScreen({ load = loadTutorialDoc, startTour = true }: { load?: () => Promise<ReportDoc>; startTour?: boolean }) {

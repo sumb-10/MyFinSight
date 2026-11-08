@@ -80,7 +80,7 @@ export function Dashboard({ summary: sm, doc, onJump, paperReason }: { summary: 
     <section aria-labelledby="h-summary" className="space-y-4">
       <div><h2 id="h-summary" className="text-xl font-bold text-slate-950">투자 결과 요약</h2><p className="mt-1 text-sm text-slate-600">먼저 결과, 종목별 투자 금액, 과거 성과, 내 조건 충족 여부를 확인하세요. 근거와 계산 과정은 아래 「자세한 분석 보기」에 있습니다.</p></div>
       <VerdictCard sm={sm} doc={doc} onMore={() => onJump("verdict")} paperReason={paperReason} />
-      <div data-tour="allocation">{sm.allocation ? <AllocationCard a={sm.allocation} doc={doc} onMore={() => onJump("construction")} /> : (
+      <div>{sm.allocation ? <AllocationCard a={sm.allocation} doc={doc} onMore={() => onJump("construction")} /> : (
         <ResultCard id="q-alloc" q="어떤 주식에 얼마를 투자하면 될까요?" more={["구성 자세히 보기", () => onJump("construction")]}><p className="text-sm text-slate-600">이 리포트에는 종목별 배분 금액 정보가 없습니다. 비중은 상세 분석의 구성 부분에서 확인할 수 있습니다.</p></ResultCard>
       )}</div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -173,6 +173,7 @@ export function AllocationCard({ a, doc, onMore }: { a: NonNullable<ReportSummar
   const desc = <>{forward ? "분석 기준일의 자료로 계산한 목표 배분액입니다" : "선택된 전략의 배분액입니다"} · 기준: {a.basis_ko}{!usdOnly && a.fx_direction ? ` · 환율 ${a.fx_direction}` : ""}</>
   return (
     <ResultCard id="q-alloc" q="어떤 주식에 얼마를 투자하면 될까요?" more={["구성 자세히 보기", onMore]} desc={desc}>
+      <div data-tour="allocation-list" className="space-y-4">
       <dl className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
         <div><dt className="text-xs font-semibold text-slate-500">투자 기준금액</dt><dd className="mt-0.5 text-lg font-bold tabular-nums text-slate-950">{base ?? fmt(a.initial_amount_usd, "usd")}{proposed(doc)?.structured?.requested_amount && <MockTag />}</dd></div>
         {base && <div><dt className="text-xs font-semibold text-slate-500">배분 계산에 쓴 금액</dt><dd className="mt-0.5 tabular-nums text-slate-700">{fmt(a.initial_amount_usd, "usd")}</dd></div>}
@@ -197,6 +198,7 @@ export function AllocationCard({ a, doc, onMore }: { a: NonNullable<ReportSummar
               amount={cashAmt ? <><span className="block whitespace-nowrap text-base font-bold tabular-nums text-slate-700">{usdOnly ? fmt(cashAmt.usd, "usd") : money(cashAmt.krw, "KRW")}</span>{!usdOnly && <span className="block whitespace-nowrap text-xs tabular-nums text-slate-500">{fmt(cashAmt.usd, "usd")}</span>}</> : <span className="text-xs text-slate-600">금액 미제공</span>} />
           )}
         </ul>
+      </div>
       </div>
       {items.length > TOP_N && <button type="button" aria-expanded={all} onClick={() => setAll((v) => !v)} className="flex items-center gap-1 text-sm font-semibold text-blue-700 hover:underline">{all ? "상위 종목만 보기" : `전체 종목 보기 (${items.length}개${cash ? " + 현금" : ""})`}<ChevronDown className={`size-4 transition-transform ${all ? "rotate-180" : ""}`} /></button>}
       {p?.execution && <div data-tour="orders"><ExecutionOrders e={p.execution} usdOnly={usdOnly} doc={doc} /></div>}
@@ -310,7 +312,7 @@ function ReturnCompare({ ret, ex, doc }: { ret: SummaryKpi; ex: SummaryKpi | nul
   return (
     <section aria-label={`${n.name} 비교`} className="@container rounded-xl border border-slate-200">
       <div className="px-5 pt-5">
-        <h4 className="flex items-center gap-1 text-base font-bold text-slate-950">{n.name}{kpiTerm(ret) && <span data-tour="term-help" className="inline-flex"><Term t={kpiTerm(ret)!} label={n.name} /></span>}{(meta || proposed(doc)?.structured?.benchmark) && <MockTag />}</h4>
+        <h4 data-tour="term-help" className="flex items-center gap-1 text-base font-bold text-slate-950">{n.name}{kpiTerm(ret) && <Term t={kpiTerm(ret)!} label={n.name} />}{(meta || proposed(doc)?.structured?.benchmark) && <MockTag />}</h4>
         {sub && <p className="text-[13px] leading-5 text-slate-600">{sub}</p>}
       </div>
       <dl className={`mt-4 grid grid-cols-1 gap-y-3 px-5 pb-5 ${hasBench ? "@xs:grid-cols-2 @xs:gap-x-6" : ""}`}>

@@ -117,7 +117,7 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
   useEffect(() => {  // 주소가 가리키는 곳으로 처음 한 번 이동: 기업 카드 > 리밸런싱 타임라인 > 섹션
     if (!doc || jumped.current || (!sec && !company && rb === undefined)) return
     jumped.current = true
-    const target = () => (company && document.getElementById(`acc-${company}`)) || (rb !== undefined && document.getElementById("rb-timeline")) || (sec ? document.getElementById(`sec-${sec}`) : null)
+    const target = () => typeof document === "undefined" ? null : (company && document.getElementById(`acc-${company}`)) || (rb !== undefined && document.getElementById("rb-timeline")) || (sec ? document.getElementById(`sec-${sec}`) : null)
     window.setTimeout(() => target()?.scrollIntoView({ block: "start" }), 120)
     window.setTimeout(() => {  // 위쪽 카드·차트가 자리를 잡으며 높이가 바뀌면 한 번 더 맞춘다 (고정 탭 아래 멈춤 위치에서 벗어난 경우만)
       const el = target()

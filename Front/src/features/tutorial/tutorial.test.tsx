@@ -4,7 +4,7 @@ import { TutorialScreen } from "./TutorialScreen"
 import { TOUR_STEPS } from "./steps"
 import { loadTutorialDoc } from "./tutorialService"
 import { parseRoute, routePath } from "../../app/router"
-import { popoverStyle } from "./Coachmark"
+import { liftSticky, popoverStyle } from "./Coachmark"
 import { ServiceContext } from "../../app/providers"
 import type { AnalysisService } from "../../api/service"
 import { ReportList } from "../report/ReportList"
@@ -78,7 +78,7 @@ describe("리포트 보는 법 둘러보기", () => {
     expect(routePath({ page: "tutorial" })).toBe("#/tutorial")
   })
 
-  it("예시 데이터 띠를 보여 주고, 다음/이전으로 단계를 옮기며 n/7 을 표시한다", async () => {
+  it("예시 데이터 띠를 보여 주고, 다음/이전으로 단계를 옮기며 n/전체를 표시한다", async () => {
     show()
     const d = await tour()
     expect(screen.getByRole("note")).toHaveTextContent("예시 데이터로 보는 화면입니다")
@@ -94,24 +94,28 @@ describe("리포트 보는 법 둘러보기", () => {
     for (const s of TOUR_STEPS) expect(document.querySelector(`[data-tour="${s.target}"]`), s.target).not.toBeNull()
   }, 20000)
 
-  it("2단계는 「예상 매수 주문」을 펼쳐 주식 수를 안내하고, 단계를 떠나면 다시 접는다", async () => {
+  it("2단계는 배분 카드만 비추고, 3단계에서 「예상 매수 주문」을 따로 펼쳐 주식 수를 안내하며, 떠나면 다시 접는다", async () => {
     show()
     await tour()
     const toggle = () => within(document.querySelector<HTMLElement>('[data-tour="orders"]')!).getByRole("button", { name: /예상 매수 주문/ })
     expect(toggle()).toHaveAttribute("aria-expanded", "false")
     fireEvent.click(screen.getByRole("button", { name: "다음" }))
-    expect(screen.getByRole("dialog", { name: TOUR_STEPS[1].title })).toHaveTextContent(/몇 주/)
+    expect(screen.getByRole("dialog", { name: TOUR_STEPS[1].title })).not.toHaveTextContent(/몇 주/)
+    expect(toggle()).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(screen.getByRole("button", { name: "다음" }))
+    expect(TOUR_STEPS[2].target).toBe("orders")
+    expect(screen.getByRole("dialog", { name: TOUR_STEPS[2].title })).toHaveTextContent(/몇 주/)
     await waitFor(() => expect(toggle()).toHaveAttribute("aria-expanded", "true"))
     expect(await screen.findByRole("columnheader", { name: "주식 수" })).toBeVisible()
     fireEvent.click(screen.getByRole("button", { name: "다음" }))
     expect(toggle()).toHaveAttribute("aria-expanded", "false")
   }, 20000)
 
-  it("6단계 제목을 바꾸고 ? 도움말을 예시로 열며, 「투자 용어 설명」도 함께 비춘 뒤 떠나면 닫는다", async () => {
+  it("용어 단계는 제목을 바꾸고 ? 도움말을 예시로 열며, 「투자 용어 설명」도 함께 비춘 뒤 떠나면 닫는다", async () => {
     show()
     await tour()
     const i = TOUR_STEPS.findIndex((s) => s.target === "term-help")
-    expect(i).toBe(5)
+    expect(i).toBe(6)
     for (let n = 0; n < i; n++) fireEvent.click(screen.getByRole("button", { name: "다음" }))
     expect(TOUR_STEPS[i].title).toBe("어려운 용어는 '?' 또는 투자 용어 설명으로")
     expect(TOUR_STEPS[i].also).toEqual(["glossary"])
@@ -122,6 +126,17 @@ describe("리포트 보는 법 둘러보기", () => {
     fireEvent.click(screen.getByRole("button", { name: "다음" }))
     expect(help.querySelector('[role="dialog"]')).toBeNull()
   }, 20000)
+
+  it("고정 줄 안의 요소를 비출 때는 줄을 위 끝에서 띄우고, 끝나면 되돌린다", () => {
+    const bar = document.createElement("div"); bar.style.position = "sticky"; bar.style.top = "0px"
+    const btn = document.createElement("button"); bar.appendChild(btn); document.body.appendChild(bar)
+    const undo = liftSticky(btn)!
+    expect(bar.style.top).toBe("16px")
+    undo()
+    expect(bar.style.top).toBe("0px")
+    bar.remove()
+    expect(liftSticky(document.createElement("button"))).toBeNull()
+  })
 
   it("마지막 단계에서 「마치기」, 끝나면 「내 분석 시작하기」가 남는다", async () => {
     show()
@@ -165,8 +180,8 @@ describe("리포트 보는 법 둘러보기", () => {
     expect(wheel2.defaultPrevented).toBe(false)  // 완료 화면에서는 스크롤 가능
   }, 20000)
 
-  it("2·5단계(큰 강조 영역)는 말풍선을 왼쪽에, 좁은 화면이면 기본 배치로", () => {
-    expect(TOUR_STEPS.filter((s) => s.placement === "left").map((s) => s.target)).toEqual(["allocation", "details"])
+  it("큰 강조 영역(배분 카드·예상 매수 주문·자세한 분석)은 말풍선을 왼쪽에, 좁은 화면이면 기본 배치로", () => {
+    expect(TOUR_STEPS.filter((s) => s.placement === "left").map((s) => s.target)).toEqual(["allocation-list", "orders", "details"])
     const big = { top: 64, left: 272, width: 720, height: 860 }
     const left = popoverStyle(big, "left", 1440, 900)
     expect(left.side).toBe("left")
