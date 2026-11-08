@@ -69,4 +69,5 @@ export const api = {
   get: <T>(path: string, init?: Init) => fetchJson<T>(path, { ...init, method: "GET" }),
   post: <T>(path: string, body?: unknown, init?: Init) => fetchJson<T>(path, { ...init, method: "POST", body: body === undefined ? undefined : JSON.stringify(body) }),
   put: <T>(path: string, body: unknown, init?: Init) => fetchJson<T>(path, { ...init, method: "PUT", body: JSON.stringify(body) }),
+  del: <T>(path: string, init?: Init) => fetchJson<T>(path, { ...init, method: "DELETE" }),
 }

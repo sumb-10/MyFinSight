@@ -17,7 +17,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 from backend.adapters.crawlers import config
 from backend.analysis.api import errors
-from backend.analysis.api.routers import meta, paper, profile, reports, requests, runs
+from backend.analysis.api.routers import meta, paper, profile, report_names, reports, requests, runs
 from backend.analysis.api.services import Services
 from backend.analysis.common.dbconn import default_repo
 from backend.analysis.common.llm import LlmClient
@@ -43,7 +43,7 @@ def create_analysis_app(
     app.add_middleware(GZipMiddleware, minimum_size=1024)  # 리포트 문서(수백 KB~MB)는 압축해서 보낸다 (라운드 4)
     app.state.services = services
     errors.install(app)
-    for r in (meta.router, profile.router, requests.router, runs.router, reports.router, paper.router):
+    for r in (meta.router, profile.router, requests.router, runs.router, reports.router, report_names.router, paper.router):
         app.include_router(r, prefix=API_PREFIX)
     return app
 

@@ -152,8 +152,8 @@ export function requestedAmount(doc?: ReportDoc): string | null {
 const TOP_N = 8
 
 /** 카드 2: 어떤 주식에 얼마를 투자하면 될까요? 서버 배분 표의 종목별 금액을 먼저, 비중은 보조로.
- *  서버는 매수 수량·수수료·잔여 현금·현금 금액을 주지 않아 계산하지 않는다. 보여 주는 구성은 서버 배분 하나(분석 기준일 「현재 구성」)뿐이다 —
- *  여러 구성을 고르는 버튼은 헷갈려서 두지 않는다. 제안 계약(proposed)에 현금 금액·예상 매수 주문이 있으면(지금은 목업만) 함께 보여 준다. */
+ *  화면은 매수 수량·수수료·잔여 현금을 계산하지 않고 서버가 준 값만 쓴다. 보여 주는 구성은 서버 배분 하나(분석 기준일 「현재 구성」)뿐이다 —
+ *  여러 구성을 고르는 버튼은 헷갈려서 두지 않는다. 제안 계약(proposed)에 예상 매수 주문이 있으면(서버 또는 목업) 함께 보여 준다. */
 export function AllocationCard({ a, doc, onMore }: { a: NonNullable<ReportSummary["allocation"]>; doc?: ReportDoc; onMore: () => void }) {
   const p = proposed(doc)
   const bases = p?.allocations ?? null
@@ -163,7 +163,7 @@ export function AllocationCard({ a, doc, onMore }: { a: NonNullable<ReportSummar
   const [all, setAll] = useState(false)
   const cashW = a.cash_weight
   const cash = cashW >= 0.0005 ? cashW : 0  // 0.0% 로 보일 만큼 작은 값(계산 잔차)은 현금 행을 만들지 않는다
-  const cashAmt = bases ? { usd: bases.current.cash_usd, krw: bases.current.cash_krw } : null
+  const cashAmt = bases ? { usd: bases.current.cash_usd, krw: bases.current.cash_krw } : p?.execution ? { usd: p.execution.totals.cash_target_usd, krw: p.execution.totals.cash_target_krw } : null  // 「예상 매수 주문」의 전략 현금 비중과 같은 값
   const usdOnly = !(a.fx_rate > 0) || Math.abs(a.fx_rate - 1) < 1e-9  // 환율 1.00 = USD 요청: 서버 '원화' 값이 USD 숫자와 같아 원화로 보이면 안 된다
   const base = requestedAmount(doc)
   const fee = (doc?.parameters?.backtest as { commission_bps?: number } | undefined)?.commission_bps
@@ -205,7 +205,7 @@ export function AllocationCard({ a, doc, onMore }: { a: NonNullable<ReportSummar
       <div className="space-y-1 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
         {forward && doc && <p>이 배분은 분석 기준일의 「현재 구성」입니다. 위에서 선택된 전략({doc.header.chosen_label_ko})은 과거 성과로 고른 구성이라 비중이 다를 수 있습니다.</p>}
         {p?.execution
-          ? <p>목표 배분액은 비중대로 나눈 금액입니다. 주식은 1주 단위로 사므로 실제로 살 수 있는 수량과 금액은 「예상 매수 주문」에서 볼 수 있습니다. 비중은 반올림해 표시해 합계가 100%와 조금 다를 수 있습니다.</p>
+          ? <p>목표 배분액은 비중대로 나눈 금액입니다. {p.execution.share_basis === "integer" ? "주식은 1주 단위로 사므로 " : ""}실제로 살 수 있는 수량과 금액은 「예상 매수 주문」에서 볼 수 있습니다. 비중은 반올림해 표시해 합계가 100%와 조금 다를 수 있습니다.</p>
           : <p>목표 배분액은 실제 매수 금액과 다를 수 있습니다. 종목별 매수 수량, 거래 수수료{fee !== undefined ? `(백테스트는 거래대금의 ${fee / 100}%를 가정)` : ""}, 매수 후 남는 현금은 이 분석에서 제공하지 않습니다. 비중은 반올림해 표시해 합계가 100%와 조금 다를 수 있습니다.</p>}
       </div>
     </ResultCard>
@@ -227,18 +227,24 @@ function AllocRow({ color, weight, max, name, amount }: { color: string; weight:
   )
 }
 
+const SHARE_BASIS = {
+  integer: { short: "1주 단위", reason: "주식은 1주 단위로만 살 수 있어" },
+  fractional: { short: "소수점", reason: "소수점 주식으로 사도" },
+  mixed: { short: "미국 소수점 · 한국 1주 단위", reason: "미국 주식은 소수 넷째 자리까지, 한국 주식은 1주 단위로 계산해" },
+} as const
+
 /** 예상 매수 주문 (제안 계약 execution): 카드 2의 배분(분석 기준일 현재 구성) 비중을 기준일 주가·환율로 실제 주문 단위로 바꾼 값. 목표 배분액과 구분한다. */
 function ExecutionOrders({ e, usdOnly, doc }: { e: NonNullable<ReturnType<typeof proposed>>["execution"] & object; usdOnly: boolean; doc?: ReportDoc }) {
   const amt = (usd: number, krw: number) => (usdOnly ? fmt(usd, "usd") : money(krw, "KRW"))
   const fx = e.fx.rate
   return (
-    <Disclosure size="sm" title={<span className="inline-flex items-center">예상 매수 주문<MockTag /></span>} summary={`${e.share_basis === "integer" ? "1주 단위" : "소수점"} · ${e.items.length}종목`}>
+    <Disclosure size="sm" title={<span className="inline-flex items-center">예상 매수 주문<MockTag /></span>} summary={`${SHARE_BASIS[e.share_basis].short} · ${e.items.length}종목`}>
       <div className="space-y-3">
-        <p className="text-xs leading-5 text-slate-600">위 배분({e.strategy_label_ko})의 비중을 분석 기준일({e.as_of}) 주가와 환율(1 USD = {fx.toLocaleString("en-US")}원)로 실제 주문 단위로 바꾼 예상입니다. {e.share_basis === "integer" ? "주식은 1주 단위로만 살 수 있어" : "소수점 주식으로 사도"} 목표 배분액과 금액이 조금 다르고, 남는 돈은 현금으로 남습니다. 거래 수수료는 거래대금의 {e.commission_bps / 100}%로 가정했습니다.</p>
+        <p className="text-xs leading-5 text-slate-600">위 배분({e.strategy_label_ko})의 비중을 분석 기준일({e.as_of}) 주가{!usdOnly && <>와 환율(1 USD = {fx.toLocaleString("en-US")}원)</>}로 실제 주문 단위로 바꾼 예상입니다. {SHARE_BASIS[e.share_basis].reason} 목표 배분액과 금액이 조금 다르고, 남는 돈은 현금으로 남습니다. 거래 수수료는 거래대금의 {e.commission_bps / 100}%로 가정했습니다.</p>
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="w-full min-w-[620px] text-sm">
             <thead><tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold text-slate-600"><th className="px-3 py-2">종목</th><th className="px-3 py-2 text-right">기준 주가</th><th className="px-3 py-2 text-right">목표 배분액</th><th className="px-3 py-2 text-right">주식 수</th><th className="px-3 py-2 text-right">예상 매수 금액</th><th className="px-3 py-2 text-right">수수료</th></tr></thead>
-            <tbody>{e.items.map((x) => <tr key={x.ticker} className="border-b border-slate-100"><td className="px-3 py-2"><b className="font-semibold text-slate-900">{x.ticker}</b> <span className="text-xs text-slate-500">{nameOf(doc, x.ticker)}</span></td><td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-700">{fmt(x.price_usd, "usd")}</td><td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-500">{amt(x.target_usd, x.target_krw)}</td><td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-slate-950">{x.shares.toLocaleString("en-US")}주</td><td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-slate-950">{amt(x.cost_usd, x.cost_krw)}</td><td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-600">{amt(x.fee_usd, Math.round(x.fee_usd * fx))}</td></tr>)}</tbody>
+            <tbody>{e.items.map((x) => <tr key={x.ticker} className="border-b border-slate-100"><td className="px-3 py-2"><b className="font-semibold text-slate-900">{x.ticker}</b> <span className="text-xs text-slate-500">{nameOf(doc, x.ticker)}</span></td><td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-700">{fmt(x.price_usd, "usd")}</td><td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-500">{amt(x.target_usd, x.target_krw)}</td><td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-slate-950">{x.shares.toLocaleString("en-US", { maximumFractionDigits: 4 })}주</td><td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-slate-950">{amt(x.cost_usd, x.cost_krw)}</td><td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-600">{amt(x.fee_usd, Math.round(x.fee_usd * fx))}</td></tr>)}</tbody>
           </table>
         </div>
         <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">

@@ -11,6 +11,7 @@ from backend.analysis.api.routers import services
 from backend.analysis.common.store import ComparisonStore
 from backend.analysis.errors import NotFound
 from backend.analysis.m5_backtest_report.report import present_doc
+from backend.analysis.m5_backtest_report.report_meta import ReportMetaStore, auto_name, name_view
 from backend.analysis.schemas.dialog import DialogState
 
 router = APIRouter(tags=["reports"])
@@ -20,17 +21,22 @@ router = APIRouter(tags=["reports"])
 def list_reports(request: Request, limit: int = 100) -> list[dict[str, Any]]:
     sv = services(request)
     rows = {r["report_id"]: r for r in sv.repo.list_reports(limit)}
+    names = ReportMetaStore(sv.store).all()
     out = []
     reqs = {d.request_id: d for d in sv.requests.list()}
     for e in sv.queue.list():
-        if e.status not in ("success", "partial"):
+        if e.status not in ("success", "partial") or (names.get(e.report_id or "") or {}).get("deleted_at"):
             continue
         meta = rows.get(e.report_id or "")
         d = reqs.get(e.request_id)
-        out.append({"report_id": e.report_id, "run_id": e.run_id, "request_id": e.request_id, "status": e.status, "has_report": bool(meta),
-                    "strategy_name": (meta or {}).get("strategy_name"), "request_summary": (meta or {}).get("request_summary") or (d.idea if d else None),
-                    "as_of": str((meta or {}).get("as_of") or ((d.derived or {}).get("as_of") if d else None) or ""), "created_at": e.finished_at,
-                    "idea": d.idea if d else None, "mode": d.mode if d else None})  # fmt: skip
+        row = {"report_id": e.report_id, "run_id": e.run_id, "request_id": e.request_id, "status": e.status, "has_report": bool(meta),
+               "strategy_name": (meta or {}).get("strategy_name"), "request_summary": (meta or {}).get("request_summary") or (d.idea if d else None),
+               "as_of": str((meta or {}).get("as_of") or ((d.derived or {}).get("as_of") if d else None) or ""), "created_at": e.finished_at,
+               "idea": d.idea if d else None, "mode": d.mode if d else None}  # fmt: skip
+        if e.report_id and meta:
+            auto = auto_name(idea=row["idea"], request_summary=row["request_summary"], strategy_name=row["strategy_name"], run_id=e.run_id)
+            row["proposed_name"] = name_view(e.report_id, auto, names.get(e.report_id))
+        out.append(row)
         if len(out) >= limit:
             break
     return out
@@ -39,6 +45,8 @@ def list_reports(request: Request, limit: int = 100) -> list[dict[str, Any]]:
 @router.get("/reports/{report_id}")
 def get_report(report_id: str, request: Request) -> dict[str, Any]:
     sv = services(request)
+    if ReportMetaStore(sv.store).is_deleted(report_id):
+        raise NotFound(f"리포트 {report_id} 이 없습니다")
     row = sv.repo.get_report(report_id)
     if not row:
         try:
@@ -49,9 +57,9 @@ def get_report(report_id: str, request: Request) -> dict[str, Any]:
             raise NotFound(f"실행이 {e.status} 상태라 리포트가 없습니다", code="REPORT_BLOCKED", details={"run_status": e.status, "error": e.error_message})
         raise NotFound("리포트가 아직 만들어지지 않았습니다", code="REPORT_NOT_READY", details={"run_status": e.status})
     doc = row["doc"] if isinstance(row, dict) and "doc" in row else row
-    if doc.get("doc_version", 1) >= 2:
-        return doc
-    return present_doc(doc, sv.results(report_id))  # 라운드 3 이전 문서: 읽을 때 근거 슬림·요약 보강 (저장 문서는 그대로)
+    if doc.get("doc_version", 1) < 2:
+        doc = present_doc(doc, sv.results(report_id))  # 라운드 3 이전 문서: 읽을 때 근거 슬림·요약 보강 (저장 문서는 그대로)
+    return sv.with_orders(report_id, doc)
 
 
 _KIND_ORDER = {"news": 0, "disclosure": 1, "financial": 2, "calc": 3, "data_quality": 4}

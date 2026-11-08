@@ -9,8 +9,15 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from backend.analysis.api.routers import services
+from backend.analysis.api.routers.report_names import display_names, with_report_name
 
 router = APIRouter(tags=["paper"])
+
+
+def _named_detail(request: Request, d: dict[str, Any]) -> dict[str, Any]:
+    """상세 응답의 모의투자 이름을 원본 리포트의 지금 이름으로."""
+    names = display_names(services(request))
+    return {**d, "portfolio": with_report_name(names, d["portfolio"]), "summary": with_report_name(names, d["summary"])}
 
 
 class PaperIn(BaseModel):
@@ -33,29 +40,31 @@ def preview(body: PaperIn, request: Request) -> dict[str, Any]:
 
 @router.post("/paper", status_code=201)
 def create(body: PaperIn, request: Request) -> dict[str, Any]:
-    return services(request).paper().create(body.report_id, **body.kwargs())
+    return _named_detail(request, services(request).paper().create(body.report_id, **body.kwargs()))
 
 
 @router.get("/paper")
 def list_papers(request: Request) -> list[dict[str, Any]]:
-    return services(request).paper().list()
+    sv = services(request)
+    names = display_names(sv)
+    return [with_report_name(names, s) for s in sv.paper().list()]
 
 
 @router.get("/paper/{paper_id}")
 def detail(paper_id: str, request: Request) -> dict[str, Any]:
-    return services(request).paper().detail(paper_id)
+    return _named_detail(request, services(request).paper().detail(paper_id))
 
 
 @router.post("/paper/{paper_id}/refresh")
 def refresh(paper_id: str, request: Request) -> dict[str, Any]:
-    return services(request).paper().refresh(paper_id)
+    return _named_detail(request, services(request).paper().refresh(paper_id))
 
 
 @router.post("/paper/{paper_id}/stop")
 def stop(paper_id: str, request: Request) -> dict[str, Any]:
-    return services(request).paper().stop(paper_id)
+    return _named_detail(request, services(request).paper().stop(paper_id))
 
 
 @router.post("/paper/{paper_id}/resume")
 def resume(paper_id: str, request: Request) -> dict[str, Any]:
-    return services(request).paper().resume(paper_id)
+    return _named_detail(request, services(request).paper().resume(paper_id))

@@ -29,10 +29,18 @@ describe("목업 모드 분리", () => {
     setUrl("/?mock=0#/home")
     expect(isMockMode()).toBe(false)
   })
-  it("실제 서버 서비스에는 제안 계약 메서드가 없다 (일반 모드 화면에는 목업 기능이 열리지 않는다)", () => {
+  it("서버가 아직 주지 않는 제안 계약 메서드는 실제 서버 서비스에 없고, 서버가 구현한 리포트 이름·삭제만 연결된다", () => {
     const http: AnalysisService = new HttpService()
-    expect(http.renameReport).toBeUndefined(); expect(http.searchStocks).toBeUndefined(); expect(http.getPaperKrw).toBeUndefined()
-    expect(typeof mock().renameReport).toBe("function")
+    expect(http.searchStocks).toBeUndefined(); expect(http.getPaperKrw).toBeUndefined(); expect(http.setPaperName).toBeUndefined()
+    expect(typeof http.renameReport).toBe("function"); expect(typeof http.deleteReport).toBe("function"); expect(typeof http.getReportName).toBe("function")
+    expect(typeof mock().searchStocks).toBe("function")
+  })
+  it("리포트 이름·삭제는 서버 주소로 요청한다", async () => {
+    const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ report_id: "r1", deleted: true }), { status: 200 }))
+    const http = new HttpService()
+    await http.getReportName("r1"); await http.renameReport("r1", "새 이름"); await http.deleteReport("r1")
+    const calls = f.mock.calls.map(([u, i]) => [String(u).replace(/^.*\/api\/v1/, ""), i?.method, i?.body])
+    expect(calls).toEqual([["/reports/r1/name", "GET", undefined], ["/reports/r1/name", "PUT", JSON.stringify({ name: "새 이름" })], ["/reports/r1", "DELETE", undefined]])
   })
   it("목업 모드에서는 서버 요청 함수가 요청을 보내지 않고 막는다", async () => {
     const f = vi.spyOn(globalThis, "fetch")

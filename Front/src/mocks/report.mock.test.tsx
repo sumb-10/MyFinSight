@@ -2,6 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { ServiceContext } from "../app/providers"
 import type { AnalysisService } from "../api/service"
+import type { ProposedExecution, ProposedReport } from "../api/proposed"
 import type { ReportDoc } from "../api/types"
 import { AllocationCard } from "../features/report/Dashboard"
 import { ReportDetail } from "../features/report/ReportDetail"
@@ -43,6 +44,19 @@ describe("카드 2: 현재 구성과 예상 매수 주문", () => {
       const cardW = Object.fromEntries(alloc.items.map((x) => [x.ticker, x.weight]))
       for (const x of e.items) expect(x.target_weight, `${sc.id} ${x.ticker}`).toBeCloseTo(cardW[x.ticker] ?? 0, 6)
     }
+  })
+  it("서버의 혼합 주문: 미국은 소수 넷째 자리, 한국은 1주 단위로 보이고 현금 줄은 전략 현금 비중과 같은 금액이다", () => {
+    const d = buildReport(REPORTS[0]) as ReportDoc & { proposed: ProposedReport }
+    const e = d.proposed.execution!
+    const execution: ProposedExecution = { ...e, share_basis: "mixed", items: e.items.map((x, i) => ({ ...x, share_basis: i ? "integer" : "fractional", shares: i ? 55 : 12.3456 })), totals: { ...e.totals, cash_target_usd: 1769.51, cash_target_krw: 2400057 } }
+    const { proposed: _drop, ...plain } = d
+    render(<AllocationCard a={{ ...plain.summary!.allocation!, cash_weight: 0.08 }} doc={{ ...plain, proposed: { contract: "proposed-0.1", execution } } as ReportDoc} onMore={() => {}} />)
+    expect(screen.queryByText("금액 미제공")).toBeNull()
+    expect(screen.getByLabelText("종목별 목표 배분액")).toHaveTextContent("240만 57원")
+    fireEvent.click(screen.getByRole("button", { name: /예상 매수 주문.*미국 소수점 · 한국 1주 단위/ }))
+    expect(screen.getByText("12.3456주")).toBeInTheDocument()
+    expect(screen.getAllByText("55주").length).toBe(e.items.length - 1)
+    expect(screen.getByText(/미국 주식은 소수 넷째 자리까지, 한국 주식은 1주 단위로 계산해/)).toBeInTheDocument()
   })
   it("제안 데이터가 없는 문서(일반 모드)는 지금처럼 고르는 칸·예상 주문 없이 「금액 미제공」으로 둔다", () => {
     const d = buildReport(REPORTS[0]) as ReportDoc & { proposed?: unknown }
