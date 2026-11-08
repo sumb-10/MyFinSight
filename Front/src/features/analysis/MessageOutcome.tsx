@@ -24,7 +24,7 @@ export function MessageOutcome({ results }: { results: ProposedMessageResult[] }
           <p className="flex flex-wrap items-center font-semibold">{L.title}<MockTag /></p>
           <p className="mt-0.5 break-words text-xs opacity-80">“{last.text}”</p>
           {last.outcome === "applied" && last.changes.length > 0 && <ul className="mt-2 space-y-0.5">{last.changes.map((c) => <li key={c.field}>{c.label_ko}: {c.before_ko} → <b>{c.after_ko}</b></li>)}</ul>}
-          {last.outcome !== "applied" && <p className="mt-2">{last.outcome === "not_applied" ? "바뀐 조건이 없습니다. 기존 조건이 그대로 유지됩니다." : "아직 조건을 바꾸지 않았습니다. 확인될 때까지 기존 조건이 그대로 유지됩니다."}</p>}
+          {last.outcome !== "applied" && <p className="mt-2">{last.outcome === "not_applied" ? `바뀐 조건이 없습니다.${last.note_ko ? "" : " 기존 조건이 그대로 유지됩니다."}` : "아직 조건을 바꾸지 않았습니다. 확인될 때까지 기존 조건이 그대로 유지됩니다."}</p>}
           {last.note_ko && <p className="mt-1 text-xs leading-5 opacity-90">{last.note_ko}</p>}
         </div>
       </div>

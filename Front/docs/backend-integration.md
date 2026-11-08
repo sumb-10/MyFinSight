@@ -74,7 +74,7 @@
 - **예시:** `{"proposed_rules":{"allow_zero_initial_amount":true}}`
 - **필요한 계산:** 0원 백테스트(첫 적립일부터 매수), 수익률 기준(넣은 원금 대비 / 시간가중) 정의, 모의투자 0원 시작 처리, 리포트의 「투자 기준금액」 표시 규칙.
 - **목업:** `MockService.options`, 프로필 변형 `mocks/data/profile.ts` 의 `ZERO_CAPITAL_VERSION`. **프런트 수정:** `api/proposed.ts`(`proposedRulesOf` 위치). 화면 `ProfileScreen.tsx`(검사·예상 투자 일정)는 규칙 값만 본다.
-- **주의:** 홈 「상세 조건」 창의 기존 검사(투자금 > 0)는 이번 범위에서 고치지 않았다 — 규칙이 확정되면 같은 플래그를 보게 바꿔야 한다. 예상 투자 일정은 원금만 계산하며 수익을 예측하지 않는다.
+- **주의:** 홈·질문·확인 화면의 「상세 조건」 창도 같은 플래그를 본다 (`features/home/DetailConditions.tsx` 의 `validate(f, { allowZero })`, 2026-11 화면 편의성 개선). 예상 투자 일정은 원금만 계산하며 수익을 예측하지 않는다.
 
 ### 2-5. 투자성향 기반 전략 추천 — 4단계
 

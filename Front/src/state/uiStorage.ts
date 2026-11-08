@@ -36,3 +36,6 @@ export function loadLegacyProfile(): Record<string, unknown> | null {
 }
 
 export function clearLegacy() { try { window.localStorage.removeItem(LEGACY_KEY) } catch { /* ignore */ } }
+
+// prefillNote: 요청을 그만두고 홈에 아이디어를 채워 왔을 때 한 번 보여 줄 안내 · draftOverrides: 홈 「상세 조건」 초안 (draftIdea 처럼 화면을 떠나도 남는다)
+export interface UiState { prefillNote?: string | null; draftOverrides?: Record<string, unknown> | null }

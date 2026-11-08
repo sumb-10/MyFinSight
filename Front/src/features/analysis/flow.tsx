@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react"
-import { AlertCircle, Check, Loader2 } from "lucide-react"
+import { AlertCircle, ArrowLeft, Check, Loader2 } from "lucide-react"
+import { useService } from "../../app/providers"
+import { navigate } from "../../app/router"
+import { errorMessage } from "../../api/client"
 import type { ConditionRow, DialogState, Question } from "../../api/types"
-import { Badge, Button } from "../../ui"
+import { saveUi } from "../../state/uiStorage"
+import { Alert, Badge, Button } from "../../ui"
 import { ko } from "../../lib/format"
 import { Part, PartDisclosure } from "../profile/parts"
 import { MockTag } from "../report/proposedView"
@@ -25,6 +29,17 @@ export function FlowHeader({ eyebrow, title, desc, action }: { eyebrow: string; 
       {action && <div className="flex shrink-0 gap-2">{action}</div>}
     </header>
   )
+}
+
+/** App 의 main(overflow-x-auto)은 세로로도 스크롤 컨테이너가 되어, 그 안의 sticky 가 창 스크롤에 붙지 않는다.
+ *  sticky 를 쓰는 화면(확인 화면 「분석 시작」 줄, 진행 화면 오른쪽 열)에 있는 동안만 clip 으로 바꾸고 나갈 때 되돌린다. */
+export function useStickyInMain() {
+  useEffect(() => {
+    const main = document.querySelector("main")
+    if (!main) return
+    main.style.overflowX = "clip"
+    return () => { main.style.overflowX = "" }
+  }, [])
 }
 
 const FLOW = ["추가 질문 답하기", "조건 최종 확인", "분석 시작"]
@@ -53,7 +68,7 @@ export function FlowSteps({ current }: { current: 0 | 1 }) {
 }
 
 /** 요청 처리 중 표시. 실제 요청이 끝날 때까지만 보인다 (진행률은 알 수 없어 경과 시간만). */
-export function Pending({ title, detail }: { title: string; detail?: string }) {
+export function Pending({ title, detail, children }: { title: string; detail?: string; children?: React.ReactNode }) {
   const [sec, setSec] = useState(0)
   useEffect(() => { const t = setInterval(() => setSec((s) => s + 1), 1000); return () => clearInterval(t) }, [])
   return (
@@ -62,12 +77,103 @@ export function Pending({ title, detail }: { title: string; detail?: string }) {
       <div className="min-w-0 text-sm">
         <p className="font-semibold text-slate-900">{title}</p>
         {detail && <p className="mt-0.5 text-xs leading-5 text-slate-500">{detail}</p>}
+        {children}
         <p className="mt-1 text-xs text-slate-400" aria-hidden="true">{sec}초 경과{sec >= 30 ? " · 분석 모델이 응답을 만드는 중이라 1~2분 걸릴 수 있습니다" : ""}</p>
       </div>
     </div>
   )
 }
+/** 홈 「투자조건 확인하기」를 누른 뒤: 서버가 새 요청을 만드는 동안 (LLM 두 번 · 수 초~1분). 서버가 진행률을 주지 않으므로
+ *  가짜 진행률 없이 「하는 일」과 경과 시간만 보여 준다 (전에는 버튼 글자만 바뀌어 돌아가는지 알 수 없었다). */
+export function IdeaPending() {
+  return (
+    <Pending title="아이디어를 해석하고 있습니다" detail="분석 모델이 아이디어를 이해하고, 기본 투자조건과 맞춰 본 뒤 꼭 필요한 질문만 고릅니다. 끝나면 질문 화면으로 넘어갑니다.">
+      <ol className="mt-2 space-y-0.5 text-xs text-slate-600">
+        {["아이디어 이해 (투자 테마·종목 찾기)", "기본 투자조건과 맞춰 보기", "꼭 필요한 질문 고르기"].map((t, i) => <li key={t} className="flex gap-2"><span className="grid size-4 shrink-0 place-items-center rounded-full bg-blue-100 text-[10px] font-bold text-blue-800">{i + 1}</span>{t}</li>)}
+      </ol>
+    </Pending>
+  )
+}
 export const LLM_DETAIL = "분석 모델(AI)이 내용을 해석해 조건에 반영합니다. 처리하는 동안 화면을 닫지 마세요."
+
+/** 「말로 조건 보태기」: 질문 화면과 확인 화면이 같은 이름·안내를 쓴다. */
+export const NOTE_BUTTON = "말로 보태기"
+export const NOTE_DESC = `질문과 상관없이 바꾸고 싶은 것을 적고 「${NOTE_BUTTON}」를 누르면 분석 모델이 해석해 반영합니다. 투자 시장·숫자 조건은 「조건 바꾸기」가 더 정확합니다.`
+export const NOTE_UNSENT = `아직 반영하지 않았습니다. 「${NOTE_BUTTON}」를 눌러야 이번 분석 조건에 들어갑니다.`
+/** 적고 아직 보내지 않은 문장 (요청별, 이 탭에서만). 질문 화면 → 확인 화면으로 넘어가도 남아, 확인 화면의 「반영하지 않은 추가 요청」 확인을 거친다. */
+const pendingNotes = new Map<string, string>()
+export const pendingNote = (requestId: string) => pendingNotes.get(requestId) ?? ""
+export const keepPendingNote = (requestId: string, text: string) => { if (text.trim()) pendingNotes.set(requestId, text); else pendingNotes.delete(requestId) }
+
+// ───────────────────────── 요청 그만두기 · 화면 사이 안내 ─────────────────────────
+/** 같은 아이디어·조건으로 새 요청을 시작할 수 있게 홈에 미리 채워 둔다 (프로필을 바꿔도 진행 중 요청에는 적용되지 않으므로).
+ *  note 를 주면 홈이 왜 채워져 있는지 한 번 알린다 (요청을 그만둔 경우). */
+export function startNewWith(idea: string, overrides: Record<string, unknown> | undefined, note?: string) {
+  saveUi({ prefillIdea: idea, prefillOverrides: overrides ?? {}, prefillNote: note ?? null, activeRequestId: null })
+  navigate({ page: "home" })
+}
+export const LEFT_NOTE = "그만둔 요청의 아이디어와 바꾼 조건을 그대로 채워 두었습니다. 고쳐서 다시 보내 주세요."
+
+/** 요청 그만두기: 서버에서 요청을 닫고, 아이디어·바꾼 조건을 홈에 채워 둔다 (전에는 홈으로만 가서 아이디어를 다시 써야 했다).
+ *  질문 화면·확인 화면이 같이 쓴다. ask → 한 번 더 확인(CancelRequestConfirm) → leave. */
+export function useLeaveRequest(requestId: string, st: DialogState | null | undefined) {
+  const svc = useService()
+  const [asking, setAsking] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  const leave = async () => {
+    if (!st) return
+    setBusy(true); setError("")
+    try { await svc.cancelRequest(requestId); startNewWith(st.idea, st.overrides, LEFT_NOTE) }
+    catch (e) { setError(errorMessage(e)) }
+    finally { setBusy(false) }
+  }
+  return { asking, busy, error, ask: () => setAsking(true), close: () => setAsking(false), leave }
+}
+type Leave = ReturnType<typeof useLeaveRequest>
+
+/** 머리 오른쪽 「취소하고 홈으로」. */
+export function CancelRequestButton({ c, disabled }: { c: Leave; disabled?: boolean }) {
+  return <Button variant="ghost" onClick={c.ask} disabled={disabled || c.asking || c.busy}><ArrowLeft className="size-4" />취소하고 홈으로</Button>
+}
+
+/** 「취소하고 홈으로」를 누른 뒤의 확인. keepLabel = 그만두지 않고 남는 버튼 이름 (질문 화면 「계속 답하기」, 확인 화면 「계속 확인하기」). */
+export function CancelRequestConfirm({ c, keepLabel, disabled }: { c: Leave; keepLabel: string; disabled?: boolean }) {
+  if (!c.asking) return c.error ? <ActionError title="요청을 취소하지 못했습니다" message={c.error} retry={() => void c.leave()} /> : null
+  return (
+    <div role="alertdialog" aria-label="요청 취소 확인" className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-900">
+      <p className="font-semibold">이 요청을 취소할까요?</p>
+      <p className="mt-1">지금까지 답한 내용은 이 요청과 함께 닫히고, 분석은 시작되지 않습니다. 아이디어와 바꾼 조건은 홈에 그대로 채워 둡니다.</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button variant="danger" onClick={() => void c.leave()} disabled={disabled || c.busy}>{c.busy ? "취소하는 중…" : "요청 취소"}</Button>
+        <Button variant="ghost" onClick={c.close} disabled={c.busy}>{keepLabel}</Button>
+      </div>
+      {c.error && <p className="mt-2 text-xs font-medium">취소하지 못했습니다: {c.error} 다시 눌러 주세요.</p>}
+    </div>
+  )
+}
+
+/** 화면을 넘어가며 남기는 1회성 안내 (요청별, 이 탭에서만 · pendingNotes 와 같은 방식).
+ *  확인 화면에서 조건을 바꿨더니 다시 물을 것이 생겨 질문 화면으로 돌아갈 때, 왜 돌아왔는지 알리는 데 쓴다. */
+export interface FlowNotice { what: string; changes: RowChange[] }
+const notices = new Map<string, FlowNotice>()
+export const leaveFlowNotice = (requestId: string, n: FlowNotice) => { notices.set(requestId, n) }
+/** 읽고 지운다. 개발 모드 이중 실행에도 한 번은 보이도록 state 초기값에서 읽고(peek), 지우기는 effect 에서 한다. */
+export function useFlowNotice(requestId: string) {
+  const [n] = useState(() => notices.get(requestId) ?? null)
+  useEffect(() => { notices.delete(requestId) }, [requestId])
+  return n
+}
+
+/** 질문 화면 맨 위: 확인 화면에서 바꾼 것 때문에 다시 확인할 것이 생겨 돌아왔다는 안내. */
+export function BackToQuestions({ n, hardErrors }: { n: FlowNotice; hardErrors: boolean }) {
+  return (
+    <Alert tone="warning" title={`방금 ${n.what} 때문에 분석 전에 다시 확인할 것이 생겨 이 화면으로 돌아왔습니다`}>
+      {n.changes.length > 0 && <ul className="mt-1 list-disc pl-5">{n.changes.map((c) => <li key={c.label}>{c.label}: {c.before} → <b>{c.after}</b></li>)}</ul>}
+      <p className="mt-1">{hardErrors ? "아래 오류를 고치면" : "아래 질문에 답하면"} 다시 조건 확인 화면으로 넘어갑니다.</p>
+    </Alert>
+  )
+}
 
 export function ActionError({ title, message, retry }: { title: string; message: string; retry?: () => void }) {
   return (

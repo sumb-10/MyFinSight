@@ -226,6 +226,8 @@ src/mocks/mocks.test.tsx       분리·일관성 테스트
 - 홈 「상세 조건」 창은 손대지 않았다 (제외 항목). 0원 투자조건으로 그 창을 열어 적용하면 기존 검사 「투자금은 0보다 커야 합니다」가 그대로 나온다. 상세 조건 창 없이 바로 「투자조건 확인하기」로 가는 흐름은 0원으로 진행된다.
 - 목업 「조건 바꾸기」(updateOverrides)는 바꾼 값을 요청에 저장하고 조건 행도 다시 만든다 (`MockService.updateOverrides` → `withRows`).
 - 실제 서버의 질문 반복·자연어 해석 문제는 고친 것이 아니다 (작업 명세 11장의 백엔드 문제 그대로).
+- 목업 「조건 바꾸기」의 예외: 종목 수 최소를 고를 수 있는 후보(`MOCK_CANDIDATES` = 15개)보다 크게 바꾸면 실행 전 점검 질문(`feasibilityQuestion`)을 내고 다시 「질문 중」이 된다.
+  실제 서버(`dialog.py` `_turn`)가 조건 변경 뒤 새 질문을 고르는 경우를 흉내 낸 것이다. 확인 화면 → 질문 화면으로 돌아갈 때 이유 안내(`flowNotice`)를 확인하는 용도.
 
 **바꾼 파일:** `api/proposed.ts`(`getStocks`·`stockLabel`·`ProposedOptionsExt`·`ProposedBatchAnswer`), 새 파일 `features/profile/stocks.tsx`·`StrategyRecommend.tsx`·`compare.tsx`,
 `features/analysis/BatchQuestions.tsx`·`MessageOutcome.tsx`, 수정 `ProfileScreen.tsx`·`StrategyFields.tsx`(선택 prop `recommended`)·`history.tsx`·`ClarifyScreen.tsx`·`ConfirmScreen.tsx`,
@@ -246,7 +248,7 @@ src/mocks/mocks.test.tsx       분리·일관성 테스트
 | 9-3 이름 연동 | 모의투자 시작·상세 | 3단계에서 구현 (목업 모의투자 흐름에서 동작) | `getPaperName`/`setPaperName` |
 
 **목업 계산 규칙:**
-- 진행 재생: 대기 3초 → 단계마다 2초 → 완료(정상 추천 리포트로 연결) 또는 백테스트 단계에서 실패. 경고는 단계가 끝날 때 차례로 생긴다. 다시 실행은 새 진행 재생 실행을 만든다.
+- 진행 재생: 대기 3초 → 단계마다 3초(진행 화면의 상태 확인 간격 2.5초보다 길게, 2026-11) → 완료(정상 추천 리포트로 연결) 또는 백테스트 단계에서 실패. 경고는 단계가 끝날 때 차례로 생긴다. 다시 실행은 새 진행 재생 실행을 만든다.
 - 취소: 누른 시각에 진행을 멈추고 1.5초 동안 「취소 처리 중」. 끝난 분석은 409 로 거절한다. 완료된 단계는 「완료」로 남고 나머지는 「취소됨」.
 - 원화 수익률 = 원화 평가액 ÷ 넣은 원금(원화) − 1. 원화 평가액 = 그날 USD 평가액 × 그날(또는 대체) 환율, 원화 납입은 납입한 원화 금액 그대로.
   USD 비교도 같은 방식(평가액 ÷ 넣은 원금 − 1)이라 차이는 환율 효과다. 적립이 없으면 (1+USD 수익률)×(1+환율 변화율)−1 과 같고, 적립이 있으면 납입마다 환율이 달라 단순 곱과 다르다.
@@ -256,7 +258,7 @@ src/mocks/mocks.test.tsx       분리·일관성 테스트
 모의투자 원화 성과 계산(날짜별 원화 납입액·평가액, 환율 대체 여부와 출처 날짜, 계산 불가 사유)과 응답, 모의투자 목록 API의 환율·회사명 (작업 명세 11장 백엔드 문제 — 고친 것 아님).
 
 **확인만 하고 고치지 않은 것 (일반 모드에도 있음, 범위 밖):**
-- 취소된 실행의 「선정 종목 미리보기」 설명에 「과거 성과 분석은 아직 진행 중」이 그대로 붙는다 (완료가 아니면 붙는 기존 문구).
+- (고침, 2026-11) 취소·실패한 실행의 「선정 종목 미리보기」 설명에 「과거 성과 분석은 아직 진행 중」이 붙던 문제 — 이제 진행 중인 실행에만 붙는다.
 - 분석 진행 화면·리포트 목록·내 투자조건은 390 폭에서 가로로 790px 넘친다 (1180px 최소 폭 문제, 제외 항목).
 
 **바꾼 파일:** `api/proposed.ts`(`ProposedRunCancel`·`proposedCancelOf`, `ProposedPaperKrw` 확장·`ProposedFxDay`), `features/run/RunScreen.tsx`(전체 경고·취소 결과·즉시 취소 문구, 모두 제안 값이 있을 때만),

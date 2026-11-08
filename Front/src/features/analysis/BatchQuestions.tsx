@@ -84,6 +84,7 @@ export function BatchQuestions({ requestId, st, onDone }: { requestId: string; s
 /** 보낸 답변 요약과 최종 조건에 반영된 결과. 확인 화면으로 넘어가기 전에 한 번 보여 준다. */
 export function BatchResult({ requestId, sent, changes }: { requestId: string; sent: Submitted[]; changes: RowChange[] }) {
   const byLabel = (label: string) => changes.find((c) => c.label === label)
+  const extra = changes.filter((c) => !sent.some((s) => s.fieldLabel === c.label))
   return (
     <Part title="보낸 답변과 반영 결과" aside={<MockTag />} desc="답변을 조건에 반영했습니다. 확인 화면에서 최종 조건을 한 번 더 보고 분석을 시작합니다.">
       <ol className="space-y-2">
@@ -98,10 +99,14 @@ export function BatchResult({ requestId, sent, changes }: { requestId: string; s
           )
         })}
       </ol>
-      <div className={`rounded-xl border p-4 text-sm ${changes.length ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-slate-200 bg-slate-50 text-slate-700"}`}>
-        <p className="font-semibold">{changes.length ? `최종 투자조건에서 바뀐 항목 ${changes.length}개` : "답변으로 바뀐 조건 값은 없습니다."}</p>
-        {changes.length > 0 && <ul className="mt-1.5 space-y-0.5">{changes.map((c) => <li key={c.label}>{c.label}: {c.before} → <b>{c.after}</b></li>)}</ul>}
-      </div>
+      {/* 질문별 줄에 이미 나온 변경은 다시 적지 않는다 (아래 「이번 분석에서 달라진 조건」 카드에도 같은 내용이 있다). 답변 때문에 함께 바뀐 항목만 따로 알린다. */}
+      {extra.length > 0 && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
+          <p className="font-semibold">답변에 따라 함께 바뀐 항목 {extra.length}개</p>
+          <ul className="mt-1.5 space-y-0.5">{extra.map((c) => <li key={c.label}>{c.label}: {c.before} → <b>{c.after}</b></li>)}</ul>
+        </div>
+      )}
+      {changes.length === 0 && <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">답변으로 바뀐 조건 값은 없습니다.</p>}
       <div className="flex justify-end"><Button onClick={() => navigate({ page: "confirm", requestId })}>조건 최종 확인으로<ArrowRight className="size-4" /></Button></div>
     </Part>
   )
