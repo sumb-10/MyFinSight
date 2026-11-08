@@ -20,20 +20,10 @@ import { proposedRulesOf } from "../../api/proposed"
 import { MockTag } from "../report/proposedView"
 import { StockPicker, useStockNames } from "./stocks"
 import { StrategyRecommendation, asPref, useRecommendation } from "./StrategyRecommend"
+import { DEFAULT_FORM } from "./defaults"
+import { validateProfile } from "./validate"
 
 type Form = ProfileFields
-
-const DEFAULT_FORM: Form = {
-  profile: { user_id: "default", age_band: "30s", investment_experience: "beginner", financial_knowledge: "basic", investable_ratio_of_assets: 0.3 },
-  capital: { initial_amount: 10_000_000, currency: "KRW", trading_currency: "USD", monthly_contribution: 0, contribution_day: 25 },
-  horizon: { target_years: 5, purpose: "wealth_growth", backtest_years: 3 },
-  risk: { risk_tolerance: "moderate", max_drawdown_tolerance: 0.2, loss_reaction: "hold", target_annual_return: 0.08, benchmark: "SPY" },
-  constraints: { universe: ["SP500", "NASDAQ100"], asset_types: ["stock"], num_holdings: { target: 10, min: 8, max: 12 }, max_weight_per_stock: 0.15, max_weight_per_sector: 0.4, min_cash_ratio: 0, exclude_tickers: [], exclude_sectors: [], exclude_themes: [], must_include_tickers: [], rebalance: { count: 1, unit: "1q" }, allow_leverage: false, allow_short: false, min_market_cap_usd: 0, min_avg_daily_volume_usd: 0 },
-  strategy_preference: { template: "momentum", baseline_weighting: "equal_weight", use_news_tilt: true },
-  diagnosis: { answers: {}, computed_tendency: "위험중립형", final_tendency: "위험중립형", memo: "" },
-  risk_type_computed: "moderate",
-  risk_type_overridden: false,
-}
 
 function fromView(v: ProfileView): Form {
   const p = v.profile
@@ -151,21 +141,7 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
   const upd = (patch: (f: Form) => void) => setForm((f) => { const n = structuredClone(f); patch(n); return n })
   const err = (k: string) => errors[k]
 
-  const localCheck = (): Record<string, string> => {
-    const e: Record<string, string> = {}
-    const c = form.constraints
-    if (allowZero && form.capital.initial_amount === 0) { if (!(form.capital.monthly_contribution > 0)) e["capital.initial_amount"] = "처음 투자금을 0원으로 하려면 매월 추가 투자금을 정해 주세요 (목업 규칙)" }
-    else if (!(form.capital.initial_amount > 0)) e["capital.initial_amount"] = "투자금은 0보다 커야 합니다"
-    if (!(form.horizon.target_years >= 1 && form.horizon.target_years <= 10)) e["horizon.target_years"] = "투자기간은 1~10년입니다"
-    if (!(form.horizon.backtest_years > 0 && form.horizon.backtest_years <= 20)) e["horizon.backtest_years"] = "백테스트 기간은 0보다 크고 20년 이하입니다"
-    if (!(c.num_holdings.min <= c.num_holdings.target && c.num_holdings.target <= c.num_holdings.max)) e["constraints.num_holdings"] = "최소 ≤ 목표 ≤ 최대 순서여야 합니다"
-    if (c.max_weight_per_stock * c.num_holdings.min < 1 - c.min_cash_ratio - 1e-9) e["constraints.max_weight_per_stock"] = "종목당 상한 × 최소 종목 수가 투자 비율보다 작아 비중을 채울 수 없습니다"
-    if (c.max_weight_per_sector < c.max_weight_per_stock) e["constraints.max_weight_per_sector"] = "섹터당 상한은 종목당 상한 이상이어야 합니다"
-    if (!c.universe.length) e["constraints.universe"] = "유니버스를 하나 이상 고르세요"
-    const clash = c.must_include_tickers.filter((t) => c.exclude_tickers.includes(t))
-    if (clash.length) e["constraints.exclude_tickers"] = `같은 종목이 필수 포함과 제외에 함께 있습니다: ${clash.join(", ")}`
-    return e
-  }
+  const localCheck = (): Record<string, string> => validateProfile(form, { allowZero })
 
   /** i 단계를 넘어가기 위한 검사 (기존 「다음」 규칙 그대로). */
   const stepErrors = (i: number): Record<string, string> => {

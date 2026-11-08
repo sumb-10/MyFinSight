@@ -47,7 +47,10 @@ export class MockService implements AnalysisService {
   private sc(id: string): ReportScenario { const sc = reportScenario(id); if (!sc) throw notFound("리포트"); return sc }
   private backtestOf(sc: ReportScenario) { let b = this.bt.get(sc.id); if (!b) { b = backtest(sc); this.bt.set(sc.id, b) } return b }
   private docOf(sc: ReportScenario) { let d = this.docs.get(sc.id); if (!d) { d = buildReport(sc); this.docs.set(sc.id, d) } return d }
-  private versions(): ProfileVersion[] { return [...PROFILE_VERSIONS, ...(this.s.profileVariant === "zero" ? [ZERO_CAPITAL_VERSION] : []), ...this.s.savedVersions] }
+  private versions(): ProfileVersion[] {
+    if (this.s.profileVariant === "none") return [...this.s.savedVersions]  // 처음 사용자: 저장하기 전에는 투자조건이 없다
+    return [...PROFILE_VERSIONS, ...(this.s.profileVariant === "zero" ? [ZERO_CAPITAL_VERSION] : []), ...this.s.savedVersions]
+  }
   private allPapers(): PaperScenario[] { return [...PAPERS, ...this.s.createdPapers] }
   reportDisplayName(id: string) { const sc = this.sc(id); return this.s.reportNames[sc.id] ?? sc.auto_name_ko }  // 리포트 ID·실행 ID 어느 쪽으로 불러도 같은 이름
   private paperName(ps: PaperScenario) { const n = this.s.paperNames[ps.id] ?? ps.name; return n.mode === "custom" ? n.name_ko : this.reportDisplayName(ps.report_id) }
@@ -77,10 +80,10 @@ export class MockService implements AnalysisService {
   options(): Promise<Options & ProposedOptionsExt> {
     return this.wait(() => ({ proposed_rules: { allow_zero_initial_amount: true }, universes: ["SP500", "NASDAQ100", "KOSPI200"], templates: ["low_per", "quality", "momentum", "low_volatility", "high_dividend"], weightings: ["equal_weight", "market_cap", "inverse_volatility", "min_variance"], risk_tolerance: ["conservative", "moderate", "aggressive"], rebalance_units: ["2w", "1m", "1q", "6m", "1y"], age_band: ["20s", "30s", "40s", "50s", "60s+"], investment_experience: ["none", "beginner", "intermediate", "advanced"], financial_knowledge: ["basic", "intermediate", "expert"], purpose: ["wealth_growth", "income", "capital_preservation", "retirement"], loss_reaction: ["sell", "hold", "buy_more"], benchmarks: ["SPY", "QQQ"], max_questions: 5, default_backtest_years: 3, markets: ["US", "KR"], labels_ko: {}, data_range: ["2020-01-02", MOCK_AS_OF] as [string, string], latest_trading_day: MOCK_AS_OF }))
   }
-  getProfile(): Promise<ProfileView | null> { return this.wait(() => profileView(this.versions())) }
+  getProfile(): Promise<ProfileView | null> { return this.wait(() => { const vs = this.versions(); return vs.length ? profileView(vs) : null }) }
   saveProfile(fields: ProfileFields): Promise<ProfileView> {
     const vs = this.versions()
-    const v: ProfileVersion = { ...clone(fields), version: vs[vs.length - 1].version + 1, created_at: new Date().toISOString().slice(0, 19) }
+    const v: ProfileVersion = { ...clone(fields), version: (vs.at(-1)?.version ?? 0) + 1, created_at: new Date().toISOString().slice(0, 19) }
     this.s.savedVersions.push(v); this.commit()
     return this.wait(() => profileView(this.versions()))
   }
@@ -97,7 +100,7 @@ export class MockService implements AnalysisService {
 
 
   /* ───────── 요청·질문 ───────── */
-  private base(): ProfileVersion { const vs = this.versions(); return vs[vs.length - 1] }
+  private base(): ProfileVersion { return this.versions().at(-1) ?? PROFILE_VERSIONS[0] }  // 처음 사용자는 화면이 투자조건 설정으로 보내지만, 고정 시나리오 요청은 기본 이력으로 연다
   private dialog(id: string): DialogState {
     if (this.s.requests[id]) return this.s.requests[id]
     if (id === "mock_req_asking") return askingDialog(this.base())

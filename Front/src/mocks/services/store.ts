@@ -12,7 +12,7 @@ export const MOCK_STORE_KEY = "myfinsight.mock.store.v1"
 
 export interface MockState {
   v: 1
-  profileVariant: "default" | "zero"
+  profileVariant: "default" | "zero" | "none"            // none = 처음 사용자 (기본 이력 없이 목업에서 저장한 버전만)
   savedVersions: ProfileVersion[]                       // 목업에서 저장한 투자조건 버전 (기본 이력 뒤에 붙음)
   reportNames: Record<string, string | null>            // 사용자가 바꾼 리포트 이름 (null = 자동 이름)
   reportRenamedAt: Record<string, string>
