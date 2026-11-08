@@ -4,6 +4,7 @@ import type { ProposedRunCancel } from "../../api/proposed"
 import type { RunPartial, RunRow, RunStatus, RunStep, StepStatus } from "../../api/types"
 import { REPORTS, RUN_STATES } from "../scenarios"
 import { stockOf } from "./stocks"
+import { localIso } from "./util"
 
 export const STEPS: [string, string, string][] = [
   ["01_request", "요청 확정", "conditions"], ["02_intent", "의도 해석", "conditions"],
@@ -62,7 +63,7 @@ export function cancelInfo(st: RunStep[], requested_at: string, completed_at: st
 // 단계 간격은 진행 화면의 상태 확인 간격(2.5초, RunScreen)보다 길게 둔다 — 짧으면 「진행 중」을 한 번도 못 보고 건너뛰는 단계가 생긴다.
 export const LIVE_QUEUE_MS = 3000, LIVE_STEP_MS = 3000, CANCEL_MS = 1500
 const FAIL_AT = STEPS.findIndex(([s]) => s === "11_backtest")
-const iso = (ms: number) => new Date(ms).toISOString().slice(0, 19)
+const iso = localIso
 
 export interface LiveRun { started: number; ending: "success" | "failed"; request_id: string; report_id: string; cancel?: { at: number; frozen: number } }
 

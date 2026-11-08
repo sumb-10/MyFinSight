@@ -19,6 +19,13 @@ export const seedOf = (s: string) => { let h = 2166136261; for (const c of s) h 
 export const normal = (r: () => number) => Math.sqrt(-2 * Math.log(Math.max(1e-12, r()))) * Math.cos(2 * Math.PI * r())
 
 export const iso = (d: Date) => d.toISOString().slice(0, 10)
+/** 시각 (서버 now_iso() 와 같은 모양: 이 PC 시간대 + 오프셋, 예 2026-11-09T03:21:00+09:00).
+ *  toISOString().slice(0, 19) 는 UTC 시각에서 시간대를 떼어 버려, 화면이 9시간 이른 시각을 보이고 경과 시간이 9시간 늘어난다. */
+export function localIso(ms: number = Date.now()) {
+  const d = new Date(ms), p = (n: number) => String(Math.abs(n)).padStart(2, "0")
+  const off = -d.getTimezoneOffset()
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${off >= 0 ? "+" : "-"}${p(Math.floor(Math.abs(off) / 60))}:${p(Math.abs(off) % 60)}`
+}
 export const addDays = (s: string, n: number) => { const d = new Date(`${s}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return iso(d) }
 
 /** 평일만 (휴장일은 단순화를 위해 넣지 않는다 — 목업). start·end 포함. */

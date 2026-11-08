@@ -27,6 +27,17 @@ export function FlowHeader({ eyebrow, title, desc, action }: { eyebrow: string; 
   )
 }
 
+/** App 의 main(overflow-x-auto)은 세로로도 스크롤 컨테이너가 되어, 그 안의 sticky 가 창 스크롤에 붙지 않는다.
+ *  sticky 를 쓰는 화면(확인 화면 「분석 시작」 줄, 진행 화면 오른쪽 열)에 있는 동안만 clip 으로 바꾸고 나갈 때 되돌린다. */
+export function useStickyInMain() {
+  useEffect(() => {
+    const main = document.querySelector("main")
+    if (!main) return
+    main.style.overflowX = "clip"
+    return () => { main.style.overflowX = "" }
+  }, [])
+}
+
 const FLOW = ["추가 질문 답하기", "조건 최종 확인", "분석 시작"]
 
 /** 지금 어느 단계인지 (내 투자조건의 단계 카드와 같은 모양, 누르는 기능은 없다). */

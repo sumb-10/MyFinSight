@@ -6,9 +6,10 @@ import { errorMessage } from "../../api/client"
 import { useResource } from "../../state/useResource"
 import { loadUi, saveUi } from "../../state/uiStorage"
 import { Alert, Badge, Button, Card, EmptyState, ErrorState, Loading } from "../../ui"
-import { date, fmt, ko } from "../../lib/format"
+import { date, ko } from "../../lib/format"
 import { DetailConditionsDialog, OVERRIDE_LABELS, overrideText, type Overrides } from "./DetailConditions"
 import { tendencyLabel } from "../../lib/tendency"
+import { money, pctText } from "../profile/format"  // 내 투자조건 화면과 같은 표기 (1,000만원 · 10%)
 import { reportName } from "../../lib/reportName"
 import { proposedNameOf } from "../../api/proposed"
 import { MockTag } from "../report/proposedView"
@@ -91,13 +92,13 @@ export function HomeScreen() {
             <button onClick={() => navigate({ page: "profile" })} className="text-xs font-semibold text-blue-700">내 투자조건 보기</button>
           </div>
           <div className="mt-5 grid grid-cols-4 gap-3">
-            {[["금액", `${p.capital.initial_amount.toLocaleString("ko-KR")} ${p.capital.currency === "KRW" ? "원" : "USD"}`], ["기간", `${p.horizon.target_years}년`], ["성향", tendencyLabel({ final: p.diagnosis?.final_tendency, code: p.risk.risk_tolerance })], ["손실 감내 수준", fmt(p.risk.max_drawdown_tolerance, "pct1")]].map(([label, value]) => (
+            {[["금액", money(p.capital.initial_amount, p.capital.currency)], ["기간", `${p.horizon.target_years}년`], ["성향", tendencyLabel({ final: p.diagnosis?.final_tendency, code: p.risk.risk_tolerance })], ["손실 감내 수준", pctText(p.risk.max_drawdown_tolerance)]].map(([label, value]) => (
               <div key={label} className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] text-slate-400">{label}</p><p className="mt-1 truncate text-sm font-bold text-slate-800">{value}</p></div>
             ))}
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <Badge tone="slate">{p.constraints.universe.map(ko).join(" · ")}</Badge>
-            <Badge tone="slate">종목당 최대 {fmt(p.constraints.max_weight_per_stock, "pct1")}</Badge>
+            <Badge tone="slate">종목당 최대 {pctText(p.constraints.max_weight_per_stock)}</Badge>
             <Badge tone="slate">{ko(p.strategy_preference.template)} · {ko(p.strategy_preference.baseline_weighting)}</Badge>
             {p.constraints.must_include_tickers.map((t) => <Badge key={`in-${t}`} tone="blue">{t} 필수 포함</Badge>)}
             {p.constraints.exclude_tickers.map((t) => <Badge key={t} tone="red">{t} 제외</Badge>)}

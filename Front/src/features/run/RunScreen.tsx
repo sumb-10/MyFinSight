@@ -10,7 +10,7 @@ import { saveUi } from "../../state/uiStorage"
 import { Alert, Button, EmptyState, Loading } from "../../ui"
 import { datetime, fmt } from "../../lib/format"
 import { startNewWith } from "../analysis/ClarifyScreen"
-import { ActionError, FlowHeader, Pending } from "../analysis/flow"
+import { ActionError, FlowHeader, Pending, useStickyInMain } from "../analysis/flow"
 import { Part } from "../profile/parts"
 import { BUCKET_TEXT, STEP_TEXT, collectNotes, notesFromWarnings, splitSummary, stepTitle, type RunNotes } from "./steps"
 import { proposedCancelOf } from "../../api/proposed"
@@ -24,7 +24,9 @@ const STAGE_RANK: Record<RunStatus["status"], number> = { queued: 0, running: 1,
 const elapsed = (from: string | null | undefined, now: number) => {
   if (!from) return null
   const s = Math.max(0, Math.round((now - new Date(from).getTime()) / 1000))
-  return s < 60 ? `${s}초` : `${Math.floor(s / 60)}분 ${s % 60}초`
+  if (s < 60) return `${s}초`
+  const m = Math.floor(s / 60)
+  return m < 60 ? `${m}분 ${s % 60}초` : `${Math.floor(m / 60)}시간 ${m % 60}분`
 }
 
 /** 선정 지표 ID (backend/analysis/m2_data/metrics.py) 의 화면 이름. 모르는 ID 는 표시하지 않는다. */
@@ -99,12 +101,7 @@ function RunView({ runId }: { runId: string }) {
   const flashTimer = useRef<number | undefined>(undefined)
   useEffect(() => () => window.clearTimeout(flashTimer.current), [])
   useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(t) }, [])
-  useEffect(() => {  // App 의 main(overflow-x-auto)이 스크롤 컨테이너가 되면 오른쪽 열의 sticky 가 듣지 않는다. 이 화면에 있는 동안만 clip 으로 바꾸고 나갈 때 되돌린다.
-    const main = document.querySelector("main")
-    if (!main) return
-    main.style.overflowX = "clip"
-    return () => { main.style.overflowX = "" }
-  }, [])
+  useStickyInMain()  // 오른쪽 열(지금 하는 일·취소)의 sticky
   const selStep = r?.steps.find((s) => s.step === "05_selection")
   const selDone = selStep?.status === "SUCCESS" || selStep?.status === "PARTIAL"
   useEffect(() => {  // 선정이 끝나면 종목 목록을 먼저 보여 준다 (백테스트는 뒤에 이어진다). 아직 파일이 없으면 다음 폴링 때 다시 묻는다.
@@ -156,7 +153,7 @@ function RunView({ runId }: { runId: string }) {
   return (
     <div className="mx-auto max-w-6xl space-y-8">
       <p className="sr-only" role="status" aria-live="polite">{live}</p>
-      <FlowHeader eyebrow="분석 진행" title={title} desc={`등록 ${datetime(r.queued_at)}${r.started_at ? ` · 시작 ${datetime(r.started_at)}` : ""}${r.finished_at ? ` · 종료 ${datetime(r.finished_at)}` : since ? ` · 경과 ${since}` : ""} · 브라우저를 닫아도 서버 실행은 계속됩니다. 보통 2~5분 걸립니다.`} />
+      <FlowHeader eyebrow="분석 진행" title={title} desc={`등록 ${datetime(r.queued_at)}${r.started_at ? ` · 시작 ${datetime(r.started_at)}` : ""}${r.finished_at ? ` · 종료 ${datetime(r.finished_at)}` : since ? ` · 경과 ${since}` : ""}${TERMINAL.has(r.status) ? "" : " · 브라우저를 닫아도 서버 실행은 계속됩니다. 보통 2~5분 걸립니다."}`} />  {/* 끝난 실행에는 「계속됩니다·2~5분」 안내를 붙이지 않는다 */}
       {failures > 0 && <Alert title="연결 재시도 중" tone="warning">서버 응답이 없어 마지막으로 받은 상태를 보여 줍니다 ({failures}회 실패). {error}</Alert>}
       {active && workerDown && <Alert title="분석 일꾼이 꺼져 있어 시작되지 않습니다" tone="error">요청은 대기열에 남아 있습니다. 서버 관리자에게 분석 일꾼을 켜 달라고 하세요. 켜지면 자동으로 시작합니다.</Alert>}
       <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[1.15fr_0.85fr]">
@@ -230,7 +227,7 @@ function RunView({ runId }: { runId: string }) {
                       </span>
                       <NoteCount n={collected.byBucket[b.id] ?? 0} label="이 묶음의 확인할 점" />
                       <span className={`hidden shrink-0 text-xs font-semibold sm:inline ${statusTone(b.status)}`}>{STATUS_TEXT[b.status]}</span>
-                      <span className="flex shrink-0 items-center gap-1 text-xs text-slate-400"><span className="hidden sm:inline">{steps.length}단계</span><ChevronDown className={`size-4 transition-transform ${isOpen ? "rotate-180" : ""}`} /></span>
+                      <span className="flex shrink-0 items-center gap-1 text-xs text-slate-400"><span className="hidden sm:inline">세부 {steps.length}단계</span><ChevronDown className={`size-4 transition-transform ${isOpen ? "rotate-180" : ""}`} /></span>
                     </button>
                     {isOpen && (
                       <ol className="space-y-3 border-t border-slate-100 px-3 py-3">

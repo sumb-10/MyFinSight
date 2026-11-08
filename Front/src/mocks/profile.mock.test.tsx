@@ -153,7 +153,8 @@ describe("새 분석 · 조건 확인 화면 (목업)", () => {
     expect(await screen.findByText("추가 확인 필요")).toBeInTheDocument()
     fireEvent.change(box, { target: { value: "좀 더 안전하게 해 주세요" } }); send()
     expect(await screen.findByText("반영되지 않음")).toBeInTheDocument()
-    expect(screen.getByText("바뀐 조건이 없습니다. 기존 조건이 그대로 유지됩니다.")).toBeInTheDocument()
+    expect(screen.getByText("바뀐 조건이 없습니다.")).toBeInTheDocument()  // 서버 안내(note_ko)가 있으면 「그대로 유지」를 두 번 말하지 않는다
+    expect(screen.getAllByText(/기존 조건이 그대로 유지됩니다/)).toHaveLength(1)
     expect(screen.getByRole("button", { name: /이전에 보낸 요청 2개/ })).toBeInTheDocument()
   })
 })

@@ -6,6 +6,9 @@ import { MockService } from "../../mocks/services/MockService"
 import { fromProfile, OVERRIDE_LABELS, validate } from "../home/DetailConditions"
 import { ClarifyScreen } from "./ClarifyScreen"
 import { ConfirmScreen } from "./ConfirmScreen"
+import { BatchResult } from "./BatchQuestions"
+import { RunScreen } from "../run/RunScreen"
+import { localIso } from "../../mocks/data/util"
 import { NOTE_BUTTON, NOTE_UNSENT, keepPendingNote, pendingNote } from "./flow"
 
 // 질문·확인 화면 편의성 개선: 취소 확인, 보내지 않은 문장 이어받기, 「말로 보태기」 이름 통일, 시작 줄 고정, 라벨 통일, 0원 규칙.
@@ -46,12 +49,38 @@ describe("조건 확인 화면", () => {
     show(mock(), <ConfirmScreen requestId="mock_req_ready" />)
     expect(await screen.findByRole("textbox", { name: "말로 조건 보태기" }, { timeout: 5000 })).toHaveValue("종목은 8개만")
     fireEvent.click(screen.getByRole("button", { name: /분석 시작/ }))
-    expect(screen.getByRole("alertdialog", { name: "반영하지 않은 추가 요청" })).toBeInTheDocument()
+    // 고정된 「분석 시작」 줄 안에 뜬다 (화면 위쪽에서 눌러도 바로 보인다)
+    expect(screen.getByRole("alertdialog", { name: "반영하지 않은 추가 요청" }).closest("div.sticky")).not.toBeNull()
   })
-  it("「분석 시작」 줄은 화면 아래에 고정된다", async () => {
-    show(mock(), <ConfirmScreen requestId="mock_req_ready" />)
+  it("「분석 시작」 줄은 화면 아래에 고정되고, 그동안 main 이 스크롤 컨테이너가 되지 않게 한다", async () => {
+    const { unmount } = show(mock(), <main><ConfirmScreen requestId="mock_req_ready" /></main>)
     const start = await screen.findByRole("button", { name: /분석 시작/ }, { timeout: 5000 })
     expect(start.closest("div.sticky")).not.toBeNull()
+    expect(document.querySelector("main")!.style.overflowX).toBe("clip")  // overflow-x-auto 그대로면 sticky 가 창 스크롤에 붙지 않는다
+    unmount()
+  })
+})
+
+describe("묶음 답변 결과", () => {
+  it("질문별 줄에 나온 변경은 다시 나열하지 않고, 답변에 따라 함께 바뀐 항목만 따로 알린다", () => {
+    const sent = [{ seq: 1, question: "한 종목에 최대 몇 %까지 담을까요?", field: "constraints.max_weight_per_stock", fieldLabel: "종목당 최대 비중", answer: "20%", kind: "option" as const }]
+    show(mock(), <BatchResult requestId="r" sent={sent} changes={[{ label: "종목당 최대 비중", before: "30%", after: "20%" }, { label: "섹터당 최대 비중", before: "40%", after: "30%" }]} />)
+    expect(screen.getAllByText(/종목당 최대 비중: 30%/)).toHaveLength(1)
+    expect(screen.getByText("답변에 따라 함께 바뀐 항목 1개")).toBeInTheDocument()
+    expect(screen.getByText(/섹터당 최대 비중: 40%/)).toBeInTheDocument()
+  })
+})
+
+describe("진행 화면", () => {
+  it("끝난 실행에는 「서버 실행은 계속됩니다·보통 2~5분」 안내를 붙이지 않는다", async () => {
+    show(mock(), <RunScreen runId="mock_run_cancelled" />)
+    expect(await screen.findByRole("heading", { level: 1, name: "분석이 취소되었습니다" }, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.queryByText(/서버 실행은 계속됩니다/)).toBeNull()
+  })
+  it("목업 시각은 서버처럼 시간대 오프셋을 붙인다 (없으면 UTC 시각이 로컬로 읽혀 경과 시간이 9시간 늘어난다)", () => {
+    const now = Date.now(), s = localIso(now)
+    expect(s).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/)
+    expect(Math.abs(new Date(s).getTime() - now)).toBeLessThan(1000)
   })
 })
 

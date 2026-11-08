@@ -13,6 +13,7 @@ import { PROFILE_VERSIONS, profileView, ZERO_CAPITAL_VERSION } from "../data/pro
 import { buildReport, checkpointDetail, type MockReportDoc } from "../data/report"
 import { CANCEL_MS, RUN_WARNINGS, STEPS, buckets, cancelInfo, liveStatus, runPartial, runRows, runStatus } from "../data/runs"
 import { STOCKS } from "../data/stocks"
+import { localIso } from "../data/util"
 import { clearState, initialState, loadState, saveState, type MockState } from "./store"
 import type { SeenSeed } from "../../lib/seen"
 
@@ -213,7 +214,7 @@ export class MockService implements AnalysisService {
     if (!r) throw notFound("분석")
     const c = this.s.runs[id]
     if (!c) return r
-    const iso = (ms: number) => new Date(ms).toISOString().slice(0, 19)
+    const iso = localIso
     if (this.now() - c.cancel_at < CANCEL_MS) return { ...r, status: "cancelling", proposed_cancel: cancelInfo(r.steps, iso(c.cancel_at), null) } as RunStatus
     const st = r.steps.map((x) => (x.status === "STARTED" || x.status === "QUEUED" ? { ...x, status: "CANCELLED" as const } : x))
     return { ...r, status: "cancelled", finished_at: iso(c.cancel_at + CANCEL_MS), steps: st, buckets: buckets(st), proposed_cancel: cancelInfo(r.steps, iso(c.cancel_at), iso(c.cancel_at + CANCEL_MS)) } as RunStatus
