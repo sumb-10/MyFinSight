@@ -92,7 +92,7 @@ describe("리포트 이름 바꾸기 화면", () => {
     expect(await screen.findByText("목록에서 바꾼 이름")).toBeInTheDocument()
     expect(screen.queryByText(AUTO)).toBeNull()
   })
-  it("일반 모드(제안 메서드 없음): 목록에 더보기·상세에 연필 버튼이 없고, 이름은 기존 데이터 기준(투자 아이디어)으로 목록·상세가 같다", async () => {
+  it("일반 모드(제안 메서드 없음): 목록에 더보기·상세에 연필 버튼이 없고, 목록 이름은 투자 아이디어·상세 제목은 리포트의 짧은 제목", async () => {
     const s = plain(mock())
     const { unmount } = withSvc(s, <ReportList />)
     const idea = REPORTS[0].idea
@@ -102,7 +102,9 @@ describe("리포트 이름 바꾸기 화면", () => {
     unmount()
     withSvc(s, <ReportDetail reportId="mock_rep_normal" />)
     const h1 = await screen.findByRole("heading", { level: 1 }, { timeout: 5000 })
-    await waitFor(() => expect(h1).toHaveTextContent(idea))
+    const { header } = await s.getReport("mock_rep_normal")
+    await waitFor(() => expect(h1).toHaveTextContent(header.title_ko))
+    expect(h1).not.toHaveTextContent(idea)
     expect(screen.queryByRole("button", { name: "리포트 이름 바꾸기" })).toBeNull()
   })
 })

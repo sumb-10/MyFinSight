@@ -22,7 +22,7 @@ import { SourcePanel } from "./SourcePanel"
 import { CalculationPanel, ExecutionPanel } from "./panels"
 import { type DrawerFilter, ReportContext, type ReportCtx } from "./context"
 import { useFluidShell } from "./useFluidShell"
-import { proposedOf } from "../../api/proposed"
+import { proposedNameOf, proposedOf } from "../../api/proposed"
 import { GlossaryPanel, HelpTip } from "./terms"
 import { DeleteReportDialog, RenameReportDialog, useRenameTick } from "./ReportName"
 import { findReportRow, reportName } from "../../lib/reportName"
@@ -82,7 +82,7 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
   const cmp = useResource(() => svc.getReportComparison(reportId), [svc, reportId])
   const renamed = useRenameTick()
   const name = useResource(() => (svc.getReportName ? svc.getReportName(reportId) : Promise.resolve(null)), [svc, reportId, renamed]).data  // 제안 기능: 목업에서만 값이 있다
-  const rows = useResource(() => svc.listReports(), [svc, renamed])  // 표시 이름: 홈·사이드바·목록과 같은 행·같은 기준(lib/reportName)
+  const rows = useResource(() => svc.listReports(), [svc, renamed])  // 목록 행: 바꾼 이름(제안 기능)과 삭제 창의 이름(lib/reportName)
   const row = findReportRow(rows.data, reportId)
   const [rename, setRename] = useState(false)
   const [removing, setRemoving] = useState(false)
@@ -191,12 +191,12 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
                   <p className="mb-2 text-xs font-bold tracking-widest text-blue-700">분석 리포트</p>
+                  {/* 제목 = 리포트의 짧은 제목(header.title_ko, 바꾼 이름이 있으면 그것), 회색 글 = 요청과 처리 이유 요약(summary_ko, 없는 옛 리포트는 요청 해석 subtitle_ko) */}
                   <div className="flex items-start gap-1">
-                    <h1 className="break-words text-3xl font-bold tracking-tight text-slate-950">{title ? title : row ? reportName(row) : rows.status === "loading" ? <span aria-hidden="true" className="inline-block h-8 w-64 max-w-full animate-pulse rounded-lg bg-slate-100 align-middle" /> : (name?.display_ko ?? h.title_ko)}</h1>
+                    <h1 className="break-words text-3xl font-bold tracking-tight text-slate-950">{title || (row && proposedNameOf(row)) || name?.display_ko || h.title_ko}</h1>
                     {name && svc.renameReport && <button type="button" aria-label="리포트 이름 바꾸기" title="리포트 이름 바꾸기" onClick={() => setRename(true)} className="mt-1 shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"><Pencil className="size-5" /></button>}
                   </div>
-                  {(title ? h.title_ko !== title : row && h.title_ko !== reportName(row)) && <p className="mt-2 text-sm font-semibold text-slate-700">{h.title_ko}</p>}
-                  {h.subtitle_ko && <p className="mt-2 max-w-3xl truncate text-sm leading-6 text-slate-600" title={h.subtitle_ko}>{h.subtitle_ko}</p>}
+                  {(h.summary_ko || h.subtitle_ko) && <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{h.summary_ko || h.subtitle_ko}</p>}
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-2 lg:pt-6">
                   <span data-tour="paper-start" title={readOnly ? "둘러보기 중에는 실행되지 않습니다" : doc.tracking.eligible ? undefined : (doc.tracking.reason_ko ?? "이 리포트로는 모의투자를 시작할 수 없습니다")}><Button onClick={() => setStartPaper(true)} disabled={readOnly || !doc.tracking.eligible}><Activity className="size-4" />모의투자 시작</Button></span>

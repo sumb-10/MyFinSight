@@ -953,14 +953,16 @@ def selection_notes(R) -> dict[str, Any]:
                            "purpose_ko": PURPOSE_KO.get((R["request"].get("horizon") or {}).get("purpose"), (R["request"].get("horizon") or {}).get("purpose"))}
     themes = it["interpretation"]["themes"]
     now = [t for t in R["selection"]["table"] if t.get("in_selection_now")]
+    sm = (R["selection"].get("as_of_now") or {}).get("summary") or {}
+    n_ok, n_sel, n_forced = sm.get("n_with_metric"), sm.get("n_selected"), int(sm.get("n_forced") or 0)
     if len(themes) > 1:
         cov = [{"theme": th["label_ko"], "n_selected_now": sum(1 for t in now if th["id"] in (t.get("themes") or []))} for th in themes]
         out["theme_coverage"] = cov
         gaps = [c["theme"] for c in cov if c["n_selected_now"] == 0]
         if gaps:
-            out["theme_gap_note_ko"] = f"아이디어의 테마 중 {', '.join(gaps)}에 해당하는 종목은 지금 구성에 하나도 들지 않았습니다(다른 테마 종목이 선정 지표 순위에서 앞섬)"
-    sm = (R["selection"].get("as_of_now") or {}).get("summary") or {}
-    n_ok, n_sel, n_forced = sm.get("n_with_metric"), sm.get("n_selected"), int(sm.get("n_forced") or 0)
+            # 자격선 안 후보를 모두 담았으면 빠진 테마는 순위가 아니라 기준에서 빠진 것 (2026-11-08 E2E: 게임 TTWO 는 모멘텀 0 이하인데 '순위에서 밀림' 이라고 썼다)
+            why = "그 테마 종목 가운데 선정 기준을 넘은 종목이 없음" if n_ok is not None and n_sel is not None and n_sel >= n_ok else "다른 테마 종목이 선정 지표 순위에서 앞섬"
+            out["theme_gap_note_ko"] = f"아이디어의 테마 중 {', '.join(gaps)}에 해당하는 종목은 지금 구성에 하나도 들지 않았습니다({why})"
     if n_ok and n_sel and n_ok - n_forced >= 3 and n_sel - n_forced >= (n_ok - n_forced) - 1:
         ranked = sorted((t for t in now if not t.get("forced") and t.get("metric_now") is not None), key=lambda t: float(t["metric_now"]),
                         reverse=R["selection"].get("direction") != "asc")  # fmt: skip
@@ -1308,7 +1310,7 @@ def parameters_table(R):
 
 
 LLM_TASK_KO = {"02_intent": "의도 해석", "04_classify": "테마 분류", "06_explain": "기업별 근거", "09_views_news": "뉴스 뷰",
-               "14a_interpret": "서술", "14b_narrate": "서술", "14c_market": "서술"}
+               "14a_interpret": "서술", "14b_narrate": "서술", "14c_market": "서술", "14d_header": "서술"}
 
 
 def _models_ko(llm: dict[str, Any]) -> str:

@@ -161,5 +161,14 @@ def stub_revision(messages: Sequence[Message]) -> dict[str, Any]:
     return {"summary_ko": f"수정 요청: {text[:60]}", "changes": changes, "idea_update_ko": idea, "unsupported_ko": unsupported}
 
 
+def stub_header(messages: Sequence[Message]) -> dict[str, Any]:
+    """머리말(14d): 첫 테마 이름 + 선정 기준으로 제목, 숫자 없는 두 문장 요약."""
+    u = _user(messages)
+    theme = re.search(r'"themes_ko": \[\s*"([^"]+)"', u)
+    metric = re.search(r'"metric_ko": "([^"]+)"', u)
+    title = f"{theme.group(1) if theme else '투자 아이디어'} {metric.group(1) if metric else ''}".strip()[:20]
+    return {"title_ko": title, "summary_ko": "아이디어에 맞는 기업에 투자하고 싶다는 요청입니다. 확인 질문의 답과 선정 기준에 따라 종목을 골랐습니다."}
+
+
 SMART_STUBS = {"15_revision": stub_revision, "04_classify": stub_classify, "09_views_news": stub_views, "06_explain": stub_explain,
-               "14a_interpret": stub_interpret, "14c_market": stub_market, "14b_narrate": stub_narrate}
+               "14a_interpret": stub_interpret, "14c_market": stub_market, "14b_narrate": stub_narrate, "14d_header": stub_header}

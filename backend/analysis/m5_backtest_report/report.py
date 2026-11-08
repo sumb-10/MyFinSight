@@ -3,7 +3,7 @@
   verdict 종합 투자 판단 · market 산업과 시장 분석 · companies 기업별 투자 근거 · construction 포트폴리오 구성과 운용 ·
   performance 과거 성과와 해석 · assumptions 판단의 전제와 재검토 조건 · references 참고자료와 분석 조건
 
-표·차트·KPI 는 코드(report_blocks), 해석·서술 문단은 LLM (14a 해석 · 14b 서술 · 14c 시장 분석). 문단의 숫자·인용은 report_check 가 대조하고
+표·차트·KPI 는 코드(report_blocks), 해석·서술 문단은 LLM (14a 해석 · 14b 서술 · 14c 시장 분석 · 14d 머리말). 문단의 숫자·인용은 report_check 가 대조하고
 실패하면 ReportCheckError (리포트를 내지 않음).
 """
 
@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
 import re
 from typing import Any
 
@@ -22,12 +23,14 @@ from backend.analysis.common.llm import LlmClient, messages_from_prompts
 from backend.analysis.common.prompts import load_prompts
 from backend.analysis.errors import ReportCheckError
 from backend.analysis.m5_backtest_report import report_blocks as B
-from backend.analysis.m5_backtest_report.report_check import check
+from backend.analysis.m5_backtest_report.report_check import check, check_header
 from backend.analysis.m5_backtest_report.validate import cautious_reason_ko
 from backend.analysis.schemas.report import ReportDoc
 from backend.analysis.settings import AnalysisSettings
 from backend.analysis.m2_data import disclosure_labels as DL
 from backend.analysis.m2_data import metrics as M
+
+log = logging.getLogger(__name__)
 
 
 def _need(ans: dict[str, Any], key: str, min_n: int = 1) -> None:
@@ -799,6 +802,48 @@ def facts_for_narrate(R: dict[str, Any], chosen: str, interp: dict[str, Any]) ->
             "data_quality": R.get("data_quality"), "limitations": B.limitations(R), "parameters": {r["k"]: r["v"] for r in B.parameters_table(R)["rows"]}}  # fmt: skip
 
 
+def facts_for_header(R: dict[str, Any], chosen: str) -> dict[str, Any]:
+    """머리말(14d) 사실: 아이디어 원문, 확인 질문과 고른 답, 최종 조건, 선정 과정. 성과는 넣지 않는다 (머리말은 '무엇을 부탁했고 어떻게·왜 처리했는지' 만)."""
+    idea, _, extra = ((R["request"].get("natural_language") or {}).get("idea") or "").partition("[보충 답변]")
+    cons = R["request"]["constraints"]
+    nh = cons.get("num_holdings") or {}
+    now = R["selection"].get("as_of_now") or {}
+    notes = B.selection_notes(R)
+
+    def pct(v: Any) -> str | None:
+        return None if v is None else f"{float(v):.0%}"
+
+    return {"idea_ko": idea.strip(), "clarifications_ko": [x.strip(" -") for x in extra.splitlines() if x.strip(" -")],
+            "answers": R.get("dialog") or [], "plan_ko": _subtitle_ko(R, chosen).removeprefix("요청: "),
+            "themes_ko": [t["label_ko"] for t in R["intent"]["interpretation"]["themes"]],
+            "metric_ko": B.METRIC_SHORT_KO.get(R["selection"]["metric"], R["selection"]["metric"]), "horizon_years": R["request"]["horizon"].get("target_years"),
+            "conditions": {"num_holdings": {k: nh.get(k) for k in ("target", "min", "max")}, "max_weight_per_stock": pct(cons.get("max_weight_per_stock")),
+                           "max_weight_per_sector": pct(cons.get("max_weight_per_sector")), "min_cash_ratio": pct(cons.get("min_cash_ratio") or 0)},
+            "funnel": [{"label_ko": f["label_ko"], "count": f["count"]} for f in R["selection"].get("funnel") or []],
+            "selected_now": [f"{x['name']} ({x['ticker']})" for x in now.get("selected") or []],
+            "rejected_examples": [f"{x['name']}: {x['reason']}" for x in (now.get("rejected_examples") or [])[:6]],
+            **{k: notes[k] for k in ("screen_guards_ko", "pool_note_ko", "theme_gap_note_ko") if notes.get(k)},
+            **({"period_note_ko": pn} if (pn := B.period_note(R)) else {})}  # fmt: skip
+
+
+def call_header(R, chosen, llm, settings: AnalysisSettings) -> dict[str, str] | None:
+    """머리말(14d): 짧은 제목 + '요청 → 어떻게·왜 처리했는지' 요약. 검사를 못 넘기거나 호출이 실패하면 None 이고,
+    머리말은 코드가 만든 제목·요청 해석을 그대로 쓴다 (머리말 때문에 리포트를 멈추지 않는다)."""
+    facts = facts_for_header(R, chosen)
+    system, user = load_prompts("14d_header", facts_json=json.dumps(facts, ensure_ascii=False, indent=1, default=str))
+
+    def _check(a: dict[str, Any]) -> None:
+        if errs := check_header(_plain_llm(a), facts, settings):
+            raise ValueError("; ".join(errs))
+
+    try:
+        a = _plain_llm(llm.complete_json("14d_header", messages_from_prompts(system, user), validator=_check))
+    except Exception as e:  # noqa: BLE001
+        log.warning("14d_header skipped: %s", str(e)[:200])
+        return None
+    return {"title_ko": a["title_ko"].strip(), "summary_ko": a["summary_ko"].strip()}
+
+
 def call_interpret(R, chosen, llm):
     system, user = load_prompts("14a_interpret", facts_json=json.dumps(facts_for_interpret(R, chosen), ensure_ascii=False, indent=1, default=str))
 
@@ -954,7 +999,7 @@ def cited_ids(sections: list[dict[str, Any]], idx: dict[str, Any]) -> list[str]:
 
 
 def build_doc(R: dict[str, Any], *, interp: dict[str, Any], narr: dict[str, Any], market: dict[str, Any], step_summaries: dict[str, str] | None,
-              settings: AnalysisSettings, usage: dict[str, Any] | None = None) -> dict[str, Any]:  # fmt: skip
+              settings: AnalysisSettings, usage: dict[str, Any] | None = None, head: dict[str, str] | None = None) -> dict[str, Any]:  # fmt: skip
     """문서 v2: 요약 대시보드(summary) + 7부분. 무거운 표는 묶음(group_ko)으로 접고, 근거 색인은 인용된 것만 evidence 에 싣는다 (나머지는 /evidence)."""
     interp, narr, market = _plain_llm(interp), _plain_llm(narr), _plain_llm(market)
     chosen, is_rec = B.chosen_portfolio_id(R)
@@ -975,7 +1020,8 @@ def build_doc(R: dict[str, Any], *, interp: dict[str, Any], narr: dict[str, Any]
     themes = R["intent"]["interpretation"]["themes"]
     metric = R["selection"]["metric"]
     title_short = f"{themes[0]['label_ko']}" + (f" 외 {len(themes) - 1}" if len(themes) > 1 else "") + f" · {B.METRIC_SHORT_KO.get(metric, metric)} 전략"
-    header = {"title_ko": title_short,
+    # 제목·요약은 머리말 호출(14d) 값, 없으면 코드 제목 (요약이 없으면 화면은 요청 해석 subtitle_ko 를 보인다)
+    header = {"title_ko": (head or {}).get("title_ko") or title_short, "summary_ko": (head or {}).get("summary_ko"),
               "title_detail_ko": f"{themes[0]['label_ko']}" + (f" 외 {len(themes) - 1}개 테마" if len(themes) > 1 else "") + f" · {B.METRIC_SHORT_KO.get(metric, metric)} 기준 선정 · {label}",
               "subtitle_ko": _subtitle_ko(R, chosen), "created_at": dt.date.today().isoformat(),
               "selection_as_of": R["selection"]["as_of_now"]["as_of"], "backtest_period": R["portfolio"]["backtest_spec"]["period"],
@@ -1118,19 +1164,24 @@ def _retry_feedback(errors: list[str]) -> dict[str, str]:
                                        "- missing section 은 일곱 부분 중 빠진 것이 있다는 뜻입니다.\n문제 목록:\n- " + "\n- ".join(errors[:12]))}
 
 
-def _both(a, b, parallel: bool):
-    """두 LLM 호출을 동시에 (14a ∥ 14c). 둘 다 서로의 결과를 쓰지 않는다."""
+def _run_all(calls, parallel: bool) -> list[Any]:
+    """LLM 호출을 동시에 (14a ∥ 14c ∥ 14d). 서로의 결과를 쓰지 않는다."""
     if not parallel:
-        return a(), b()
+        return [c() for c in calls]
     from concurrent.futures import ThreadPoolExecutor
 
-    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="mfs-report") as pool:
-        fa, fb = pool.submit(a), pool.submit(b)
-        return fa.result(), fb.result()
+    with ThreadPoolExecutor(max_workers=len(calls), thread_name_prefix="mfs-report") as pool:
+        futs = [pool.submit(c) for c in calls]
+        return [f.result() for f in futs]
+
+
+def _both(a, b, parallel: bool):
+    """두 LLM 호출을 동시에 (재시도의 14a ∥ 14c)."""
+    return tuple(_run_all([a, b], parallel))
 
 
 def _usage(llm: Any) -> dict[str, Any] | None:
-    """리포트 작성(14a·14b·14c)까지 포함한 이 실행의 LLM 사용량 (13 결과 묶음의 사용량은 리포트 호출 전이라 적게 나왔다)."""
+    """리포트 작성(14a·14b·14c·14d)까지 포함한 이 실행의 LLM 사용량 (13 결과 묶음의 사용량은 리포트 호출 전이라 적게 나왔다)."""
     try:
         return llm.usage_summary()
     except Exception:  # noqa: BLE001 — 사용량을 못 얻으면 결과 묶음 값으로
@@ -1138,13 +1189,14 @@ def _usage(llm: Any) -> dict[str, Any] | None:
 
 
 def generate_report(R: dict[str, Any], llm: LlmClient, settings: AnalysisSettings, *, step_summaries: dict[str, str] | None = None) -> tuple[dict[str, Any], list[str]]:
-    """LLM 세 번(14a ∥ 14c → 14b) → 문서 → 검증. 검증 오류가 있으면 오류를 낸 호출만 피드백으로 1회 다시 받고, 그래도 실패면 ReportCheckError."""
+    """LLM 네 번(14a ∥ 14c ∥ 14d → 14b) → 문서 → 검증. 검증 오류가 있으면 오류를 낸 호출만 피드백으로 1회 다시 받고, 그래도 실패면 ReportCheckError.
+    머리말(14d)은 자기 검사를 따로 하고, 실패하면 코드 제목으로 둔다."""
     chosen, _ = B.chosen_portfolio_id(R)
     parallel = settings.executor.parallel_report_calls
-    interp, market = _both(lambda: call_interpret(R, chosen, llm), lambda: call_market(R, llm), parallel)
+    interp, market, head = _run_all([lambda: call_interpret(R, chosen, llm), lambda: call_market(R, llm), lambda: call_header(R, chosen, llm, settings)], parallel)
     narr = call_narrate(R, chosen, interp, llm)
     interp, narr, market = split_grouped_in(interp), split_grouped_in(narr), split_grouped_in(market)  # '[ev1, ev2]' → '[ev1][ev2]'
-    doc = build_doc(R, interp=interp, narr=narr, market=market, step_summaries=step_summaries, settings=settings, usage=_usage(llm))
+    doc = build_doc(R, interp=interp, narr=narr, market=market, step_summaries=step_summaries, settings=settings, usage=_usage(llm), head=head)
     res = check(doc, R, settings)
     if res.errors:
         srcs = res.sources_to_retry() or {"14b", "14c"}  # 어디서 났는지 모르면 예전처럼 서술 둘을 다시
@@ -1183,7 +1235,7 @@ def generate_report(R: dict[str, Any], llm: LlmClient, settings: AnalysisSetting
             if no_matched:
                 _drop_matched_suggestions(narr, ("overview_ko", "reconsideration_ko"))
         interp, narr, market = split_grouped_in(interp), split_grouped_in(narr), split_grouped_in(market)  # '[ev1, ev2]' → '[ev1][ev2]'
-        doc = build_doc(R, interp=interp, narr=narr, market=market, step_summaries=step_summaries, settings=settings, usage=_usage(llm))
+        doc = build_doc(R, interp=interp, narr=narr, market=market, step_summaries=step_summaries, settings=settings, usage=_usage(llm), head=head)
         res = check(doc, R, settings)
         if res.errors:
             raise ReportCheckError("리포트 검증 실패: " + "; ".join(res.errors[:5]), details={"errors": res.errors, "warnings": res.warnings, "by_src": res.errors_by_src})

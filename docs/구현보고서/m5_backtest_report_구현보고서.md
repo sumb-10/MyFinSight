@@ -67,18 +67,20 @@
 flowchart TD
   R["13_results: 계산값·검증·근거 색인"] --> A["14a 성과·위험 해석"]
   R --> C["14c 시장 설명"]
+  R --> H["14d 머리말: 짧은 제목·요청 요약"]
   A --> B["14b 전체 서술"]
   R --> D["코드가 표·차트·KPI 조립"]
   A --> D
   B --> D
   C --> D
+  H --> D
   D --> G["문서 스키마 + 인용·표현 게이트"]
   G -->|"오류 출처별 1회 보정"| A
   G -->|"최종 통과"| S["워커가 결과·리포트 저장"]
   G -->|"계속 실패"| F["REPORT_CHECK_FAILED"]
 ```
 
-14a와 14c는 병렬, 14b는 14a 결과를 사용합니다. 재시도는 원인별이며 14a 수정 시 14b도 다시 씁니다. 이 문서 보정 1회와 LLM 호출기 자체의 형식/전송 재시도는 다른 층입니다.
+14a·14c·14d는 병렬, 14b는 14a 결과를 사용합니다. 14d(머리말)는 리포트 맨 위의 짧은 제목(`header.title_ko`)과 '요청 → 어떻게·왜 처리했는지' 2~3문장(`header.summary_ko`)을 씁니다. 입력은 아이디어 원문·확인 질문과 고른 답(13 결과 묶음의 `dialog`)·최종 조건·선정 과정이고 성과는 넣지 않습니다. 자기 검사(`check_header`: 길이·문장 수·금지 표현·사실에 없는 비율)를 못 넘기면 코드 제목을 쓰고 요약은 비우며(화면은 요청 해석 `subtitle_ko`), 리포트를 멈추지 않습니다. 재시도는 원인별이며 14a 수정 시 14b도 다시 씁니다. 이 문서 보정 1회와 LLM 호출기 자체의 형식/전송 재시도는 다른 층입니다.
 
 새 문서는 요약 대시보드와 `verdict, market, companies, construction, performance, assumptions, references` 일곱 섹션입니다. 표·숫자·차트는 코드가, 문단은 LLM이 만듭니다. 실제 인용 근거만 문서에 포함하고 전체 색인은 API로 조회합니다. 긴 시계열은 기본 600점 부근으로 줄이되 끝점·낙폭 고점/저점을 보존합니다.
 
@@ -94,6 +96,8 @@ flowchart TD
 | [prompts/14b_narrate/user_prompt.md](../../backend/analysis/prompts/14b_narrate/user_prompt.md) | 사용자 입력 템플릿; 자리표시자: `facts_json`, `interpretation_json` |
 | [prompts/14c_market/system_prompt.md](../../backend/analysis/prompts/14c_market/system_prompt.md) | 고정 시스템 지침(로더는 치환하지 않음); 자리표시자 없음 |
 | [prompts/14c_market/user_prompt.md](../../backend/analysis/prompts/14c_market/user_prompt.md) | 사용자 입력 템플릿; 자리표시자: `facts_json` |
+| [prompts/14d_header/system_prompt.md](../../backend/analysis/prompts/14d_header/system_prompt.md) | 고정 시스템 지침(로더는 치환하지 않음); 자리표시자 없음 |
+| [prompts/14d_header/user_prompt.md](../../backend/analysis/prompts/14d_header/user_prompt.md) | 사용자 입력 템플릿; 자리표시자: `facts_json` |
 
 <a id="classes"></a>
 ## 4. 클래스 상세
@@ -1647,7 +1651,7 @@ def _both(a, b, parallel: bool): ...
 def generate_report(R: dict[str, Any], llm: LlmClient, settings: AnalysisSettings, *, step_summaries: dict[str, str] | None=None) -> tuple[dict[str, Any], list[str]]: ...
 ```
 
-14a 해석과 14c 시장 설명을 독립 병렬 호출하고 그 해석으로 14b 서술을 만듭니다. 문서를 조립·검증한 뒤 오류 출처별 호출을 피드백으로 한 차례 보정합니다. 14a가 바뀌면 그것을 읽는 14b도 다시 부릅니다. 재검증 실패는 ReportCheckError이며 성공하면 문서·전체 검사 경고를 반환합니다. 숫자 검사 경고는 문서에, 개발 용어 경고는 실행 기록에 남깁니다.
+14a 해석·14c 시장 설명·14d 머리말을 독립 병렬 호출하고 그 해석으로 14b 서술을 만듭니다. 문서를 조립·검증한 뒤 오류 출처별 호출을 피드백으로 한 차례 보정합니다. 14a가 바뀌면 그것을 읽는 14b도 다시 부릅니다. 재검증 실패는 ReportCheckError이며 성공하면 문서·전체 검사 경고를 반환합니다. 숫자 검사 경고는 문서에, 개발 용어 경고는 실행 기록에 남깁니다.
 
 직접 연결: [chosen_portfolio_id](#m5_backtest_report-report_blocks-py-chosen_portfolio_id-33), [_both](#m5_backtest_report-report-py-_both-383), [call_narrate](#m5_backtest_report-report-py-call_narrate-167), [build_doc](#m5_backtest_report-report-py-build_doc-224), [check](#m5_backtest_report-report_check-py-check-107), [generate_report._redo_interp](#m5_backtest_report-report-py-generate_report-_redo_interp-410), [generate_report._redo_market](#m5_backtest_report-report-py-generate_report-_redo_market-417), [load_prompts](common_구현보고서.md#common-prompts-py-load_prompts-17), [facts_for_narrate](#m5_backtest_report-report-py-facts_for_narrate-117), [messages_from_prompts](common_구현보고서.md#common-llm-py-messages_from_prompts-54), [_retry_feedback](#m5_backtest_report-report-py-_retry_feedback-376), [generate_report._errs](#m5_backtest_report-report-py-generate_report-_errs-406), [ReportCheckError](common_구현보고서.md#errors-py-ReportCheckError-56).
 

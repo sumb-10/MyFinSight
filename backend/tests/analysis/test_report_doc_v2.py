@@ -36,7 +36,9 @@ def test_doc_v2_structure(e2e):
     assert sm["allocation"]["items"] and abs(sum(i["weight"] for i in sm["allocation"]["items"]) + sm["allocation"]["cash_weight"] - 1) < 1e-6
     assert sm["mini_series"]["ids"][0] == doc.header["chosen_portfolio_id"] and sm["next_actions_ko"]
     # 제목은 짧게, 상세 제목 따로; 개발 문구는 header.mode 가 아니라 backtest_mode
-    assert "전략" in doc.header["title_ko"] and R["selection"]["metric"] not in doc.header["title_ko"] and doc.header["title_detail_ko"] and "mode" not in doc.header
+    # 머리말: 제목은 머리말 호출(14d)의 짧은 제목, 회색 글은 요청·처리 이유 요약 (코드 제목은 title_detail_ko 에 남는다)
+    assert 4 <= len(doc.header["title_ko"]) <= 24 and R["selection"]["metric"] not in doc.header["title_ko"] and doc.header["summary_ko"]
+    assert doc.header["title_detail_ko"] and "mode" not in doc.header
     # 묶음: 참고자료의 출처·계산 조건·실행 기록은 한 묶음, '계산 조건' 표 제목 유지 (CalculationPanel 의존)
     refs = next(s for s in doc.sections if s.id == "references")
     grouped = [b for b in refs.blocks if b.get("group_ko") == "자료 출처·계산 조건·실행 기록"]

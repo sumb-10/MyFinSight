@@ -121,6 +121,36 @@ def paragraphs_of(doc: dict[str, Any]) -> list[tuple[str, str]]:
     return [(sid, t) for sid, t, _ in paragraphs_src(doc)]
 
 
+def check_header(head: dict[str, Any], facts: dict[str, Any], settings: AnalysisSettings) -> list[str]:
+    """머리말(14d) 검사: 제목은 짧은 명사구, 요약은 2~3문장, 금지 표현 없음, 비율·금액은 넘긴 사실에 있는 숫자만. 문제 목록 (비면 통과)."""
+    title, summary = head.get("title_ko"), head.get("summary_ko")
+    errs = []
+    if not isinstance(title, str) or not 4 <= len(title.strip()) <= 24 or "\n" in title or title.strip().endswith("."):
+        errs.append("title_ko must be one short noun phrase (4~24 characters, no period)")
+    if not isinstance(summary, str) or not 30 <= len(summary.strip()) <= 320 or not 2 <= len(re.findall(r"[.!?](?:\s|$)", summary.strip())) <= 4:
+        errs.append("summary_ko must be 2~3 sentences (30~320 characters)")
+    if errs:
+        return errs
+    known: set[float] = set()
+    known_numbers(facts, known)
+    _string_numbers(facts, known)
+    for text in (title, summary):
+        clean = text
+        for term in ALLOWED_TERMS:
+            clean = clean.replace(term, "")
+        errs += [f"banned phrase '{w}'" for w in settings.report.banned_phrases if any(not _negated(clean, i, w) for i in _find_all(clean, w))]
+        for m in NUM_RE.finditer(text):
+            if m.group(2) not in ("%", "%p", "USD", "원", "달러", "배") and not m.group(0).lstrip().startswith("$"):
+                continue  # 비율·금액·배수만 대조한다 (기간·개수는 건너뜀)
+            try:
+                v = abs(float(m.group(1).replace(",", "")))
+            except ValueError:
+                continue
+            if round(v, 2) not in known and round(v, 1) not in known and round(v) not in known:
+                errs.append(f"number {m.group(0).strip()} not found in facts")
+    return errs
+
+
 def check(doc: dict[str, Any], R: dict[str, Any], settings: AnalysisSettings) -> CheckResult:
     res = CheckResult()
     want = list(settings.report.sections)

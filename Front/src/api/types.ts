@@ -121,7 +121,7 @@ export interface ReportSummary {
 }
 export interface ReportDoc {
   request_id: string; run_id: string; stage: string; generated_at: string; source: string
-  header: { title_ko: string; title_detail_ko?: string; subtitle_ko: string; created_at: string; selection_as_of: string; backtest_period: { start: string; end: string; as_of: string; trading_days?: number }; data_as_of: string; chosen_portfolio_id: string; chosen_label_ko: string; chosen_note_ko: string; disclaimer_ko: string; run_id?: string; mode?: string; backtest_mode?: string }
+  header: { title_ko: string; title_detail_ko?: string; subtitle_ko: string; summary_ko?: string | null; created_at: string; selection_as_of: string; backtest_period: { start: string; end: string; as_of: string; trading_days?: number }; data_as_of: string; chosen_portfolio_id: string; chosen_label_ko: string; chosen_note_ko: string; disclaimer_ko: string; run_id?: string; mode?: string; backtest_mode?: string }
   kpis: Kpi[]; nav: { id: string; title_ko: string }[]; sections: Section[]
   datasets: { dates: string[]; series: Record<string, Series>; sampling?: { method: string; stride: number; full_points: number; points: number; pinned: string[] } | null }
   assessment: { intent_fit: number | null; logic_consistency: number | null; comments_ko: string[] }

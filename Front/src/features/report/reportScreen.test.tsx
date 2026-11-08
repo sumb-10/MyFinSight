@@ -221,3 +221,24 @@ describe("리포트 상단 탐색·용어", () => {
     expect(screen.getByText(/수익률이 가장 높은 전략과 최종 선택된 전략은 다를 수 있습니다/)).toBeInTheDocument()
   })
 })
+
+describe("머리말", () => {
+  it("제목은 리포트의 짧은 제목, 회색 글은 요청과 처리 이유 요약 (목록의 아이디어 원문을 제목으로 쓰지 않는다)", async () => {
+    const base = doc()
+    const d = doc({ header: { ...base.header, subtitle_ko: "요청 해석 문장", summary_ko: "반도체에 3년 투자하고 싶다는 요청입니다. 답하신 대로 종목 수를 줄였습니다." } })
+    const svc = service(d)
+    vi.mocked(svc.listReports).mockResolvedValue([{ report_id: "run_1", run_id: "run_1", request_id: "req_1", status: "success", has_report: true, as_of: "2026-10-30", idea: "반도체에 투자하고 싶어요. 아주 긴 아이디어 원문" }])
+    render(<ServiceContext.Provider value={svc}><ReportDetail reportId="run_1" /></ServiceContext.Provider>)
+    expect(await screen.findByRole("heading", { level: 1, name: "반도체 · 모멘텀 전략" })).toBeInTheDocument()
+    expect(screen.getByText("반도체에 3년 투자하고 싶다는 요청입니다. 답하신 대로 종목 수를 줄였습니다.")).toBeInTheDocument()
+    expect(screen.queryByText("요청 해석 문장")).toBeNull()
+    await waitFor(() => expect(vi.mocked(svc.listReports)).toHaveBeenCalled())
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("반도체 · 모멘텀 전략")
+  })
+  it("요약이 없는 옛 리포트는 요청 해석 문장을 자르지 않고 보인다", async () => {
+    const base = doc()
+    show(doc({ header: { ...base.header, subtitle_ko: "요청 해석 문장" } }))
+    expect(await screen.findByRole("heading", { level: 1, name: "반도체 · 모멘텀 전략" })).toBeInTheDocument()
+    expect(screen.getByText("요청 해석 문장")).not.toHaveClass("truncate")
+  })
+})

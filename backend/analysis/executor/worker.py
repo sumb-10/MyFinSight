@@ -54,6 +54,14 @@ def _answered_fields(doc: Any) -> tuple[str, ...]:
     return tuple(dict.fromkeys(out))
 
 
+def _dialog_log(doc: Any) -> list[dict[str, str]]:
+    """확인 질문과 사용자가 고른 답, 수정 요청이면 그 문장 (리포트 머리말 요약이 '왜 그렇게 처리했는지' 를 이 기록으로 쓴다)."""
+    out = [{"question_ko": q.question_ko, "answer_ko": q.answer} for q in doc.questions or [] if getattr(q, "answered_at", None) and getattr(q, "answer", None)]
+    if doc.mode == "revision" and doc.revision and doc.revision.text:
+        out.append({"question_ko": "조건 수정 요청", "answer_ko": doc.revision.text})
+    return out
+
+
 def execute_run(entry_run_id: str, *, repo: Any, store: JsonStore, settings: AnalysisSettings, queue: Queue, llm=None) -> str:
     """큐에서 claim 된 실행 하나를 끝까지. 돌려주는 값 = 최종 상태."""
     reqs = RequestStore(store)
@@ -73,7 +81,7 @@ def execute_run(entry_run_id: str, *, repo: Any, store: JsonStore, settings: Ana
                      bt_req=bt_req, allow_fewer_at_start=bool(doc.overrides.get("_allow_fewer_at_start")), no_reselect=bool(doc.overrides.get("_no_reselect")),
                      shift_cannot_help=bool(doc.overrides.get("_shift_cannot_help")),
                      start_shift_ok=bool(doc.overrides.get("_start_shift_ok")),  # 묻고 동의한 경우에만 시작일을 옮긴다 (1종목 이하는 자동)
-                     answered_fields=_answered_fields(doc),
+                     answered_fields=_answered_fields(doc), dialog=_dialog_log(doc),
                      cancel_check=lambda: queue.is_cancel_requested(entry_run_id))  # fmt: skip
     outcome = run(ctx, on_step=db_step_hook(repo, entry_run_id))
     status = outcome.status
