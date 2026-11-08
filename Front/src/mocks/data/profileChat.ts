@@ -1,6 +1,6 @@
 // 대화형 초기 투자조건 (목업). 서버가 대화를 이끄는 제안 계약(ProposedProfileChat)을 정해진 규칙으로만 흉내 낸다.
 // 질문 순서·보기·답 반영·다시 묻기가 모두 여기 한 곳에 있다. 자유 문장은 해석하지 않는다 (서버 연동 때 LLM 이 맡을 부분).
-// 상태는 질문별 답만 저장하고, 말풍선·초안(draft)·다음 질문은 매번 답에서 다시 만든다 → 「고치기」(되감기)는 뒤의 답을 지우면 끝.
+// 상태는 질문별 답만 저장하고, 말풍선·초안(draft)·다음 질문은 매번 답에서 다시 만든다 → 「고치기」는 그 답(과 그 답에 기대는 답)만 지우면 끝.
 import type { ProposedChatAnswer, ProposedChatKind, ProposedChatMessage, ProposedChatQuestion, ProposedProfileChat } from "../../api/proposed"
 import type { ProfileFields, Template, Tendency } from "../../api/types"
 import { DEFAULT_FORM } from "../../features/profile/defaults"
@@ -153,26 +153,30 @@ export const newChat = (id: string): ProfileChatState => ({ id, answers: {}, err
 /** 지금 답할 질문 (다 답했으면 null). */
 export const currentQuestion = (st: ProfileChatState): Q | null => CHAT_QUESTIONS.find((q) => !st.answers[q.id]) ?? null
 
-/** 답에서 말풍선·초안·다음 질문을 만든다. */
+/** 답에서 말풍선·초안·다음 질문을 만든다.
+ *  말풍선은 처음으로 답이 비어 있는 질문까지만 보인다. 그 뒤에 이미 답한 질문(「고치기」로 앞 답만 지운 경우)은
+ *  말풍선은 숨기되 초안에는 반영해 두고, 지금 질문에 답하면 다시 나타난다 → 고친 뒤 나머지를 다시 답할 필요가 없다. */
 export function chatView(st: ProfileChatState): ProposedProfileChat {
   const draft = clone(DEFAULT_FORM)
   const messages: ProposedChatMessage[] = [GREETING]
   const asked = new Set<string>()
   let current: Q | null = null
-  let done = 0
+  let question: ProposedChatQuestion | null = null
   for (const q of CHAT_QUESTIONS) {
-    messages.push({ id: `${q.id}:q`, role: "bot", text_ko: q.ask(draft), question_id: q.id })
     const a = st.answers[q.id]
-    if (!a) { current = q; break }
-    if ("skip" in a) messages.push({ id: `${q.id}:a`, role: "user", text_ko: "건너뛸게요 (기본값 사용)", question_id: q.id, editable: true })
-    else { q.apply(draft, a.v); (typeof q.fields === "function" ? q.fields(a.v) : q.fields).forEach((f) => asked.add(f)); messages.push({ id: `${q.id}:a`, role: "user", text_ko: q.say(a.v, draft), question_id: q.id, editable: true }) }
-    done++
+    if (!current) messages.push({ id: `${q.id}:q`, role: "bot", text_ko: q.ask(draft), question_id: q.id })
+    if (!a) {
+      if (!current) { current = q; question = { id: q.id, field_label_ko: q.label, kind: q.kind, options: q.options(draft), input: q.input ?? null, allow_skip: !!q.allowSkip } }
+      continue
+    }
+    if (!("skip" in a)) { q.apply(draft, a.v); (typeof q.fields === "function" ? q.fields(a.v) : q.fields).forEach((f) => asked.add(f)) }
+    if (!current) messages.push({ id: `${q.id}:a`, role: "user", text_ko: "skip" in a ? "건너뛸게요 (기본값 사용)" : q.say(a.v, draft), question_id: q.id, editable: true })
   }
+  const later = current ? CHAT_QUESTIONS.slice(CHAT_QUESTIONS.indexOf(current) + 1).filter((q) => st.answers[q.id]).length : 0
+  if (later) messages.push({ id: `${current!.id}:keep`, role: "bot", text_ko: `이 질문만 다시 답해 주세요. 뒤에 답한 ${later}개는 그대로 두었다가 답하시면 다시 보여 드릴게요.`, question_id: current!.id })
   if (current && st.error?.question_id === current.id) messages.push({ id: `${current.id}:retry`, role: "bot", text_ko: st.error.text_ko, question_id: current.id })
   if (!current) messages.push({ id: "done", role: "bot", text_ko: DONE_TEXT })
-  const question: ProposedChatQuestion | null = current
-    ? { id: current.id, field_label_ko: current.label, kind: current.kind, options: current.options(draft), input: current.input ?? null, allow_skip: !!current.allowSkip }
-    : null
+  const done = CHAT_QUESTIONS.filter((q) => st.answers[q.id]).length
   return { chat_id: st.id, state: current ? "asking" : "review", messages, question, progress: { done, total: CHAT_QUESTIONS.length }, draft, asked_fields: [...asked] }
 }
 
@@ -183,8 +187,7 @@ export function answerChat(st: ProfileChatState, a: ProposedChatAnswer): Profile
   const retry = (text_ko: string) => ({ ...next, error: { question_id: q.id, text_ko } })
   if (a.skip) return q.allowSkip ? { ...next, answers: { ...next.answers, [q.id]: { skip: true } }, error: null } : retry("이 질문은 꼭 답해 주셔야 해요. 아래에서 골라 주세요.")
   const v = a.number ?? a.option_value
-  const draft = chatView(st).draft
-  const values = q.options(draft).map((o) => o.value)
+  const values = chatView(st).question!.options.map((o) => o.value)  // 그 질문 시점의 보기 (앞 답으로 정해진다)
   if (q.kind === "choice" && !values.includes(v)) return retry("아래 보기 중에서 골라 주세요.")
   if (q.kind === "multi" && !(Array.isArray(v) && v.length > 0 && v.every((x) => values.includes(x)))) return retry("하나 이상 골라 주세요.")
   if ((q.kind === "money" || q.kind === "number") && q.input) {
@@ -196,10 +199,13 @@ export function answerChat(st: ProfileChatState, a: ProposedChatAnswer): Profile
   return { ...next, answers: { ...next.answers, [q.id]: { v } }, error: null }
 }
 
-/** 그 질문부터 다시 묻는다 (그 질문과 뒤의 답을 지운다). */
+/** 고친 답에 기대는 질문: 성향 진단 답이 바뀌면 진단 결과가 바뀌므로 「성향 확인」도 다시 묻는다.
+ *  (종목 기준의 「추천」은 성향에서 매번 다시 계산하므로 지우지 않는다.) */
+const DEPENDENTS: Record<string, string[]> = Object.fromEntries(QUESTIONS.map((q) => [q.id, ["tendency"]]))
+
+/** 그 질문만 다시 묻는다 (그 답과 그 답에 기대는 답만 지우고, 나머지 답은 그대로 둔다). */
 export function rewindChat(st: ProfileChatState, questionId: string): ProfileChatState {
-  const i = CHAT_QUESTIONS.findIndex((q) => q.id === questionId)
-  if (i < 0) return st
-  const keep = new Set(CHAT_QUESTIONS.slice(0, i).map((q) => q.id))
-  return { ...st, answers: Object.fromEntries(Object.entries(st.answers).filter(([k]) => keep.has(k))), error: null }
+  if (!CHAT_QUESTIONS.some((q) => q.id === questionId)) return st
+  const drop = new Set([questionId, ...(DEPENDENTS[questionId] ?? [])])
+  return { ...st, answers: Object.fromEntries(Object.entries(st.answers).filter(([k]) => !drop.has(k))), error: null }
 }

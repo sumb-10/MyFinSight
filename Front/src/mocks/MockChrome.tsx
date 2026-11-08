@@ -49,7 +49,7 @@ export default function MockChrome() {
             <p className={head}>내 투자조건</p>
             <div className="flex flex-wrap gap-1 px-2.5 py-1">
               {(["default", "zero", "none"] as const).map((v) => (
-                <button key={v} type="button" aria-pressed={variant === v} onClick={() => { svc.setProfileVariant(v); setVariant(v); void reload() }} className={`rounded-lg border px-2 py-1 text-xs ${variant === v ? "border-amber-500 bg-amber-50 font-semibold text-amber-900" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>{VARIANT_LABEL[v]}</button>
+                <button key={v} type="button" aria-pressed={variant === v} onClick={() => { svc.setProfileVariant(v); setVariant(v); void reload(); if (v === "none") setOpen(false) }} className={`rounded-lg border px-2 py-1 text-xs ${variant === v ? "border-amber-500 bg-amber-50 font-semibold text-amber-900" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>{VARIANT_LABEL[v]}</button>
               ))}
             </div>
             <button type="button" className={link} onClick={() => go({ page: "profile" })}>내 투자조건 열기</button>

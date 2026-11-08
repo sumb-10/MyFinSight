@@ -1,13 +1,15 @@
 // 브라우저에만 두는 편의 상태 (서버가 진실). 깨져도 화면은 동작해야 하므로 모든 접근을 try/catch 로 감싼다.
 import { isMockMode } from "../mocks/mode"
 import type { ProfileFields } from "../api/types"
+import type { ProposedProfileChat } from "../api/proposed"
 
 // 목업 모드는 다른 키를 써서, 목업 요청·실행 ID 가 일반 모드의 「진행 중 분석」 등에 섞이지 않게 한다.
 const KEY = isMockMode() ? "myfinsight.mock.ui.v1" : "myfinsight.ui.v1"
 const LEGACY_KEY = "myfinsight.local.v1"
 
 // profileDraft: 대화형 설정에서 「폼에서 세부 수정」으로 넘긴 초안 (처음 설정 폼이 미리 채우고, 저장하면 지운다)
-export interface UiState { version: 1; draftIdea?: string; activeRequestId?: string | null; activeRunId?: string | null; lastRoute?: string; legacyImported?: boolean; prefillIdea?: string | null; prefillOverrides?: Record<string, unknown> | null; profileDraft?: ProfileFields | null }
+// profileChat: 폼으로 넘어갈 때의 대화 (폼에서 「대화로 이어서 하기」를 누르면 처음부터가 아니라 여기서 이어 간다. 저장·「처음부터 다시」에서 지운다)
+export interface UiState { version: 1; draftIdea?: string; activeRequestId?: string | null; activeRunId?: string | null; lastRoute?: string; legacyImported?: boolean; prefillIdea?: string | null; prefillOverrides?: Record<string, unknown> | null; profileDraft?: ProfileFields | null; profileChat?: ProposedProfileChat | null }
 
 export function loadUi(): UiState {
   try {

@@ -80,13 +80,27 @@ describe("대화형 초기 투자조건 · 목업 규칙", () => {
     expect(c.draft).toMatchObject({ risk_type_overridden: true, risk: { risk_tolerance: "conservative" }, diagnosis: { computed_tendency: "위험중립형", final_tendency: "안정형" } })
     expect(c.draft.strategy_preference.template).toBe("high_dividend")
   })
-  it("「고치기」는 그 질문부터 다시 묻고 뒤의 답은 지운다", async () => {
+  it("「고치기」는 그 답만 다시 묻고, 다시 답하면 나머지 답은 그대로 둔 채 요약으로 돌아간다", async () => {
     const s = mock()
     const c = await answerAll(s, await s.startProfileChat())
     const r = await s.rewindProfileChat(c.chat_id, "amount")
-    expect(r).toMatchObject({ state: "asking", question: { id: "amount" }, progress: { done: 1 } })
-    expect(r.draft.capital.initial_amount).toBe(10_000_000)  // 기본값으로 돌아감
-    expect(r.messages.filter((m) => m.role === "user")).toHaveLength(1)
+    expect(r).toMatchObject({ state: "asking", question: { id: "amount" }, progress: { done: CHAT_QUESTIONS.length - 1 } })
+    expect(r.messages.filter((m) => m.role === "user")).toHaveLength(1)  // 뒤의 말풍선은 지금 질문에 답할 때까지 숨긴다
+    expect(r.messages.at(-1)?.text_ko).toMatch(/뒤에 답한 9개는 그대로/)
+    expect(r.draft.constraints.universe).toEqual(["SP500"])               // 뒤의 답은 초안에 남아 있다
+    const back = await s.answerProfileChat(c.chat_id, { question_id: "amount", option_value: 30_000_000 })
+    expect(back).toMatchObject({ state: "review", draft: { capital: { initial_amount: 30_000_000, monthly_contribution: 300_000 } } })
+    expect(back.messages.filter((m) => m.role === "user")).toHaveLength(CHAT_QUESTIONS.length)
+  })
+  it("성향 진단 답을 고치면 진단 결과가 바뀔 수 있어 「성향 확인」도 다시 묻는다", async () => {
+    const s = mock()
+    const c = await answerAll(s, await s.startProfileChat())
+    await s.rewindProfileChat(c.chat_id, "loss")
+    let r = await s.answerProfileChat(c.chat_id, { question_id: "loss", option_value: 3 })
+    expect(r.question?.id).toBe("tendency")
+    expect(r.question?.options.find((o) => o.recommended)?.value).toBe(r.draft.diagnosis!.computed_tendency)
+    r = await s.answerProfileChat(c.chat_id, { question_id: "tendency", option_value: r.draft.diagnosis!.computed_tendency })
+    expect(r.state).toBe("review")
   })
   it("종목 수에 맞춰 범위와 종목당 상한을 같이 정한다", () => {
     expect(holdingsFor(10)).toMatchObject({ num_holdings: { target: 10, min: 8, max: 12 }, max_weight_per_stock: 0.15 })
@@ -144,9 +158,25 @@ describe("대화형 초기 투자조건 화면 (목업)", () => {
     expect(window.location.hash).toBe("#/profile/setup")
     expect(loadUi().profileDraft).toMatchObject({ capital: { initial_amount: 50_000_000 }, horizon: { purpose: "retirement" } })
     unmount()
-    show(s, <ProfileScreen mode="setup" />)
+    const { unmount: unmount2 } = show(s, <ProfileScreen mode="setup" />)
     expect(await screen.findByText("대화에서 답한 내용으로 채웠습니다", {}, { timeout: 5000 })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /대화로 설정하기/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /2단계 투자성향 \(아직 시작 전\)/ })).toBeInTheDocument()  // 대화 중간에 넘어왔으면 묻지 않은 단계를 「완료」로 보이지 않는다
+    fireEvent.click(screen.getByRole("button", { name: /대화로 이어서 하기/ }))
+    expect(window.location.hash).toBe("#/profile/chat")
+    unmount2()
+  })
+  it("폼에 다녀와도 대화는 처음부터가 아니라 넘어가기 전 질문에서 이어진다", async () => {
+    const s = firstUser()
+    const { unmount } = show(s, <ProfileChatScreen />)
+    await pick(/^은퇴 대비/)
+    await screen.findByRole("button", { name: /^5,000만원/ }, { timeout: 5000 })
+    fireEvent.click(screen.getByRole("button", { name: /폼으로 한 번에 입력/ }))
+    unmount()
+    show(s, <ProfileChatScreen />, "#/profile/chat")
+    expect(await screen.findByRole("button", { name: /^5,000만원/ }, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.getByRole("progressbar", { name: "답한 질문" })).toHaveAttribute("aria-valuenow", "1")
+    await pick(/^5,000만원/)
+    expect(await screen.findByRole("button", { name: /^추가 투자 없음/ }, { timeout: 5000 })).toBeInTheDocument()
   })
   it("처음 사용자는 앱을 열면 대화형 설정으로 간다", async () => {
     show(firstUser(), <App />, "#/home")

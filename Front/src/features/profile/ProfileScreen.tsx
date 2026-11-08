@@ -122,7 +122,9 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
   const legacy = useMemo(() => (initial || chatDraft ? null : loadLegacyProfile()), [initial, chatDraft])
   const [form, setForm] = useState<Form>(() => (initial ? structuredClone(initial) : chatDraft ? structuredClone(chatDraft) : { ...structuredClone(DEFAULT_FORM), ...(legacy ? fromLegacy(legacy) : {}) }))
   const [step, setStep] = useState(0)
-  const [reached, setReached] = useState(initial || chatDraft ? STEPS.length - 1 : 0)  // 지금까지 들어가 본 가장 먼 단계 (수정·대화 초안이면 모든 단계 완료)
+  const chatDone = useMemo(() => !!chatDraft && loadUi().profileChat?.state === "review", [chatDraft])  // 대화를 끝까지 하고 넘어왔는지
+  const resumable = useMemo(() => !!loadUi().profileChat, [])  // 폼으로 넘어오기 전의 대화가 있으면 「대화로 이어서 하기」
+  const [reached, setReached] = useState(initial || chatDone ? STEPS.length - 1 : 0)  // 지금까지 들어가 본 가장 먼 단계 (수정·대화를 끝낸 초안이면 모든 단계 완료, 대화 중간에 넘어왔으면 처음부터)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState("")
@@ -180,7 +182,7 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
       const body: ProfileFields = { ...form, risk_type_overridden: form.diagnosis ? form.diagnosis.final_tendency !== computed : false, note: setup ? "첫 등록" : "수정" }
       const v = await svc.saveProfile(body)
       if (legacy) clearLegacy()
-      if (chatDraft) saveUi({ profileDraft: null })
+      if (chatDraft || loadUi().profileChat) saveUi({ profileDraft: null, profileChat: null })
       onSaved(v)
     } catch (ex) {
       if (ex instanceof ApiError && ex.fields) { setErrors(ex.fields); setSaveError("입력값에 오류가 있어 저장하지 못했습니다. 표시된 항목을 확인해 주세요.") }
@@ -205,7 +207,7 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
           <p className="mt-2 text-sm leading-6 text-slate-600">금액과 기간, 투자성향, 종목 범위, 투자 전략을 설정합니다. 분석을 요청할 때 아이디어에 맞춰 일부를 바꿀 수 있습니다.</p>
         </div>
         <div className="flex shrink-0 gap-2">
-          {setup && svc.startProfileChat && <Button variant="secondary" onClick={() => navigate({ page: "profile", mode: "chat" })}><MessagesSquare className="size-4" aria-hidden />대화로 설정하기<MockTag /></Button>}
+          {setup && svc.startProfileChat && <Button variant="secondary" onClick={() => navigate({ page: "profile", mode: "chat" })}><MessagesSquare className="size-4" aria-hidden />{resumable ? "대화로 이어서 하기" : "대화로 설정하기"}<MockTag /></Button>}
           <Button variant="neutral" onClick={() => navigate(setup ? { page: "reports" } : { page: "profile" })}><LogOut className="size-4" aria-hidden />저장하지 않고 나가기</Button>
         </div>
       </header>

@@ -14,6 +14,7 @@ import { PROFILE_VERSIONS, profileView, ZERO_CAPITAL_VERSION } from "../data/pro
 import { buildReport, checkpointDetail, type MockReportDoc } from "../data/report"
 import { CANCEL_MS, RUN_WARNINGS, STEPS, buckets, cancelInfo, liveStatus, runPartial, runRows, runStatus } from "../data/runs"
 import { STOCKS } from "../data/stocks"
+import { localIso } from "../data/util"
 import { clearState, initialState, loadState, saveState, type MockState } from "./store"
 import type { SeenSeed } from "../../lib/seen"
 
@@ -84,7 +85,7 @@ export class MockService implements AnalysisService {
   getProfile(): Promise<ProfileView | null> { return this.wait(() => { const vs = this.versions(); return vs.length ? profileView(vs) : null }) }
   saveProfile(fields: ProfileFields): Promise<ProfileView> {
     const vs = this.versions()
-    const v: ProfileVersion = { ...clone(fields), version: (vs.at(-1)?.version ?? 0) + 1, created_at: new Date().toISOString().slice(0, 19) }
+    const v: ProfileVersion = { ...clone(fields), version: (vs.at(-1)?.version ?? 0) + 1, created_at: localIso() }  // 서버처럼 시간대 오프셋 포함 (UTC 를 떼면 9시간 이른 「저장 시각」)
     this.s.savedVersions.push(v); this.commit()
     return this.wait(() => profileView(this.versions()))
   }

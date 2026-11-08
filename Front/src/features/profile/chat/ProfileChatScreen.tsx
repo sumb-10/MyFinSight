@@ -6,7 +6,7 @@ import { errorMessage } from "../../../api/client"
 import { proposedRulesOf, type ProposedChatAnswer, type ProposedChatMessage, type ProposedProfileChat } from "../../../api/proposed"
 import type { ProfileView } from "../../../api/types"
 import { useResource } from "../../../state/useResource"
-import { saveUi } from "../../../state/uiStorage"
+import { loadUi, saveUi } from "../../../state/uiStorage"
 import { Alert, Button, ErrorState, Loading } from "../../../ui"
 import { MockTag } from "../../report/proposedView"
 import { ProfileScreen } from "../ProfileScreen"
@@ -55,17 +55,22 @@ function ChatFlow({ hasProfile, onSaved }: { hasProfile: boolean; onSaved: (v: P
     setBusy(true); setError("")
     try { setChat(await f()) } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
   }
-  const start = () => run(() => svc.startProfileChat!())
-  useEffect(() => { if (!started.current) { started.current = true; void start() } }, [])  // 처음 한 번만 (개발 모드 이중 실행에도 대화 하나)
+  const start = () => { saveUi({ profileChat: null }); return run(() => svc.startProfileChat!()) }
+  useEffect(() => {  // 처음 한 번만 (개발 모드 이중 실행에도 대화 하나). 폼에 다녀왔으면 그때의 대화에서 이어 간다.
+    if (started.current) return
+    started.current = true
+    const saved = loadUi().profileChat
+    if (saved) setChat(saved); else void start()
+  }, [])
   useEffect(() => { endRef.current?.scrollIntoView?.({ block: "end", behavior: "smooth" }) }, [chat?.messages.length, chat?.state])
 
   const answer = (a: Omit<ProposedChatAnswer, "question_id">) => { if (chat?.question) void run(() => svc.answerProfileChat!(chat.chat_id, { question_id: chat.question!.id, ...a })) }
   const rewind = (questionId: string) => { if (chat) void run(() => svc.rewindProfileChat!(chat.chat_id, questionId)) }
-  const toForm = () => { saveUi({ profileDraft: chat && chat.asked_fields.length ? chat.draft : null }); navigate({ page: "profile", mode: hasProfile ? "edit" : "setup" }) }
+  const toForm = () => { saveUi({ profileDraft: chat && chat.asked_fields.length ? chat.draft : null, profileChat: chat?.progress.done ? chat : null }); navigate({ page: "profile", mode: hasProfile ? "edit" : "setup" }) }
   const save = async () => {
     if (!chat) return
     setBusy(true); setSaveError("")
-    try { const v = await svc.saveProfile({ ...chat.draft, note: hasProfile ? "대화로 다시 설정" : "첫 등록" }); saveUi({ profileDraft: null }); onSaved(v) }
+    try { const v = await svc.saveProfile({ ...chat.draft, note: hasProfile ? "대화로 다시 설정" : "첫 등록" }); saveUi({ profileDraft: null, profileChat: null }); onSaved(v) }
     catch (e) { setSaveError(`${errorMessage(e)} 답한 내용은 그대로 있습니다.`) }
     finally { setBusy(false) }
   }

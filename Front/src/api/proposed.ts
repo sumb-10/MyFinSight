@@ -126,7 +126,7 @@ export interface ProposedMessageResult { text: string; at: string; outcome: "app
  */
 export type ProposedChatKind = "choice" | "multi" | "money" | "number"
 export interface ProposedChatQuestion { id: string; field_label_ko: string; kind: ProposedChatKind; options: { value: unknown; label_ko: string; help_ko?: string | null; recommended?: boolean }[]; input: { min: number; max: number; step: number; unit_ko: string } | null; allow_skip: boolean }
-/** editable = 사용자 답 말풍선의 「고치기」 대상 (그 질문부터 다시 묻는다). */
+/** editable = 사용자 답 말풍선의 「고치기」 대상 (그 질문만 다시 묻는다). */
 export interface ProposedChatMessage { id: string; role: "bot" | "user"; text_ko: string; question_id?: string | null; editable?: boolean }
 export interface ProposedProfileChat {
   chat_id: string
@@ -175,7 +175,7 @@ export interface ProposedApi {
   recommendStrategy(tendency: Tendency): Promise<ProposedStrategyRecommendation>
   startProfileChat(): Promise<ProposedProfileChat>   // 대화형 초기 투자조건: 새 대화 시작
   answerProfileChat(chatId: string, answer: ProposedChatAnswer): Promise<ProposedProfileChat>
-  rewindProfileChat(chatId: string, questionId: string): Promise<ProposedProfileChat>   // 그 질문부터 다시 묻기 (뒤의 답은 지운다)
+  rewindProfileChat(chatId: string, questionId: string): Promise<ProposedProfileChat>   // 그 질문만 다시 묻기 (뒤의 답은 남기고, 그 답에 기대는 질문만 함께 다시 묻는다)
   getQuestionBatch(requestId: string): Promise<ProposedQuestionBatch | null>
   answerBatch(requestId: string, answers: ProposedBatchAnswer[]): Promise<import("./types").DialogState>
   getMessageResults(requestId: string): Promise<ProposedMessageResult[]>
