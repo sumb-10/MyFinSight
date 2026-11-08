@@ -68,7 +68,7 @@ export function FlowSteps({ current }: { current: 0 | 1 }) {
 }
 
 /** 요청 처리 중 표시. 실제 요청이 끝날 때까지만 보인다 (진행률은 알 수 없어 경과 시간만). */
-export function Pending({ title, detail }: { title: string; detail?: string }) {
+export function Pending({ title, detail, children }: { title: string; detail?: string; children?: React.ReactNode }) {
   const [sec, setSec] = useState(0)
   useEffect(() => { const t = setInterval(() => setSec((s) => s + 1), 1000); return () => clearInterval(t) }, [])
   return (
@@ -77,9 +77,21 @@ export function Pending({ title, detail }: { title: string; detail?: string }) {
       <div className="min-w-0 text-sm">
         <p className="font-semibold text-slate-900">{title}</p>
         {detail && <p className="mt-0.5 text-xs leading-5 text-slate-500">{detail}</p>}
+        {children}
         <p className="mt-1 text-xs text-slate-400" aria-hidden="true">{sec}초 경과{sec >= 30 ? " · 분석 모델이 응답을 만드는 중이라 1~2분 걸릴 수 있습니다" : ""}</p>
       </div>
     </div>
+  )
+}
+/** 홈 「투자조건 확인하기」를 누른 뒤: 서버가 새 요청을 만드는 동안 (LLM 두 번 · 수 초~1분). 서버가 진행률을 주지 않으므로
+ *  가짜 진행률 없이 「하는 일」과 경과 시간만 보여 준다 (전에는 버튼 글자만 바뀌어 돌아가는지 알 수 없었다). */
+export function IdeaPending() {
+  return (
+    <Pending title="아이디어를 해석하고 있습니다" detail="분석 모델이 아이디어를 이해하고, 기본 투자조건과 맞춰 본 뒤 꼭 필요한 질문만 고릅니다. 끝나면 질문 화면으로 넘어갑니다.">
+      <ol className="mt-2 space-y-0.5 text-xs text-slate-600">
+        {["아이디어 이해 (투자 테마·종목 찾기)", "기본 투자조건과 맞춰 보기", "꼭 필요한 질문 고르기"].map((t, i) => <li key={t} className="flex gap-2"><span className="grid size-4 shrink-0 place-items-center rounded-full bg-blue-100 text-[10px] font-bold text-blue-800">{i + 1}</span>{t}</li>)}
+      </ol>
+    </Pending>
   )
 }
 export const LLM_DETAIL = "분석 모델(AI)이 내용을 해석해 조건에 반영합니다. 처리하는 동안 화면을 닫지 마세요."

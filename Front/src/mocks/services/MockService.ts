@@ -40,8 +40,8 @@ export class MockService implements AnalysisService {
   }
 
   /* ───────── 내부 ───────── */
-  private async wait<T>(f: () => T): Promise<T> {
-    if (this.latency > 0) await new Promise((r) => setTimeout(r, this.latency))
+  private async wait<T>(f: () => T, ms = this.latency): Promise<T> {
+    if (ms > 0) await new Promise((r) => setTimeout(r, ms))
     return clone(f())
   }
   private commit() { this.papers.clear(); if (this.persist) saveState(this.s) }
@@ -124,7 +124,8 @@ export class MockService implements AnalysisService {
     const d = { ...askingDialog(base, id, input.idea), mode: input.mode ?? "new", base_report_id: input.base_report_id ?? null, overrides: input.overrides ?? {} }
     const fresh = requestFromProfile(base, id, input.idea), o = input.overrides ?? {}
     this.s.drafts[id] = { req: applyOverrides(fresh, fresh, o), touched: Object.keys(o), base }
-    return this.wait(() => this.put(this.withRows(d)))
+    // 실제 서버는 새 요청에서 LLM 을 두 번 불러 수 초~1분 걸린다. 홈의 기다림 표시가 보이도록 평소 지연의 15배 (기본 약 1.8초, 테스트 latencyMs 0 이면 0)
+    return this.wait(() => this.put(this.withRows(d)), this.latency * 15)
   }
   getRequest(id: string) { return this.wait(() => this.dialog(id)) }
   listRequests(): Promise<RequestRow[]> { return this.wait(() => requestRows([...Object.values(this.s.requests), ...(this.s.requests.mock_req_asking ? [] : [askingDialog(this.base())]), ...(this.s.requests.mock_req_ready ? [] : [readyDialog()])])) }

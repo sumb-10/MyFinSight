@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ChevronRight, Compass, SlidersHorizontal, Sparkles, X } from "lucide-react"
+import { ChevronRight, Compass, Loader2, SlidersHorizontal, Sparkles, X } from "lucide-react"
 import { useProfile, useService } from "../../app/providers"
 import { navigate } from "../../app/router"
 import { errorMessage } from "../../api/client"
@@ -8,6 +8,7 @@ import { loadUi, saveUi } from "../../state/uiStorage"
 import { Alert, Badge, Button, Card, EmptyState, ErrorState, Loading } from "../../ui"
 import { date, ko } from "../../lib/format"
 import { DetailConditionsDialog, OVERRIDE_LABELS, overrideText, type Overrides } from "./DetailConditions"
+import { ActionError, IdeaPending } from "../analysis/flow"
 import { tendencyLabel } from "../../lib/tendency"
 import { money, pctText } from "../profile/format"  // 내 투자조건 화면과 같은 표기 (1,000만원 · 10%)
 import { reportName } from "../../lib/reportName"
@@ -21,7 +22,8 @@ export function HomeScreen() {
   const svc = useService()
   const { profile, status, error: profileError, reload } = useProfile()
   const [idea, setIdea] = useState(() => { const u = loadUi(); return u.prefillIdea ?? u.draftIdea ?? "" })
-  const [error, setError] = useState("")
+  const [error, setError] = useState("")      // 입력 확인 (5자 미만 등)
+  const [apiErr, setApiErr] = useState("")    // 서버가 요청을 만들지 못함 → 다시 시도
   const [busy, setBusy] = useState(false)
   // 상세 조건도 아이디어처럼 초안으로 남긴다 (전에는 다른 메뉴에 다녀오면 사라졌다). 새 요청으로 채워 온 값(prefill)이 있으면 그것이 먼저
   const [overrides, setOverrides] = useState<Overrides>(() => { const u = loadUi(); return (u.prefillOverrides ?? u.draftOverrides ?? {}) as Overrides })
@@ -43,13 +45,13 @@ export function HomeScreen() {
 
   const submit = async () => {
     if (idea.trim().length < 5) { setError("분석할 투자 아이디어를 5자 이상 입력해주세요."); return }
-    setBusy(true); setError("")
+    setBusy(true); setError(""); setApiErr("")
     try {
       const st = await svc.createRequest({ idea: idea.trim(), mode: "new", overrides })
       saveUi({ draftIdea: "", draftOverrides: {}, activeRequestId: st.request_id })
       setIdea(""); setOverrides({}); setLeftNote("")
       navigate({ page: "clarify", requestId: st.request_id })
-    } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
+    } catch (e) { setApiErr(errorMessage(e)) } finally { setBusy(false) }
   }
 
   return (
@@ -61,22 +63,25 @@ export function HomeScreen() {
         <div className="mt-4 flex justify-center"><Button variant="secondary" onClick={() => navigate({ page: "tutorial" })}><Compass className="size-4" />처음이신가요? 리포트 보는 법 둘러보기</Button></div>
         {leftNote && <div className="mt-8 text-left"><Alert tone="info" title="그만둔 요청을 홈에 채워 두었습니다">{leftNote}</Alert></div>}
         <div className={`${leftNote ? "mt-4" : "mt-8"} rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm`}>
-          <textarea value={idea} onChange={(e) => { setIdea(e.target.value); setError("") }} className="min-h-36 w-full resize-none rounded-xl border-0 p-3 text-base leading-7 outline-none placeholder:text-slate-400" placeholder="예: 미국과 한국의 반도체·메모리 기업에 분산 투자하고 싶어요. 특정 종목에 너무 집중하고 싶지는 않습니다." />
+          <textarea value={idea} readOnly={busy} aria-busy={busy} onChange={(e) => { setIdea(e.target.value); setError("") }} className="min-h-36 w-full resize-none rounded-xl border-0 p-3 text-base leading-7 outline-none placeholder:text-slate-400" placeholder="예: 미국과 한국의 반도체·메모리 기업에 분산 투자하고 싶어요. 특정 종목에 너무 집중하고 싶지는 않습니다." />
           {Object.keys(overrides).length > 0 && (
             <div className="flex flex-wrap items-center gap-2 px-2 pb-3">
               <span className="text-xs font-semibold text-slate-500">이번 분석에만 적용:</span>
               {Object.entries(overrides).map(([k, v]) => <Badge key={k} tone="blue">{OVERRIDE_LABELS[k] ?? k} {overrideText(k, v)}</Badge>)}
-              <button className="text-xs text-slate-400 hover:text-slate-700" onClick={() => setOverrides({})}><X className="inline size-3" /> 모두 지우기</button>
+              <button className="text-xs text-slate-400 hover:text-slate-700 disabled:opacity-40" disabled={busy} onClick={() => setOverrides({})}><X className="inline size-3" /> 모두 지우기</button>
             </div>
           )}
+          {/* 기다리는 동안: 무엇을 하는지·경과 시간 (서버가 LLM 으로 해석하는 데 수 초~1분) */}
+          {busy && <div className="px-2 pb-3"><IdeaPending /></div>}
           <div className="flex items-center justify-between border-t border-slate-100 px-2 pt-3">
             <p className="text-xs text-slate-400">분석은 보충 질문과 조건 확인을 거친 뒤 「분석 시작」을 눌러야 시작됩니다.</p>
             <div className="flex gap-2">
-              <Button variant="secondary" onClick={() => setDetail(true)}><SlidersHorizontal className="size-4" />상세 조건{Object.keys(overrides).length ? ` (${Object.keys(overrides).length})` : ""}</Button>
-              <Button onClick={submit} disabled={busy}>{busy ? "의도 해석 중…" : "투자조건 확인하기"}<ChevronRight className="size-4" /></Button>
+              <Button variant="secondary" onClick={() => setDetail(true)} disabled={busy}><SlidersHorizontal className="size-4" />상세 조건{Object.keys(overrides).length ? ` (${Object.keys(overrides).length})` : ""}</Button>
+              <Button onClick={submit} disabled={busy}>{busy ? <><Loader2 className="size-4 animate-spin" aria-hidden />아이디어 해석 중…</> : <>투자조건 확인하기<ChevronRight className="size-4" /></>}</Button>
             </div>
           </div>
           {error && <p className="px-2 pt-2 text-xs font-medium text-red-600">{error}</p>}
+          {apiErr && !busy && <div className="px-2 pt-3"><ActionError title="아이디어를 해석하지 못했습니다" message={apiErr} retry={() => void submit()} /></div>}
         </div>
       </div>
       {detail && <DetailConditionsDialog profile={profile.profile} initial={overrides} onApply={setOverrides} close={() => setDetail(false)} />}

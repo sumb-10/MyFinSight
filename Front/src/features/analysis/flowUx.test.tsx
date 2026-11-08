@@ -172,3 +172,32 @@ describe("흐름: 잃지 않기 · 막다른 길 없애기", () => {
     unmount()
   })
 })
+
+// 홈 「투자조건 확인하기」 뒤 기다림: 서버가 아이디어를 해석하는 동안(실제 서버 수 초~1분) 돌아가는지 알 수 있게.
+describe("홈: 아이디어 해석을 기다리는 동안", () => {
+  const IDEA = "배당을 꾸준히 주는 미국 대형주에 나눠 투자하고 싶어요"
+  it("누르면 바로 「아이디어를 해석하고 있습니다」와 하는 일이 보이고, 입력이 잠기며, 끝나면 질문 화면으로 간다", async () => {
+    const s = new MockService({ latencyMs: 20, persist: false })  // 새 요청은 지연 ×15 = 0.3초
+    show(s, <HomeScreen />)
+    fireEvent.change(await screen.findByPlaceholderText(/예: 미국과 한국의 반도체/, {}, { timeout: 5000 }), { target: { value: IDEA } })
+    fireEvent.click(screen.getByRole("button", { name: /투자조건 확인하기/ }))
+    expect(await screen.findByText("아이디어를 해석하고 있습니다")).toBeInTheDocument()
+    expect(screen.getByText("꼭 필요한 질문 고르기")).toBeInTheDocument()
+    expect(screen.getByDisplayValue(IDEA)).toHaveAttribute("readonly")
+    expect(screen.getByRole("button", { name: /^상세 조건/ })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /아이디어 해석 중/ })).toBeDisabled()
+    await waitFor(() => expect(window.location.hash).toMatch(/^#\/analysis\//), { timeout: 5000 })
+  })
+  it("실패하면 이유와 「다시 시도」를 보여 주고, 아이디어는 그대로 남는다", async () => {
+    const s = mock()
+    let calls = 0
+    const failing = Object.assign(Object.create(s), { createRequest: () => { calls++; return Promise.reject(new Error("서버에 연결할 수 없습니다.")) } }) as AnalysisService
+    show(failing, <HomeScreen />)
+    fireEvent.change(await screen.findByPlaceholderText(/예: 미국과 한국의 반도체/, {}, { timeout: 5000 }), { target: { value: IDEA } })
+    fireEvent.click(screen.getByRole("button", { name: /투자조건 확인하기/ }))
+    expect(await screen.findByText("아이디어를 해석하지 못했습니다")).toBeInTheDocument()
+    expect(screen.getByDisplayValue(IDEA)).not.toHaveAttribute("readonly")
+    fireEvent.click(screen.getByRole("button", { name: "다시 시도" }))
+    await waitFor(() => expect(calls).toBe(2))
+  })
+})
