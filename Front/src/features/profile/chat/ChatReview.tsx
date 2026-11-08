@@ -5,6 +5,7 @@ import { profileRows, type ProfileRow } from "../compare"
 import { validateProfile } from "../validate"
 
 // 대화형 설정의 마지막 단계: 답한 값과 기본값으로 둔 값을 나눠 보여 주고 저장한다. 검사는 4단계 폼과 같은 규칙(validateProfile).
+// 요약 카드는 대화 안(봇 말풍선 자리)에, 저장 버튼 줄은 대화창 아래 입력 자리에 둔다 → 요약이 길어도 저장 버튼은 늘 보인다.
 
 function Rows({ rows }: { rows: ProfileRow[] }) {
   return (
@@ -14,29 +15,39 @@ function Rows({ rows }: { rows: ProfileRow[] }) {
   )
 }
 
-export function ChatReview({ chat, allowZero, busy, saveError, onSave, onEditInForm, onRestart }: {
-  chat: ProposedProfileChat; allowZero: boolean; busy: boolean; saveError: string
-  onSave: () => void; onEditInForm: () => void; onRestart: () => void
-}) {
+const errorsOf = (chat: ProposedProfileChat, allowZero: boolean) => Object.values(validateProfile(chat.draft, { allowZero }))
+
+export function ChatReviewSummary({ chat, allowZero }: { chat: ProposedProfileChat; allowZero: boolean }) {
   const rows = profileRows(chat.draft)
   const asked = rows.filter((r) => chat.asked_fields.includes(r.key))
   const rest = rows.filter((r) => !chat.asked_fields.includes(r.key))
-  const errors = Object.values(validateProfile(chat.draft, { allowZero }))
+  const errors = errorsOf(chat, allowZero)
   return (
-    <section aria-labelledby="chat-review-title" className="rounded-2xl border border-blue-200 bg-white p-6">
-      <h2 id="chat-review-title" className="text-lg font-bold text-slate-950">이렇게 정리했어요</h2>
+    <section aria-labelledby="chat-review-title" className="rounded-2xl rounded-tl-sm border border-blue-200 bg-white p-5 shadow-sm">
+      <h2 id="chat-review-title" className="text-base font-bold text-slate-950">이렇게 정리했어요</h2>
       <p className="mt-1 text-sm text-slate-600">답하신 내용 {asked.length}개와 기본값으로 둔 조건 {rest.length}개입니다. 저장하면 기본 투자조건으로 기록됩니다.</p>
-      <div className="mt-5"><Rows rows={asked} /></div>
-      <Disclosure className="mt-5" size="sm" title="기본값으로 둔 조건" summary={`${rest.length}개 · 저장한 뒤에도 바꿀 수 있습니다`}>
+      <div className="mt-4"><Rows rows={asked} /></div>
+      <Disclosure className="mt-4" size="sm" title="기본값으로 둔 조건" summary={`${rest.length}개 · 저장한 뒤에도 바꿀 수 있습니다`}>
         <div className="pt-3"><Rows rows={rest} /></div>
       </Disclosure>
-      {errors.length > 0 && <div className="mt-5"><Alert tone="error" title="저장하기 전에 고칠 항목이 있습니다"><ul className="list-disc pl-5">{errors.map((e) => <li key={e}>{e}</li>)}</ul></Alert></div>}
-      {saveError && <div className="mt-5"><Alert tone="error" title="저장하지 못했습니다">{saveError}</Alert></div>}
-      <div className="mt-6 flex flex-wrap items-center gap-2">
-        <Button disabled={busy || errors.length > 0} onClick={onSave}><Save className="size-4" aria-hidden />이대로 저장</Button>
+      {errors.length > 0 && <div className="mt-4"><Alert tone="error" title="저장하기 전에 고칠 항목이 있습니다"><ul className="list-disc pl-5">{errors.map((e) => <li key={e}>{e}</li>)}</ul></Alert></div>}
+    </section>
+  )
+}
+
+export function ChatReviewActions({ chat, allowZero, busy, saveError, onSave, onEditInForm, onRestart }: {
+  chat: ProposedProfileChat; allowZero: boolean; busy: boolean; saveError: string
+  onSave: () => void; onEditInForm: () => void; onRestart: () => void
+}) {
+  const blocked = errorsOf(chat, allowZero).length > 0
+  return (
+    <div className="space-y-3">
+      {saveError && <Alert tone="error" title="저장하지 못했습니다">{saveError}</Alert>}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button disabled={busy || blocked} onClick={onSave}><Save className="size-4" aria-hidden />이대로 저장</Button>
         <Button variant="secondary" disabled={busy} onClick={onEditInForm}><PencilLine className="size-4" aria-hidden />폼에서 세부 수정</Button>
         <Button variant="ghost" disabled={busy} onClick={onRestart}><RotateCcw className="size-4" aria-hidden />처음부터 다시</Button>
       </div>
-    </section>
+    </div>
   )
 }

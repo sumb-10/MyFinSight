@@ -41,8 +41,8 @@ export class MockService implements AnalysisService {
   }
 
   /* ───────── 내부 ───────── */
-  private async wait<T>(f: () => T): Promise<T> {
-    if (this.latency > 0) await new Promise((r) => setTimeout(r, this.latency))
+  private async wait<T>(f: () => T, ms = this.latency): Promise<T> {
+    if (ms > 0) await new Promise((r) => setTimeout(r, ms))
     return clone(f())
   }
   private commit() { this.papers.clear(); if (this.persist) saveState(this.s) }
@@ -92,12 +92,14 @@ export class MockService implements AnalysisService {
   getProfileVersion(version: number): Promise<ProfileVersion> { return this.wait(() => { const v = this.versions().find((x) => x.version === version); if (!v) throw notFound("투자조건 버전"); return v }) }
   recommendStrategy(tendency: Tendency): Promise<ProposedStrategyRecommendation> { return this.wait(() => recommendation(tendency)) }  // 추천 규칙은 아직 없다 — 성향별 예시
 
-  /* 대화형 초기 투자조건: 정해진 질문 순서와 보기로만 묻는다 (data/profileChat.ts). 저장은 saveProfile 그대로. */
+  /* 대화형 초기 투자조건: 정해진 질문 순서와 보기로만 묻는다 (data/profileChat.ts). 저장은 saveProfile 그대로.
+     봇이 답을 준비하는 「…」가 보이도록 대화 응답만 평소 지연의 5배 (기본 0.6초, 테스트 latencyMs 0 이면 0). */
+  private chatWait<T>(f: () => T) { return this.wait(f, this.latency * 5) }
   startProfileChat(): Promise<ProposedProfileChat> {
-    return this.wait(() => { const id = this.nextId("mock_chat"); this.s.profileChats[id] = newChat(id); this.commit(); return chatView(this.s.profileChats[id]) })
+    return this.chatWait(() => { const id = this.nextId("mock_chat"); this.s.profileChats[id] = newChat(id); this.commit(); return chatView(this.s.profileChats[id]) })
   }
   answerProfileChat(chatId: string, answer: ProposedChatAnswer): Promise<ProposedProfileChat> {
-    return this.wait(() => {
+    return this.chatWait(() => {
       const c = this.chatOf(chatId)
       if (currentQuestion(c)?.id !== answer.question_id) throw new ApiError("CONFLICT", "[목업] 지금 답할 질문이 아닙니다", 409)
       this.s.profileChats[chatId] = answerChat(c, answer); this.commit()
@@ -105,7 +107,7 @@ export class MockService implements AnalysisService {
     })
   }
   rewindProfileChat(chatId: string, questionId: string): Promise<ProposedProfileChat> {
-    return this.wait(() => { this.s.profileChats[chatId] = rewindChat(this.chatOf(chatId), questionId); this.commit(); return chatView(this.s.profileChats[chatId]) })
+    return this.chatWait(() => { this.s.profileChats[chatId] = rewindChat(this.chatOf(chatId), questionId); this.commit(); return chatView(this.s.profileChats[chatId]) })
   }
   private chatOf(id: string) { const c = this.s.profileChats[id]; if (!c) throw notFound("대화"); return c }
   searchStocks(q: string) {

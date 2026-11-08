@@ -117,3 +117,16 @@ html.report-wide [role="dialog"][aria-modal="true"] > aside {
 .report-tabs::-webkit-scrollbar {
   display: none;
 }
+
+/* 대화형 설정(features/profile/chat): 새 말풍선이 살짝 올라오며 나타나고, 봇이 답을 준비하는 동안 점 세 개가 움직인다.
+   움직임 줄이기 설정이면 위 prefers-reduced-motion 규칙이 멈춘다. */
+@keyframes chat-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.chat-in { animation: chat-in 0.22s ease-out both; }
+@keyframes chat-dot {
+  0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-3px); }
+}
+.chat-dot { animation: chat-dot 1s ease-in-out infinite; }

@@ -6,6 +6,7 @@ import { money } from "../format"
 
 // 대화형 설정의 답 입력. 질문 종류(kind)마다 모양만 다르고, 답은 서버(지금은 목업)가 검사해 다시 물을지 정한다.
 // choice = 보기를 누르면 바로 보냄 · multi = 여러 개 고르고 「선택 완료」 · money/number = 빠른 보기 + 직접 입력.
+// 설명 없는 보기는 메신저의 빠른 답장처럼 둥근 칩, 설명이 있는 보기(성향·시장·종목 기준)는 설명을 읽을 수 있게 카드로 보인다.
 
 type Answer = Omit<ProposedChatAnswer, "question_id">
 type Option = ProposedChatQuestion["options"][number]
@@ -16,8 +17,8 @@ const grouped = (s: string) => (s ? Number(s).toLocaleString("ko-KR") : "")
 function OptionButton({ o, pressed, disabled, onClick }: { o: Option; pressed?: boolean; disabled: boolean; onClick: () => void }) {
   return (
     <button type="button" aria-pressed={pressed} disabled={disabled} onClick={onClick}
-      className={`rounded-xl border px-3.5 py-2.5 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 ${pressed ? "border-blue-400 bg-blue-50 text-blue-900" : "border-slate-200 bg-white text-slate-800 hover:border-blue-200 hover:bg-blue-50/40"}`}>
-      <span className="flex items-center gap-2 font-semibold">
+      className={`${o.help_ko ? "rounded-xl px-3.5 py-2.5 text-left" : "rounded-full px-4 py-2"} border text-sm transition focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 ${pressed ? "border-blue-400 bg-blue-50 text-blue-900" : "border-slate-200 bg-white text-slate-800 hover:border-blue-200 hover:bg-blue-50/40"}`}>
+      <span className={`flex items-center gap-2 ${o.help_ko ? "font-semibold" : "font-medium"}`}>
         {pressed && <Check className="size-4 shrink-0 text-blue-700" aria-hidden />}
         <span>{o.label_ko}</span>
         {o.recommended && <span className="shrink-0 rounded-md bg-blue-100 px-1.5 py-px text-[11px] font-bold text-blue-800">추천</span>}
@@ -34,7 +35,7 @@ export function ChatInput({ q, busy, onAnswer }: { q: ProposedChatQuestion; busy
 
   if (q.kind === "choice") return (
     <div className="space-y-3">
-      <div className={`grid gap-2 ${q.options.some((o) => o.help_ko) ? "sm:grid-cols-2" : "sm:grid-cols-4"}`}>
+      <div className={q.options.some((o) => o.help_ko) ? "grid gap-2 sm:grid-cols-2" : "flex flex-wrap gap-2"}>
         {q.options.map((o) => <OptionButton key={String(o.value)} o={o} disabled={busy} onClick={() => onAnswer({ option_value: o.value })} />)}
       </div>
       {skip}

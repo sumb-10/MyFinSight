@@ -178,6 +178,20 @@ describe("대화형 초기 투자조건 화면 (목업)", () => {
     await pick(/^5,000만원/)
     expect(await screen.findByRole("button", { name: /^추가 투자 없음/ }, { timeout: 5000 })).toBeInTheDocument()
   })
+  it("메신저처럼: 보낸 답과 「…」가 응답 전에 먼저 보이고, 스크롤은 대화창 안에서만 한다", async () => {
+    const scrollTo = vi.fn()
+    Element.prototype.scrollTo = scrollTo as unknown as typeof Element.prototype.scrollTo
+    vi.mocked(Element.prototype.scrollIntoView).mockClear()
+    const s = new MockService({ latencyMs: 40, persist: false }); s.setProfileVariant("none")
+    show(s, <ProfileChatScreen />)
+    fireEvent.click(await screen.findByRole("button", { name: /^현금흐름\(배당\)/ }, { timeout: 5000 }))
+    expect(screen.getByText("현금흐름(배당)", { selector: "p" })).toBeInTheDocument()          // 응답 전에 내 답 말풍선
+    expect(screen.getByText("도우미가 답을 확인하고 있습니다")).toBeInTheDocument()             // 봇 「…」
+    expect(await screen.findByRole("button", { name: /^1,000만원/ }, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.queryByText("도우미가 답을 확인하고 있습니다")).toBeNull()
+    expect(scrollTo).toHaveBeenCalled()                                                      // 대화 영역 자체를 내린다
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled()                          // 페이지까지 움직이는 scrollIntoView 는 쓰지 않는다
+  })
   it("처음 사용자는 앱을 열면 대화형 설정으로 간다", async () => {
     show(firstUser(), <App />, "#/home")
     expect(await screen.findByRole("heading", { level: 1, name: "대화로 기본 투자조건을 정해요" }, { timeout: 5000 })).toBeInTheDocument()
