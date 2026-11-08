@@ -4,6 +4,7 @@ import type { ProposedMessageResult } from "../../api/proposed"
 import type { DialogState, ProfileFields, ProfileVersion, UserRequest } from "../../api/types"
 import type { PaperScenario } from "../scenarios"
 import type { LiveRun } from "../data/runs"
+import type { ProfileChatState } from "../data/profileChat"
 import { SEEN_KEYS } from "../../lib/seen"
 
 import { clearGuideRecord } from "../../features/tutorial/guideRecord"
@@ -25,10 +26,11 @@ export interface MockState {
   drafts: Record<string, { req: UserRequest; touched: string[]; base: ProfileFields }>  // 진행 중인 요청의 지금 조건, 바꾼 항목, 비교 기준(요청을 만들 때의 기본 투자조건)
   runs: Record<string, { cancel_at: number }>              // 정해진 진행 상태 실행을 취소한 시각 (ms)
   live: Record<string, LiveRun>                           // 이벤트 시퀀스 실행 (만든 시각부터 저절로 진행)
+  profileChats: Record<string, ProfileChatState>          // 대화형 초기 투자조건 (질문별 답, 마지막 다시 묻기 안내)
   seq: number
 }
 
-export const initialState = (): MockState => ({ v: 1, profileVariant: "default", savedVersions: [], reportNames: {}, reportRenamedAt: {}, deletedReports: [], paperNames: {}, paperStatus: {}, createdPapers: [], requests: {}, messages: {}, drafts: {}, runs: {}, live: {}, seq: 1 })
+export const initialState = (): MockState => ({ v: 1, profileVariant: "default", savedVersions: [], reportNames: {}, reportRenamedAt: {}, deletedReports: [], paperNames: {}, paperStatus: {}, createdPapers: [], requests: {}, messages: {}, drafts: {}, runs: {}, live: {}, profileChats: {}, seq: 1 })
 
 export function loadState(): MockState {
   try {

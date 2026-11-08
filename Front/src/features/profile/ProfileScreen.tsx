@@ -12,7 +12,7 @@ import { QUESTIONS, TENDENCIES, TENDENCY_HELP, computeTendency, toRiskTolerance 
 import { InfoField, InfoTip, NumberInput, PercentSlider, SectorPicker, TagInput } from "./inputs"
 import { StrategyFields } from "./StrategyFields"
 import { strategySummary } from "./strategyInfo"
-import { ASSET_KO, benchName, listText, money, monthlyText, pctText, rebalanceText, usdFloor, yearsText } from "./format"
+import { ASSET_KO, UNIVERSE_HELP, benchName, listText, money, monthlyText, pctText, rebalanceText, usdFloor, yearsText } from "./format"
 import { Part, PartDisclosure } from "./parts"
 import { VersionHistory } from "./history"
 import { tendencyLabel } from "../../lib/tendency"
@@ -51,8 +51,6 @@ export function ProfileScreen({ mode }: { mode: "setup" | "edit" | "view" }) {
   return <ProfileWizard initial={profile ? fromView(profile) : null} setup={!profile} onSaved={(v) => { set(v); void reload(); navigate({ page: profile ? "profile" : "home" }) }} />
 }
 
-// 투자 대상 지수 설명. 값(유니버스 ID)은 그대로 저장한다.
-const UNIVERSE_HELP: Record<string, string> = { SP500: "미국 대표 대형주 약 500개", NASDAQ100: "나스닥 상장 대형 비금융 기업 약 100개 (기술주 비중이 큼)", KOSPI200: "한국 유가증권시장 대표 기업 200개" }
 
 function ProfileSummary({ view }: { view: ProfileView }) {
   const p = view.profile

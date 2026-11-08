@@ -2,12 +2,13 @@
 // 정해진 자료(리포트·백테스트·모의투자 시세)는 시나리오에서 결정적으로 만들고, 사용자가 바꾼 것(이름·조건·새 요청)은 store(sessionStorage)에 둔다.
 import { ApiError } from "../../api/client"
 import type { AnalysisService } from "../../api/service"
-import type { ProposedBatchAnswer, ProposedMessageResult, ProposedOptionsExt, ProposedPaperName, ProposedQuestionBatch, ProposedReportName, ProposedReportRowExt, ProposedRunWarning, ProposedStrategyRecommendation } from "../../api/proposed"
+import type { ProposedBatchAnswer, ProposedChatAnswer, ProposedProfileChat, ProposedMessageResult, ProposedOptionsExt, ProposedPaperName, ProposedQuestionBatch, ProposedReportName, ProposedReportRowExt, ProposedRunWarning, ProposedStrategyRecommendation } from "../../api/proposed"
 import type { CheckpointDetail, ComparisonDoc, DialogState, EvidencePage, EvidenceQuery, Health, Options, PaperDetail, PaperIn, PaperPreview, PaperSummary, ProfileFields, ProfileVersion, ProfileView, ReportDoc, ReportRow, RequestRow, RunPartial, RunRow, RunStatus, SeriesResponse, Tendency } from "../../api/types"
 import { MOCK_AS_OF, PAPERS, REPORTS, RUN_STATES, reportScenario, type PaperScenario, type ReportScenario } from "../scenarios"
 import { backtest, type Backtest } from "../data/backtest"
 import { applyField, applyOverrides, askingDialog, conditionRows, confirmedDialog, interpretMessage, readyDialog, requestFromProfile, requestRows } from "../data/dialog"
 import { recommendation } from "../data/strategy"
+import { answerChat, chatView, currentQuestion, newChat, rewindChat } from "../data/profileChat"
 import { buildPaper, paperPreview, type MockPaper } from "../data/paper"
 import { PROFILE_VERSIONS, profileView, ZERO_CAPITAL_VERSION } from "../data/profile"
 import { buildReport, checkpointDetail, type MockReportDoc } from "../data/report"
@@ -89,6 +90,23 @@ export class MockService implements AnalysisService {
   }
   getProfileVersion(version: number): Promise<ProfileVersion> { return this.wait(() => { const v = this.versions().find((x) => x.version === version); if (!v) throw notFound("투자조건 버전"); return v }) }
   recommendStrategy(tendency: Tendency): Promise<ProposedStrategyRecommendation> { return this.wait(() => recommendation(tendency)) }  // 추천 규칙은 아직 없다 — 성향별 예시
+
+  /* 대화형 초기 투자조건: 정해진 질문 순서와 보기로만 묻는다 (data/profileChat.ts). 저장은 saveProfile 그대로. */
+  startProfileChat(): Promise<ProposedProfileChat> {
+    return this.wait(() => { const id = this.nextId("mock_chat"); this.s.profileChats[id] = newChat(id); this.commit(); return chatView(this.s.profileChats[id]) })
+  }
+  answerProfileChat(chatId: string, answer: ProposedChatAnswer): Promise<ProposedProfileChat> {
+    return this.wait(() => {
+      const c = this.chatOf(chatId)
+      if (currentQuestion(c)?.id !== answer.question_id) throw new ApiError("CONFLICT", "[목업] 지금 답할 질문이 아닙니다", 409)
+      this.s.profileChats[chatId] = answerChat(c, answer); this.commit()
+      return chatView(this.s.profileChats[chatId])
+    })
+  }
+  rewindProfileChat(chatId: string, questionId: string): Promise<ProposedProfileChat> {
+    return this.wait(() => { this.s.profileChats[chatId] = rewindChat(this.chatOf(chatId), questionId); this.commit(); return chatView(this.s.profileChats[chatId]) })
+  }
+  private chatOf(id: string) { const c = this.s.profileChats[id]; if (!c) throw notFound("대화"); return c }
   searchStocks(q: string) {
     const k = q.trim().toLowerCase().replace(/\s+/g, "")
     const flat = (x: string) => x.toLowerCase().replace(/\s+/g, "")
