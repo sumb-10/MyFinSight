@@ -19,6 +19,7 @@ class RequestIn(BaseModel):
     mode: str = "new"
     base_report_id: str | None = None
     language: str = "ko"
+    request_id: str | None = Field(default=None, pattern=r"^req_\d{8}_\d{6}_[0-9a-f]{4,16}$")  # 화면이 미리 정한 번호 (파일 이름이 되므로 형식을 엄격히)
 
 
 class AnswerIn(BaseModel):
@@ -33,7 +34,8 @@ class SeqIn(BaseModel):
 
 @router.post("/requests", response_model=DialogState)
 def create(body: RequestIn, request: Request) -> DialogState:
-    return services(request).dialog().start(body.idea, overrides=body.overrides, mode=body.mode, base_report_id=body.base_report_id, language=body.language)
+    return services(request).dialog().start(body.idea, overrides=body.overrides, mode=body.mode, base_report_id=body.base_report_id, language=body.language,
+                                         request_id=body.request_id)  # fmt: skip
 
 
 @router.get("/requests", response_model=list[dict[str, Any]])

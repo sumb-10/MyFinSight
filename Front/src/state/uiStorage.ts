@@ -38,4 +38,5 @@ export function loadLegacyProfile(): Record<string, unknown> | null {
 export function clearLegacy() { try { window.localStorage.removeItem(LEGACY_KEY) } catch { /* ignore */ } }
 
 // prefillNote: 요청을 그만두고 홈에 아이디어를 채워 왔을 때 한 번 보여 줄 안내 · draftOverrides: 홈 「상세 조건」 초안 (draftIdea 처럼 화면을 떠나도 남는다)
-export interface UiState { prefillNote?: string | null; draftOverrides?: Record<string, unknown> | null }
+// pendingRequest: 홈에서 보냈지만 아직 응답을 못 받은 새 요청의 번호와 보낸 시각(ms). 새로고침·창을 닫았다 열어도 홈이 이 번호로 이어 간다
+export interface UiState { prefillNote?: string | null; draftOverrides?: Record<string, unknown> | null; pendingRequest?: { id: string; at: number } | null }

@@ -149,3 +149,17 @@ def test_report_v2_endpoints(api):
     assert set(se["series"]) == {doc["header"]["chosen_portfolio_id"], "net_invested"} and len(se["dates"]) == len(se["series"]["net_invested"]["values"])
     assert client.get(f"{P}/reports/{run_id}/series", params={"dataset": "nope"}).status_code == 404
     assert client.get(f"{P}/reports/run_nope/evidence").status_code == 404
+
+
+def test_create_request_with_client_id(api):
+    """화면이 미리 정한 번호로 요청을 만든다 (해석 중 새로고침해도 화면이 그 번호로 다시 찾음). 같은 번호는 409, 형식이 틀리면 422."""
+    client, *_ = api
+    if client.get(f"{P}/profile").status_code == 404:
+        client.put(f"{P}/profile", json=PROFILE_FIELDS)
+    rid = "req_20261109_120000_0a1b2c3d"
+    r = client.post(f"{P}/requests", json={"idea": "미국 대형 기술주에 나눠 투자하고 싶다", "request_id": rid})
+    assert r.status_code == 200, r.text
+    assert r.json()["request_id"] == rid and client.get(f"{P}/requests/{rid}").status_code == 200
+    r = client.post(f"{P}/requests", json={"idea": "다른 아이디어로 덮어쓰기", "request_id": rid})
+    assert r.status_code == 409 and client.get(f"{P}/requests/{rid}").json()["idea"] == "미국 대형 기술주에 나눠 투자하고 싶다"
+    assert client.post(f"{P}/requests", json={"idea": "번호 형식이 틀린 요청", "request_id": "../profile"}).status_code == 422

@@ -13,7 +13,7 @@ export interface AnalysisService extends Partial<ProposedApi> {
   options(): Promise<Options>
   getProfile(): Promise<ProfileView | null>
   saveProfile(fields: ProfileFields): Promise<ProfileView>
-  createRequest(input: { idea: string; overrides?: Record<string, unknown>; mode?: "new" | "rerun" | "revision"; base_report_id?: string | null }): Promise<DialogState>
+  createRequest(input: { idea: string; overrides?: Record<string, unknown>; mode?: "new" | "rerun" | "revision"; base_report_id?: string | null; request_id?: string }): Promise<DialogState>  // request_id: 화면이 미리 정한 번호 (새로고침 뒤 이어 가기)
   getRequest(id: string): Promise<DialogState>
   listRequests(): Promise<RequestRow[]>
   answer(id: string, seq: number, input: { option_value?: unknown; free_text?: string }): Promise<DialogState>
@@ -73,8 +73,8 @@ export class HttpService implements AnalysisService {
     }
   }
   saveProfile(fields: ProfileFields) { return api.put<ProfileView>("/profile", fields) }
-  createRequest(input: { idea: string; overrides?: Record<string, unknown>; mode?: "new" | "rerun" | "revision"; base_report_id?: string | null }) {
-    return api.post<DialogState>("/requests", { idea: input.idea, overrides: input.overrides ?? {}, mode: input.mode ?? "new", base_report_id: input.base_report_id ?? null }, LLM)
+  createRequest(input: { idea: string; overrides?: Record<string, unknown>; mode?: "new" | "rerun" | "revision"; base_report_id?: string | null; request_id?: string }) {
+    return api.post<DialogState>("/requests", { idea: input.idea, overrides: input.overrides ?? {}, mode: input.mode ?? "new", base_report_id: input.base_report_id ?? null, request_id: input.request_id ?? null }, LLM)
   }
   getRequest(id: string) { return api.get<DialogState>(`/requests/${id}`) }
   listRequests() { return api.get<RequestRow[]>("/requests") }

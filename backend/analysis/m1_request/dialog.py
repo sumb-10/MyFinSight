@@ -122,7 +122,9 @@ class DialogService:
 
     # ───────────────────────── 공개 API ─────────────────────────
     def start(self, idea: str, *, overrides: dict[str, Any] | None = None, mode: str = "new", base_report_id: str | None = None,
-              language: str = "ko", profile_version: int | None = None, clarifications: list[str] | None = None, revision: RevisionDraft | None = None) -> DialogState:  # fmt: skip
+              language: str = "ko", profile_version: int | None = None, clarifications: list[str] | None = None, revision: RevisionDraft | None = None,
+              request_id: str | None = None) -> DialogState:  # fmt: skip
+        """request_id: 화면이 미리 정한 번호. 해석 중 새로고침해 응답을 놓쳐도 화면이 이 번호로 요청을 다시 찾는다."""
         prof = self.profiles.current()
         if prof is None:
             raise RequestInvalid("프로필을 먼저 등록해 주세요", details={"fields": {"profile": "프로필 없음"}})
@@ -130,11 +132,13 @@ class DialogService:
             prof = self.profiles.version(profile_version)
         if len((idea or "").strip()) < 5:
             raise RequestInvalid("투자 아이디어를 5자 이상 적어 주세요", details={"fields": {"natural_language.idea": "5자 이상"}})
-        doc = AnalysisRequestDoc(request_id=new_request_id(), created_at=now_iso(), mode=mode, base_report_id=base_report_id,
+        doc = AnalysisRequestDoc(request_id=request_id or new_request_id(), created_at=now_iso(), mode=mode, base_report_id=base_report_id,
                                  profile_version=prof["version"], idea=idea.strip(), language=language, overrides=dict(overrides or {}),
                                  idea_clarifications=[c for c in (clarifications or []) if c and c.strip()], revision=revision,
                                  max_questions=self.s.dialog.max_questions)  # fmt: skip
         with self.requests.locked(doc.request_id):
+            if request_id and self.requests.store.read(self.requests.rel(request_id)) is not None:
+                raise Conflict(f"요청 {request_id} 이 이미 있습니다")  # 같은 번호로 다시 보내도 덮어쓰지 않는다
             doc = self._turn(doc)
             self.requests.save(doc)
         return self.state(doc)

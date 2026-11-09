@@ -200,4 +200,19 @@ describe("홈: 아이디어 해석을 기다리는 동안", () => {
     fireEvent.click(screen.getByRole("button", { name: "다시 시도" }))
     await waitFor(() => expect(calls).toBe(2))
   })
+  it("해석 중 새로고침해 응답을 놓쳐도, 미리 정한 번호의 요청이 서버에 생기면 그 질문 화면으로 이어 간다", async () => {
+    const s = mock()
+    const st = await s.createRequest({ idea: IDEA })  // 서버는 끝까지 만들어 저장해 둔 상태
+    saveUi({ draftIdea: IDEA, pendingRequest: { id: st.request_id, at: Date.now() } })
+    show(s, <HomeScreen />)
+    await waitFor(() => expect(window.location.hash).toBe(`#/analysis/${st.request_id}`), { timeout: 5000 })
+    expect(loadUi()).toMatchObject({ pendingRequest: null, draftIdea: "", activeRequestId: st.request_id })
+  })
+  it("보낸 지 5분이 지나도 요청이 없으면(서버에 닿기 전에 닫힘 등) 「다시 시도」를 보여 주고 아이디어를 풀어 준다", async () => {
+    saveUi({ draftIdea: IDEA, pendingRequest: { id: "req_20261109_120000_deadbeef", at: Date.now() - 6 * 60_000 } })
+    show(mock(), <HomeScreen />)
+    expect(await screen.findByText("아이디어를 해석하지 못했습니다", {}, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.getByDisplayValue(IDEA)).not.toHaveAttribute("readonly")
+    expect(loadUi().pendingRequest).toBeNull()
+  })
 })
