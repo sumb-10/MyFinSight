@@ -2,6 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { Providers } from "../../app/providers"
 import type { AnalysisService } from "../../api/service"
+import type { DialogState } from "../../api/types"
 import { MockService } from "../../mocks/services/MockService"
 import { fromProfile, OVERRIDE_LABELS, validate } from "../home/DetailConditions"
 import { ClarifyScreen } from "./ClarifyScreen"
@@ -176,9 +177,11 @@ describe("흐름: 잃지 않기 · 막다른 길 없애기", () => {
 // 홈 「투자조건 확인하기」 뒤 기다림: 서버가 아이디어를 해석하는 동안(실제 서버 수 초~1분) 돌아가는지 알 수 있게.
 describe("홈: 아이디어 해석을 기다리는 동안", () => {
   const IDEA = "배당을 꾸준히 주는 미국 대형주에 나눠 투자하고 싶어요"
-  it("누르면 바로 「아이디어를 해석하고 있습니다」와 하는 일이 보이고, 입력이 잠기며, 끝나면 질문 화면으로 간다", async () => {
-    const s = new MockService({ latencyMs: 20, persist: false })  // 새 요청은 지연 ×15 = 0.3초
-    show(s, <HomeScreen />)
+  it("누르면 서버가 번호를 줄 때까지 「아이디어를 해석하고 있습니다」와 하는 일이 보이고 입력이 잠기며, 번호를 받으면 그 질문 화면 주소로 간다", async () => {
+    const s = mock()
+    let answer: (st: DialogState) => void = () => {}
+    const slow = Object.assign(Object.create(s), { createRequest: () => new Promise<DialogState>((r) => { answer = r }) }) as AnalysisService  // 응답을 직접 풀어 준다
+    show(slow, <HomeScreen />)
     fireEvent.change(await screen.findByPlaceholderText(/예: 미국과 한국의 반도체/, {}, { timeout: 5000 }), { target: { value: IDEA } })
     fireEvent.click(screen.getByRole("button", { name: /투자조건 확인하기/ }))
     expect(await screen.findByText("아이디어를 해석하고 있습니다")).toBeInTheDocument()
@@ -186,7 +189,9 @@ describe("홈: 아이디어 해석을 기다리는 동안", () => {
     expect(screen.getByDisplayValue(IDEA)).toHaveAttribute("readonly")
     expect(screen.getByRole("button", { name: /^상세 조건/ })).toBeDisabled()
     expect(screen.getByRole("button", { name: /아이디어 해석 중/ })).toBeDisabled()
-    await waitFor(() => expect(window.location.hash).toMatch(/^#\/analysis\//), { timeout: 5000 })
+    answer({ ...(await s.createRequest({ idea: IDEA })), request_id: "req_x", state: "interpreting" })
+    await waitFor(() => expect(window.location.hash).toBe("#/analysis/req_x"))
+    expect(loadUi().activeRequestId).toBe("req_x")
   })
   it("실패하면 이유와 「다시 시도」를 보여 주고, 아이디어는 그대로 남는다", async () => {
     const s = mock()
@@ -200,19 +205,36 @@ describe("홈: 아이디어 해석을 기다리는 동안", () => {
     fireEvent.click(screen.getByRole("button", { name: "다시 시도" }))
     await waitFor(() => expect(calls).toBe(2))
   })
-  it("해석 중 새로고침해 응답을 놓쳐도, 미리 정한 번호의 요청이 서버에 생기면 그 질문 화면으로 이어 간다", async () => {
-    const s = mock()
-    const st = await s.createRequest({ idea: IDEA })  // 서버는 끝까지 만들어 저장해 둔 상태
-    saveUi({ draftIdea: IDEA, pendingRequest: { id: st.request_id, at: Date.now() } })
-    show(s, <HomeScreen />)
-    await waitFor(() => expect(window.location.hash).toBe(`#/analysis/${st.request_id}`), { timeout: 5000 })
-    expect(loadUi()).toMatchObject({ pendingRequest: null, draftIdea: "", activeRequestId: st.request_id })
+})
+
+// 새 요청은 서버가 번호를 먼저 주고(interpreting) 해석·첫 질문은 뒤에서 한다. 질문 화면이 2초마다 다시 읽어 이어 간다 (새로고침해도 주소에 번호가 있다).
+describe("질문 화면: 서버가 아이디어를 해석하는 동안", () => {
+  const IDEA = "배당을 꾸준히 주는 미국 대형주에 나눠 투자하고 싶어요"
+  it("해석 중이면 기다림을 보여 주고, 해석이 끝나면 첫 질문을 보여 준다", async () => {
+    const expected = (await mock().createRequest({ idea: IDEA })).question!.question_ko  // 지연 0 목업은 바로 질문
+    const s = new MockService({ latencyMs: 20, persist: false })  // 해석 중 = 지연 ×15 = 0.3초
+    const st = await s.createRequest({ idea: IDEA })
+    expect(st.state).toBe("interpreting")
+    show(s, <ClarifyScreen requestId={st.request_id} />)
+    expect(await screen.findByText("아이디어를 해석하고 있습니다", {}, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.getByText(IDEA)).toBeInTheDocument()
+    expect(await screen.findByText(expected, {}, { timeout: 5000 })).toBeInTheDocument()  // 2초 간격으로 다시 읽음
+    expect(screen.queryByText("아이디어를 해석하고 있습니다")).not.toBeInTheDocument()
   })
-  it("보낸 지 5분이 지나도 요청이 없으면(서버에 닿기 전에 닫힘 등) 「다시 시도」를 보여 주고 아이디어를 풀어 준다", async () => {
-    saveUi({ draftIdea: IDEA, pendingRequest: { id: "req_20261109_120000_deadbeef", at: Date.now() - 6 * 60_000 } })
-    show(mock(), <HomeScreen />)
+  it("해석이 실패했으면 이유와 「다시 시도」를 보여 주고, 누르면 같은 아이디어로 새 요청을 보내 그 주소로 간다", async () => {
+    const s = mock()
+    const sent: unknown[] = []
+    const svc = Object.assign(Object.create(s), { createRequest: (input: { idea: string }) => { sent.push(input); return s.createRequest(input) } }) as AnalysisService
+    show(svc, <ClarifyScreen requestId="mock_req_failed" />)
     expect(await screen.findByText("아이디어를 해석하지 못했습니다", {}, { timeout: 5000 })).toBeInTheDocument()
-    expect(screen.getByDisplayValue(IDEA)).not.toHaveAttribute("readonly")
-    expect(loadUi().pendingRequest).toBeNull()
+    expect(screen.getByText(/분석 모델 응답 형식이 맞지 않습니다/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "다시 시도" }))
+    await waitFor(() => expect(window.location.hash).toMatch(/^#\/analysis\/mock_req_\d+$/))
+    expect(sent).toHaveLength(1)
+    expect(loadUi().activeRequestId).toBe(window.location.hash.replace("#/analysis/", ""))
+  })
+  it("확인 화면 주소로 해석 중인 요청을 열면 질문 화면으로 보낸다", async () => {
+    show(mock(), <ConfirmScreen requestId="mock_req_interpreting" />)
+    await waitFor(() => expect(window.location.hash).toBe("#/analysis/mock_req_interpreting"))
   })
 })

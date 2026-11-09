@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
 import math
 import re
 from typing import Any
@@ -17,7 +18,7 @@ from backend.analysis.common.jsonio import canonical_json, now_iso, sha256_hex
 from backend.analysis.common.labels import sector_counts_ko, usd_ko
 from backend.analysis.common.llm import LlmClient
 from backend.analysis.common.store import JsonStore, ProfileStore, RequestStore, new_request_id, new_run_id
-from backend.analysis.errors import Conflict, DialogBlocked, DialogNotReady, NotFound, RequestInvalid
+from backend.analysis.errors import Conflict, DialogBlocked, DialogNotReady, NotFound, RequestInvalid, public_message
 from backend.analysis.executor.queue import Queue
 from backend.analysis.m1_request import assemble
 from backend.analysis.m1_request.conditions import condition_rows
@@ -35,6 +36,14 @@ from backend.analysis.schemas.dialog import AnalysisRequestDoc, DialogMessage, D
 from backend.analysis.common.capacity import cap_cause_ko, cap_limits
 from backend.analysis.schemas.request import UNIVERSE_MARKET
 from backend.analysis.settings import AnalysisSettings
+from backend.schemas.errors import MyFinSightError
+
+log = logging.getLogger(__name__)
+
+FIRST_TURN_FAILED_KO = "서버 오류로 해석을 마치지 못했습니다."  # 화면 제목이 「아이디어를 해석하지 못했습니다」라 이유만
+# 해석 중(interpreting) 으로 이만큼 지나면 서버가 다시 시작돼 끊긴 것으로 본다. 새 요청 첫 턴은 LLM 두 번(+분류 배치), 호출당 한도 180초
+STALE_INTERPRETING = dt.timedelta(minutes=15)
+STALE_INTERPRETING_KO = "서버가 다시 시작돼 해석이 끊겼습니다."
 
 KIND_ORDER = {"feasibility": 0, "missing": 1, "conflict": 2, "ambiguous": 3, "preference": 4}
 # 답에 따라 고르는 종목 자체가 바뀌는 항목 (선정 기준·유니버스·테마·제외·필수 포함). 이 항목의 충돌(conflict)·빈 값(missing) 질문은
@@ -51,6 +60,16 @@ def _few_why_ko(counts: dict[str, int], stock_cap: float, sector_cap: float, cas
     if not cause:
         return f"후보 수가 최소 종목 수에 못 미치지만, 지금 상한 안에서도 투자 비율 {1 - cash:.0%}는 모두 배분할 수 있습니다."
     return f"그대로 진행하면 {cause} 현금이 {1 - lim['cap_room']:.0%}" + (f"(요청한 최소 현금 {cash:.0%} 포함)" if cash > 1e-9 else "") + " 남습니다."
+
+
+def _stale(created_at: str) -> bool:
+    """요청을 만든 지 STALE_INTERPRETING 이 지났는지 (now_iso 는 오프셋이 붙은 지역 시각)."""
+    try:
+        made = dt.datetime.fromisoformat(created_at)
+    except ValueError:
+        return False
+    now = dt.datetime.now(made.tzinfo) if made.tzinfo else dt.datetime.now()
+    return now - made > STALE_INTERPRETING
 
 
 def _dicts(messages: list[Any]) -> list[dict[str, str]]:
@@ -122,9 +141,17 @@ class DialogService:
 
     # ───────────────────────── 공개 API ─────────────────────────
     def start(self, idea: str, *, overrides: dict[str, Any] | None = None, mode: str = "new", base_report_id: str | None = None,
-              language: str = "ko", profile_version: int | None = None, clarifications: list[str] | None = None, revision: RevisionDraft | None = None,
-              request_id: str | None = None) -> DialogState:  # fmt: skip
-        """request_id: 화면이 미리 정한 번호. 해석 중 새로고침해 응답을 놓쳐도 화면이 이 번호로 요청을 다시 찾는다."""
+              language: str = "ko", profile_version: int | None = None, clarifications: list[str] | None = None, revision: RevisionDraft | None = None) -> DialogState:  # fmt: skip
+        """새 요청을 만들고 첫 턴까지 이 자리에서 끝낸다 (재분석·수정 요청·테스트). 오류는 그대로 던진다.
+        홈의 새 요청은 API 가 create() 로 번호를 먼저 돌려주고 run_first_turn() 을 응답 뒤에 돌린다."""
+        st = self.create(idea, overrides=overrides, mode=mode, base_report_id=base_report_id, language=language,
+                         profile_version=profile_version, clarifications=clarifications, revision=revision)  # fmt: skip
+        return self.run_first_turn(st.request_id, reraise=True)
+
+    def create(self, idea: str, *, overrides: dict[str, Any] | None = None, mode: str = "new", base_report_id: str | None = None,
+               language: str = "ko", profile_version: int | None = None, clarifications: list[str] | None = None, revision: RevisionDraft | None = None) -> DialogState:  # fmt: skip
+        """프로필·아이디어를 검사하고 요청을 '해석 중'(interpreting) 으로 바로 저장한다. LLM 은 부르지 않는다.
+        해석에 수 초~1분이 걸려도 화면이 번호를 먼저 받아 그 주소로 가므로, 새로고침해도 요청을 잃지 않는다."""
         prof = self.profiles.current()
         if prof is None:
             raise RequestInvalid("프로필을 먼저 등록해 주세요", details={"fields": {"profile": "프로필 없음"}})
@@ -132,14 +159,33 @@ class DialogService:
             prof = self.profiles.version(profile_version)
         if len((idea or "").strip()) < 5:
             raise RequestInvalid("투자 아이디어를 5자 이상 적어 주세요", details={"fields": {"natural_language.idea": "5자 이상"}})
-        doc = AnalysisRequestDoc(request_id=request_id or new_request_id(), created_at=now_iso(), mode=mode, base_report_id=base_report_id,
+        doc = AnalysisRequestDoc(request_id=new_request_id(), created_at=now_iso(), mode=mode, base_report_id=base_report_id,
                                  profile_version=prof["version"], idea=idea.strip(), language=language, overrides=dict(overrides or {}),
                                  idea_clarifications=[c for c in (clarifications or []) if c and c.strip()], revision=revision,
-                                 max_questions=self.s.dialog.max_questions)  # fmt: skip
+                                 max_questions=self.s.dialog.max_questions, dialog_state="interpreting")  # fmt: skip
         with self.requests.locked(doc.request_id):
-            if request_id and self.requests.store.read(self.requests.rel(request_id)) is not None:
-                raise Conflict(f"요청 {request_id} 이 이미 있습니다")  # 같은 번호로 다시 보내도 덮어쓰지 않는다
-            doc = self._turn(doc)
+            self.requests.save(doc)
+        return self.state(doc)
+
+    def run_first_turn(self, request_id: str, *, reraise: bool = False) -> DialogState:
+        """create() 로 저장한 요청의 첫 턴(해석·점검·첫 질문). 실패하면 failed + error_ko 로 저장한다 (reraise 면 다시 던짐).
+        이미 해석 중이 아니면 아무것도 하지 않는다 (두 번 불려도 같음)."""
+        with self.requests.locked(request_id):
+            doc = self.requests.load(request_id)
+            if doc.dialog_state != "interpreting":
+                return self.state(doc)
+            try:
+                doc = self._turn(doc)
+            except Exception as e:
+                if not isinstance(e, MyFinSightError):
+                    log.exception("first turn failed for %s", request_id)
+                failed = self.requests.load(request_id)  # _turn 이 고치다 만 문서 대신 저장된 해석 중 문서에 실패만 적는다
+                failed.dialog_state = "failed"
+                failed.error_ko = (public_message(e) if isinstance(e, MyFinSightError) else "") or FIRST_TURN_FAILED_KO
+                self.requests.save(failed)
+                if reraise:
+                    raise
+                return self.state(failed)
             self.requests.save(doc)
         return self.state(doc)
 
@@ -766,9 +812,12 @@ class DialogService:
                     conditions = [r.model_dump() for r in condition_rows(doc.draft_request, base_req, answered_fields=answered, derived=doc.derived)]
                 except Exception:  # noqa: BLE001 — 표는 보조 정보
                     conditions = []
-        return DialogState(request_id=doc.request_id, mode=doc.mode, base_report_id=doc.base_report_id, status=doc.status, state=doc.dialog_state, turn=doc.turn,
+        state, error_ko = doc.dialog_state, doc.error_ko
+        if state == "interpreting" and _stale(doc.created_at):  # 해석하던 서버가 다시 시작돼 끊김 (저장은 하지 않는다: 잠금 없이, 서버 여러 개여도 같은 판정)
+            state, error_ko = "failed", STALE_INTERPRETING_KO
+        return DialogState(request_id=doc.request_id, mode=doc.mode, base_report_id=doc.base_report_id, status=doc.status, state=state, turn=doc.turn,
                            max_questions=doc.max_questions, idea=doc.idea, question=current, questions=doc.questions, hard_errors=doc.hard_errors,
                            confirmation=confirmation, unresolved=self._unresolved(doc) if (doc.dialog_state == "blocked" or doc.blocked_reason_ko) else [], summary=summary,
                            revision=doc.revision, run_id=doc.run_id, warnings=doc.warnings, conditions=conditions,
                            overrides={k: v for k, v in doc.overrides.items() if not k.startswith("_")},
-                           blocked_reason_ko=doc.blocked_reason_ko, precheck=doc.precheck)  # fmt: skip
+                           blocked_reason_ko=doc.blocked_reason_ko, precheck=doc.precheck, error_ko=error_ko)  # fmt: skip

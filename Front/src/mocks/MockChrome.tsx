@@ -42,6 +42,8 @@ export default function MockChrome() {
             <button type="button" className={link} onClick={() => go({ page: "run", runId: svc.startLiveRun("success") })}>▶ 진행 재생: 대기 → 단계 진행 → 완료 (약 45초)</button>
             <button type="button" className={link} onClick={() => go({ page: "run", runId: svc.startLiveRun("failed") })}>▶ 진행 재생: 대기 → 단계 진행 → 실패</button>
             <p className={head}>새 분석</p>
+            <button type="button" className={link} onClick={() => go({ page: "clarify", requestId: "mock_req_interpreting" })}>아이디어 해석 중인 요청 (계속 해석 중)</button>
+            <button type="button" className={link} onClick={() => go({ page: "clarify", requestId: "mock_req_failed" })}>아이디어 해석에 실패한 요청</button>
             <button type="button" className={link} onClick={() => go({ page: "clarify", requestId: "mock_req_asking" })}>추가 질문 중인 요청</button>
             <button type="button" className={link} onClick={() => go({ page: "confirm", requestId: "mock_req_ready" })}>조건 확인 (질문 답변 완료)</button>
             <p className={head}>모의투자</p>

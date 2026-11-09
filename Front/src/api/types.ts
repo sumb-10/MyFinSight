@@ -43,7 +43,8 @@ export interface ProfileView { profile_id: string; current_version: number; prof
 
 // ───────────────────────── 대화 (schemas/dialog.py) ─────────────────────────
 export type QuestionKind = "missing" | "conflict" | "ambiguous" | "preference" | "feasibility"  // feasibility = 실행 전 점검(후보 부족·창 축소)
-export type DialogStatus = "asking" | "ready" | "blocked" | "confirmed" | "cancelled"
+// interpreting = 새 요청이 번호만 먼저 받고 서버 뒤에서 해석 중 (질문 화면이 2초마다 다시 읽음) / failed = 그 해석이 실패 (error_ko)
+export type DialogStatus = "interpreting" | "asking" | "ready" | "blocked" | "confirmed" | "cancelled" | "failed"
 export interface QuestionOption { value: unknown; label_ko: string; patch?: Record<string, unknown> | null; clarification?: string | null }
 export interface Question { seq: number; field: string; field_label_ko?: string | null; kind: QuestionKind; question_ko: string; options: QuestionOption[]; allow_free_text: boolean; priority: number; why_ko?: string; asked_at: string; answer?: string | null; applied?: { field: string; value: unknown; patch?: Record<string, unknown> | null; clarification?: string | null } | null; free_text?: string | null; skipped?: boolean; answered_at?: string | null }
 export interface FieldError { field: string; message_ko: string }
@@ -59,6 +60,7 @@ export interface DialogState {
   overrides?: Record<string, unknown>  // 이번 요청에서 직접 바꾼 조건
   blocked_reason_ko?: string | null  // 질문 상한에 닿아 남은 항목을 기본값으로 둔 사유 (state 는 ready)
   precheck?: { min: number; target: number; short_now: boolean; short_at_start: boolean; as_of: { date: string; n_candidates: number; n_with_metric: number }; start: { date: string; n_candidates: number; n_with_metric: number }; feasible_start?: { date: string; years: number; n_with_metric: number } | null } | null
+  error_ko?: string | null  // state=failed 의 이유 (해석 실패·서버 재시작으로 끊김)
 }
 
 // ───────────────────────── 실행 (schemas/run.py) ─────────────────────────

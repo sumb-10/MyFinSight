@@ -495,11 +495,13 @@
   "dialog_state": {
    "default": "asking",
    "enum": [
+    "interpreting",
     "asking",
     "ready",
     "blocked",
     "confirmed",
-    "cancelled"
+    "cancelled",
+    "failed"
    ],
    "title": "Dialog State",
    "type": "string"
@@ -618,6 +620,18 @@
    ],
    "default": null,
    "title": "Precheck"
+  },
+  "error_ko": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Error Ko"
   }
  },
  "required": [

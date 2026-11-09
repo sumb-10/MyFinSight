@@ -11,7 +11,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 QuestionKind = Literal["missing", "conflict", "ambiguous", "preference", "feasibility"]  # feasibility = 실행 전 점검(후보 부족·창 축소) 질문 (라운드 5)
-DialogStatus = Literal["asking", "ready", "blocked", "confirmed", "cancelled"]
+# interpreting = 새 요청을 저장해 번호를 돌려준 뒤 서버 뒤에서 첫 해석 중 / failed = 그 해석이 실패 (error_ko)
+DialogStatus = Literal["interpreting", "asking", "ready", "blocked", "confirmed", "cancelled", "failed"]
 RequestMode = Literal["new", "rerun", "revision"]
 
 
@@ -129,6 +130,7 @@ class AnalysisRequestDoc(BaseModel):
     revision: RevisionDraft | None = None
     warnings: list[str] = []
     precheck: dict[str, Any] | None = None  # 실행 전 점검 결과 (후보 수·지표 보유 수, 기준일·백테스트 시작일; 서명으로 재사용)
+    error_ko: str | None = None  # 첫 해석이 실패했을 때(dialog_state=failed) 화면에 보여 줄 이유
 
 
 class DialogSummary(BaseModel):
@@ -162,3 +164,4 @@ class DialogState(BaseModel):
     overrides: dict[str, Any] = {}  # 이번 요청에서 직접 바꾼 조건 (필드 경로 → 값)
     blocked_reason_ko: str | None = None  # 질문 상한에 닿아 남은 항목을 기본값으로 둔 사유 (ready 로 진행 가능)
     precheck: dict[str, Any] | None = None
+    error_ko: str | None = None  # state=failed 의 이유 (첫 해석 실패·서버 재시작으로 끊김)

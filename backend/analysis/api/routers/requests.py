@@ -1,10 +1,10 @@
-"""/requests: 요청 생성(의도 해석 + 첫 질문), 질문 답·건너뛰기, 확정(큐 등록), 취소 (M1-02)."""
+"""/requests: 요청 생성(번호를 바로 돌려주고 의도 해석 + 첫 질문은 응답 뒤에), 질문 답·건너뛰기, 확정(큐 등록), 취소 (M1-02)."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, BackgroundTasks, Request
 from pydantic import BaseModel, Field
 
 from backend.analysis.api.routers import services
@@ -19,7 +19,6 @@ class RequestIn(BaseModel):
     mode: str = "new"
     base_report_id: str | None = None
     language: str = "ko"
-    request_id: str | None = Field(default=None, pattern=r"^req_\d{8}_\d{6}_[0-9a-f]{4,16}$")  # 화면이 미리 정한 번호 (파일 이름이 되므로 형식을 엄격히)
 
 
 class AnswerIn(BaseModel):
@@ -33,9 +32,13 @@ class SeqIn(BaseModel):
 
 
 @router.post("/requests", response_model=DialogState)
-def create(body: RequestIn, request: Request) -> DialogState:
-    return services(request).dialog().start(body.idea, overrides=body.overrides, mode=body.mode, base_report_id=body.base_report_id, language=body.language,
-                                         request_id=body.request_id)  # fmt: skip
+def create(body: RequestIn, request: Request, background: BackgroundTasks) -> DialogState:
+    """요청을 '해석 중'으로 저장해 번호를 바로 돌려주고, 해석(LLM)·첫 질문은 응답 뒤에 돌린다 (sync 함수라 스레드풀).
+    화면은 받은 번호의 주소로 가서 GET /requests/{id} 로 끝났는지 본다 — 해석 중 새로고침해도 요청을 잃지 않는다."""
+    sv = services(request)
+    st = sv.dialog().create(body.idea, overrides=body.overrides, mode=body.mode, base_report_id=body.base_report_id, language=body.language)
+    background.add_task(sv.dialog().run_first_turn, st.request_id)
+    return st
 
 
 @router.get("/requests", response_model=list[dict[str, Any]])

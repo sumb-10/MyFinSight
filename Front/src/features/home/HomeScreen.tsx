@@ -18,18 +18,6 @@ import { useRenameTick } from "../report/ReportName"
 import { EXAMPLE_ROW, useExample } from "../tutorial/exampleReport"
 import { ExampleBadge, openExample } from "../tutorial/ExampleReportParts"
 
-/** 서버 요청 번호와 같은 꼴 (req_YYYYMMDD_HHMMSS_8자리 hex). 날짜는 보기용, 겹치지 않게 하는 건 뒤의 난수 */
-function newRequestId() {
-  const d = new Date(), p = (n: number) => String(n).padStart(2, "0")
-  const rand = crypto.getRandomValues(new Uint32Array(1))[0].toString(16).padStart(8, "0")
-  return `req_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}_${rand}`
-}
-
-// 새로고침·창 닫기로 페이지가 내려가면 진행 중 요청이 끊겨 실패로 끝나지만, 서버는 끝까지 만든다 → 그때는 번호를 지우지 않아 다음 페이지가 이어 간다
-let leaving = false
-window.addEventListener("pagehide", () => { leaving = true })
-window.addEventListener("pageshow", () => { leaving = false })
-
 export function HomeScreen() {
   const svc = useService()
   const { profile, status, error: profileError, reload } = useProfile()
@@ -49,22 +37,6 @@ export function HomeScreen() {
   useEffect(() => { saveUi({ draftIdea: idea }) }, [idea])
   useEffect(() => { saveUi({ draftOverrides: overrides }) }, [overrides])
   useEffect(() => { const u = loadUi(); if (u.prefillIdea || u.prefillOverrides || u.prefillNote) setUi(saveUi({ prefillIdea: null, prefillOverrides: null, prefillNote: null })) }, [])  // 미리 채운 값(새 요청)은 한 번만 쓴다
-  // 해석 중 새로고침·창 닫기로 응답을 놓친 요청: 서버는 끝까지 만들어 저장하므로, 미리 정한 번호로 생겼는지 확인해 이어 간다
-  useEffect(() => {
-    const p = loadUi().pendingRequest
-    if (!p) return
-    setBusy(true)
-    let alive = true, timer: number | undefined
-    const tick = async () => {
-      const st = await svc.getRequest(p.id).catch(() => null)
-      if (!alive) return
-      if (st) { saveUi({ pendingRequest: null, draftIdea: "", draftOverrides: {}, activeRequestId: st.request_id }); navigate({ page: "clarify", requestId: st.request_id }); return }
-      if (Date.now() - p.at > 5 * 60_000) { saveUi({ pendingRequest: null }); setBusy(false); setApiErr("새로고침 전에 보낸 요청이 서버에 만들어지지 않았습니다. 다시 보내 주세요."); return }
-      timer = window.setTimeout(tick, 2000)
-    }
-    void tick()
-    return () => { alive = false; window.clearTimeout(timer) }
-  }, [svc])
 
   if (status === "loading") return <Loading />
   if (status === "error") return <ErrorState title="분석 서버에 연결할 수 없습니다" message={profileError ?? ""} retry={() => void reload()} />
@@ -74,14 +46,12 @@ export function HomeScreen() {
   const submit = async () => {
     if (idea.trim().length < 5) { setError("분석할 투자 아이디어를 5자 이상 입력해주세요."); return }
     setBusy(true); setError(""); setApiErr("")
-    const id = newRequestId()
-    saveUi({ pendingRequest: { id, at: Date.now() } })  // 응답 전에 새로고침해도 이 번호로 다시 찾는다
     try {
-      const st = await svc.createRequest({ idea: idea.trim(), mode: "new", overrides, request_id: id })
+      const st = await svc.createRequest({ idea: idea.trim(), mode: "new", overrides })
       saveUi({ draftIdea: "", draftOverrides: {}, activeRequestId: st.request_id })
       setIdea(""); setOverrides({}); setLeftNote("")
       navigate({ page: "clarify", requestId: st.request_id })
-    } catch (e) { setApiErr(errorMessage(e)) } finally { if (!leaving) saveUi({ pendingRequest: null }); setBusy(false) }
+    } catch (e) { setApiErr(errorMessage(e)) } finally { setBusy(false) }
   }
 
   return (

@@ -579,7 +579,7 @@ LLM이 제안하고 코드가 검사한 변경 한 건입니다. 새 값·원래
 | `intent` | `dict[str, Any] \| None` | `None` | 검증·보정한 투자 해석 명세 |
 | `hard_errors` | `list[FieldError]` | `[]` | 즉시 수정해야 하는 필드 오류 |
 | `status` | `Literal['draft', 'confirmed', 'cancelled']` | `'draft'` | 소속 객체의 처리 상태 |
-| `dialog_state` | `DialogStatus` | `'asking'` | — |
+| `dialog_state` | `DialogStatus` | `'asking'` | interpreting(새 요청을 저장하고 응답 뒤 첫 턴 중)·asking·ready·blocked·confirmed·cancelled·failed(첫 턴 실패) |
 | `turn` | `int` | `0` | 현재까지 생성한 질문 수 |
 | `max_questions` | `int` | `5` | 질문 횟수 상한 |
 | `blocked_reason_ko` | `str \| None` | `None` | 차단/상한 안내; 현재는 ready에서도 기본값 유지 이유로 사용 |
@@ -591,6 +591,7 @@ LLM이 제안하고 코드가 검사한 변경 한 건입니다. 새 값·원래
 | `revision` | `RevisionDraft \| None` | `None` | 원안 대비 수정 초안 |
 | `warnings` | `list[str]` | `[]` | 문맥별 전체 경고 또는 문장 검사 메모 |
 | `precheck` | `dict[str, Any] \| None` | `None` | 현재·과거 후보 수와 가능 기간의 사전 점검 |
+| `error_ko` | `str \| None` | `None` | 첫 턴이 실패했을 때(failed) 화면에 보여 줄 이유 (2026-11-09) |
 
 
 <a id="schemas-dialog-py-DialogSummary-134"></a>
@@ -627,7 +628,7 @@ API에 공개하는 대화 응답입니다. 현재 질문, 전체 질문 기록,
 | `mode` | `RequestMode` | `필수 입력` | 실행·구성·평가 방식 |
 | `base_report_id` | `str \| None` | `None` | 수정/재분석의 기준 리포트 |
 | `status` | `Literal['draft', 'confirmed', 'cancelled']` | `필수 입력` | 소속 객체의 처리 상태 |
-| `state` | `DialogStatus` | `필수 입력` | 대화의 화면 상태 |
+| `state` | `DialogStatus` | `필수 입력` | 대화의 화면 상태. 해석 중으로 15분 넘게 멈춘 요청은 저장값과 달리 failed로 보낸다 |
 | `turn` | `int` | `필수 입력` | 현재까지 생성한 질문 수 |
 | `max_questions` | `int` | `필수 입력` | 질문 횟수 상한 |
 | `idea` | `str` | `필수 입력` | 사용자 투자 아이디어 본문 |
@@ -644,6 +645,7 @@ API에 공개하는 대화 응답입니다. 현재 질문, 전체 질문 기록,
 | `overrides` | `dict[str, Any]` | `{}` | 이번 요청의 필드 경로별 덮어쓰기 |
 | `blocked_reason_ko` | `str \| None` | `None` | 차단/상한 안내; 현재는 ready에서도 기본값 유지 이유로 사용 |
 | `precheck` | `dict[str, Any] \| None` | `None` | 현재·과거 후보 수와 가능 기간의 사전 점검 |
+| `error_ko` | `str \| None` | `None` | state=failed 의 이유 (첫 턴 실패·서버 재시작으로 끊김, 2026-11-09) |
 
 
 <a id="schemas-intent-py-Theme-23"></a>

@@ -30,6 +30,8 @@
 
 먼저 코드로 검사할 수 있는 제약을 확인한다. 이후 Module2에서 데이터 마감, 분석 기준일과 환율을 조회하고 파생값을 계산한다. 이 과정에서 필요한 자료가 없으면 요청 준비를 중단한다.
 
+새 요청은 프로필과 아이디어 길이만 확인한 뒤 요청 번호를 붙여 "해석 중"(`interpreting`) 상태로 먼저 저장하고 그 번호를 바로 돌려준다. 아래의 자료 조회·의도 해석·첫 질문 선택은 응답 뒤에 서버에서 이어서 한다(수 초~1분). 화면은 그 번호의 주소에서 상태를 다시 읽어 결과를 받으므로, 해석 중에 새로고침하거나 창을 닫아도 요청을 잃지 않는다. 해석이 실패하면 상태를 `failed`로 바꾸고 이유(`error_ko`)를 남긴다. 서버가 다시 시작돼 해석이 끊긴 요청은 만든 지 15분이 지나면 실패로 보여 준다. 재분석과 수정 요청은 지금처럼 해석까지 끝낸 뒤 돌려준다.
+
 Module3의 의도 해석기에 요청과 이전 실행 요약을 전달한다. 해석 결과에 부족·충돌·모호 항목이 있으면 우선순위가 가장 높은 질문 하나를 사용자에게 보여 준다. 답변을 반영한 뒤 다시 검증하고 해석한다. 질문은 최대 다섯 번까지 진행하며, 그 뒤에도 조건이 정해지지 않으면 분석을 시작하지 않고 이유를 설명한다.
 
 질문이 끝나면 기본 조건, 이번 조건, 변경 항목과 지원 가능한 제약을 보여 준다. 사용자가 “분석 시작”을 누른 뒤 확정 요청을 저장하고 실행 대기열에 등록한다. 확정 전에도 의도 해석과 자료 조회는 수행하지만, 종목 선정 이후의 본 분석은 시작하지 않는다.
@@ -85,13 +87,13 @@ LLM에는 최근 요청의 아이디어·테마·선정 방식·결과 상태, �
 | 파일 | 핵심 필드 |
 | --- | --- |
 | `store/data/profile.json` | `schema_version`, `profile_id`, `current_version`, `versions` |
-| `store/data/requests/<request_id>.json` | `schema_version`, `request_id`, `created_at`, `mode`, `base_report_id`, `profile_version`, `idea`, `language`, `overrides`, `questions`, `effective_request`, `status`, `confirmed_at`, `run_id` |
+| `store/data/requests/<request_id>.json` | `schema_version`, `request_id`, `created_at`, `mode`, `base_report_id`, `profile_version`, `idea`, `language`, `overrides`, `questions`, `effective_request`, `status`, `dialog_state`, `error_ko`, `confirmed_at`, `run_id` |
 | `store/data/runs.json` | `schema_version`, `runs`: 실행별 요청·상태·시각·결과 경로·리포트·오류 |
 | `output/<run_id>/01_request.json` | 확정 요청, 분석 기준일, 환율과 환산액 등 파생값 |
 
 프로필의 `versions`에는 버전, 생성 시각, 진단 성향, 최종 성향과 변경 여부, 각 조건 묶음을 넣는다. 질문에는 `seq`, `field`, `kind`, `question_ko`, `options`, `answer`, `answered_at`을 저장한다. `kind`는 missing·conflict·ambiguous 중 하나다.
 
-요청 `mode`는 new·rerun·revision, 상태는 draft·confirmed·cancelled다. 리포트 식별자는 실행 식별자와 같게 사용한다. 기존 ID 형식은 요청 `req_<YYYYMMDD>_<HHMMSS>_<4hex>`, 실행 `run_<YYYYMMDD>_<HHMMSS>`다. 같은 초에 생성되는 실행의 충돌 방지 방식은 구현 시 정해야 한다.
+요청 `mode`는 new·rerun·revision, 상태는 draft·confirmed·cancelled다. 대화 상태(`dialog_state`)는 interpreting(해석 중)·asking(질문 중)·ready(확인 가능)·blocked·confirmed·cancelled·failed(해석 실패, 이유는 `error_ko`)다. 리포트 식별자는 실행 식별자와 같게 사용한다. 기존 ID 형식은 요청 `req_<YYYYMMDD>_<HHMMSS>_<4hex>`, 실행 `run_<YYYYMMDD>_<HHMMSS>`다. 같은 초에 생성되는 실행의 충돌 방지 방식은 구현 시 정해야 한다.
 
 ## 5. 검증과 예외 처리
 

@@ -871,14 +871,14 @@ def get_report_comparison(report_id: str, request: Request) -> dict[str, Any]: .
 [requests.py](../../backend/analysis/api/routers/requests.py#L35)
 
 ```python
-def create(body: RequestIn, request: Request) -> DialogState: ...
+def create(body: RequestIn, request: Request, background: BackgroundTasks) -> DialogState: ...
 ```
 
-RequestIn의 아이디어·덮어쓰기·모드·기준 리포트·언어를 DialogService.start에 전달하고 첫 DialogState를 반환합니다. 첫 대화 턴에서 의도 해석이 수행될 수 있습니다.
+RequestIn의 아이디어·덮어쓰기·모드·기준 리포트·언어로 `DialogService.create`를 불러 요청을 해석 중(`interpreting`)으로 저장하고 그 DialogState(번호 포함, 질문 없음)를 바로 반환합니다. 의도 해석·첫 질문은 FastAPI `BackgroundTasks`로 응답 뒤에 `DialogService.run_first_turn`이 실행합니다(sync 함수라 스레드풀). 화면은 받은 번호로 `GET /requests/{id}`를 다시 읽어 결과를 받으므로, 해석 중 새로고침해도 요청을 잃지 않습니다. 첫 턴 실패는 응답이 아니라 요청 상태 `failed`·`error_ko`로 전달됩니다(2026-11-09 변경, 전에는 `DialogService.start`로 첫 턴까지 기다렸다 반환).
 
 선언·진입 조건: `router.post('/requests', response_model=DialogState)`.
 
-직접 연결: [services](#api-routers-__init__-py-services-8).
+직접 연결: [services](#api-routers-__init__-py-services-8), [DialogService.create](m1_request_구현보고서.md#m1_request-dialog-py-DialogService-create-151), [DialogService.run_first_turn](m1_request_구현보고서.md#m1_request-dialog-py-DialogService-run_first_turn-170).
 
 
 <a id="api-routers-requests-py-list_requests-40"></a>
