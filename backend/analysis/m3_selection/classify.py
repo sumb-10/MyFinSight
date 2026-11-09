@@ -37,8 +37,10 @@ def _check(a: dict[str, Any]) -> None:
 
 
 def classify(cand: Candidates, intent: IntentSpec | dict[str, Any], llm: LlmClient, *, batch_size: int = BATCH, max_workers: int = 1,
-             cancel_check: Callable[[], bool] | None = None, broad: bool = False) -> Tagging:  # fmt: skip
+             cancel_check: Callable[[], bool] | None = None, broad: bool = False, on_batch: Callable[[int, int], None] | None = None) -> Tagging:  # fmt: skip
     """배치는 max_workers 개까지 동시에 LLM 에 보낸다 (라운드 4). 결과·경고는 배치 순서대로 모아 순차 실행과 같다.
+
+    on_batch(끝난 배치 수, 전체 배치 수): 시작할 때 (0, n), 배치를 하나 받을 때마다 다시 부른다 (새 요청 해석 중 화면의 '분류 2/3 묶음').
 
     broad: 테마가 여러 섹터(설정 broad_theme_min_sectors 이상)에 걸친 넓은 테마. 이때 테마 = 선정 기준(예: '고배당 기업')이라
     LLM 이 '배당수익률이 낮은 편' 처럼 기준을 정성적으로 다시 판정해 후보 절반을 떨어뜨렸다(000: 118 → 55). 순위는 코드가 정하므로
@@ -71,7 +73,9 @@ def classify(cand: Candidates, intent: IntentSpec | dict[str, Any], llm: LlmClie
             got[t] = {"ticker": t, "in_theme": False, "themes": [], "confidence": 0.0, "reason_ko": "LLM 응답 누락", "excluded_theme": None, "_missing": True}
         return got, ws
 
-    for got, ws in map_ordered(list(enumerate(batches, 1)), _one, max_workers=max_workers, cancel_check=cancel_check):
+    if on_batch is not None:
+        on_batch(0, len(batches))
+    for got, ws in map_ordered(list(enumerate(batches, 1)), _one, max_workers=max_workers, cancel_check=cancel_check, on_done=on_batch):
         results.update(got)
         warnings += ws
 

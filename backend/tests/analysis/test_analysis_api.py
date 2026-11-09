@@ -180,3 +180,43 @@ def test_new_request_failure_and_stale(api, tmp_path):
     fresh = old.model_copy(update={"request_id": "req_20261109_100001_abcd", "created_at": now.isoformat(timespec="seconds")})
     reqs.save(fresh)
     assert client.get(f"{P}/requests/{fresh.request_id}").json()["state"] == "interpreting"
+    # 멈춤 판정은 마지막 진행 시각 기준: 16분 전에 만들었어도 1분 전에 단계가 바뀌었으면 아직 해석 중
+    busy = old.model_copy(update={"request_id": "req_20261109_100002_abcd", "progress_updated_at": (now - dt.timedelta(minutes=1)).isoformat(timespec="seconds")})
+    reqs.save(busy)
+    assert client.get(f"{P}/requests/{busy.request_id}").json()["state"] == "interpreting"
+
+
+def test_new_request_progress(api, tmp_path):
+    """새 요청은 6단계가 모두 대기로 시작하고, 해석하는 동안 단계와 결과가 요청 문서에 쌓인다. 실패하면 멈춘 단계가 남는다."""
+    _client, repo, _store, s = api
+    reqs = RequestStore(JsonStore(tmp_path / "store"))
+    seen: list[dict[str, str]] = []
+
+    def intent_reading_progress(_messages):  # LLM 이 해석하는 동안 화면이 읽는 문서
+        (doc,) = reqs.list()
+        seen.append({p.key: p.status for p in doc.progress})
+        return _intent([Q_TEMPLATE])
+
+    app = create_analysis_app(lambda: repo, store_dir=tmp_path / "store", settings=s, llm=lambda: StubLlm({"02_intent": intent_reading_progress}))
+    client = TestClient(app, raise_server_exceptions=False)
+    assert client.put(f"{P}/profile", json=PROFILE_FIELDS).status_code == 200
+    r = client.post(f"{P}/requests", json={"idea": "미국과 한국의 반도체·메모리 기업에 분산 투자하고 싶다"})
+    keys = ["conditions", "intent", "retrieve", "classify", "screen", "question"]
+    assert [p["key"] for p in r.json()["progress"]] == keys and {p["status"] for p in r.json()["progress"]} == {"waiting"}
+    assert seen == [{"conditions": "done", "intent": "running", "retrieve": "waiting", "classify": "waiting", "screen": "waiting", "question": "waiting"}]
+    st = client.get(f"{P}/requests/{r.json()['request_id']}").json()
+    prog = {p["key"]: p for p in st["progress"]}
+    assert st["state"] == "asking" and all(p["status"] in ("done", "skipped") for p in prog.values())
+    assert prog["conditions"]["detail_ko"].startswith("기준일 2025-12-31") and prog["intent"]["detail_ko"].startswith("테마 ")
+    assert prog["retrieve"]["detail_ko"].startswith("후보 ") and prog["question"]["detail_ko"].startswith("「선정 기준") and prog["question"]["detail_ko"].endswith("」 묻기")
+    assert reqs.load(st["request_id"]).progress_updated_at
+    # 해석이 실패하면 멈춘 단계(아이디어 해석)가 진행 중으로 남아 화면이 어디서 멈췄는지 보여 준다
+    def boom(_messages):
+        raise RuntimeError("LLM 연결 끊김")
+
+    app2 = create_analysis_app(lambda: repo, store_dir=tmp_path / "store2", settings=s, llm=lambda: StubLlm({"02_intent": boom}))
+    c2 = TestClient(app2, raise_server_exceptions=False)
+    assert c2.put(f"{P}/profile", json=PROFILE_FIELDS).status_code == 200
+    rid = c2.post(f"{P}/requests", json={"idea": "미국 대형 기술주에 나눠 투자하고 싶다"}).json()["request_id"]
+    st = c2.get(f"{P}/requests/{rid}").json()
+    assert st["state"] == "failed" and [(p["key"], p["status"]) for p in st["progress"][:3]] == [("conditions", "done"), ("intent", "running"), ("retrieve", "waiting")]

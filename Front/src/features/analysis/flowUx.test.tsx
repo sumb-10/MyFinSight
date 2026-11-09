@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { Providers } from "../../app/providers"
 import type { AnalysisService } from "../../api/service"
 import type { DialogState } from "../../api/types"
@@ -212,11 +212,15 @@ describe("질문 화면: 서버가 아이디어를 해석하는 동안", () => {
   const IDEA = "배당을 꾸준히 주는 미국 대형주에 나눠 투자하고 싶어요"
   it("해석 중이면 기다림을 보여 주고, 해석이 끝나면 첫 질문을 보여 준다", async () => {
     const expected = (await mock().createRequest({ idea: IDEA })).question!.question_ko  // 지연 0 목업은 바로 질문
-    const s = new MockService({ latencyMs: 20, persist: false })  // 해석 중 = 지연 ×15 = 0.3초
+    const s = new MockService({ latencyMs: 20, persist: false })  // 해석 중 = 지연 ×50 = 1초
     const st = await s.createRequest({ idea: IDEA })
     expect(st.state).toBe("interpreting")
     show(s, <ClarifyScreen requestId={st.request_id} />)
     expect(await screen.findByText("아이디어를 해석하고 있습니다", {}, { timeout: 5000 })).toBeInTheDocument()
+    const steps = screen.getByRole("list", { name: "해석 단계" })  // 서버가 주는 단계 (고정 안내가 아니라)
+    expect(within(steps).getAllByRole("listitem")).toHaveLength(6)
+    expect(within(steps).getByText("조건 정리")).toBeInTheDocument()
+    expect(within(steps).getByText(/(진행 중)/)).toBeInTheDocument()
     expect(screen.getByText(IDEA)).toBeInTheDocument()
     expect(await screen.findByText(expected, {}, { timeout: 5000 })).toBeInTheDocument()  // 2초 간격으로 다시 읽음
     expect(screen.queryByText("아이디어를 해석하고 있습니다")).not.toBeInTheDocument()
@@ -228,6 +232,9 @@ describe("질문 화면: 서버가 아이디어를 해석하는 동안", () => {
     show(svc, <ClarifyScreen requestId="mock_req_failed" />)
     expect(await screen.findByText("아이디어를 해석하지 못했습니다", {}, { timeout: 5000 })).toBeInTheDocument()
     expect(screen.getByText(/분석 모델 응답 형식이 맞지 않습니다/)).toBeInTheDocument()
+    const steps = screen.getByRole("list", { name: "해석 단계" })  // 어느 단계에서 멈췄는지
+    expect(within(within(steps).getByText("아이디어 해석").closest("li")!).getByText("여기서 멈춤")).toBeInTheDocument()
+    expect(within(within(steps).getByText("조건 정리").closest("li")!).getByText(/^기준일 /)).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "다시 시도" }))
     await waitFor(() => expect(window.location.hash).toMatch(/^#\/analysis\/mock_req_\d+$/))
     expect(sent).toHaveLength(1)

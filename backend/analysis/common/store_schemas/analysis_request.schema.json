@@ -41,6 +41,48 @@
    "title": "FieldError",
    "type": "object"
   },
+  "ProgressStep": {
+   "description": "새 요청 첫 해석의 한 단계 (m1_request/progress.py). detail_ko = 그 단계의 실제 결과 (예: '후보 120개', '분류 2/3 묶음').",
+   "properties": {
+    "key": {
+     "title": "Key",
+     "type": "string"
+    },
+    "label_ko": {
+     "title": "Label Ko",
+     "type": "string"
+    },
+    "status": {
+     "default": "waiting",
+     "enum": [
+      "waiting",
+      "running",
+      "done",
+      "skipped"
+     ],
+     "title": "Status",
+     "type": "string"
+    },
+    "detail_ko": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Detail Ko"
+    }
+   },
+   "required": [
+    "key",
+    "label_ko"
+   ],
+   "title": "ProgressStep",
+   "type": "object"
+  },
   "Question": {
    "description": "실제로 사용자에게 보여 준 질문과 답.",
    "properties": {
@@ -632,6 +674,26 @@
    ],
    "default": null,
    "title": "Error Ko"
+  },
+  "progress": {
+   "default": [],
+   "items": {
+    "$ref": "#/$defs/ProgressStep"
+   },
+   "title": "Progress",
+   "type": "array"
+  },
+  "progress_updated_at": {
+   "anyOf": [
+    {
+     "type": "string"
+    },
+    {
+     "type": "null"
+    }
+   ],
+   "default": null,
+   "title": "Progress Updated At"
   }
  },
  "required": [

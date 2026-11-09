@@ -10,6 +10,7 @@ LLM 이 없으면(llm=None) 04 를 건너뛰고 상한(upper bound)으로 센다
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Callable
 from typing import Any
 
 import pandas as pd
@@ -54,10 +55,12 @@ def _summary(day: Any, cand: Any, tag: Any, sel: Any, invest: float) -> dict[str
 
 
 def precheck(normalized: dict[str, Any], intent: dict[str, Any], desc: Descriptor, md: MarketData, settings: AnalysisSettings,
-             *, previous: dict[str, Any] | None = None, llm: Any = None, reselect: bool = True) -> dict[str, Any]:  # fmt: skip
+             *, previous: dict[str, Any] | None = None, llm: Any = None, reselect: bool = True,
+             progress: Callable[[str, str, str | None], None] | None = None) -> dict[str, Any]:  # fmt: skip
     """기준일·백테스트 시작일에 실제로 고를 수 있는 종목과 배분 가능 비율. 입력 서명이 같으면 previous 를 그대로 돌려준다.
 
     reselect=False: 시작일 재선정을 끈 요청(_backtest_request.reselect_at_start=false) — 시작일 부족을 묻지 않는다 (F24).
+    progress(단계, 상태, 결과 문구): 새 요청 첫 해석의 진행 기록 (m1_request/progress.py). 후보 찾기·분류(묶음 i/n)·확인 시작을 알린다.
     """
     sig = signature(normalized, intent, reselect=reselect, classified=llm is not None)
     if previous and previous.get("signature") == sig:
@@ -71,16 +74,24 @@ def precheck(normalized: dict[str, Any], intent: dict[str, Any], desc: Descripto
     nh_min = int(nh["min"])
     invest = 1.0 - float(cons.get("min_cash_ratio", 0) or 0)
     ss = settings.selection
+    step = progress or (lambda *_a: None)
+    step("retrieve", "running", "가격 자료 읽는 중")  # 서버를 켠 뒤 첫 요청은 선적재가 수십 초 걸린다 (LLM 보다 길 때가 많음)
     md.prefetch(D.tickers(desc), bt_start - dt.timedelta(days=int(settings.portfolio.lookback_days * 1.6) + 60), as_of)  # 01 단계와 같은 선적재
     view = md.view(as_of)
     cand = retrieve(view, desc, intent, cons, request_id=rid, max_candidates=ss.max_candidates, broad_min_sectors=ss.broad_theme_min_sectors,
                     metric_prefilter=ss.metric_prefilter)  # fmt: skip  (03 단계와 같은 인자 → 04 배치가 같아 캐시 재사용)
+    step("retrieve", "done", f"후보 {len(cand.candidates)}개")
     if llm is not None and cand.candidates:
-        tag = classify(cand, intent, llm, broad=is_broad_theme(intent["interpretation"]["themes"], ss.broad_theme_min_sectors))
+        step("classify", "running", None)
+        tag = classify(cand, intent, llm, broad=is_broad_theme(intent["interpretation"]["themes"], ss.broad_theme_min_sectors),
+                       on_batch=lambda i, n: step("classify", "running", f"{i}/{n} 묶음"))  # fmt: skip
+        step("classify", "done", f"테마에 맞는 종목 {len(tag.passed_tickers)}개")
         basis = "after_classification"
     else:
         tag = Tagging(request_id=rid, min_confidence=0.0, tagged=[], excluded_by_theme=[], passed_tickers=[c.ticker for c in cand.candidates], batches=0)
         basis = "before_classification"
+        step("classify", "skipped", "후보 없음" if not cand.candidates else "분류 없이 확인")
+    step("screen", "running", None)
     sel, _facts = screen(view, desc, tag, intent, cons, request_id=rid)
     now = _summary(as_of, cand, tag, sel, invest)
     out: dict[str, Any] = {"signature": sig, "computed_at": str(pd.Timestamp.now().date()), "basis": basis, "min": nh_min, "target": int(nh["target"]),

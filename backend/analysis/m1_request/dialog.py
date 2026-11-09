@@ -25,6 +25,7 @@ from backend.analysis.m1_request.conditions import condition_rows
 from backend.analysis.m1_request.derive import derive
 from backend.analysis.m1_request.history import context_package
 from backend.analysis.m1_request.precheck import precheck as run_precheck
+from backend.analysis.m1_request.progress import Progress, for_request, screen_ko, themes_ko
 from backend.analysis.m4_portfolio.spec import dropped_ko
 from backend.analysis.m1_request.validate import hard_errors, label
 from backend.analysis.m2_data import descriptor as D
@@ -41,7 +42,8 @@ from backend.schemas.errors import MyFinSightError
 log = logging.getLogger(__name__)
 
 FIRST_TURN_FAILED_KO = "서버 오류로 해석을 마치지 못했습니다."  # 화면 제목이 「아이디어를 해석하지 못했습니다」라 이유만
-# 해석 중(interpreting) 으로 이만큼 지나면 서버가 다시 시작돼 끊긴 것으로 본다. 새 요청 첫 턴은 LLM 두 번(+분류 배치), 호출당 한도 180초
+# 해석 중(interpreting) 으로 마지막 진행(단계·분류 묶음, 없으면 요청을 만든 때) 뒤 이만큼 지나면 서버가 다시 시작돼 끊긴 것으로 본다.
+# 단계 사이 가장 긴 일은 LLM 한 번(호출당 한도 180초, 재시도 포함)
 STALE_INTERPRETING = dt.timedelta(minutes=15)
 STALE_INTERPRETING_KO = "서버가 다시 시작돼 해석이 끊겼습니다."
 
@@ -62,10 +64,10 @@ def _few_why_ko(counts: dict[str, int], stock_cap: float, sector_cap: float, cas
     return f"그대로 진행하면 {cause} 현금이 {1 - lim['cap_room']:.0%}" + (f"(요청한 최소 현금 {cash:.0%} 포함)" if cash > 1e-9 else "") + " 남습니다."
 
 
-def _stale(created_at: str) -> bool:
-    """요청을 만든 지 STALE_INTERPRETING 이 지났는지 (now_iso 는 오프셋이 붙은 지역 시각)."""
+def _stale(since: str) -> bool:
+    """since(마지막 진행 시각 또는 요청을 만든 시각) 뒤 STALE_INTERPRETING 이 지났는지 (now_iso 는 오프셋이 붙은 지역 시각)."""
     try:
-        made = dt.datetime.fromisoformat(created_at)
+        made = dt.datetime.fromisoformat(since)
     except ValueError:
         return False
     now = dt.datetime.now(made.tzinfo) if made.tzinfo else dt.datetime.now()
@@ -162,7 +164,7 @@ class DialogService:
         doc = AnalysisRequestDoc(request_id=new_request_id(), created_at=now_iso(), mode=mode, base_report_id=base_report_id,
                                  profile_version=prof["version"], idea=idea.strip(), language=language, overrides=dict(overrides or {}),
                                  idea_clarifications=[c for c in (clarifications or []) if c and c.strip()], revision=revision,
-                                 max_questions=self.s.dialog.max_questions, dialog_state="interpreting")  # fmt: skip
+                                 max_questions=self.s.dialog.max_questions, dialog_state="interpreting", progress=Progress().steps)  # fmt: skip  (단계는 모두 대기로 시작)
         with self.requests.locked(doc.request_id):
             self.requests.save(doc)
         return self.state(doc)
@@ -175,7 +177,7 @@ class DialogService:
             if doc.dialog_state != "interpreting":
                 return self.state(doc)
             try:
-                doc = self._turn(doc)
+                doc = self._turn(doc, progress=for_request(self.requests, doc))
             except Exception as e:
                 if not isinstance(e, MyFinSightError):
                     log.exception("first turn failed for %s", request_id)
@@ -359,7 +361,10 @@ class DialogService:
             return run_id, pos
 
     # ───────────────────────── 한 턴 ─────────────────────────
-    def _turn(self, doc: AnalysisRequestDoc) -> AnalysisRequestDoc:
+    def _turn(self, doc: AnalysisRequestDoc, *, progress: Progress | None = None) -> AnalysisRequestDoc:
+        """한 턴. progress 는 새 요청 첫 턴만 넘긴다 (단계마다 요청 문서에 기록 → 해석 중 화면)."""
+        pg = progress or Progress()
+        pg.step("conditions", "running")
         prof = self.profiles.version(doc.profile_version)
         self._fix_num_holdings(doc, prof)
         req = assemble.build(prof, doc.idea, overrides=doc.overrides, clarifications=doc.idea_clarifications, request_id=doc.request_id,
@@ -370,10 +375,13 @@ class DialogService:
             doc.dialog_state = "asking"
             doc.draft_request = req
             doc.warnings = [f"HARD 검증 오류 {len(errs)}건: 수정 후 계속"]
+            pg.step("conditions", "done", f"고칠 조건 {len(errs)}건")
+            pg.close(detail_ko="조건을 먼저 고칩니다")
             return doc
         normalized = derive(req, self.md, self.s).model_dump(mode="json")
         doc.draft_request = normalized
         doc.derived = normalized["derived"]
+        pg.step("conditions", "done", f"기준일 {doc.derived['as_of']} · 백테스트 {float(normalized['horizon']['backtest_years']):g}년")
         markets = sorted({UNIVERSE_MARKET[u] for u in req["constraints"]["universe"]})
         ms = self.s.market
         desc, _info, _w = D.load_for(dt.date.fromisoformat(str(doc.derived["as_of"])), req["constraints"]["universe"], markets,
@@ -384,6 +392,7 @@ class DialogService:
                                                             context=context_package(self.store, self.repo), dialog_history=self._history_text(doc),
                                                             max_questions=doc.max_questions, asked_fields=asked,
                                                             explicit_fields=[k for k in doc.overrides if not k.startswith("_")])]  # fmt: skip
+        pg.step("intent", "running")
         spec, warns, _msgs = interpret(normalized, desc, self.llm, self.s, messages=_dicts(doc.messages), asked_fields=asked)
         intent = spec.model_dump(mode="json")
         proposals = [QuestionProposal.model_validate(q) for q in intent.pop("questions", [])]
@@ -397,17 +406,24 @@ class DialogService:
             intent["exclude_theme_rules"] = doc.intent.get("exclude_theme_rules", [])
         doc.overrides["_theme_basis"] = basis
         doc.intent = intent
+        pg.step("intent", "done", themes_ko(intent))
         doc.messages.append(DialogMessage(role="assistant", content=json.dumps({**intent, "questions": [p.model_dump() for p in proposals]}, ensure_ascii=False)))
         doc.warnings = list(warns)
         try:  # 실행 전 점검 (LLM 없음): 후보 수·지표 보유 수를 기준일·백테스트 시작일에서 센다 (서명이 같으면 재사용)
             btr = (doc.overrides.get("_backtest_request") or {}).get("backtest") or {}
             doc.precheck = run_precheck(normalized, intent, desc, self.md, self.s, previous=doc.precheck, llm=self.llm,
-                                        reselect=btr.get("reselect_at_start", True) is not False and not doc.overrides.get("_no_reselect"))  # fmt: skip  (재선정을 껐으면 시작일 부족을 묻지 않는다, F24·054)
+                                        reselect=btr.get("reselect_at_start", True) is not False and not doc.overrides.get("_no_reselect"),
+                                        progress=pg.step)  # fmt: skip  (재선정을 껐으면 시작일 부족을 묻지 않는다, F24·054)
         except Exception as e:  # noqa: BLE001 — 점검은 보조 정보
             doc.precheck = None
             doc.warnings.append(f"precheck skipped: {e}")
+            pg.close(("retrieve", "classify", "screen"), "점검하지 못해 건너뜀")
+        else:
+            pg.step("screen", "done", screen_ko(doc.precheck))
+        pg.step("question", "running")
         proposals = self._code_proposals(req, intent, desc, overrides=doc.overrides, precheck=doc.precheck) + proposals  # 코드 규칙 질문이 LLM 제안보다 앞
         chosen = self._pick_question(doc, proposals, req)
+        pg.step("question", "done", "더 물을 것 없음" if chosen is None or len(doc.questions) >= doc.max_questions else f"「{label(chosen.field)}」 묻기")
         if chosen is None:
             doc.dialog_state = "ready"
             doc.blocked_reason_ko = None
@@ -813,11 +829,11 @@ class DialogService:
                 except Exception:  # noqa: BLE001 — 표는 보조 정보
                     conditions = []
         state, error_ko = doc.dialog_state, doc.error_ko
-        if state == "interpreting" and _stale(doc.created_at):  # 해석하던 서버가 다시 시작돼 끊김 (저장은 하지 않는다: 잠금 없이, 서버 여러 개여도 같은 판정)
+        if state == "interpreting" and _stale(doc.progress_updated_at or doc.created_at):  # 해석하던 서버가 다시 시작돼 끊김 (저장은 하지 않는다: 잠금 없이, 서버 여러 개여도 같은 판정)
             state, error_ko = "failed", STALE_INTERPRETING_KO
         return DialogState(request_id=doc.request_id, mode=doc.mode, base_report_id=doc.base_report_id, status=doc.status, state=state, turn=doc.turn,
                            max_questions=doc.max_questions, idea=doc.idea, question=current, questions=doc.questions, hard_errors=doc.hard_errors,
                            confirmation=confirmation, unresolved=self._unresolved(doc) if (doc.dialog_state == "blocked" or doc.blocked_reason_ko) else [], summary=summary,
                            revision=doc.revision, run_id=doc.run_id, warnings=doc.warnings, conditions=conditions,
                            overrides={k: v for k, v in doc.overrides.items() if not k.startswith("_")},
-                           blocked_reason_ko=doc.blocked_reason_ko, precheck=doc.precheck, error_ko=error_ko)  # fmt: skip
+                           blocked_reason_ko=doc.blocked_reason_ko, precheck=doc.precheck, error_ko=error_ko, progress=doc.progress)  # fmt: skip

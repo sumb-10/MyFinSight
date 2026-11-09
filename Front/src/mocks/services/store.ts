@@ -27,7 +27,7 @@ export interface MockState {
   runs: Record<string, { cancel_at: number }>              // 정해진 진행 상태 실행을 취소한 시각 (ms)
   live: Record<string, LiveRun>                           // 이벤트 시퀀스 실행 (만든 시각부터 저절로 진행)
   profileChats: Record<string, ProfileChatState>          // 대화형 초기 투자조건 (질문별 답, 마지막 다시 묻기 안내)
-  interpreting: Record<string, { until: number }>         // 새 요청이 '해석 중'으로 보이는 시각까지 (ms, 실제 서버처럼 번호를 먼저 주고 뒤에서 해석)
+  interpreting: Record<string, { from?: number; until: number }>  // 새 요청이 '해석 중'으로 보이는 시각 (ms, 실제 서버처럼 번호를 먼저 주고 뒤에서 해석. from 부터 지난 만큼 단계가 나아감)
   seq: number
 }
 

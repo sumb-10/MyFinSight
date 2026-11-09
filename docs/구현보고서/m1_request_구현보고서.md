@@ -4,9 +4,11 @@
 
 > 작성 기준: 2026-10-25 작업 공간의 실제 소스. 기존 설계 문서는 배경 참고용이며 아래 동작 설명은 구현을 기준으로 합니다.
 
-대상: Python 파일 9개 · 클래스 1개 · 함수/메서드 51개(중첩 함수와 비공개 보조 함수 포함).
+대상: Python 파일 10개 · 클래스 2개 · 함수/메서드 58개(중첩 함수와 비공개 보조 함수 포함).
 
 > 2026-11-09 수정: 새 요청은 번호를 먼저 돌려주고 첫 턴은 응답 뒤에 실행 (`DialogService.create`·`run_first_turn`·`_stale` 추가, `start`·`state` 변경). 내력: [docs/updates/2026-11-09_request_async.md](../updates/2026-11-09_request_async.md)
+
+> 2026-11-09 수정(2): 새 요청 첫 해석이 어느 단계인지 요청 문서에 기록 (`progress.py` 추가, `DialogService.create`·`run_first_turn`·`_turn`·`state`·`_stale`·`precheck` 변경). 해석 중 멈춤 판정은 마지막 진행 시각 기준. 내력: [docs/updates/2026-11-09_request_progress.md](../updates/2026-11-09_request_progress.md)
 
 [역할](#role) · [파일 구성](#files) · [처리 흐름](#flow) · [클래스](#classes) · [함수](#functions) · [모듈 연계](#interactions) · [오류·검증](#verification)
 
@@ -31,6 +33,7 @@ HARD 검증은 숫자 범위·포함/제외 충돌 등 코드가 반드시 확�
 | [m1_request/dialog.py](../../backend/analysis/m1_request/dialog.py) | 대화 상태 전이·질문 선택·답 적용·실행 확정 | [클래스 1 · 함수 29](#file-m1_request-dialog-py) |
 | [m1_request/history.py](../../backend/analysis/m1_request/history.py) | 이전 실행의 요약과 LLM 맥락 | [클래스 0 · 함수 2](#file-m1_request-history-py) |
 | [m1_request/precheck.py](../../backend/analysis/m1_request/precheck.py) | 분류 전 후보·지표 수와 과거 시작일 가능성 점검 | [클래스 0 · 함수 3](#file-m1_request-precheck-py) |
+| [m1_request/progress.py](../../backend/analysis/m1_request/progress.py) | 새 요청 첫 해석의 진행 단계 기록 (해석 중 화면) | [클래스 1 · 함수 7](#file-m1_request-progress-py) |
 | [m1_request/revision.py](../../backend/analysis/m1_request/revision.py) | 수정 제안·고정 조건·허용 변경·HARD 검증 | [클래스 0 · 함수 6](#file-m1_request-revision-py) |
 | [m1_request/validate.py](../../backend/analysis/m1_request/validate.py) | 요청 검증 오류의 한국어 필드 메시지 | [클래스 0 · 함수 3](#file-m1_request-validate-py) |
 
@@ -52,6 +55,8 @@ flowchart TD
   C -->|"질문 없음 또는 상한 도달"| R["ready: 조건 확인"]
   R --> F["confirm: 확정본·지문 저장 → 실행 큐"]
 ```
+
+첫 턴은 6단계(조건 정리 → 아이디어 해석 → 후보 종목 찾기 → 후보 분류 → 고를 수 있는 종목 확인 → 질문 고르기)를 요청 문서의 `progress`에 기록합니다. 단계가 바뀌거나 분류 묶음이 하나 끝날 때마다 저장하고, 각 단계에는 실제 결과(기준일·기간, 테마, 후보 수, 분류 i/n 묶음, 기준일·시작일에 고를 수 있는 종목 수, 고른 질문)를 붙입니다. 화면은 2초마다 이 값을 읽어 보여 줍니다. 서버를 켠 뒤 첫 요청은 「후보 종목 찾기」의 가격 자료 선적재가 수십 초 걸려(실측 약 45초) 이 단계에 「가격 자료 읽는 중」을 붙입니다. 답·말로 보태기 턴은 기록하지 않습니다.
 
 홈의 새 요청은 `POST /requests`가 `create()`로 요청을 해석 중(`interpreting`)으로 저장해 번호를 바로 돌려주고, 첫 턴(파생·의도 해석·점검·첫 질문)은 응답 뒤에 `run_first_turn()`이 같은 요청 잠금 안에서 실행합니다. 화면은 그 번호의 주소에서 2초마다 조회하므로 해석 중 새로고침해도 요청을 잃지 않습니다. 첫 턴이 예외로 끝나면 저장된 해석 중 문서에 `failed`와 `error_ko`만 적습니다. 재분석·수정 요청과 테스트는 `start()`(= `create` + `run_first_turn(reraise=True)`)로 지금처럼 끝까지 기다렸다 받고 오류도 그대로 던집니다.
 
@@ -89,6 +94,19 @@ flowchart TD
 기반: `명시적 부모 없음`.
 
 메서드·속성: [__init__](#m1_request-dialog-py-DialogService-__init__-82), [start](#m1_request-dialog-py-DialogService-start-89), [create](#m1_request-dialog-py-DialogService-create-151), [run_first_turn](#m1_request-dialog-py-DialogService-run_first_turn-170), [start_revision](#m1_request-dialog-py-DialogService-start_revision-107), [_base](#m1_request-dialog-py-DialogService-_base-124), [get](#m1_request-dialog-py-DialogService-get-135), [answer](#m1_request-dialog-py-DialogService-answer-138), [update_overrides](#m1_request-dialog-py-DialogService-update_overrides-176), [message](#m1_request-dialog-py-DialogService-message-202), [_settle_pending](#m1_request-dialog-py-DialogService-_settle_pending-219), [skip](#m1_request-dialog-py-DialogService-skip-225), [cancel](#m1_request-dialog-py-DialogService-cancel-239), [confirm](#m1_request-dialog-py-DialogService-confirm-247), [_turn](#m1_request-dialog-py-DialogService-_turn-275), [_fix_num_holdings](#m1_request-dialog-py-DialogService-_fix_num_holdings-330), [_feasibility_proposals](#m1_request-dialog-py-DialogService-_feasibility_proposals-358), [_code_proposals](#m1_request-dialog-py-DialogService-_code_proposals-413), [_conflict_proposals](#m1_request-dialog-py-DialogService-_conflict_proposals-445), [_period_proposal](#m1_request-dialog-py-DialogService-_period_proposal-477), [_pick_question](#m1_request-dialog-py-DialogService-_pick_question-498), [_history_text](#m1_request-dialog-py-DialogService-_history_text-533), [_answer_message](#m1_request-dialog-py-DialogService-_answer_message-538), [_unresolved](#m1_request-dialog-py-DialogService-_unresolved-545), [state](#m1_request-dialog-py-DialogService-state-552).
+
+
+<a id="m1_request-progress-py-Progress-31"></a>
+### `Progress`
+
+<!-- source-symbol: m1_request/progress.py:31:Progress -->
+[progress.py](../../backend/analysis/m1_request/progress.py#L31)
+
+새 요청 첫 해석의 6단계 목록(`steps`, [ProgressStep](schemas_구현보고서.md#schemas-dialog-py-ProgressStep-100))과 기록기입니다. 저장 함수(`save`)를 받으면 단계가 바뀔 때마다 단계 목록 사본을 넘기고, 없으면 메모리에만 기록합니다(답·말로 보태기 턴).
+
+기반: `명시적 부모 없음`.
+
+메서드·속성: [__init__](#m1_request-progress-py-Progress-__init__-34), [step](#m1_request-progress-py-Progress-step-38), [close](#m1_request-progress-py-Progress-close-51).
 
 
 <a id="functions"></a>
@@ -274,10 +292,10 @@ def _dicts(messages: list[Any]) -> list[dict[str, str]]: ...
 [dialog.py](../../backend/analysis/m1_request/dialog.py#L65)
 
 ```python
-def _stale(created_at: str) -> bool: ...
+def _stale(since: str) -> bool: ...
 ```
 
-요청을 만든 지 `STALE_INTERPRETING`(15분)이 지났는지 봅니다. `created_at`은 `now_iso()`의 오프셋 붙은 지역 시각이라 같은 시간대의 현재 시각과 비교하고, 해석할 수 없는 값이면 False입니다. 해석 중으로 이만큼 멈춘 요청은 서버가 다시 시작돼 끊긴 것으로 봅니다(새 요청 첫 턴은 LLM 두 번과 분류 배치, 호출당 한도 180초).
+`since`(마지막 진행 시각 `progress_updated_at`, 없으면 요청을 만든 시각) 뒤 `STALE_INTERPRETING`(15분)이 지났는지 봅니다(2026-11-09 수정(2): 전에는 만든 시각 기준이라 오래 걸리지만 진행 중인 해석도 15분이면 실패로 보였음). 시각은 `now_iso()`의 오프셋 붙은 지역 시각이라 같은 시간대의 현재 시각과 비교하고, 해석할 수 없는 값이면 False입니다. 해석 중으로 이만큼 진행이 없는 요청은 서버가 다시 시작돼 끊긴 것으로 봅니다(단계 사이 가장 긴 일은 LLM 한 번, 호출당 한도 180초).
 
 호출하는 코드: [DialogService.state](#m1_request-dialog-py-DialogService-state-552).
 
@@ -341,7 +359,7 @@ def start(self, idea: str, *, overrides: dict[str, Any] | None=None, mode: str='
 def create(self, idea: str, *, overrides: dict[str, Any] | None=None, mode: str='new', base_report_id: str | None=None, language: str='ko', profile_version: int | None=None, clarifications: list[str] | None=None, revision: RevisionDraft | None=None) -> DialogState: ...
 ```
 
-등록 프로필과 5자 이상 아이디어를 확인하고 프로필 버전·요청 모드·덮어쓰기·질문 상한을 담은 새 요청을 `dialog_state="interpreting"`으로 요청별 잠금 안에서 저장한 뒤 DialogState를 반환합니다. LLM·시장 자료는 부르지 않으므로 바로 끝나며, 화면은 받은 번호의 주소로 가서 첫 턴이 끝났는지 조회합니다.
+등록 프로필과 5자 이상 아이디어를 확인하고 프로필 버전·요청 모드·덮어쓰기·질문 상한을 담은 새 요청을 `dialog_state="interpreting"`과 모두 대기인 6단계(`progress`)로 요청별 잠금 안에서 저장한 뒤 DialogState를 반환합니다. LLM·시장 자료는 부르지 않으므로 바로 끝나며, 화면은 받은 번호의 주소로 가서 첫 턴이 끝났는지 조회합니다.
 
 직접 연결: [RequestInvalid](common_구현보고서.md#errors-py-RequestInvalid-11), [AnalysisRequestDoc](schemas_구현보고서.md#schemas-dialog-py-AnalysisRequestDoc-98), [new_request_id](common_구현보고서.md#common-store-py-new_request_id-98), [now_iso](common_구현보고서.md#common-jsonio-py-now_iso-56), [DialogService.state](#m1_request-dialog-py-DialogService-state-552).
 
@@ -360,9 +378,9 @@ def create(self, idea: str, *, overrides: dict[str, Any] | None=None, mode: str=
 def run_first_turn(self, request_id: str, *, reraise: bool=False) -> DialogState: ...
 ```
 
-`create()`로 저장한 요청의 첫 턴(파생·의도 해석·점검·첫 질문)을 요청별 잠금 안에서 실행하고 저장합니다. 이미 해석 중이 아니면 아무것도 하지 않고 현재 상태를 돌려줍니다(두 번 불려도 같음). `_turn`이 예외를 내면 저장돼 있던 해석 중 문서를 다시 읽어 `dialog_state="failed"`와 `error_ko`만 적어 저장합니다. `error_ko`는 MyFinSightError면 `public_message`(DB 원문 등은 가림), 그 밖이면 `FIRST_TURN_FAILED_KO`이며 그 밖의 예외는 로그에 남깁니다. `reraise`면 예외를 다시 던집니다.
+`create()`로 저장한 요청의 첫 턴(파생·의도 해석·점검·첫 질문)을 요청별 잠금 안에서 실행하고 저장합니다. 이때 `_turn`에 [for_request](#m1_request-progress-py-for_request-62) 기록기를 넘겨 단계마다 저장된 문서의 `progress`를 고칩니다. 실패 처리는 저장된 문서를 다시 읽으므로 멈춘 단계가 진행 중으로 남아 화면이 어디서 멈췄는지 보여 줍니다. 이미 해석 중이 아니면 아무것도 하지 않고 현재 상태를 돌려줍니다(두 번 불려도 같음). `_turn`이 예외를 내면 저장돼 있던 해석 중 문서를 다시 읽어 `dialog_state="failed"`와 `error_ko`만 적어 저장합니다. `error_ko`는 MyFinSightError면 `public_message`(DB 원문 등은 가림), 그 밖이면 `FIRST_TURN_FAILED_KO`이며 그 밖의 예외는 로그에 남깁니다. `reraise`면 예외를 다시 던집니다.
 
-직접 연결: [DialogService._turn](#m1_request-dialog-py-DialogService-_turn-275), [public_message](../../backend/analysis/errors.py), [DialogService.state](#m1_request-dialog-py-DialogService-state-552).
+직접 연결: [DialogService._turn](#m1_request-dialog-py-DialogService-_turn-275), [for_request](#m1_request-progress-py-for_request-62), [public_message](../../backend/analysis/errors.py), [DialogService.state](#m1_request-dialog-py-DialogService-state-552).
 
 호출하는 코드: [DialogService.start](#m1_request-dialog-py-DialogService-start-89), [create](api_구현보고서.md#api-routers-requests-py-create-35)(응답 뒤 백그라운드 작업).
 
@@ -544,14 +562,14 @@ def confirm(self, request_id: str) -> tuple[str, int | None]: ...
 [dialog.py](../../backend/analysis/m1_request/dialog.py#L275)
 
 ```python
-def _turn(self, doc: AnalysisRequestDoc) -> AnalysisRequestDoc: ...
+def _turn(self, doc: AnalysisRequestDoc, *, progress: Progress | None=None) -> AnalysisRequestDoc: ...
 ```
 
-프로필과 덮어쓰기를 조립해 HARD 검증하고 파생값·사전·의도 명세를 만듭니다. 실행 전 점검과 코드 규칙 질문을 LLM 제안 앞에 합친 뒤 유효한 질문 하나를 고릅니다. 오류면 수정 대기, 질문이 없으면 ready, 질문 상한 도달 시에도 남은 조건을 기본값으로 두고 ready가 됩니다. 첫 프롬프트는 처음 한 번 구성하고 이후 누적 대화를 재사용합니다.
+프로필과 덮어쓰기를 조립해 HARD 검증하고 파생값·사전·의도 명세를 만듭니다. 실행 전 점검과 코드 규칙 질문을 LLM 제안 앞에 합친 뒤 유효한 질문 하나를 고릅니다. 오류면 수정 대기, 질문이 없으면 ready, 질문 상한 도달 시에도 남은 조건을 기본값으로 두고 ready가 됩니다. 첫 프롬프트는 처음 한 번 구성하고 이후 누적 대화를 재사용합니다. `progress`(새 요청 첫 턴만)가 있으면 단계마다 기록하고 점검에도 넘깁니다. HARD 오류로 일찍 끝나면 남은 단계를 건너뜀으로, 점검이 예외면 점검 세 단계를 「점검하지 못해 건너뜀」으로 닫습니다. 결과 문구는 점검 `try` 밖에서 만들어 문구 때문에 점검 결과를 버리지 않습니다.
 
-직접 연결: [DialogService._fix_num_holdings](#m1_request-dialog-py-DialogService-_fix_num_holdings-330), [build](#m1_request-assemble-py-build-33), [hard_errors](#m1_request-validate-py-hard_errors-69), [derive](#m1_request-derive-py-derive-35), [load_for](m2_data_구현보고서.md#m2_data-descriptor-py-load_for-24), [DialogMessage](schemas_구현보고서.md#schemas-dialog-py-DialogMessage-69), [build_messages](m3_selection_구현보고서.md#m3_selection-intent-py-build_messages-66), [context_package](#m1_request-history-py-context_package-41), [DialogService._history_text](#m1_request-dialog-py-DialogService-_history_text-533), [interpret](m3_selection_구현보고서.md#m3_selection-intent-py-interpret-104), [_dicts](#m1_request-dialog-py-_dicts-38), [precheck](#m1_request-precheck-py-precheck-54), [DialogService._code_proposals](#m1_request-dialog-py-DialogService-_code_proposals-413), [DialogService._pick_question](#m1_request-dialog-py-DialogService-_pick_question-498), [label](#m1_request-validate-py-label-87), [Question](schemas_구현보고서.md#schemas-dialog-py-Question-37), [now_iso](common_구현보고서.md#common-jsonio-py-now_iso-56).
+직접 연결: [Progress](#m1_request-progress-py-Progress-31), [themes_ko](#m1_request-progress-py-themes_ko-82), [screen_ko](#m1_request-progress-py-screen_ko-87), [DialogService._fix_num_holdings](#m1_request-dialog-py-DialogService-_fix_num_holdings-330), [build](#m1_request-assemble-py-build-33), [hard_errors](#m1_request-validate-py-hard_errors-69), [derive](#m1_request-derive-py-derive-35), [load_for](m2_data_구현보고서.md#m2_data-descriptor-py-load_for-24), [DialogMessage](schemas_구현보고서.md#schemas-dialog-py-DialogMessage-69), [build_messages](m3_selection_구현보고서.md#m3_selection-intent-py-build_messages-66), [context_package](#m1_request-history-py-context_package-41), [DialogService._history_text](#m1_request-dialog-py-DialogService-_history_text-533), [interpret](m3_selection_구현보고서.md#m3_selection-intent-py-interpret-104), [_dicts](#m1_request-dialog-py-_dicts-38), [precheck](#m1_request-precheck-py-precheck-54), [DialogService._code_proposals](#m1_request-dialog-py-DialogService-_code_proposals-413), [DialogService._pick_question](#m1_request-dialog-py-DialogService-_pick_question-498), [label](#m1_request-validate-py-label-87), [Question](schemas_구현보고서.md#schemas-dialog-py-Question-37), [now_iso](common_구현보고서.md#common-jsonio-py-now_iso-56).
 
-호출하는 코드: [DialogService.start](#m1_request-dialog-py-DialogService-start-89), [DialogService.answer](#m1_request-dialog-py-DialogService-answer-138), [DialogService.update_overrides](#m1_request-dialog-py-DialogService-update_overrides-176), [DialogService.message](#m1_request-dialog-py-DialogService-message-202), [DialogService.skip](#m1_request-dialog-py-DialogService-skip-225).
+호출하는 코드: [DialogService.run_first_turn](#m1_request-dialog-py-DialogService-run_first_turn-170), [DialogService.answer](#m1_request-dialog-py-DialogService-answer-138), [DialogService.update_overrides](#m1_request-dialog-py-DialogService-update_overrides-176), [DialogService.message](#m1_request-dialog-py-DialogService-message-202), [DialogService.skip](#m1_request-dialog-py-DialogService-skip-225).
 
 
 <a id="m1_request-dialog-py-DialogService-_fix_num_holdings-330"></a>
@@ -732,7 +750,7 @@ def _unresolved(self, doc: AnalysisRequestDoc) -> list[dict[str, Any]]: ...
 def state(self, doc: AnalysisRequestDoc) -> DialogState: ...
 ```
 
-저장 요청에서 현재 질문·확정 조건 표·의도 요약·오류·공지·수정 초안·점검 결과를 조립한 DialogState를 반환합니다. '_' 내부 overrides는 숨깁니다. ready 상태에서도 상한 안내 blocked_reason_ko가 있으면 미해결 안내를 함께 제공할 수 있습니다. 해석 중(`interpreting`) 요청을 만든 지 15분이 지났으면(`_stale`) 서버가 다시 시작돼 끊긴 것으로 보고 `failed`와 `STALE_INTERPRETING_KO`로 돌려줍니다. 이 판정은 저장하지 않으므로 잠금을 기다리지 않고 서버 프로세스가 여럿이어도 같습니다.
+저장 요청에서 현재 질문·확정 조건 표·의도 요약·오류·공지·수정 초안·점검 결과를 조립한 DialogState를 반환합니다. '_' 내부 overrides는 숨깁니다. ready 상태에서도 상한 안내 blocked_reason_ko가 있으면 미해결 안내를 함께 제공할 수 있습니다. 단계별 진행(`progress`)도 그대로 내보냅니다. 해석 중(`interpreting`) 요청이 마지막 진행(없으면 만든 때) 뒤 15분 동안 그대로면(`_stale`) 서버가 다시 시작돼 끊긴 것으로 보고 `failed`와 `STALE_INTERPRETING_KO`로 돌려줍니다. 이 판정은 저장하지 않으므로 잠금을 기다리지 않고 서버 프로세스가 여럿이어도 같습니다.
 
 직접 연결: [build](#m1_request-assemble-py-build-33), [DialogService._base](#m1_request-dialog-py-DialogService-_base-124), [condition_rows](#m1_request-conditions-py-condition_rows-65), [DialogSummary](schemas_구현보고서.md#schemas-dialog-py-DialogSummary-134), [DialogState](schemas_구현보고서.md#schemas-dialog-py-DialogState-141), [DialogService._unresolved](#m1_request-dialog-py-DialogService-_unresolved-545), [_stale](#m1_request-dialog-py-_stale-65).
 
@@ -822,12 +840,125 @@ def _count_at(day: dt.date, normalized: dict[str, Any], intent: dict[str, Any], 
 [precheck.py](../../backend/analysis/m1_request/precheck.py#L54)
 
 ```python
-def precheck(normalized: dict[str, Any], intent: dict[str, Any], desc: Descriptor, md: MarketData, settings: AnalysisSettings, *, previous: dict[str, Any] | None=None) -> dict[str, Any]: ...
+def precheck(normalized: dict[str, Any], intent: dict[str, Any], desc: Descriptor, md: MarketData, settings: AnalysisSettings, *, previous: dict[str, Any] | None=None, llm: Any=None, reselect: bool=True, progress: Callable[[str, str, str | None], None] | None=None) -> dict[str, Any]: ...
 ```
 
-서명이 같으면 previous를 반환하고, 다르면 가격을 미리 적재해 현재일·시작일의 후보·지표 수를 셉니다. 현재는 충분하지만 과거에 부족하면 30일씩 최대 24회 이동하며 최소 1년 평가 창을 남기는 시작일을 탐색합니다. 점검 결과와 부족 플래그를 반환하며 실제 실행의 시작일 확정은 하지 않습니다.
+`progress(단계, 상태, 결과 문구)`가 있으면 후보 찾기(선적재 중 「가격 자료 읽는 중」, 끝나면 후보 수)·분류(시작, [classify](m3_selection_구현보고서.md#m3_selection-classify-py-classify-31)의 `on_batch`로 묶음 i/n, 끝나면 통과 수 / 분류가 없으면 건너뜀)·확인 시작을 알립니다(2026-11-09 수정(2)). 서명이 같으면 previous를 반환하고, 다르면 가격을 미리 적재해 현재일·시작일의 후보·지표 수를 셉니다. 현재는 충분하지만 과거에 부족하면 30일씩 최대 24회 이동하며 최소 1년 평가 창을 남기는 시작일을 탐색합니다. 점검 결과와 부족 플래그를 반환하며 실제 실행의 시작일 확정은 하지 않습니다.
 
 직접 연결: [signature](#m1_request-precheck-py-signature-28), [tickers](m2_data_구현보고서.md#m2_data-descriptor-py-tickers-128), [_count_at](#m1_request-precheck-py-_count_at-39).
+
+호출하는 코드: [DialogService._turn](#m1_request-dialog-py-DialogService-_turn-275).
+
+
+<a id="file-m1_request-progress-py"></a>
+### m1_request/progress.py
+
+새 요청 첫 해석의 진행 단계. `STEPS`는 6단계(key·이름), `StepFn`은 precheck가 받는 콜백 꼴입니다.
+
+
+<a id="m1_request-progress-py-Progress-__init__-34"></a>
+#### `Progress.__init__`
+
+<!-- source-symbol: m1_request/progress.py:34:Progress.__init__ -->
+[progress.py](../../backend/analysis/m1_request/progress.py#L34)
+
+```python
+def __init__(self, save: Callable[[list[ProgressStep]], None] | None=None) -> None: ...
+```
+
+6단계를 모두 대기(`waiting`)로 만들고 저장 함수를 보관합니다. `create()`는 저장 함수 없이 만들어 첫 단계 목록으로 씁니다.
+
+호출하는 코드: [DialogService.create](#m1_request-dialog-py-DialogService-create-151), [DialogService._turn](#m1_request-dialog-py-DialogService-_turn-275), [for_request](#m1_request-progress-py-for_request-62).
+
+
+<a id="m1_request-progress-py-Progress-step-38"></a>
+#### `Progress.step`
+
+<!-- source-symbol: m1_request/progress.py:38:Progress.step -->
+[progress.py](../../backend/analysis/m1_request/progress.py#L38)
+
+```python
+def step(self, key: str, status: ProgressStatus, detail_ko: str | None=None) -> None: ...
+```
+
+`key` 단계를 `status`로 바꾸고 결과 문구가 있으면 덮어씁니다. 진행 중(`running`)으로 시작하면 앞에서 아직 진행 중인 단계는 끝난(`done`) 것으로 봅니다. 바꿀 때마다 저장 함수를 부릅니다. precheck에는 이 메서드를 콜백으로 넘깁니다.
+
+호출하는 코드: [DialogService._turn](#m1_request-dialog-py-DialogService-_turn-275), [precheck](#m1_request-precheck-py-precheck-54).
+
+
+<a id="m1_request-progress-py-Progress-close-51"></a>
+#### `Progress.close`
+
+<!-- source-symbol: m1_request/progress.py:51:Progress.close -->
+[progress.py](../../backend/analysis/m1_request/progress.py#L51)
+
+```python
+def close(self, keys: tuple[str, ...] | None=None, detail_ko: str | None=None) -> None: ...
+```
+
+`keys`(없으면 전부) 중 아직 대기·진행 중인 단계를 건너뜀(`skipped`)으로 닫습니다. HARD 오류로 첫 턴이 일찍 끝날 때와 점검이 예외로 생략될 때 씁니다. 바뀐 단계가 없으면 저장하지 않습니다.
+
+호출하는 코드: [DialogService._turn](#m1_request-dialog-py-DialogService-_turn-275).
+
+
+<a id="m1_request-progress-py-for_request-62"></a>
+#### `for_request`
+
+<!-- source-symbol: m1_request/progress.py:62:for_request -->
+[progress.py](../../backend/analysis/m1_request/progress.py#L62)
+
+```python
+def for_request(requests: Any, doc: AnalysisRequestDoc) -> Progress: ...
+```
+
+첫 턴용 기록기를 만듭니다. 단계가 바뀔 때마다 고치는 중인 `doc`과 저장된 요청 문서의 `progress`·`progress_updated_at`만 고칩니다. 저장된 문서는 다시 읽어 이 두 필드만 바꿔 씁니다(고치다 만 `doc`을 쓰면 실패 처리가 깨지므로). 부르는 쪽이 요청 잠금을 쥐고 있습니다.
+
+직접 연결: [Progress](#m1_request-progress-py-Progress-31), [now_iso](common_구현보고서.md#common-jsonio-py-now_iso-56).
+
+호출하는 코드: [DialogService.run_first_turn](#m1_request-dialog-py-DialogService-run_first_turn-170).
+
+
+<a id="m1_request-progress-py-for_request-save-69"></a>
+#### `for_request.save`
+
+<!-- source-symbol: m1_request/progress.py:69:for_request.save -->
+[progress.py](../../backend/analysis/m1_request/progress.py#L69)
+
+```python
+def save(steps: list[ProgressStep]) -> None: ...
+```
+
+중첩 함수. 같은 시각(`now_iso`)을 `doc`과 저장된 문서에 적습니다. 저장이 실패하면(Windows에서 화면이 읽는 순간 파일 교체가 거부되는 경우 등) 경고 로그만 남기고 해석은 계속합니다.
+
+호출하는 코드: [Progress.step](#m1_request-progress-py-Progress-step-38), [Progress.close](#m1_request-progress-py-Progress-close-51).
+
+
+<a id="m1_request-progress-py-themes_ko-82"></a>
+#### `themes_ko`
+
+<!-- source-symbol: m1_request/progress.py:82:themes_ko -->
+[progress.py](../../backend/analysis/m1_request/progress.py#L82)
+
+```python
+def themes_ko(intent: dict[str, Any]) -> str: ...
+```
+
+의도의 테마 이름을 「테마 A, B」로, 없으면 「테마 없음」으로 만듭니다(아이디어 해석 단계의 결과 문구).
+
+호출하는 코드: [DialogService._turn](#m1_request-dialog-py-DialogService-_turn-275).
+
+
+<a id="m1_request-progress-py-screen_ko-87"></a>
+#### `screen_ko`
+
+<!-- source-symbol: m1_request/progress.py:87:screen_ko -->
+[progress.py](../../backend/analysis/m1_request/progress.py#L87)
+
+```python
+def screen_ko(pre: dict[str, Any] | None) -> str | None: ...
+```
+
+점검 결과를 「기준일 2026-11-06 18개 · 시작일 2023-11-06 15개」로 만듭니다(고를 수 있는 종목 확인 단계의 결과 문구). 날짜·개수가 빠진 값에도 예외를 내지 않습니다.
 
 호출하는 코드: [DialogService._turn](#m1_request-dialog-py-DialogService-_turn-275).
 
@@ -1007,7 +1138,7 @@ def label(field: str) -> str: ...
 <a id="verification"></a>
 ## 7. 오류·제약과 검증 근거
 
-새 요청의 첫 턴은 응답 뒤 백그라운드에서 돕니다. 실패하면 `failed`·`error_ko`로 남고, 서버가 첫 턴 도중 다시 시작되면 파일은 `interpreting`으로 남지만 15분 뒤 조회부터 `failed`로 보입니다. 해석 중·실패 요청은 status가 draft라 확정(confirm)은 DialogNotReady로 거절됩니다.
+새 요청의 첫 턴은 응답 뒤 백그라운드에서 돕니다. 실패하면 `failed`·`error_ko`로 남고, 서버가 첫 턴 도중 다시 시작되면 파일은 `interpreting`으로 남지만 마지막 진행 15분 뒤 조회부터 `failed`로 보입니다. 진행 기록 저장이 실패하면(Windows에서 읽는 중 파일 교체 실패 등) 로그만 남기고 해석은 계속합니다. 해석 중·실패 요청은 status가 draft라 확정(confirm)은 DialogNotReady로 거절됩니다.
 
 현재 질문 상한은 차단이 아니라 기본값 유지 후 ready입니다. DialogBlocked 예외·blocked 상태는 호환 경로로 남아 있으며 주석과 과거 테스트 이름만으로 현재 정책을 판단하지 않습니다. HARD 오류가 있으면 ready로 갈 수 없습니다.
 
@@ -1020,8 +1151,9 @@ def label(field: str) -> str: ...
 - [test_dialog.py](../../backend/tests/analysis/test_dialog.py): 질문/직접 수정/자유 답·기간·프로필 충돌·확정 멱등성·지문.
 - [test_round5_dialog.py](../../backend/tests/analysis/test_round5_dialog.py): 후보 부족 질문·다중 필드 patch·보기 1개 폐기·종목 수 보정.
 - [test_revision.py](../../backend/tests/analysis/test_revision.py): 고정/미지원/잘못된 수정 필터와 수정안 실행·비교.
-- [test_analysis_api.py](../../backend/tests/analysis/test_analysis_api.py): 새 요청이 해석 중으로 먼저 오고 조회하면 첫 질문, 첫 턴 실패 → failed·error_ko, 15분 멈춘 해석 중 요청 → failed (2026-11-09).
+- [test_analysis_api.py](../../backend/tests/analysis/test_analysis_api.py): 새 요청이 해석 중으로 먼저 오고 조회하면 첫 질문, 첫 턴 실패 → failed·error_ko, 15분 멈춘 해석 중 요청 → failed, 만든 지 16분이어도 1분 전에 진행했으면 해석 중, 6단계가 대기로 시작해 LLM 해석 중에는 「조건 정리 완료 · 아이디어 해석 진행 중」이 저장돼 있고 끝나면 모두 완료·건너뜀, 실패하면 멈춘 단계가 남음 (2026-11-09).
+- [test_request_progress.py](../../backend/tests/analysis/test_request_progress.py): 단계 시작·건너뜀 닫기·저장 횟수, 결과 문구, 분류 묶음 알림(순차·동시) (2026-11-09).
 
 ### 문서 검증
 
-구문 분석 정의 목록과 대조하여 이 보고서의 클래스 1개와 함수/메서드 51개를 모두 설명했습니다. 상대경로 링크와 내부 앵커를 별도로 확인합니다.
+구문 분석 정의 목록과 대조하여 이 보고서의 클래스 2개와 함수/메서드 58개를 모두 설명했습니다. 상대경로 링크와 내부 앵커를 별도로 확인합니다.

@@ -3,7 +3,7 @@ import { AlertCircle, ArrowLeft, Check, Loader2 } from "lucide-react"
 import { useService } from "../../app/providers"
 import { navigate } from "../../app/router"
 import { errorMessage } from "../../api/client"
-import type { ConditionRow, DialogState, Question } from "../../api/types"
+import type { ConditionRow, DialogState, ProgressStep, Question } from "../../api/types"
 import { saveUi } from "../../state/uiStorage"
 import { Alert, Badge, Button } from "../../ui"
 import { ko } from "../../lib/format"
@@ -83,15 +83,48 @@ export function Pending({ title, detail, children }: { title: string; detail?: s
     </div>
   )
 }
-/** 홈 「투자조건 확인하기」를 누른 뒤: 서버가 새 요청을 만드는 동안 (LLM 두 번 · 수 초~1분). 서버가 진행률을 주지 않으므로
- *  가짜 진행률 없이 「하는 일」과 경과 시간만 보여 준다 (전에는 버튼 글자만 바뀌어 돌아가는지 알 수 없었다). */
-export function IdeaPending() {
+/** 새 요청을 보낸 뒤 서버가 해석하는 동안 (LLM 두 번 + 분류 묶음 · 수 초~1분). 서버가 단계(progress)를 주면 지금 단계와
+ *  실제 결과(후보 수·분류 묶음 등)를, 주지 않으면(예전 서버) 하는 일만 보여 준다. 가짜 진행률은 쓰지 않는다. */
+export function IdeaPending({ steps }: { steps?: ProgressStep[] }) {
+  if (steps?.length) return (
+    <Pending title="아이디어를 해석하고 있습니다" detail="서버가 지금 하는 단계와 그 결과입니다. 끝나면 질문 화면으로 넘어갑니다.">
+      <ProgressList steps={steps} />
+    </Pending>
+  )
   return (
     <Pending title="아이디어를 해석하고 있습니다" detail="분석 모델이 아이디어를 이해하고, 기본 투자조건과 맞춰 본 뒤 꼭 필요한 질문만 고릅니다. 끝나면 질문 화면으로 넘어갑니다.">
       <ol className="mt-2 space-y-0.5 text-xs text-slate-600">
         {["아이디어 이해 (투자 테마·종목 찾기)", "기본 투자조건과 맞춰 보기", "꼭 필요한 질문 고르기"].map((t, i) => <li key={t} className="flex gap-2"><span className="grid size-4 shrink-0 place-items-center rounded-full bg-blue-100 text-[10px] font-bold text-blue-800">{i + 1}</span>{t}</li>)}
       </ol>
     </Pending>
+  )
+}
+const STEP_STATE = { done: "완료", running: "진행 중", waiting: "대기", skipped: "건너뜀" } as const
+/** 서버 해석 단계 목록. stopped = 해석이 실패해 진행 중이던 단계가 거기서 멈춤 (실패 화면). */
+export function ProgressList({ steps, stopped = false }: { steps: ProgressStep[]; stopped?: boolean }) {
+  return (
+    <ol aria-label="해석 단계" className="mt-2 space-y-1 text-xs">
+      {steps.map((s, i) => {
+        const halted = stopped && s.status === "running"
+        const icon = s.status === "done" ? <Check className="size-3 text-emerald-700" strokeWidth={3} />
+          : halted ? <AlertCircle className="size-3 text-red-700" />
+          : s.status === "running" ? <Loader2 className="size-3 animate-spin text-blue-700" />
+          : <span className="text-[10px] font-bold text-slate-400">{s.status === "skipped" ? "–" : i + 1}</span>
+        const ring = s.status === "done" ? "bg-emerald-100" : halted ? "bg-red-100" : s.status === "running" ? "bg-blue-100" : "bg-slate-100"
+        return (
+          <li key={s.key} className="flex items-start gap-2">
+            <span className={`mt-px grid size-4 shrink-0 place-items-center rounded-full ${ring}`} aria-hidden="true">{icon}</span>
+            <span className={s.status === "running" ? "font-semibold text-slate-900" : s.status === "done" ? "text-slate-700" : "text-slate-400"}>
+              {s.label_ko}
+              <span className="sr-only"> ({halted ? "여기서 멈춤" : STEP_STATE[s.status]})</span>
+              {halted && <span className="ml-1.5 font-normal text-red-700" aria-hidden="true">여기서 멈춤</span>}
+              {s.status === "skipped" && <span className="ml-1.5 font-normal" aria-hidden="true">건너뜀</span>}
+              {s.detail_ko && <span className={`ml-1.5 font-normal ${s.status === "running" && !halted ? "text-blue-700" : "text-slate-500"}`}>{s.detail_ko}</span>}
+            </span>
+          </li>
+        )
+      })}
+    </ol>
   )
 }
 export const LLM_DETAIL = "분석 모델(AI)이 내용을 해석해 조건에 반영합니다. 처리하는 동안 화면을 닫지 마세요."

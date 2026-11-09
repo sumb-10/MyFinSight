@@ -6,7 +6,7 @@ import type { ProposedBatchAnswer, ProposedChatAnswer, ProposedProfileChat, Prop
 import type { CheckpointDetail, ComparisonDoc, DialogState, EvidencePage, EvidenceQuery, Health, Options, PaperDetail, PaperIn, PaperPreview, PaperSummary, ProfileFields, ProfileVersion, ProfileView, ReportDoc, ReportRow, RequestRow, RunPartial, RunRow, RunStatus, SeriesResponse, Tendency } from "../../api/types"
 import { MOCK_AS_OF, PAPERS, REPORTS, RUN_STATES, reportScenario, type PaperScenario, type ReportScenario } from "../scenarios"
 import { backtest, type Backtest } from "../data/backtest"
-import { MOCK_CANDIDATES, applyField, applyOverrides, askingDialog, conditionRows, confirmedDialog, feasibilityQuestion, interpretMessage, readyDialog, requestFromProfile, requestRows } from "../data/dialog"
+import { MOCK_CANDIDATES, MOCK_PROGRESS_STEPS, applyField, applyOverrides, askingDialog, conditionRows, confirmedDialog, feasibilityQuestion, interpretMessage, mockProgress, readyDialog, requestFromProfile, requestRows } from "../data/dialog"
 import { recommendation } from "../data/strategy"
 import { answerChat, chatView, currentQuestion, newChat, rewindChat } from "../data/profileChat"
 import { buildPaper, paperPreview, type MockPaper } from "../data/paper"
@@ -20,6 +20,7 @@ import type { SeenSeed } from "../../lib/seen"
 
 const notFound = (what: string) => new ApiError("NOT_FOUND", `[목업] ${what}을(를) 찾을 수 없습니다`, 404)
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T
+const INTERPRET_X = 50  // 새 요청이 '해석 중'인 시간 = 평소 지연 × 이 값 (기본 6초, 2초마다 읽는 화면에서 단계가 나아가는 것이 보이게)
 
 export interface MockOptions { latencyMs?: number; persist?: boolean; clock?: () => number }  // clock: 진행 시퀀스·취소 시간을 테스트에서 바꿔 끼운다
 
@@ -122,21 +123,24 @@ export class MockService implements AnalysisService {
 
   /* ───────── 요청·질문 ───────── */
   private base(): ProfileVersion { return this.versions().at(-1) ?? PROFILE_VERSIONS[0] }  // 처음 사용자는 화면이 투자조건 설정으로 보내지만, 고정 시나리오 요청은 기본 이력으로 연다
-  /** 실제 서버의 '해석 중' 응답처럼: 번호·아이디어·바꾼 조건만 있고 질문·조건 표·해석 결과는 아직 없다. */
-  private interpretingView(d: DialogState): DialogState {
-    return { ...d, state: "interpreting", turn: 0, question: null, questions: [], conditions: [], confirmation: null, unresolved: [], summary: { themes: [], changed_fields: [] }, precheck: null }
+  /** 실제 서버의 '해석 중' 응답처럼: 번호·아이디어·바꾼 조건과 진행 단계만 있고 질문·조건 표·해석 결과는 아직 없다. done = 끝난 단계 수 */
+  private interpretingView(d: DialogState, done = 0): DialogState {
+    return { ...d, state: "interpreting", turn: 0, question: null, questions: [], conditions: [], confirmation: null, unresolved: [], summary: { themes: [], changed_fields: [] }, precheck: null, progress: mockProgress(d, done) }
   }
   private dialog(id: string): DialogState {
     const t = this.s.interpreting[id]
-    if (t) {  // 새 요청: 정한 시각까지는 해석 중, 지나면 만들어 둔 질문 중 대화 (상태가 sessionStorage 에 있어 새로고침해도 이어진다)
-      if (this.now() < t.until && this.s.requests[id]) return this.interpretingView(this.s.requests[id])
+    if (t) {  // 새 요청: 정한 시각까지는 해석 중(지난 시간만큼 단계가 나아감), 지나면 만들어 둔 질문 중 대화 (상태가 sessionStorage 에 있어 새로고침해도 이어진다)
+      if (this.now() < t.until && this.s.requests[id]) {
+        const from = t.from ?? t.until - this.latency * INTERPRET_X, frac = (this.now() - from) / Math.max(1, t.until - from)
+        return this.interpretingView(this.s.requests[id], Math.min(MOCK_PROGRESS_STEPS - 1, Math.max(0, Math.floor(frac * MOCK_PROGRESS_STEPS))))
+      }
       delete this.s.interpreting[id]; this.commit()
     }
     if (this.s.requests[id]) return this.s.requests[id]
     if (id === "mock_req_asking") return askingDialog(this.base())
     if (id === "mock_req_ready") return readyDialog()
-    if (id === "mock_req_interpreting") return this.interpretingView(askingDialog(this.base(), id))  // 패널: 계속 해석 중인 요청 (화면 확인용)
-    if (id === "mock_req_failed") return { ...this.interpretingView(askingDialog(this.base(), id)), state: "failed", error_ko: "목업: 분석 모델 응답 형식이 맞지 않습니다." }  // 패널: 해석 실패
+    if (id === "mock_req_interpreting") return this.interpretingView(askingDialog(this.base(), id), 3)  // 패널: 계속 해석 중인 요청 (후보 분류 1/2 묶음에 머묾, 화면 확인용)
+    if (id === "mock_req_failed") return { ...this.interpretingView(askingDialog(this.base(), id), 1), state: "failed", error_ko: "목업: 분석 모델 응답 형식이 맞지 않습니다." }  // 패널: 해석 실패 (아이디어 해석에서 멈춤)
     const sc = REPORTS.find((r) => r.request_id === id)
     if (!sc) throw notFound("요청")
     return confirmedDialog(sc)
@@ -158,12 +162,13 @@ export class MockService implements AnalysisService {
     const d = { ...askingDialog(base, id, input.idea), mode: input.mode ?? "new", base_report_id: input.base_report_id ?? null, overrides: input.overrides ?? {} }
     const fresh = requestFromProfile(base, id, input.idea), o = input.overrides ?? {}
     this.s.drafts[id] = { req: applyOverrides(fresh, fresh, o), touched: Object.keys(o), base }
-    // 실제 서버처럼 번호를 먼저 돌려주고 해석은 뒤에서 한다: 평소 지연의 15배(기본 약 1.8초) 동안 '해석 중'으로 보이다가 질문으로 (테스트 latencyMs 0 이면 바로 질문)
-    const ms = this.latency * 15
+    // 실제 서버처럼 번호를 먼저 돌려주고 해석은 뒤에서 한다: 평소 지연의 50배(기본 6초) 동안 '해석 중'으로 6단계를 차례로 보이다가 질문으로
+    // (2초마다 다시 읽는 화면에서 단계가 나아가는 것이 보이게. 테스트 latencyMs 0 이면 바로 질문)
+    const ms = this.latency * INTERPRET_X
     return this.wait(() => {
       const saved = this.put(this.withRows(d))
       if (ms <= 0) return saved
-      this.s.interpreting[id] = { until: this.now() + ms }; this.commit()
+      this.s.interpreting[id] = { from: this.now(), until: this.now() + ms }; this.commit()
       return this.interpretingView(saved)
     })
   }
