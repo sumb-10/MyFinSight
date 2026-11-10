@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
-import { Activity, BellRing, ChevronRight, FileText, Link2, Pause, PencilLine, Play, RefreshCw } from "lucide-react"
+import { Activity, BellRing, ChevronRight, FileText, Link2, Pause, Pencil, PencilLine, Play, RefreshCw } from "lucide-react"
 import { useService } from "../../app/providers"
 import { navigate } from "../../app/router"
 import { errorMessage } from "../../api/client"
@@ -230,7 +230,7 @@ function PaperDetailScreen({ paperId }: { paperId: string }) {
   const [siblings, setSiblings] = useState(false)
   const [tradesOpen, setTradesOpen] = useState(false)
   const seen = useSeen(svc.mode)  // 이 브라우저에서 확인한 리밸런싱 번호 (서버에는 없다)
-  const pname = useResource(() => (svc.getPaperName ? svc.getPaperName(paperId) : Promise.resolve(null)), [svc, paperId, nameTick]).data  // 제안 기능: 목업에서만 값이 있다
+  const pname = useResource(() => (svc.getPaperName ? svc.getPaperName(paperId) : Promise.resolve(null)), [svc, paperId, nameTick]).data  // 제안 기능: 서비스에 이름 조회가 있을 때만 (없으면 이름 바꾸기 메뉴를 숨김)
   const allPapers = useResource(() => svc.listPaper(), [svc, nameTick]).data  // 같은 리포트의 다른 모의투자 구분
   const d = override ?? res.data
   const krwRes = useResource(() => (svc.getPaperKrw ? svc.getPaperKrw(paperId) : Promise.resolve(null)), [svc, paperId, d])  // 제안 기능: 원화 기준 성과·환율 상태 (목업에서만)
@@ -269,7 +269,7 @@ function PaperDetailScreen({ paperId }: { paperId: string }) {
   const showAllTrades = () => { setTradesOpen(true); requestAnimationFrame(() => document.getElementById("paper-trades")?.scrollIntoView?.({ behavior: "smooth", block: "start" })) }
   const others = samePapers(allPapers ?? [], p.report_id).filter((x) => x.paper_id !== paperId)
   const relink = async () => { setErr(null); try { await svc.setPaperName!(paperId, { mode: "linked" }); setNameTick((n) => n + 1) } catch (e) { setErr(errorMessage(e)) } }
-  // 더보기: 원본 리포트 · (목업) 이름 바꾸기·다시 연동 · 같은 리포트로 시작한 다른 모의투자(목록 창)
+  // 더보기: 원본 리포트 · 이름 바꾸기·다시 연동(이름 기능이 있을 때) · 같은 리포트로 시작한 다른 모의투자(목록 창). 이름 바꾸기는 제목 옆 연필로도 연다 (리포트 상세와 같음)
   const menu = [
     { label: "원본 리포트 보기", icon: FileText, onClick: () => navigate({ page: "report", reportId: p.report_id }) },
     ...(pname && svc.setPaperName ? [{ label: "이름 바꾸기", icon: PencilLine, onClick: () => setNaming(true) }, ...(pname.mode === "custom" ? [{ label: "리포트 이름과 다시 연동", icon: Link2, onClick: () => void relink() }] : [])] : []),
@@ -278,9 +278,10 @@ function PaperDetailScreen({ paperId }: { paperId: string }) {
   return (
     <div className="mx-auto max-w-5xl space-y-8">
       {/* 머리말 한 묶음: 제목·설명·구분 정보(적용 전략·시작일·초기 투자금) + 오른쪽 위 버튼, 바로 아래 운용 상태 줄.
-          원본 리포트·이름 바꾸기·같은 리포트의 다른 모의투자는 「더보기」 안에 있다. */}
+          원본 리포트·이름 바꾸기·같은 리포트의 다른 모의투자는 「더보기」 안에 있고, 이름 바꾸기는 제목 옆 연필로도 연다. */}
       <div className="space-y-4">
         <FlowHeader eyebrow="모의투자" title={pname?.name_ko ?? p.name_ko}
+          titleAction={pname && svc.setPaperName ? <button type="button" aria-label="모의투자 이름 바꾸기" title="모의투자 이름 바꾸기" onClick={() => setNaming(true)} className="mt-1 shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"><Pencil className="size-5" /></button> : undefined}
           desc={<>원본 리포트의 전략을 {p.start_date}부터 가상 자본으로 따라갑니다. 실제 매매는 하지 않습니다.<span className="mt-1 block text-xs font-semibold text-slate-700">{paperBasis(s, pname?.name_ko ?? p.name_ko)}</span></>}
           action={<div className="flex flex-col gap-2 sm:items-end sm:pt-6"><div className="flex flex-wrap items-center gap-2">
             <span title="서버에 수집된 최근 종가 자료까지 평가를 추가합니다. 실시간 시세를 조회하지 않습니다."><Button variant="secondary" onClick={() => act("refresh")} disabled={busy !== "" || stopped}><RefreshCw className={`size-4 ${busy === "refresh" ? "animate-spin" : ""}`} />{busy === "refresh" ? "자료 확인 중…" : "최신 자료로 갱신"}</Button></span>
