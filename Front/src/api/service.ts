@@ -64,6 +64,8 @@ export class HttpService implements AnalysisService {
   readonly mode = "api" as const
   health() { return api.get<Health>("/health") }
   options() { return api.get<Options>("/meta/options") }
+  searchStocks(q: string) { return api.get<import("./proposed").ProposedStock[]>(`/stocks/search?q=${encodeURIComponent(q)}`) }
+  async getStocks(tickers: string[]) { return tickers.length ? api.get<import("./proposed").ProposedStock[]>(`/stocks?tickers=${encodeURIComponent(tickers.join(","))}`) : [] }
   async getProfile() {
     try {
       return await api.get<ProfileView>("/profile")

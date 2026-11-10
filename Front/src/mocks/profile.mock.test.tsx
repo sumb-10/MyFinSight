@@ -95,6 +95,25 @@ describe("내 투자조건 화면 (목업)", () => {
     fireEvent.change(box, { target: { value: "xyzq" } })
     expect(await screen.findByText(/와 맞는 종목이 목업 목록에 없습니다/)).toBeInTheDocument()
   })
+  it("실제 서버 응답 모양: 미국 종목은 영문 이름을 한 번만, 한국 종목은 영문 이름 없이, 못 찾으면 지원 종목 기준 안내", async () => {
+    const US = { ticker: "MU", name_ko: "Micron Technology", name_en: "Micron Technology", market: "US" as const, sector_ko: "정보기술" }
+    const KR = { ticker: "005930.KS", name_ko: "삼성전자", name_en: null, market: "KR" as const, sector_ko: "정보기술" }
+    let hits = [US, KR]
+    const svc: AnalysisService = Object.assign(Object.create(mock()), { mode: "api", searchStocks: async () => hits, getStocks: async (ts: string[]) => [US, KR].filter((x) => ts.includes(x.ticker)) })
+    withSvc(svc, <ProfileScreen mode="edit" />)
+    await step(3, "종목 범위·제약")
+    const box = screen.getByRole("combobox", { name: "반드시 포함할 종목" })
+    fireEvent.change(box, { target: { value: "m" } })
+    const us = await screen.findByRole("option", { name: /Micron Technology.*MU/ })
+    expect(us).toHaveTextContent("정보기술 · 미국"); expect(us.textContent!.match(/Micron Technology/g)).toHaveLength(1)
+    const kr = screen.getByRole("option", { name: /삼성전자/ })
+    expect(kr).toHaveTextContent("정보기술 · 한국"); expect(kr).not.toHaveTextContent("null")
+    fireEvent.click(us)
+    expect(await screen.findByText("Micron Technology (MU)")).toBeInTheDocument()
+    hits = []
+    fireEvent.change(box, { target: { value: "xyzq" } })
+    expect(await screen.findByText(/와 맞는 종목이 지원 종목\(S&P 500·NASDAQ-100·KOSPI 200\)에 없습니다/)).toBeInTheDocument()
+  })
   it("초기 투자금 0원: 매월 추가 투자금이 있으면 예상 투자 일정을 보여 주고, 없으면 다음 단계로 가지 않는다", async () => {
     withSvc(mock(), <ProfileScreen mode="edit" />)
     const amount = await screen.findByLabelText("처음 투자할 금액", {}, { timeout: 5000 })
