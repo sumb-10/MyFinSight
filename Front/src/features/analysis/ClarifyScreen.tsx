@@ -10,7 +10,7 @@ import { ko } from "../../lib/format"
 import { RevisionCard } from "./RevisionCard"
 import { DetailConditionsDialog, OVERRIDE_LABELS, overrideText } from "../home/DetailConditions"
 import { Part } from "../profile/parts"
-import { ActionError, AllConditions, AnsweredList, BackToQuestions, CancelRequestButton, CancelRequestConfirm, ChangedConditions, FlowHeader, FlowSteps, IdeaPart, KIND_HELP, LLM_DETAIL, NOTE_BUTTON, NOTE_DESC, NOTE_UNSENT, Pending, ResultNote, diffRows, keepPendingNote, pendingNote, startNewWith, useFlowNotice, useLeaveRequest, type RowChange } from "./flow"
+import { ActionError, AllConditions, AnsweredList, BackToQuestions, CancelRequestButton, CancelRequestConfirm, ChangedConditions, FlowHeader, FlowSteps, IdeaPart, KIND_HELP, LLM_DETAIL, NOTE_BUTTON, NOTE_DESC, NOTE_UNSENT, Pending, ResultNote, diffRows, keepPendingNote, pendingNote, carryNoteResult, startNewWith, useFlowNotice, useLeaveRequest, type RowChange } from "./flow"
 import type { ProposedMessageResult } from "../../api/proposed"
 import { BatchQuestions, BatchResult, type Submitted } from "./BatchQuestions"
 import { MessageOutcome } from "./MessageOutcome"
@@ -85,7 +85,14 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
   }
   const sendNote = () => {
     if (!note.trim()) { setNoteHint("보탤 내용을 적어 주세요."); return }
-    act("message", async () => { const next = await svc.sendMessage(requestId, note.trim()); if (svc.getMessageResults) setMsgs(await svc.getMessageResults(requestId)); return next })
+    act("message", async () => {
+      const next = await svc.sendMessage(requestId, note.trim())
+      const results = svc.getMessageResults ? await svc.getMessageResults(requestId) : null
+      if (results) setMsgs(results)
+      // 더 물을 것이 없으면 곧바로 확인 화면으로 넘어간다 → 전에는 결과를 보기 전에 화면이 바뀌었다. 확인 화면이 이어서 보여 주도록 넘긴다
+      if (next.state === "ready") carryNoteResult(requestId, { changes: diffRows(rows, next.conditions ?? []), results })
+      return next
+    })
   }
   const applyOverrides = (o: Record<string, unknown>) => {
     // 폼이 돌려준 값(프로필과 다른 것만) + 이전에 바꿨다가 이번에 프로필 값으로 돌린 것은 null 로 지운다

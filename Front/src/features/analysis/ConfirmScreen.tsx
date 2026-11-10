@@ -11,7 +11,7 @@ import { ko } from "../../lib/format"
 import { RevisionCard } from "./RevisionCard"
 import { DetailConditionsDialog } from "../home/DetailConditions"
 import { Part } from "../profile/parts"
-import { ActionError, AllConditions, AnsweredList, CancelRequestButton, CancelRequestConfirm, ChangedConditions, FlowHeader, FlowSteps, IdeaPart, LLM_DETAIL, NOTE_BUTTON, NOTE_DESC, NOTE_UNSENT, Pending, ResultNote, diffRows, keepPendingNote, leaveFlowNotice, pendingNote, startNewWith, useLeaveRequest, useStickyInMain, type RowChange } from "./flow"
+import { ActionError, AllConditions, AnsweredList, CancelRequestButton, CancelRequestConfirm, ChangedConditions, FlowHeader, FlowSteps, IdeaPart, LLM_DETAIL, NOTE_BUTTON, NOTE_DESC, NOTE_UNSENT, Pending, ResultNote, diffRows, keepPendingNote, leaveFlowNotice, pendingNote, startNewWith, useCarriedNote, useLeaveRequest, useStickyInMain, type RowChange } from "./flow"
 import type { ProposedMessageResult } from "../../api/proposed"
 import { MessageOutcome } from "./MessageOutcome"
 
@@ -31,6 +31,8 @@ export function ConfirmScreen({ requestId }: { requestId: string }) {
   const [noteHint, setNoteHint] = useState("")
   const [askUnsent, setAskUnsent] = useState(false)  // 보내지 않은 추가 요청이 있는데 「분석 시작」을 눌렀을 때
   const [msgs, setMsgs] = useState<ProposedMessageResult[] | null>(null)  // 제안 기능: 말로 보태기 처리 결과 (getMessageResults 가 있을 때)
+  const carried = useCarriedNote(requestId)  // 질문 화면에서 말로 보탠 직후 더 물을 것이 없어 넘어왔으면 그 결과
+  const [carriedOpen, setCarriedOpen] = useState(true)  // 이 화면에서 다른 것을 하면 닫는다 (그 결과는 아래 칸에 나온다)
   useEffect(() => { keepPendingNote(requestId, note) }, [requestId, note])
   useStickyInMain()  // 「분석 시작」 줄
   const noteRef = useRef<HTMLDivElement>(null)
@@ -63,7 +65,7 @@ export function ConfirmScreen({ requestId }: { requestId: string }) {
   // 조건 확인 화면에서도 조건을 바꾸거나 말로 보탤 수 있다. 바뀐 뒤 질문이 생기면 질문 화면으로 돌아간다.
   const tool = (kind: "overrides" | "message", fn: () => Promise<DialogState>) => {
     const run = async () => {
-      setAskUnsent(false); setBusy(kind); setErr(null); setResult(null)
+      setAskUnsent(false); setBusy(kind); setErr(null); setResult(null); setCarriedOpen(false)
       try {
         const next = await fn()
         if (kind === "message") setNote("")
@@ -99,6 +101,12 @@ export function ConfirmScreen({ requestId }: { requestId: string }) {
           : <CancelRequestButton c={leave} disabled={locked} />} />
       {!revision && <CancelRequestConfirm c={leave} keepLabel="계속 확인하기" disabled={locked} />}
       <FlowSteps current={1} />
+      {carried && carriedOpen && (
+        <section aria-label="방금 보낸 추가 요청 결과" className="space-y-2">
+          <p className="text-sm font-medium text-slate-700">질문 화면에서 보낸 「{NOTE_BUTTON}」를 처리했고, 더 확인할 질문이 없어 조건 확인으로 넘어왔습니다.</p>
+          {carried.results ? <MessageOutcome results={carried.results} /> : <ResultNote changes={carried.changes} what="추가 요청" />}
+        </section>
+      )}
       <IdeaPart st={st} />
       {st.revision && <RevisionCard rev={st.revision} />}
       {st.blocked_reason_ko && (

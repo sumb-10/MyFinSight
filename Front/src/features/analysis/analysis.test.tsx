@@ -4,6 +4,7 @@ import { Providers } from "../../app/providers"
 import { ApiError } from "../../api/client"
 import type { AnalysisService } from "../../api/service"
 import type { ConditionRow, DialogState, ProfileView, Question } from "../../api/types"
+import type { ProposedMessageResult } from "../../api/proposed"
 import { ClarifyScreen } from "./ClarifyScreen"
 import { ConfirmScreen } from "./ConfirmScreen"
 
@@ -149,5 +150,31 @@ describe("추가 점검 질문 화면", () => {
     answer.mockImplementation(() => new Promise(() => {}))
     fireEvent.click(screen.getByRole("button", { name: "다시 시도" }))
     expect(answer).toHaveBeenCalledTimes(2)
+  })
+
+  it("말로 보탠 뒤 더 물을 것이 없어 확인 화면으로 넘어가도, 확인 화면 맨 위에 그 결과가 이어서 나온다 (한 번만)", async () => {
+    const result: ProposedMessageResult = { text: "장비 회사 위주로", at: "2026-11-10T09:00:00", outcome: "applied", note_ko: "아이디어 해석(테마)에 반영했습니다. 조건 값은 그대로입니다.",
+      changes: [{ field: "intent.themes", label_ko: "해석한 테마", before_ko: "반도체", after_ko: "반도체 장비" }] }
+    const sendMessage = vi.fn(() => Promise.resolve(base({})))  // 질문이 닫히고 더 물을 것이 없음 → ready
+    const getMessageResults = vi.fn(() => Promise.resolve([result]))
+    const svc = fakeService({ getRequest: () => Promise.resolve(asking), sendMessage, getMessageResults })
+    const clarify = render(<Providers service={svc}><ClarifyScreen requestId="r1" /></Providers>)
+    await screen.findByText("후보가 부족합니다. 어떻게 할까요?")
+    fireEvent.change(screen.getByLabelText("말로 조건 보태기"), { target: { value: "장비 회사 위주로" } })
+    fireEvent.click(screen.getByRole("button", { name: "말로 보태기" }))
+    await waitFor(() => expect(getMessageResults).toHaveBeenCalledWith("r1"))
+    await waitFor(() => expect(window.location.hash).toContain("confirm"))
+    clarify.unmount()
+    const confirmSvc = fakeService({ getRequest: () => Promise.resolve(base({})), getMessageResults })
+    const first = render(<Providers service={confirmSvc}><ConfirmScreen requestId="r1" /></Providers>)
+    const box = await screen.findByRole("region", { name: "방금 보낸 추가 요청 결과" })
+    expect(within(box).getByText("반영됨")).toBeInTheDocument()
+    expect(within(box).getByText(/해석한 테마: 반도체 →/)).toBeInTheDocument()
+    expect(within(box).getByText("반도체 장비")).toBeInTheDocument()
+    first.unmount()
+    render(<Providers service={confirmSvc}><ConfirmScreen requestId="r1" /></Providers>)  // 다시 열면 없다
+    await screen.findByText("이 조건으로 분석을 시작할까요?")
+    expect(screen.queryByRole("region", { name: "방금 보낸 추가 요청 결과" })).toBeNull()
+    window.history.replaceState(null, "", "/")
   })
 })
