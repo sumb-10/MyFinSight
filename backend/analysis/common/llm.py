@@ -20,12 +20,14 @@ import re
 import threading
 import time
 from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from pathlib import Path
 from typing import Any, Protocol
 
 from backend.adapters.crawlers import config as env
 from backend.analysis.common.jsonio import canonical_json, load_json, sha256_hex
-from backend.analysis.errors import LlmOutputError
+from backend.analysis.errors import CancelRequested, LlmOutputError
 from backend.analysis.paths import STUBS, llm_cache_dir
 from backend.analysis.settings import LlmSettings
 
@@ -68,9 +70,25 @@ def parse_json_answer(text: str) -> dict[str, Any]:
 class _Base:
     """프롬프트 저장·사용량 요약 등 공통 부분."""
 
+    POLL_S = 0.25  # 응답·재시도를 기다리는 동안 취소를 확인하는 간격
+
     def __init__(self, run_dir: Path | None = None) -> None:
         self.run_dir = run_dir
         self.calls: list[dict[str, Any]] = []
+        # 분석 실행의 취소 확인 (러너가 ctx.cancel_check 를 꽂는다). 취소되면 호출 전·응답 대기·재시도 대기 중 어디서든 CancelRequested
+        self.cancel_check: Callable[[], bool] | None = None
+
+    def _check_cancel(self) -> None:
+        if self.cancel_check is not None and self.cancel_check():
+            raise CancelRequested("취소 요청")
+
+    def _sleep(self, seconds: float) -> None:
+        """재시도 대기. 취소를 확인하며 잔다."""
+        end = time.monotonic() + seconds
+        while (left := end - time.monotonic()) > 0:
+            self._check_cancel()
+            time.sleep(min(self.POLL_S, left))
+        self._check_cancel()
 
     def _save_prompt(self, stage: str, messages: Sequence[Message], batch: int | None) -> None:
         if self.run_dir is None:
@@ -125,6 +143,7 @@ class StubLlm(_Base):
         stub_key: str | None = None,
         batch: int | None = None,
     ) -> dict[str, Any]:
+        self._check_cancel()
         self._save_prompt(stage, messages, batch)
         key = stage if stage in self.answers else (stub_key or stage)  # 날짜 붙은 단계명으로 주입한 답이 있으면 그것이 우선
         ans = self._answer(key, messages)
@@ -185,6 +204,7 @@ class OpenAiLlm(_Base):
         self._client = client
         self._lock = threading.Lock()  # 클라이언트 생성·호출 기록·사용량 파일 쓰기
         self._sem = threading.BoundedSemaphore(max(1, int(getattr(settings, "max_concurrency", 1) or 1)))  # 동시 호출 상한 (여러 단계·스레드가 공유)
+        self._pool: ThreadPoolExecutor | None = None  # 취소를 확인하며 응답을 기다릴 때만 (_wait)
 
     # -- 설정 ---------------------------------------------------------------
     @staticmethod
@@ -255,7 +275,24 @@ class OpenAiLlm(_Base):
         return sha256_hex("|".join(parts), 24)
 
     # -- 호출 ---------------------------------------------------------------
+    def _wait(self, fn: Callable[[], Any]) -> Any:
+        """fn(서버 응답을 기다리는 호출)을 돌리며 취소를 확인한다. 취소되면 응답을 기다리지 않고 CancelRequested
+        (이미 보낸 요청은 뒤에서 끝나고 버려진다 — 그 호출 비용은 나간다). 취소 확인이 없으면(대화 단계 등) 그냥 부른다."""
+        if self.cancel_check is None:
+            return fn()
+        if self._pool is None:
+            with self._lock:
+                if self._pool is None:
+                    self._pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="llm-wait")
+        fut = self._pool.submit(fn)
+        while True:
+            try:
+                return fut.result(timeout=self.POLL_S)
+            except FutureTimeout:
+                self._check_cancel()
+
     def _call(self, stage: str, messages: Sequence[Message], batch: int | None) -> dict[str, Any]:
+        self._check_cancel()
         key = self.cache_key(stage, messages)
         cpath = self.cache_dir / f"{key}.json"
         if self.settings.cache and cpath.exists():
@@ -284,13 +321,13 @@ class OpenAiLlm(_Base):
         for attempt in range(self.settings.retries + 1):
             try:
                 with self._sem:
-                    resp = client.chat.completions.create(**kw)
+                    resp = self._wait(lambda: client.chat.completions.create(**kw))
             except (openai.RateLimitError, openai.APIConnectionError, openai.APITimeoutError) as e:
                 if attempt == self.settings.retries:
                     raise
                 delay = self._backoff(attempt, e)
                 log.warning("[llm] transport error on %s (%s); retry in %.1fs", stage, type(e).__name__, delay)
-                time.sleep(delay)
+                self._sleep(delay)
                 continue
             # 출력이 잘렸으면(finish_reason=length) 출력 토큰 상한을 두 배로 올려 다시 (상한 settings.max_output_tokens_ceiling). 뷰 세트가 많은 '현재 구성' 호출에서 났던 실패.
             if resp.choices[0].finish_reason == "length" and attempt < self.settings.retries and kw.get("max_completion_tokens", 0) < self.settings.max_output_tokens_ceiling:
@@ -362,6 +399,8 @@ class OpenAiLlm(_Base):
             if validator:
                 validator(ans)
             return ans
+        except CancelRequested:
+            raise  # 취소는 「답이 틀림」이 아니다 — 다시 묻지 않는다
         except LlmOutputError as e:
             if e.code == "LLM_CONFIG":
                 raise
@@ -375,7 +414,7 @@ class OpenAiLlm(_Base):
             if validator:
                 validator(ans)
             return ans
-        except LlmOutputError:
+        except (CancelRequested, LlmOutputError):
             raise
         except Exception as e:
             raise LlmOutputError(f"{stage}: 재시도 후에도 검증 실패 ({type(e).__name__}: {e})") from e

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -14,7 +15,7 @@ import pandas as pd
 
 import bt as btlib
 
-from backend.analysis.errors import DataMissing
+from backend.analysis.errors import CancelRequested, DataMissing
 from backend.analysis.m2_data import descriptor as D
 from backend.analysis.m2_data.market_data import MarketData
 from backend.analysis.m2_data.quality import report_summary
@@ -347,22 +348,32 @@ MX_NAMES = {"equal_weight": "동일비중", "market_cap": "시가총액비중", 
 
 
 def run_backtest(md: MarketData, targets: dict[str, Any], req: dict[str, Any], intent: dict[str, Any], mm: dict[str, Any], desc: Descriptor,
-                 settings: AnalysisSettings, walkforward: dict[str, Any] | None = None) -> tuple[dict[str, Any], dict[str, Any], pd.DataFrame]:  # fmt: skip
-    """(BacktestResults dict, ctx, daily panel)."""
+                 settings: AnalysisSettings, walkforward: dict[str, Any] | None = None,
+                 cancel_check: Callable[[], bool] | None = None) -> tuple[dict[str, Any], dict[str, Any], pd.DataFrame]:  # fmt: skip
+    """(BacktestResults dict, ctx, daily panel). cancel_check: 포트폴리오(비교지수) 하나를 돌리기 전마다 보고 취소면 CancelRequested."""
     spec = targets["backtest_spec"]
     ctx = prepare(md, spec, req, intent, mm, desc, settings, targets["baseline"]["id"])
+
+    def raw(pid: str, weights: dict[str, float]) -> dict[str, Any]:
+        """포트폴리오 하나 돌리기 전에 취소 확인."""
+        if cancel_check is not None and cancel_check():
+            raise CancelRequested("취소 요청")
+        return run_raw(ctx, pid, weights)
+
     warnings: list[str] = []
     if ctx["excluded"]:
         warnings.append(f"excluded by data quality (weights renormalized): {ctx['excluded']}")
-    bench_raws = {b: run_raw(ctx, f"benchmark_{b}", {b: 1.0}) for b in ctx["benches"]}
+    bench_raws = {b: raw(f"benchmark_{b}", {b: 1.0}) for b in ctx["benches"]}
     primary_raw = bench_raws[ctx["bench"]]
-    runs = {p["id"]: run_raw(ctx, p["id"], p["weights"]) for p in targets["portfolios"] + targets["templates"]}
+    runs = {p["id"]: raw(p["id"], p["weights"]) for p in targets["portfolios"] + targets["templates"]}
     baseline_idx = runs[ctx["baseline_id"]]["index"]
     wf = walkforward if walkforward and walkforward.get("request_id") == targets["request_id"] else None
     if wf:
         for p in wf["portfolios"]:
             # target_weights = 시작일(첫 리밸런싱) 목표: 정적 안처럼 '시작일 배분' 표·R9·현금 설명이 시작일을 보게 (예전에는 마지막 리밸런싱일 비중, 008)
             p["weights"] = dict(p["weights_by_date"][min(p["weights_by_date"])])
+            if cancel_check is not None and cancel_check():
+                raise CancelRequested("취소 요청")
             runs[p["id"]] = run_raw_dynamic(ctx, p["id"], p["weights_by_date"])
     bench_blocks = [evaluate(ctx, {"id": r["id"], "name_ko": f"{b} 매수보유 (동일 적립)", "weights": {b: 1.0}}, r, "benchmark", primary_raw, None)
                     for b, r in bench_raws.items()]  # fmt: skip

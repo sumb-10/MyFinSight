@@ -181,7 +181,7 @@ function RunView({ runId }: { runId: string }) {
               </div>
             )}
             {r.status === "cancelling" && (proposedCancelOf(r)?.immediate
-              ? <Pending title="취소를 처리하고 있습니다." detail={`${proposedCancelOf(r)!.stopped_step ? `「${stepTitle(proposedCancelOf(r)!.stopped_step!, proposedCancelOf(r)!.stopped_step_label_ko ?? "")}」 단계를 바로 멈추고 있습니다. ` : ""}잠시 뒤 이 화면이 「분석이 취소되었습니다」로 바뀝니다. (목업: 즉시 취소)`} />
+              ? <Pending title="취소를 처리하고 있습니다." detail={`${proposedCancelOf(r)!.stopped_step ? `「${stepTitle(proposedCancelOf(r)!.stopped_step!, proposedCancelOf(r)!.stopped_step_label_ko ?? "")}」 단계를 바로 멈추고 있습니다. ` : ""}잠시 뒤 이 화면이 「분석이 취소되었습니다」로 바뀝니다.${svc.mode === "mock" ? " (목업: 즉시 취소)" : ""}`} />
               : <Pending title="분석 취소를 요청했습니다. 현재 작업이 종료되는 데 시간이 걸릴 수 있습니다." detail="진행 중인 단계가 끝나는 시점에 분석이 멈춥니다. 서버가 취소를 마치면 이 화면이 「분석이 취소되었습니다」로 바뀝니다." />)}
             {done && (
               <>

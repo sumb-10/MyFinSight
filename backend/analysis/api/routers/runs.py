@@ -21,8 +21,9 @@ ORDER = [*(s.name for s in STAGES), "14_report"]
 
 def cancel_view(e: Any, steps: list[dict[str, Any]]) -> dict[str, Any] | None:
     """취소 결과 (프런트 제안 계약 ProposedRunCancel). 취소를 요청했고 아직 진행 중(cancelling)이거나 취소로 끝난 실행만.
-    멈춘 단계: 취소 중이면 지금 도는 단계, 취소로 끝났으면 도중에 멈춘 단계(시작했는데 CANCELLED) → 없으면 다음에 돌 차례였던 단계.
-    immediate=False: 서버는 단계 사이·LLM 묶음 사이에서만 멈추고 도는 계산을 바로 끊지 않는다."""
+    멈춘 단계: 취소 중이면 지금 도는 단계, 취소로 끝났으면 도중에 멈춘 단계(시작했는데 CANCELLED) → 없으면 다음에 돌 차례였던 단계
+    → 그것도 없으면(마지막 단계가 끝난 뒤 취소가 반영됨) 마지막으로 끝난 단계.
+    immediate=True: LLM 응답·재시도를 기다리는 중에도, 백테스트는 포트폴리오마다 취소를 본다 (보통 1초 안팎, 숫자 계산 한 덩어리는 끝까지)."""
     if not e.cancel_requested_at or e.status not in ("running", "cancelled"):
         return None
     rank = {name: i for i, name in enumerate(ORDER)}
@@ -31,10 +32,11 @@ def cancel_view(e: Any, steps: list[dict[str, Any]]) -> dict[str, Any] | None:
         stopped = next((s for s in by_order if s["status"] == "STARTED"), None)
     else:
         cancelled = [s for s in by_order if s["status"] == "CANCELLED"]
-        stopped = next((s for s in cancelled if s.get("started_at")), None) or (cancelled[0] if cancelled else None)
+        done = [s for s in by_order if s["status"] in step_warnings.DONE]
+        stopped = next((s for s in cancelled if s.get("started_at")), None) or (cancelled[0] if cancelled else None) or (done[-1] if done else None)
     return {"requested_at": e.cancel_requested_at, "completed_at": e.finished_at if e.status == "cancelled" else None,
             "stopped_step": stopped["step"] if stopped else None, "stopped_step_label_ko": stopped["label_ko"] if stopped else None,
-            "done_steps": sum(s["status"] in step_warnings.DONE for s in steps), "immediate": False}  # fmt: skip
+            "done_steps": sum(s["status"] in step_warnings.DONE for s in steps), "immediate": True}  # fmt: skip
 
 
 def run_status(sv, run_id: str) -> RunStatus:

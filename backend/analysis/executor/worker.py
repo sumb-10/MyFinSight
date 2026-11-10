@@ -13,7 +13,9 @@ import datetime as dt
 import logging
 import os
 import sys
+import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +65,25 @@ def _dialog_log(doc: Any) -> list[dict[str, str]]:
     return out
 
 
+def cancel_poller(queue: Queue, run_id: str, every_s: float = 0.5) -> Callable[[], bool]:
+    """실행의 취소 확인. LLM 응답을 기다리는 동안 0.25초마다 불리므로 runs.json 은 every_s 에 한 번만 읽고,
+    한 번 취소가 확인되면 다시 읽지 않고 계속 True (여러 스레드가 함께 부른다)."""
+    state = {"at": float("-inf"), "hit": False}
+    lock = threading.Lock()
+
+    def check() -> bool:
+        if state["hit"]:
+            return True
+        with lock:
+            now = time.monotonic()
+            if not state["hit"] and now - state["at"] >= every_s:
+                state["at"] = now
+                state["hit"] = queue.is_cancel_requested(run_id)
+            return state["hit"]
+
+    return check
+
+
 def execute_run(entry_run_id: str, *, repo: Any, store: JsonStore, settings: AnalysisSettings, queue: Queue, llm=None) -> str:
     """큐에서 claim 된 실행 하나를 끝까지. 돌려주는 값 = 최종 상태."""
     reqs = RequestStore(store)
@@ -83,7 +104,7 @@ def execute_run(entry_run_id: str, *, repo: Any, store: JsonStore, settings: Ana
                      shift_cannot_help=bool(doc.overrides.get("_shift_cannot_help")),
                      start_shift_ok=bool(doc.overrides.get("_start_shift_ok")),  # 묻고 동의한 경우에만 시작일을 옮긴다 (1종목 이하는 자동)
                      answered_fields=_answered_fields(doc), dialog=_dialog_log(doc),
-                     cancel_check=lambda: queue.is_cancel_requested(entry_run_id))  # fmt: skip
+                     cancel_check=cancel_poller(queue, entry_run_id))  # fmt: skip
     outcome = run(ctx, on_step=db_step_hook(repo, entry_run_id))
     status = outcome.status
     report_id = None

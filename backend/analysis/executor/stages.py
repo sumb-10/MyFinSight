@@ -323,7 +323,7 @@ def st_forward(ctx: RunContext) -> str:
 # ───────────────────────── bucket 3·4: 백테스트·검증 ─────────────────────────
 def st_backtest(ctx: RunContext) -> str:
     bt, bt_ctx, daily = run_backtest(ctx.md, ctx.out("10_target_portfolios"), ctx.request, ctx.out("02_intent"), ctx.out("08_market_model"), ctx.desc,
-                                     ctx.settings, walkforward=ctx.outputs.get("10w_target_paths"))  # fmt: skip
+                                     ctx.settings, walkforward=ctx.outputs.get("10w_target_paths"), cancel_check=ctx.cancel_check)  # fmt: skip
     ctx.outputs["11_backtest_results"] = bt
     ctx.outputs["_bt_ctx"] = bt_ctx
     ctx.outputs["_daily_panel"] = daily

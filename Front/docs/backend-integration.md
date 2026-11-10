@@ -119,10 +119,11 @@
 - **예시:** `{"requested_at":"2026-11-05T09:00:00","completed_at":null,"stopped_step":"06_explain","stopped_step_label_ko":"선정 이유","done_steps":5,"immediate":true}`
 - **정책:** 상태 전이 `running → cancelling → cancelled`. 끝난 실행 취소는 409. 완료된 단계 결과로 리포트를 만들지 않음.
 - **목업:** `mocks/data/runs.ts` 의 `liveStatus/cancelInfo`, `MockService.cancelRun/runOf`. **프런트 수정:** `api/proposed.ts`(`proposedCancelOf` 위치). 화면 `features/run/RunScreen.tsx`(`CancelSummary`, 즉시 취소 문구).
-- **주의:** **실제 서버의 즉시 취소는 구현하지 않았다** (백엔드 작업). `immediate` 가 없으면 화면은 기존 「시간이 걸릴 수 있습니다」 문구를 쓴다.
+- **주의:** `immediate` 가 없거나 false 면 화면은 「시간이 걸릴 수 있습니다」 문구를 쓴다 (예전 서버).
 - **✅ 실제 서버 구현 (2026-11-10):** `GET /runs/{id}` 의 **`cancel`**(정식 이름, 목업도 `proposed_cancel` → `cancel`). 취소를 요청했고 취소 중(`cancelling`)이거나 취소로 끝난 실행만, 아니면 `null`.
-  `stopped_step`: 취소 중이면 지금 도는 단계, 끝났으면 도중에 멈춘 단계 → 없으면 다음 차례였던 단계, 대기 중 취소면 `null`. `done_steps` = SUCCESS·PARTIAL 단계 수.
-  **`immediate: false`** — 서버는 단계 사이·LLM 묶음 사이에서만 멈추고 도는 계산을 바로 끊지 않는다 (화면은 「시간이 걸릴 수 있습니다」). 끝난 실행 취소는 지금처럼 그 상태를 돌려준다(409 아님).
+  `stopped_step`: 취소 중이면 지금 도는 단계, 끝났으면 도중에 멈춘 단계 → 없으면 다음 차례였던 단계 → 그것도 없으면 마지막으로 끝난 단계, 대기 중 취소면 `null`. `done_steps` = SUCCESS·PARTIAL 단계 수.
+  **즉시 취소 `immediate: true`** — LLM 응답·재시도를 기다리는 중에도 0.25초마다 취소를 보고(보낸 요청은 버림), 백테스트는 포트폴리오마다 본다. 단계가 취소를 잡아 대체 계산으로 끝내도
+  실행은 취소로 끝나 리포트를 저장하지 않는다. 숫자 계산 한 덩어리는 끝까지 하므로 보통 1초 안팎, 길어도 수 초. 끝난 실행 취소는 지금처럼 그 상태를 돌려준다(409 아님).
 
 ### 2-10. 단계별 경고 전체 — 5단계
 
