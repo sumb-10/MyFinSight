@@ -29,16 +29,20 @@ describe("목업 모드 분리", () => {
     setUrl("/?mock=0#/home")
     expect(isMockMode()).toBe(false)
   })
-  it("서버가 아직 주지 않는 제안 계약 메서드는 실제 서버 서비스에 없고, 서버가 구현한 것(리포트 이름·삭제, 투자조건 버전)만 연결된다", () => {
+  it("서버가 아직 주지 않는 제안 계약 메서드는 실제 서버 서비스에 없고, 서버가 구현한 것(리포트 이름·삭제, 투자조건 버전, 모의투자 이름)만 연결된다", () => {
     const http: AnalysisService = new HttpService()
-    expect(http.searchStocks).toBeUndefined(); expect(http.getPaperKrw).toBeUndefined(); expect(http.setPaperName).toBeUndefined()
-    for (const m of ["renameReport", "deleteReport", "getReportName", "getProfileVersion"] as const) expect(typeof http[m]).toBe("function")
+    expect(http.searchStocks).toBeUndefined(); expect(http.getPaperKrw).toBeUndefined(); expect(http.recommendStrategy).toBeUndefined()
+    for (const m of ["renameReport", "deleteReport", "getReportName", "getProfileVersion", "getPaperName", "setPaperName"] as const) expect(typeof http[m]).toBe("function")
     expect(typeof mock().searchStocks).toBe("function")
   })
-  it("투자조건 버전은 서버 주소로 요청한다", async () => {
+  it("투자조건 버전·모의투자 이름은 서버 주소로 요청한다", async () => {
     const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("{}", { status: 200 }))
-    await new HttpService().getProfileVersion(2)
-    expect(f.mock.calls.map(([u, i]) => [String(u).replace(/^.*\/api\/v1/, ""), i?.method])).toEqual([["/profile/versions/2", "GET"]])
+    const http = new HttpService()
+    await http.getProfileVersion(2); await http.getPaperName("p1"); await http.setPaperName("p1", { mode: "custom", name_ko: "비교용" }); await http.setPaperName("p1", { mode: "linked" })
+    await http.createPaper({ report_id: "r1", name: { mode: "custom", name_ko: "비교용" } })
+    const calls = f.mock.calls.map(([u, i]) => [String(u).replace(/^.*\/api\/v1/, ""), i?.method, i?.body])
+    expect(calls).toEqual([["/profile/versions/2", "GET", undefined], ["/paper/p1/name", "GET", undefined], ["/paper/p1/name", "PUT", JSON.stringify({ mode: "custom", name_ko: "비교용" })],
+      ["/paper/p1/name", "PUT", JSON.stringify({ mode: "linked" })], ["/paper", "POST", JSON.stringify({ report_id: "r1", name: { mode: "custom", name_ko: "비교용" } })]])
   })
   it("리포트 이름·삭제는 서버 주소로 요청한다", async () => {
     const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ report_id: "r1", deleted: true }), { status: 200 }))

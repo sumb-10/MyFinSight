@@ -230,7 +230,7 @@ function PaperDetailScreen({ paperId }: { paperId: string }) {
   const [siblings, setSiblings] = useState(false)
   const [tradesOpen, setTradesOpen] = useState(false)
   const seen = useSeen(svc.mode)  // 이 브라우저에서 확인한 리밸런싱 번호 (서버에는 없다)
-  const pname = useResource(() => (svc.getPaperName ? svc.getPaperName(paperId) : Promise.resolve(null)), [svc, paperId, nameTick]).data  // 제안 기능: 목업에서만 값이 있다
+  const pname = useResource(() => (svc.getPaperName ? svc.getPaperName(paperId) : Promise.resolve(null)), [svc, paperId, nameTick]).data  // 제안 기능: 서비스에 이름 조회가 있을 때만 (없으면 이름 바꾸기 메뉴를 숨김)
   const allPapers = useResource(() => svc.listPaper(), [svc, nameTick]).data  // 같은 리포트의 다른 모의투자 구분
   const d = override ?? res.data
   const krwRes = useResource(() => (svc.getPaperKrw ? svc.getPaperKrw(paperId) : Promise.resolve(null)), [svc, paperId, d])  // 제안 기능: 원화 기준 성과·환율 상태 (목업에서만)

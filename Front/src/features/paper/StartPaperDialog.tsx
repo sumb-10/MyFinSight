@@ -22,7 +22,7 @@ export function StartPaperDialog({ reportId, close }: { reportId: string; close:
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<"preview" | "create" | "">("")
   const [stage, setStage] = useState<"form" | "confirm">("form")
-  // 모의투자 이름 (제안 기능): 서비스에 이름 연동이 있을 때만 고른다 — 지금은 목업뿐. 일반 모드는 서버가 정한 이름 그대로.
+  // 모의투자 이름 (제안 기능): 서비스에 이름 연동(setPaperName·getReportName)이 있을 때만 고른다. 없으면 서버가 정한 이름 그대로.
   const [reportName, setReportName] = useState<string | null>(null)
   const [nameMode, setNameMode] = useState<NameMode>("linked")
   const [customName, setCustomName] = useState("")
@@ -47,8 +47,7 @@ export function StartPaperDialog({ reportId, close }: { reportId: string; close:
   const create = async () => {
     setBusy("create"); setError(null)
     try {
-      const d = await svc.createPaper(form)
-      if (reportName && nameMode === "custom" && svc.setPaperName) await svc.setPaperName(d.portfolio.paper_id, { mode: "custom", name_ko: customName.trim() })
+      const d = await svc.createPaper(reportName && nameMode === "custom" ? { ...form, name: { mode: "custom", name_ko: customName.trim() } } : form)  // 이름도 등록 때 함께 (따로 부르면 등록만 되고 이름은 실패할 수 있다)
       close(); navigate({ page: "paper", paperId: d.portfolio.paper_id })
     } catch (e) { setError(errorMessage(e)) } finally { setBusy("") }
   }

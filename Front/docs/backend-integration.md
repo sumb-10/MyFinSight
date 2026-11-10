@@ -54,7 +54,10 @@
 - **예시:** `{"name_ko":"시가총액 비중 비교용","mode":"custom","report_name_ko":"미국 반도체 장비·메모리 분산 투자"}`
 - **정책:** `linked` 는 리포트 `display_ko` 를 따라가고(리포트 이름 변경 시 즉시 반영), `custom` 은 고정. 새 모의투자 기본값 `linked`. 목록·상세의 `name_ko` 도 같은 규칙으로 계산해 줘야 한다.
 - **목업:** `MockService.getPaperName/setPaperName/paperName`. **프런트 수정:** `api/service.ts`; 화면 `features/paper/PaperName.tsx`·`StartPaperDialog.tsx`·`PaperScreen.tsx` 는 그대로.
-- **주의:** 지금 프런트는 생성 후 `setPaperName` 을 한 번 더 부른다. 서버가 생성 입력으로 받으면 `StartPaperDialog.create` 를 한 번 호출로 바꾼다.
+- **✅ 실제 서버 구현 (2026-11-10):** `GET /paper/{paper_id}/name` → `ProposedPaperName`, **`PUT`**(제안의 PATCH 대신, 리포트 이름 `PUT` 과 맞춤) `/paper/{paper_id}/name` body `{ "mode": "linked" } | { "mode": "custom", "name_ko": string }`,
+  `POST /paper` body 의 `name`(같은 모양, 없으면 linked). `custom` 은 연속 공백을 하나로 줄인 뒤 1~40자, 아니면 422 `REQUEST_INVALID` (등록 때 틀리면 모의투자를 만들지 않음), 없는 모의투자는 404.
+  목록·상세·갱신·중지·재개 응답의 `name_ko` 도 같은 규칙(직접 정한 이름 → 원본 리포트의 지금 이름 → 저장된 전략 이름). 저장은 `store/data/paper_meta.json`(스키마 변경 없음, `report_meta.json` 과 같은 방식).
+  프런트는 `HttpService.getPaperName/setPaperName`, `StartPaperDialog` 는 등록과 이름을 한 번에 보낸다.
 
 ### 2-3. 종목 검색·회사명 조회 — 4단계
 
