@@ -8,6 +8,7 @@ import { HomeScreen } from "../features/home/HomeScreen"
 import { PaperScreen } from "../features/paper/PaperScreen"
 import { CANCEL_MS, LIVE_QUEUE_MS, LIVE_STEP_MS, STEPS } from "./data/runs"
 import { MockService } from "./services/MockService"
+import { REPORTS } from "./scenarios"
 
 // 5단계: 분석 진행(즉시 취소·경고 전체·상태별 시나리오와 이벤트 시퀀스)과 모의투자(원화 기준 성과·환율 대체 여부·이름 연동).
 
@@ -176,6 +177,7 @@ describe("모의투자 원화 기준 성과 (목업)", () => {
 })
 
 describe("취소한 분석 이어서 실행 (홈)", () => {
+  afterEach(() => { window.localStorage.clear(); window.sessionStorage.clear() })  // 「지우기」 기록(dismissedResumeIds)이 다음 테스트로 새지 않게 (목업 실행 번호는 매번 같은 순서)
   const cancelledLive = async () => {
     const { c, s } = clocked()
     const id = s.startLiveRun("success")
@@ -199,10 +201,32 @@ describe("취소한 분석 이어서 실행 (홈)", () => {
     await screen.findByRole("heading", { level: 1 }, { timeout: 5000 })
     await waitFor(() => expect(screen.queryByText("취소한 분석이 있습니다")).toBeNull())
   })
+  it("여러 건이면 가장 최근 1건만 보이고 나머지는 「나머지 N건 보기」 토글 안에, 첫 건을 지우면 다음 건이 올라온다", async () => {
+    const { c, s } = clocked()
+    const a = s.startLiveRun("success", REPORTS[0].request_id), b = s.startLiveRun("success", REPORTS[1].request_id)
+    c.now = T0 + LIVE_QUEUE_MS + 10
+    await s.cancelRun(a); await s.cancelRun(b)
+    c.now += CANCEL_MS + 10
+    expect((await s.listRuns()).filter((r) => r.resumable).map((r) => r.run_id).sort()).toEqual([a, b].sort())
+    withSvc(s, <HomeScreen />)
+    expect(await screen.findByText("취소한 분석이 2건 있습니다", {}, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: "멈춘 곳부터 이어서 실행" })).toHaveLength(1)  // 접힌 상태: 가장 최근 1건만
+    const toggle = screen.getByRole("button", { name: /나머지 1건 보기/ })
+    expect(toggle).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(toggle)
+    expect(screen.getByRole("list", { name: "나머지 취소한 분석" })).toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: "멈춘 곳부터 이어서 실행" })).toHaveLength(2)
+    fireEvent.click(screen.getByRole("button", { name: /접기/ }))
+    expect(screen.queryByRole("list", { name: "나머지 취소한 분석" })).toBeNull()
+    fireEvent.click(screen.getAllByRole("button", { name: "지우기" })[0])
+    expect(await screen.findByText("취소한 분석이 있습니다")).toBeInTheDocument()  // 남은 1건이 위로, 토글 없음
+    expect(screen.queryByRole("button", { name: /나머지/ })).toBeNull()
+  })
   it("「지우기」 하면 이 브라우저에서는 그 취소한 분석 카드를 다시 띄우지 않는다", async () => {
     const { s } = await cancelledLive()
     const { unmount } = withSvc(s, <HomeScreen />)
-    fireEvent.click(within((await screen.findByText("취소한 분석이 있습니다", {}, { timeout: 5000 })).closest("[role=alert],[role=status],div")!.parentElement!).getAllByRole("button", { name: "지우기" })[0])
+    await screen.findByText("취소한 분석이 있습니다", {}, { timeout: 5000 })
+    fireEvent.click(screen.getByRole("button", { name: "지우기" }))
     await waitFor(() => expect(screen.queryByText("취소한 분석이 있습니다")).toBeNull())
     unmount()
     withSvc(s, <HomeScreen />)
