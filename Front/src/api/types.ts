@@ -119,7 +119,7 @@ export interface ReportSummary {
   validation: { n_pass: number; n_warn: number; n_fail: number; n_candidates?: number | null; chosen_status: string; failed_rules_ko: string[]; warned_rules_ko?: string[]; info_notes_ko?: string[]; rules_ko?: { rule: string; name_ko: string; level: string; status: string; message_ko: string }[]; tolerance_note_ko?: string; r1_ko?: string | null; r1?: { mdd: number; tolerance: number; benchmark_mdd: number; excess: number; status: string; match_target?: number | null } | null }
   news_effect?: { disabled: boolean; reason_ko?: string; bl_id?: string; bl_label_ko?: string; base_id?: string | null; base_label_ko?: string | null; bl_cagr?: number | null; base_cagr?: number | null; diff_cagr?: number | null; bl_excess_cagr?: number | null; base_excess_cagr?: number | null; bl_mdd?: number | null; base_mdd?: number | null; hit_365?: number | null; hit_next_rb?: number | null; n_views?: number; n_dates?: number; n_rebalances?: number; n_fallback?: number; annualized_reliable?: boolean } | null
   kpis: SummaryKpi[]
-  allocation: { basis: string; basis_ko: string; items: { ticker: string; name: string; sector: string; weight: number; usd: number; krw: number }[]; cash_weight: number; initial_amount_usd: number; fx_rate: number; fx_direction?: string } | null
+  allocation: { basis: string; basis_ko: string; items: { ticker: string; name: string; sector: string; weight: number; usd: number; krw: number }[]; cash_weight: number; initial_amount_usd: number; amount_basis_ko?: string | null; fx_rate: number; fx_direction?: string } | null  // amount_basis_ko: 0원 시작이면 「첫 적립금」 (initial_amount_usd 가 첫 적립금)
   mini_series: { dataset: "index"; ids: string[]; label_ko?: string } | null
   period?: { start: string; end: string; trading_days?: number } | null
   next_actions_ko: string[]
@@ -160,7 +160,7 @@ export interface PaperPreview {
   report_id: string; run_id: string; report_as_of: string; strategy: PaperStrategy; strategy_options: PaperStrategyOption[]; start_date: string; data_ceiling: string; reconstructed_at_start: boolean
   initial_capital: PaperCapital; contribution: PaperContribution; rebalance_rule: { count: number; unit: string }; benchmark: string; tickers: string[]
   weights: Record<string, number>; cash_weight: number; report_weights: Record<string, number>; weight_diff: { ticker: string; report: number; start: number; delta: number }[]
-  allocation: { ticker: string; weight: number; usd: number; krw: number; price_usd: number }[]; construct_info: { fallback: boolean; warnings: string[] }; warnings: string[]
+  allocation: { ticker: string; weight: number; usd: number; krw: number; price_usd: number }[]; allocation_basis_ko?: string | null; construct_info: { fallback: boolean; warnings: string[] }; warnings: string[]
 }
 export interface PaperSnapshot { date: string; value_usd: number; cash_usd: number; holdings_value_usd?: number; weights: Record<string, number>; drawdown: number; return_since_start: number; unit_price?: number; contribution_usd?: number; contributions_total_usd?: number; benchmark_value_usd?: number | null; benchmark_return_since_start?: number | null; fx_rate?: number | null; status: "ok" | "delayed" | "hold"; warnings?: string[] }
 export interface PaperTrade { ticker: string; side: "buy" | "sell"; shares: number; price: number; value_usd: number }

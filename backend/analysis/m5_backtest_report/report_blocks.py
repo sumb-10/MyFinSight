@@ -132,7 +132,7 @@ def request_table(R):
     q, d, c, h, r = R["request"], R["request"]["derived"], R["request"]["capital"], R["request"]["horizon"], R["request"]["risk"]
     cur = "원" if c["currency"] == "KRW" else "USD"
     bfx = R["money_krw"].get("backtest_fx") or {}
-    rows = [{"k": "투자금", "v": f"{c['initial_amount']:,.0f} USD" if _usd(R) else f"{c['initial_amount']:,.0f}{cur} → 백테스트 시작 {R['portfolio']['backtest_spec']['capital']['initial_amount_usd']:,.2f} USD (시작일 환율 {bfx.get('direction', '-')}, {bfx.get('fx_date', '-')}) · 현재 구성 {d['initial_amount_usd']:,.2f} USD (기준일 환율 {R['money_krw']['direction']}, {d['fx_date']})"},
+    rows = [{"k": "투자금", "v": f"0{cur} — 매월 적립으로 시작 (첫 적립일에 처음 매수)" if not c["initial_amount"] else f"{c['initial_amount']:,.0f} USD" if _usd(R) else f"{c['initial_amount']:,.0f}{cur} → 백테스트 시작 {R['portfolio']['backtest_spec']['capital']['initial_amount_usd']:,.2f} USD (시작일 환율 {bfx.get('direction', '-')}, {bfx.get('fx_date', '-')}) · 현재 구성 {d['initial_amount_usd']:,.2f} USD (기준일 환율 {R['money_krw']['direction']}, {d['fx_date']})"},
             {"k": "월 적립", "v": ("없음" if not c.get("monthly_contribution") else
                                   f"{c['monthly_contribution']:,.0f}{cur} (매월 {c.get('contribution_day', 25)}일)" + (
                                       f" → 백테스트 {R['portfolio']['backtest_spec']['capital']['monthly_contribution_usd']:,.2f} USD (시작일 환율) · 현재 구성 {d['monthly_contribution_usd']:,.2f} USD (기준일 환율)"
@@ -397,22 +397,40 @@ def scenario_cards(R):
     return {"type": "cards", "title_ko": "시작일 뉴스 뷰 Black-Litterman 포트폴리오", "items": items}
 
 
+FIRST_CONTRIBUTION_KO = "첫 적립금"
+
+
+def basis_amount(init_usd, init_krw, monthly_usd, monthly_krw) -> tuple[float, float | None, str | None]:
+    """배분 금액의 기준 금액 — (USD, 원화 원금 또는 None, 기준 이름 또는 None).
+    초기 투자금으로 나누되, 0원 시작(이슈 #14 의 3번: 첫 적립일에 처음 매수)이면 첫 적립금으로 나눈다 (0 × 비중 = 0 원 표가 되지 않게)."""
+    if float(init_usd or 0) > 0:
+        return float(init_usd), init_krw or None, None
+    return float(monthly_usd or 0), monthly_krw or None, FIRST_CONTRIBUTION_KO
+
+
+def forward_basis(R, f) -> tuple[float, float | None, str | None]:
+    """분석 기준일 구성의 기준 금액 (기준일 환율) — basis_amount 와 같은 규칙."""
+    mk = R.get("money_krw") or {}
+    return basis_amount(f["capital"]["initial_amount_usd"], mk.get("initial_amount_krw"), R["request"]["derived"].get("monthly_contribution_usd"), mk.get("monthly_contribution_krw"))
+
+
 def allocation_table(R, chosen):
     p = find(R, chosen)
-    init = R["portfolio"]["backtest_spec"]["capital"]["initial_amount_usd"]
+    cap = R["portfolio"]["backtest_spec"]["capital"]
+    # 원화는 원화 원금 × 비중 — 반올림한 달러 원금 × 환율이면 합이 원금과 어긋났다 (052: 1,000만 원이 10,000,006원, Q-171 과 같은 규칙)
+    init, krw0, first = basis_amount(cap["initial_amount_usd"], cap.get("initial_amount_krw"), cap.get("monthly_contribution_usd"), cap.get("monthly_contribution_krw"))
     # 백테스트 시작일 배분이라 그날 환율로 (기준일 환율을 쓰면 원금 1,000만 원이 1,160만 원으로 보였다, 002)
     fx = float((R["money_krw"].get("backtest_fx") or {}).get("fx_rate") or R["money_krw"]["fx_rate"])
     sec = {t["ticker"]: sector_ko(t["sector"]) for t in R["selection"]["table"]}
     names = {t["ticker"]: t["name"] for t in R["selection"]["table"]}
-    # 원화는 원화 원금 × 비중 — 반올림한 달러 원금 × 환율이면 합이 원금과 어긋났다 (052: 1,000만 원이 10,000,006원, Q-171 과 같은 규칙)
-    krw0 = (R["portfolio"]["backtest_spec"]["capital"].get("initial_amount_krw") or None)
     rows = [{"ticker": t, "name": names.get(t, t), "sector": sec.get(t, ""), "w": w, "usd": init * w, "krw": (krw0 * w if krw0 else init * w * fx)}
             for t, w in sorted(p["target_weights"].items(), key=lambda x: -x[1])]  # fmt: skip
     cash = 1 - sum(p["target_weights"].values())
     if cash > 1e-6:
         rows.append({"ticker": "현금", "name": "", "sector": "", "w": cash, "usd": init * cash, "krw": (krw0 * cash if krw0 else init * cash * fx)})
     cols = [("ticker", "티커", "text"), ("name", "회사", "text"), ("sector", "섹터", "text"), ("w", "비중", "pct1"), ("usd", "USD", "usd")] + ([] if _usd(R) else [("krw", "원화", "krw")])
-    return table(f"배분 금액 ({pf_label(p)}, 백테스트 시작일 초기 투자금 {init:,.0f} USD 기준" + (")" if _usd(R) else ", 원화는 시작일 환율)"), cols, rows)
+    basis = f"{first} {init:,.0f} USD 기준 — 처음 투자금 0원" if first else f"백테스트 시작일 초기 투자금 {init:,.0f} USD 기준"
+    return table(f"배분 금액 ({pf_label(p)}, {basis}" + (")" if _usd(R) else ", 원화는 시작일 환율)"), cols, rows)
 
 
 def delta_bar(R, pid):
@@ -440,7 +458,9 @@ def assumptions_callout(R):
     # 적립액이 정수가 아니면 소수 둘째 자리까지 (055: 250.50 USD 를 '250 USD' 로 적어 순투입액과 17 USD 어긋났다)
     ca = float(e.get("contribution_usd") or 0)
     flow = (f"매월 {ca:,.0f} USD" if abs(ca - round(ca)) < 0.005 else f"매월 {ca:,.2f} USD") + f" 적립 {e['n_contributions']}회" if e.get("n_contributions") and ca else "적립 없음"  # '매월 0 USD 적립 0회' 대신
-    txt = (f"기간 {s['period']['start']} ~ {s['period']['end']} ({R['backtest']['period']['trading_days']}거래일). 초기 투자금 {s['capital']['initial_amount_usd']:,.0f} USD, "
+    zero = not float(s["capital"]["initial_amount_usd"] or 0)  # 0원 시작: 첫 적립일까지 평가액 0, 수익률 지수는 그날부터 움직인다
+    txt = (f"기간 {s['period']['start']} ~ {s['period']['end']} ({R['backtest']['period']['trading_days']}거래일). 초기 투자금 {s['capital']['initial_amount_usd']:,.0f} USD"
+           f"{' (첫 적립일에 처음 매수하고, 수익률은 그날부터 계산)' if zero else ''}, "
            f"{flow}. {s['rebalance_rule']['description_ko']}. {ex} 거래비용 거래대금의 {e['commission_bps'] / 100:.2f}%, "
            f"배당 재투자, 소수 주식 허용. 투자하지 않은 현금은 이자 없이 0%로 계산했고, 무위험수익률 연 {e['risk_free_rate']:.0%}는 Sharpe 계산에만 씁니다. "
            "과거 성과는 미래 성과를 보장하지 않습니다.")  # fmt: skip  (현금이 큰 낙폭 맞춤안의 수익·Sharpe 를 읽으려면 현금 0% 가정을 알아야 한다, 003)
@@ -1222,16 +1242,17 @@ def forward_blocks(R, chosen: str | None = None):
         c0 = f["portfolios"][0] if f["portfolios"] else next((t for t in f["templates"] if t["id"] == f["baseline"]["id"]), f["templates"][0])
         cc = (dict(c0["weights"]), max(0.0, 1 - sum(c0["weights"].values())), c0.get("name_ko", c0["id"]))
     w, cash, name = cc
-    init, fx = f["capital"]["initial_amount_usd"], f["capital"]["fx_rate"]
+    fx = f["capital"]["fx_rate"]
+    # 원화는 원화 원금 × 비중 (042: 반올림한 달러 원금 × 환율이라 4,500,000원이 4,499,999원)
+    init, krw0, first = forward_basis(R, f)
     items = dict(sorted(w.items(), key=lambda x: -x[1]))
     if cash > 1e-6:  # 현금 행: 빠지면 표 합계가 투자금보다 작다
         items["현금"] = cash
     top8 = sorted(w.values(), reverse=True)[:8]
     donut_items = items if (cash > 1e-6 and (len(top8) < 8 or cash >= top8[-1])) else dict(sorted(w.items(), key=lambda x: -x[1]))
     blocks.append(donut(f"{name} 배분 비중 (현재 구성)", donut_items))  # 화면 도넛은 상위 8개 + '기타 N종목' 이라 작은 현금은 표에만
-    krw0 = (R.get("money_krw") or {}).get("initial_amount_krw")  # 원화는 원화 원금 × 비중 (042: 반올림한 달러 원금 × 환율이라 4,500,000원이 4,499,999원)
     rows = [{"ticker": t, "w": x, "usd": round(init * x, 2), "krw": round(krw0 * x) if krw0 else round(init * x * fx)} for t, x in items.items() if x > 1e-6]
-    blocks.append(table(f"배분 금액 ({name}, 투자금 {init:,.0f} USD" + (")" if _usd(R) else f", 환율 1 USD = {fx:,.2f} KRW)"),
+    blocks.append(table(f"배분 금액 ({name}, {first or '투자금'} {init:,.0f} USD" + (")" if _usd(R) else f", 환율 1 USD = {fx:,.2f} KRW)"),
                         [("ticker", "티커", "text"), ("w", "비중", "pct1"), ("usd", "USD", "usd")] + ([] if _usd(R) else [("krw", "원화", "krw")]), rows))  # fmt: skip
     return blocks
 
@@ -1596,10 +1617,13 @@ def build_summary(R, chosen: str, interp: dict[str, Any], narr: dict[str, Any]) 
     f = R["portfolio"].get("forward")
     cc = current_composition(R, chosen)
     if f and cc is not None:  # 추천안의 규칙으로 고른 분석 기준일 구성 (F13)
-        alloc_w, basis, basis_ko, a_init, fx = cc[0], "forward", f"분석 기준일 {f['as_of']} 구성 ({cc[2]})", f["capital"]["initial_amount_usd"], f["capital"]["fx_rate"]
+        alloc_w, basis, basis_ko, fx = cc[0], "forward", f"분석 기준일 {f['as_of']} 구성 ({cc[2]})", f["capital"]["fx_rate"]
+        a_init, krw0, first = forward_basis(R, f)  # 기준일 구성은 원화 원금 × 비중 (042)
     else:
-        alloc_w, basis, basis_ko, a_init, fx = p.get("target_weights") or {}, "backtest", f"백테스트 선택안 ({pf_label(p)})", init, R["money_krw"]["fx_rate"]
-    krw0 = (R.get("money_krw") or {}).get("initial_amount_krw") if basis == "forward" else None  # 기준일 구성은 원화 원금 × 비중 (042)
+        cap = R["portfolio"]["backtest_spec"]["capital"]
+        alloc_w, basis, basis_ko, fx = p.get("target_weights") or {}, "backtest", f"백테스트 선택안 ({pf_label(p)})", R["money_krw"]["fx_rate"]
+        a_init, _, first = basis_amount(init, None, cap.get("monthly_contribution_usd"), None)
+        krw0 = None
     items = [{"ticker": t, "name": names.get(t, t), "sector": sec.get(t, ""), "weight": w, "usd": round(a_init * w, 2), "krw": round(krw0 * w) if krw0 else round(a_init * w * fx)}
              for t, w in sorted(alloc_w.items(), key=lambda x: -x[1]) if w > 1e-6]  # fmt: skip
     cash_w = max(0.0, 1 - sum(alloc_w.values()))
@@ -1613,7 +1637,9 @@ def build_summary(R, chosen: str, interp: dict[str, Any], narr: dict[str, Any]) 
                            "tolerance_note_ko": _tolerance_note(R), "r1_ko": rule_msgs.get("R1"), "r1": r1},
             "news_effect": news_effect(R),
             "kpis": kpi_items,
-            "allocation": {"basis": basis, "basis_ko": basis_ko, "items": items, "cash_weight": cash_w, "initial_amount_usd": a_init, "fx_rate": fx, "fx_direction": None if _usd(R) else f"1 USD = {fx:,.2f} KRW"},
+            # initial_amount_usd = 배분 계산에 쓴 금액. 0원 시작이면 첫 적립금이고 amount_basis_ko 가 그 이름 (화면·예상 매수 주문이 같은 값을 쓴다)
+            "allocation": {"basis": basis, "basis_ko": basis_ko, "items": items, "cash_weight": cash_w, "initial_amount_usd": a_init, "amount_basis_ko": first,
+                           "fx_rate": fx, "fx_direction": None if _usd(R) else f"1 USD = {fx:,.2f} KRW"},
             "mini_series": {"dataset": "index", "ids": list(dict.fromkeys([chosen, bench["id"]])), "label_ko": "누적 수익률 (시작 = 100)"},
             "period": R["backtest"]["period"], "next_actions_ko": list(interp.get("next_actions_ko") or [])}  # fmt: skip
 

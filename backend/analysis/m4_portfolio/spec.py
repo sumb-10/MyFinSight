@@ -348,8 +348,9 @@ def build_backtest_spec(
     spec = BacktestSpec(
         request_id=req["request_id"],
         period={"start": bw.start_date, "end": bw.end_date, "as_of": as_of, "trading_days": int(len(cal_bt))},
-        capital={"initial_amount_usd": init_usd, "monthly_contribution_usd": monthly_usd if bw.include_contributions else 0.0,
-                 "contribution_day": c.get("contribution_day", 25), "include_contributions": bw.include_contributions,
+        # 0원 시작(이슈 #14 의 3번)은 적립이 유일한 투자금이라 적립을 빼지 않는다
+        capital={"initial_amount_usd": init_usd, "monthly_contribution_usd": monthly_usd if (bw.include_contributions or not init_usd) else 0.0,
+                 "contribution_day": c.get("contribution_day", 25), "include_contributions": bw.include_contributions or not init_usd,
                  "currency": c["currency"], "initial_amount_krw": c["initial_amount"] if c["currency"] == "KRW" else None,
                  "monthly_contribution_krw": c.get("monthly_contribution", 0) if c["currency"] == "KRW" else None,
                  "fx_rate": rate, "fx_date": fx_date, "fx_source": fx_src},

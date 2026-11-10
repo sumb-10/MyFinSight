@@ -68,7 +68,7 @@
       "properties": {
         "amount": {
           "type": "number",
-          "exclusiveMinimum": 0
+          "minimum": 0
         },
         "currency": {
           "enum": [
@@ -78,7 +78,7 @@
         },
         "usd": {
           "type": "number",
-          "exclusiveMinimum": 0
+          "minimum": 0
         },
         "fx_rate": {
           "type": "number",

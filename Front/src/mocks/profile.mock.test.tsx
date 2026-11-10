@@ -103,7 +103,7 @@ describe("내 투자조건 화면 (목업)", () => {
     expect(plan).toHaveTextContent("매월 25일에 50만원씩"); expect(plan).toHaveTextContent("1년 뒤 넣은 원금 600만원")
     fireEvent.change(screen.getByLabelText(/^매월 추가 투자금/, { selector: "input" }), { target: { value: "0" } })
     fireEvent.click(screen.getByRole("button", { name: "다음" }))
-    expect((await screen.findAllByText("처음 투자금을 0원으로 하려면 매월 추가 투자금을 정해 주세요 (목업 규칙)")).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText("처음 투자금을 0원으로 하려면 매월 추가 투자금을 정해 주세요")).length).toBeGreaterThan(0)
     expect(screen.getByRole("button", { name: /^1단계 기본 조건 \(현재 단계\)/ })).toBeInTheDocument()
   })
   it("투자 전략 단계: 성향에 맞는 추천 전략·이유·다른 전략과의 차이, 적용하면 「지금 적용됨」, 직접 다른 전략도 고를 수 있다", async () => {

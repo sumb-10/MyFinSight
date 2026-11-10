@@ -133,7 +133,7 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
   const [openMore, setOpenMore] = useState(false)
   const [openLists, setOpenLists] = useState(c0.exclude_tickers.length + c0.must_include_tickers.length + c0.exclude_sectors.length + (c0.exclude_themes ?? []).length > 0)
   const [openAdvanced, setOpenAdvanced] = useState(false)
-  const allowZero = !!proposedRulesOf(options.data)?.allow_zero_initial_amount  // 제안 규칙: 초기 투자금 0원 + 매월 추가 투자 (목업에서만, 지금 서버는 0보다 커야 함)
+  const allowZero = !!proposedRulesOf(options.data)?.allow_zero_initial_amount  // 제안 규칙: 초기 투자금 0원 + 매월 추가 투자 (실제 서버도 같은 규칙: 첫 적립일에 처음 매수, 이슈 #14 의 3번)
   const rec = useRecommendation(form.diagnosis?.final_tendency)
   const computed = useMemo(() => (Object.keys(form.diagnosis?.answers ?? {}).length ? computeTendency(form.diagnosis!.answers) : form.diagnosis?.computed_tendency ?? "위험중립형"), [form.diagnosis])
 
@@ -242,7 +242,7 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
             <h2 className="text-lg font-bold text-slate-950">기본 조건</h2>
             <Part title="투자금과 목적" tag="필수" info="분석의 계산 조건으로 쓰입니다. 계산은 USD 로 하고, 원화는 분석 기준일 환율로 환산합니다.">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_140px]">
-                <InfoField label="처음 투자할 금액" error={err("capital.initial_amount")} help={allowZero && form.capital.initial_amount === 0 ? <>0원 · 처음 투자금 없이 매월 추가 투자금으로 시작합니다<MockTag /></> : money(form.capital.initial_amount, cur)} info={allowZero ? "0원으로 두면 처음 투자금 없이 매월 추가 투자금으로만 투자합니다. 이때는 매월 추가 투자금을 꼭 정해야 합니다. (목업 화면에서만 가능 — 지금 서버는 0보다 큰 금액만 받습니다)" : "0원은 입력할 수 없습니다. 처음 투자금 없이 매월 적립만 하는 방식은 아직 지원하지 않습니다."}>
+                <InfoField label="처음 투자할 금액" error={err("capital.initial_amount")} help={allowZero && form.capital.initial_amount === 0 ? "0원 · 처음 투자금 없이 매월 추가 투자금으로 시작합니다" : money(form.capital.initial_amount, cur)} info={allowZero ? "0원으로 두면 처음 투자금 없이 매월 추가 투자금으로만 투자합니다. 이때는 매월 추가 투자금을 꼭 정해야 합니다. 첫 적립일에 처음 매수하고, 수익률은 그날부터 계산합니다." : "0원은 입력할 수 없습니다. 처음 투자금 없이 매월 적립만 하는 방식은 아직 지원하지 않습니다."}>
                   <input className={inputClass} inputMode="numeric" value={form.capital.initial_amount.toLocaleString("ko-KR")} onChange={(e) => { const v = Number(e.target.value.replace(/\D/g, "")); upd((f) => { f.capital.initial_amount = v }) }} />
                 </InfoField>
                 <Field label="통화"><select className={inputClass} value={form.capital.currency} onChange={(e) => upd((f) => { f.capital.currency = e.target.value as "KRW" | "USD" })}><option value="KRW">원 (KRW)</option><option value="USD">달러 (USD)</option></select></Field>
@@ -430,7 +430,7 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
   )
 }
 
-/** 초기 투자금 0원 시작의 예상 투자 일정 (제안 기능, 목업에서만). 넣는 원금만 계산하고 수익은 예측하지 않는다. */
+/** 초기 투자금 0원 시작의 예상 투자 일정 (제안 기능, 서버 규칙 proposed_rules.allow_zero_initial_amount 가 있을 때). 넣는 원금만 계산하고 수익은 예측하지 않는다. */
 function ZeroStartSchedule({ capital, years, today = new Date() }: { capital: ProfileFields["capital"]; years: number; today?: Date }) {
   const m = capital.monthly_contribution, cur = capital.currency, day = capital.contribution_day
   if (!(m > 0)) return null
@@ -439,13 +439,13 @@ function ZeroStartSchedule({ capital, years, today = new Date() }: { capital: Pr
   const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
   return (
     <div role="note" aria-label="예상 투자 일정" className="space-y-3 rounded-xl border border-blue-200 bg-blue-50/60 p-4 text-sm text-slate-700">
-      <p className="flex items-center font-semibold text-slate-900">예상 투자 일정<MockTag /></p>
+      <p className="flex items-center font-semibold text-slate-900">예상 투자 일정</p>
       <p className="text-xs leading-5">처음 투자금 없이 시작합니다. 매월 {day}일에 {money(m, cur)}씩 넣어 그때 정해진 비중으로 삽니다. 첫 투자 전까지는 투자한 금액이 없습니다.</p>
       <ol className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         {dates.map((d, i) => <li key={i} className="rounded-lg bg-white px-3 py-2 text-xs"><span className="block font-semibold text-slate-900">{i + 1}회차 · {ymd(d)}</span><span className="text-slate-500">넣은 원금 누적 {money(m * (i + 1), cur)}</span></li>)}
       </ol>
       <p className="text-xs leading-5 text-slate-600">1년 뒤 넣은 원금 <b>{money(m * 12, cur)}</b> · 투자기간 {yearsText(years)} 동안 넣는 원금 <b>{money(Math.round(m * 12 * years), cur)}</b> (수익을 뺀 원금만 계산한 값입니다)</p>
-      <p className="text-[11px] leading-5 text-slate-500">과거 성과 계산(백테스트)과 모의투자도 첫 적립일부터 매월 넣은 것으로 계산하고, 수익률은 넣은 원금 대비로 봅니다. 날짜는 오늘 기준 예시이며 휴장일이면 다음 거래일에 투자합니다.</p>
+      <p className="text-[11px] leading-5 text-slate-500">과거 성과 계산(백테스트)과 모의투자도 첫 적립일에 처음 사고 매월 넣은 것으로 계산합니다. 수익률은 첫 적립일부터 재고, 넣은 원금 대비 손익도 함께 보여 줍니다. 날짜는 오늘 기준 예시이며 휴장일이면 다음 거래일에 투자합니다.</p>
     </div>
   )
 }

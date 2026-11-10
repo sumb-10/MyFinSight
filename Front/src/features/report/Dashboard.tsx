@@ -165,7 +165,7 @@ export function AllocationCard({ a, doc, onMore }: { a: NonNullable<ReportSummar
   const cash = cashW >= 0.0005 ? cashW : 0  // 0.0% 로 보일 만큼 작은 값(계산 잔차)은 현금 행을 만들지 않는다
   const cashAmt = bases ? { usd: bases.current.cash_usd, krw: bases.current.cash_krw } : p?.execution ? { usd: p.execution.totals.cash_target_usd, krw: p.execution.totals.cash_target_krw } : null  // 「예상 매수 주문」의 전략 현금 비중과 같은 값
   const usdOnly = !(a.fx_rate > 0) || Math.abs(a.fx_rate - 1) < 1e-9  // 환율 1.00 = USD 요청: 서버 '원화' 값이 USD 숫자와 같아 원화로 보이면 안 된다
-  const base = requestedAmount(doc)
+  const base = a.amount_basis_ko ? null : requestedAmount(doc)  // 0원 시작: 요청 원문(0원)이 아니라 배분 계산에 쓴 첫 적립금을 기준금액으로
   const fee = (doc?.parameters?.backtest as { commission_bps?: number } | undefined)?.commission_bps
   const shown = all ? items : items.slice(0, TOP_N)
   const maxW = Math.max(cash, ...items.map((x) => x.weight), 1e-9)  // 막대 길이 기준: 전체 종목·현금 가운데 가장 큰 비중 (펼쳐도 기준이 바뀌지 않게)
@@ -175,7 +175,7 @@ export function AllocationCard({ a, doc, onMore }: { a: NonNullable<ReportSummar
     <ResultCard id="q-alloc" q="어떤 주식에 얼마를 투자하면 될까요?" more={["구성 자세히 보기", onMore]} desc={desc}>
       <div data-tour="allocation-list" className="space-y-4">
       <dl className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
-        <div><dt className="text-xs font-semibold text-slate-500">투자 기준금액</dt><dd className="mt-0.5 text-lg font-bold tabular-nums text-slate-950">{base ?? fmt(a.initial_amount_usd, "usd")}{proposed(doc)?.structured?.requested_amount && <MockTag />}</dd></div>
+        <div><dt className="text-xs font-semibold text-slate-500">투자 기준금액{a.amount_basis_ko ? ` · ${a.amount_basis_ko}` : ""}</dt><dd className="mt-0.5 text-lg font-bold tabular-nums text-slate-950">{base ?? fmt(a.initial_amount_usd, "usd")}{proposed(doc)?.structured?.requested_amount && <MockTag />}</dd></div>
         {base && <div><dt className="text-xs font-semibold text-slate-500">배분 계산에 쓴 금액</dt><dd className="mt-0.5 tabular-nums text-slate-700">{fmt(a.initial_amount_usd, "usd")}</dd></div>}
         <div><dt className="text-xs font-semibold text-slate-500">종목 수</dt><dd className="mt-0.5 tabular-nums text-slate-700">{items.length}개{cash ? " + 현금" : ""}</dd></div>
       </dl>
@@ -252,7 +252,7 @@ function ExecutionOrders({ e, usdOnly, doc }: { e: NonNullable<ReturnType<typeof
           <div className="rounded-lg bg-slate-50 px-3 py-2"><dt className="text-xs text-slate-500">예상 수수료</dt><dd className="font-semibold tabular-nums text-slate-900">{amt(e.totals.fee_usd, Math.round(e.totals.fee_usd * fx))}</dd></div>
           <div className="rounded-lg bg-slate-50 px-3 py-2"><dt className="text-xs text-slate-500">매수 후 남는 현금</dt><dd className="font-semibold tabular-nums text-slate-900">{amt(e.totals.cash_left_usd, e.totals.cash_left_krw)}</dd>{e.totals.cash_target_usd > 0 && <dd className="text-xs text-slate-500">이 중 전략의 현금 비중 {amt(e.totals.cash_target_usd, e.totals.cash_target_krw)}</dd>}</div>
         </dl>
-        <p className="text-xs leading-5 text-slate-500">예상 매수 합계 + 수수료 + 남는 현금 = 투자금 {fmt(e.capital.usd, "usd")}. {e.note_ko}</p>
+        <p className="text-xs leading-5 text-slate-500">예상 매수 합계 + 수수료 + 남는 현금 = {doc?.summary?.allocation?.amount_basis_ko ?? "투자금"} {fmt(e.capital.usd, "usd")}. {e.note_ko}</p>
       </div>
     </Disclosure>
   )
