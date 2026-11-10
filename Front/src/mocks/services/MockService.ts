@@ -2,7 +2,7 @@
 // 정해진 자료(리포트·백테스트·모의투자 시세)는 시나리오에서 결정적으로 만들고, 사용자가 바꾼 것(이름·조건·새 요청)은 store(sessionStorage)에 둔다.
 import { ApiError } from "../../api/client"
 import type { AnalysisService } from "../../api/service"
-import type { ProposedBatchAnswer, ProposedChatAnswer, ProposedProfileChat, ProposedMessageResult, ProposedOptionsExt, ProposedPaperName, ProposedQuestionBatch, ProposedReportName, ProposedReportRowExt, ProposedRunWarning, ProposedStrategyRecommendation } from "../../api/proposed"
+import type { ProposedBatchAnswer, ProposedChatAnswer, ProposedProfileChat, ProposedMessageResult, ProposedOptionsExt, ProposedPaperName, ProposedPaperNameIn, ProposedQuestionBatch, ProposedReportName, ProposedReportRowExt, ProposedRunWarning, ProposedStrategyRecommendation } from "../../api/proposed"
 import type { CheckpointDetail, ComparisonDoc, DialogState, EvidencePage, EvidenceQuery, Health, Options, PaperDetail, PaperIn, PaperPreview, PaperSummary, ProfileFields, ProfileVersion, ProfileView, ReportDoc, ReportRow, RequestRow, RunPartial, RunRow, RunStatus, SeriesResponse, Tendency } from "../../api/types"
 import { MOCK_AS_OF, PAPERS, REPORTS, RUN_STATES, reportScenario, type PaperScenario, type ReportScenario } from "../scenarios"
 import { backtest, type Backtest } from "../data/backtest"
@@ -376,7 +376,7 @@ export class MockService implements AnalysisService {
   }
   createPaper(input: PaperIn): Promise<PaperDetail> {
     const sc = this.sc(input.report_id), b = this.backtestOf(sc)
-    const ps: PaperScenario = { id: this.nextId("mock_paper"), report_id: sc.id, strategy: !input.strategy_id || input.strategy_id === b.chosen.def.id ? "chosen" : input.strategy_id, start_date: "2026-10-01", capital: { amount: input.initial_amount ?? sc.capital.amount, currency: input.currency ?? sc.capital.currency, monthly: input.monthly_contribution ?? 0 }, name: { mode: "linked" }, status: "active", fx_gaps: [] }
+    const ps: PaperScenario = { id: this.nextId("mock_paper"), report_id: sc.id, strategy: !input.strategy_id || input.strategy_id === b.chosen.def.id ? "chosen" : input.strategy_id, start_date: "2026-10-01", capital: { amount: input.initial_amount ?? sc.capital.amount, currency: input.currency ?? sc.capital.currency, monthly: input.monthly_contribution ?? 0 }, name: input.name ?? { mode: "linked" }, status: "active", fx_gaps: [] }
     this.s.createdPapers.push(ps); this.commit()
     return this.wait(() => this.paperOf(ps.id).detail)
   }
@@ -388,7 +388,7 @@ export class MockService implements AnalysisService {
   getPaperKrw(id: string) { return this.wait(() => this.paperOf(id).krw) }
   getPaperName(id: string): Promise<ProposedPaperName> { return this.wait(() => this.paperNameView(id)) }
   private paperNameView(id: string): ProposedPaperName { const ps = this.allPapers().find((x) => x.id === id); if (!ps) throw notFound("모의투자"); const n = this.s.paperNames[id] ?? ps.name; return { name_ko: this.paperName(ps), mode: n.mode, report_name_ko: this.reportDisplayName(ps.report_id) } }
-  setPaperName(id: string, input: { mode: "linked" } | { mode: "custom"; name_ko: string }): Promise<ProposedPaperName> { this.s.paperNames[id] = input; this.commit(); return this.wait(() => this.paperNameView(id)) }
+  setPaperName(id: string, input: ProposedPaperNameIn): Promise<ProposedPaperName> { this.s.paperNames[id] = input; this.commit(); return this.wait(() => this.paperNameView(id)) }
 }
 
 export const MOCK_RUN_STATES = RUN_STATES

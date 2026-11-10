@@ -156,7 +156,7 @@ export interface PaperStrategy { id: string; kind: PaperStrategyKind; template: 
 export interface PaperStrategyOption extends PaperStrategy { status: "pass" | "warn" | "fail" | string; recommended: boolean; chosen: boolean; n_fail?: number | null; n_warn?: number | null }
 export interface PaperCapital { amount: number; currency: "KRW" | "USD"; usd: number; fx_rate: number; fx_date: string }
 export interface PaperContribution { enabled: boolean; monthly_amount?: number; currency?: "KRW" | "USD"; day?: number }
-export interface PaperIn { report_id: string; strategy_id?: string | null; start_date?: string | null; initial_amount?: number | null; currency?: "KRW" | "USD" | null; monthly_contribution?: number | null }
+export interface PaperIn { report_id: string; strategy_id?: string | null; start_date?: string | null; initial_amount?: number | null; currency?: "KRW" | "USD" | null; monthly_contribution?: number | null; name?: import("./proposed").ProposedPaperNameIn | null }  // name: 등록 때만 (없으면 리포트 이름을 따라감, 미리보기는 무시)
 export interface PaperPreview {
   report_id: string; run_id: string; report_as_of: string; strategy: PaperStrategy; strategy_options: PaperStrategyOption[]; start_date: string; data_ceiling: string; reconstructed_at_start: boolean
   initial_capital: PaperCapital; contribution: PaperContribution; rebalance_rule: { count: number; unit: string }; benchmark: string; tickers: string[]

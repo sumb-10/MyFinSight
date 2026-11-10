@@ -42,11 +42,23 @@ describe("목업 모드 분리", () => {
       "getRunWarnings",
       // E 원화 계산
       // F 변경 이력·모의투자 이름
+      "getProfileVersion",
+      "getPaperName",
+      "setPaperName",
     ]
     for (const name of PROPOSED_METHODS) {
       expect(typeof m[name], name).toBe("function")
       expect(typeof http[name], name).toBe(CONNECTED.includes(name) ? "function" : "undefined")
     }
+  })
+  it("투자조건 버전·모의투자 이름은 서버 주소로 요청한다", async () => {
+    const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("{}", { status: 200 }))
+    const http = new HttpService()
+    await http.getProfileVersion(2); await http.getPaperName("p1"); await http.setPaperName("p1", { mode: "custom", name_ko: "비교용" }); await http.setPaperName("p1", { mode: "linked" })
+    await http.createPaper({ report_id: "r1", name: { mode: "custom", name_ko: "비교용" } })
+    const calls = f.mock.calls.map(([u, i]) => [String(u).replace(/^.*\/api\/v1/, ""), i?.method, i?.body])
+    expect(calls).toEqual([["/profile/versions/2", "GET", undefined], ["/paper/p1/name", "GET", undefined], ["/paper/p1/name", "PUT", JSON.stringify({ mode: "custom", name_ko: "비교용" })],
+      ["/paper/p1/name", "PUT", JSON.stringify({ mode: "linked" })], ["/paper", "POST", JSON.stringify({ report_id: "r1", name: { mode: "custom", name_ko: "비교용" } })]])
   })
   it("리포트 이름·삭제는 서버 주소로 요청한다", async () => {
     const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ report_id: "r1", deleted: true }), { status: 200 }))

@@ -17,7 +17,7 @@ export function whenText(iso: string, now = new Date()): string {
 
 export function VersionHistory({ view }: { view: ProfileView }) {
   const svc = useService()
-  const canCompare = !!svc.getProfileVersion && view.versions.length > 1  // 제안 기능: 과거 버전 값 전체를 받을 수 있을 때만 (지금은 목업뿐)
+  const canCompare = !!svc.getProfileVersion && view.versions.length > 1  // 제안 기능: 과거 버전 값 전체를 받을 수 있을 때만
   const [to, setTo] = useState(view.current_version)
   const desc = [...view.versions].sort((a, b) => b.version - a.version)
   const first = desc[desc.length - 1]?.version

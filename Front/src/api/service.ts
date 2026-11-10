@@ -1,8 +1,8 @@
 // 화면이 쓰는 단일 서비스 계약 (Front/docs/04 §8). 일반 모드에서는 서버(backend/analysis/api) 만 데이터 원천이다.
 // 개발용 목업 모드(?mock=1, src/mocks)는 같은 계약을 목업 자료로 구현한다 — main.tsx 가 처음에 하나를 골라 꽂는다.
 import { api, ApiError, LLM_TIMEOUT_MS } from "./client"
-import type { ProposedApi, ProposedReportName } from "./proposed"
-import type { CheckpointDetail, ComparisonDoc, DialogState, EvidenceDetail, EvidencePage, EvidenceQuery, Health, Options, PaperDetail, PaperIn, PaperPreview, PaperSummary, ProfileFields, ProfileView, ReportDoc, ReportRow, RequestRow, RunPartial, RunRow, RunStatus, SeriesResponse } from "./types"
+import type { ProposedApi, ProposedPaperName, ProposedPaperNameIn, ProposedReportName } from "./proposed"
+import type { CheckpointDetail, ComparisonDoc, DialogState, EvidenceDetail, EvidencePage, EvidenceQuery, Health, Options, PaperDetail, PaperIn, PaperPreview, PaperSummary, ProfileFields, ProfileVersion, ProfileView, ReportDoc, ReportRow, RequestRow, RunPartial, RunRow, RunStatus, SeriesResponse } from "./types"
 
 const LLM = { timeoutMs: LLM_TIMEOUT_MS }
 
@@ -73,6 +73,7 @@ export class HttpService implements AnalysisService {
     }
   }
   saveProfile(fields: ProfileFields) { return api.put<ProfileView>("/profile", fields) }
+  getProfileVersion(version: number) { return api.get<ProfileVersion>(`/profile/versions/${version}`) }
   createRequest(input: { idea: string; overrides?: Record<string, unknown>; mode?: "new" | "rerun" | "revision"; base_report_id?: string | null }) {
     return api.post<DialogState>("/requests", { idea: input.idea, overrides: input.overrides ?? {}, mode: input.mode ?? "new", base_report_id: input.base_report_id ?? null }, LLM)
   }
@@ -105,6 +106,8 @@ export class HttpService implements AnalysisService {
   refreshPaper(id: string) { return api.post<PaperDetail>(`/paper/${id}/refresh`) }
   stopPaper(id: string) { return api.post<PaperDetail>(`/paper/${id}/stop`) }
   resumePaper(id: string) { return api.post<PaperDetail>(`/paper/${id}/resume`) }
+  getPaperName(id: string) { return api.get<ProposedPaperName>(`/paper/${id}/name`) }
+  setPaperName(id: string, input: ProposedPaperNameIn) { return api.put<ProposedPaperName>(`/paper/${id}/name`, input) }
   createRevision(reportId: string, text: string) { return api.post<DialogState>(`/reports/${reportId}/revisions`, { text }, LLM) }
   getComparison(id: string) { return api.get<ComparisonDoc>(`/comparisons/${id}`) }
   async getReportComparison(reportId: string) {
