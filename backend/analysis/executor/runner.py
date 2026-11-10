@@ -22,6 +22,7 @@ from typing import Any
 from backend.analysis.common.jsonio import dump_json, now_iso
 from backend.analysis.common.warnings import merge, render
 from backend.analysis.errors import CancelRequested, StageFailed, public_message
+from backend.analysis.executor import step_warnings
 from backend.analysis.executor.context import RunContext
 from backend.analysis.executor.stages import OUTPUT_FILES, STAGES, Stage
 from backend.schemas.errors import MyFinSightError
@@ -128,6 +129,7 @@ def run(ctx: RunContext, *, stages: Sequence[Stage] | None = None, on_step: Step
     results = {s.name: StepResult(name=s.name, status="QUEUED") for s in stages}
     by_name = {s.name: s for s in stages}
     io_lock = threading.Lock()  # 상태 콜백·파일 덤프는 한 번에 하나씩 (동시에 도는 단계)
+    user_by_stage: dict[str, list[Any]] = {}  # 끝난 단계의 사용자 경고 (step_warnings.json, 화면의 「확인할 점」 전체)
     _hook = on_step or (lambda *_: None)
 
     def hook(step: str, status: str, info: dict[str, Any]) -> None:
@@ -136,6 +138,8 @@ def run(ctx: RunContext, *, stages: Sequence[Stage] | None = None, on_step: Step
 
     for s in stages:
         hook(s.name, "QUEUED", {"label_ko": s.label_ko, "bucket": s.bucket})
+    if hasattr(ctx.llm, "cancel_check"):  # LLM 응답·재시도를 기다리는 중에도 취소를 본다 (단계 안에서 바로 멈춤)
+        ctx.llm.cancel_check = ctx.cancel_check
     ctx.run_dir.mkdir(parents=True, exist_ok=True)
     dump_json({"run_id": ctx.run_id, "request_id": ctx.request_id, "started_at": now_iso(), "status": "running",
                "stages": [s.name for s in stages], "settings": ctx.settings.snapshot()}, ctx.run_dir / "run_meta.json")  # fmt: skip
@@ -167,6 +171,7 @@ def run(ctx: RunContext, *, stages: Sequence[Stage] | None = None, on_step: Step
         r.status = "STARTED"
         hook(s.name, "STARTED", {"label_ko": s.label_ko, "bucket": s.bucket, "started_at": r.started_at})
         t0 = time.time()
+        stage_user: list[Any] | None = None  # 끝났을 때만 채운다
         try:
             summary = s.fn(ctx)
             r.ended_at, r.elapsed_s = now_iso(), round(time.time() - t0, 2)
@@ -174,25 +179,35 @@ def run(ctx: RunContext, *, stages: Sequence[Stage] | None = None, on_step: Step
             user = [w for w in mine if w.level == "user"]
             info = [w for w in mine if w.level == "info"]
             r.status = "PARTIAL" if user else "SUCCESS"  # 행동이 필요한 경고가 있을 때만 "경고 있음"
+            stage_user = user
             r.summary = (summary or "") + (f" · 확인 필요 {len(user)}건: " + "; ".join(render(w) for w in user[:2])[:400] if user else "") + (f" · 참고 {len(info)}건" if info and not user else "")
             ctx.step_summaries[s.name] = r.summary
             log.info("[%s] %s %s (%.1fs)", ctx.run_id, s.name, r.status, r.elapsed_s)
+            if ctx.cancel_check():  # 끝난 단계는 그대로 두되 다음으로 가지 않는다. 단계 안에서 취소를 잡아 대체 계산으로 끝냈어도(LLM 실패 처리 등)
+                state["cancelled"] = True  # 실행은 취소로 끝난다 — 마지막 리포트 단계였어도 리포트를 저장하지 않음
         except CancelRequested as e:
             r.ended_at, r.status, r.error_code, r.error_message = now_iso(), "CANCELLED", e.code, str(e)
             state["cancelled"] = True
         except Exception as e:
-            r.ended_at, r.elapsed_s = now_iso(), round(time.time() - t0, 2)
-            r.status = "FAILED"
-            r.error_code = e.code if isinstance(e, MyFinSightError) else StageFailed.code
-            r.error_message = f"{type(e).__name__}: {public_message(e)}"[:1000]  # 화면·API 로 나가는 문장 (DB 주소 등은 지움)
-            log.error("[%s] %s FAILED: %s: %s\n%s", ctx.run_id, s.name, type(e).__name__, e, traceback.format_exc())
-            if state["failed"] is None or order[s.name] < order[state["failed"].name]:
-                state["failed"] = r
+            if ctx.cancel_check():  # 취소로 끊긴 호출을 단계 코드가 다른 오류로 바꿔 던졌어도 실패가 아니라 취소다
+                r.ended_at, r.status, r.error_code, r.error_message = now_iso(), "CANCELLED", CancelRequested.code, "취소 요청"
+                state["cancelled"] = True
+            else:
+                r.ended_at, r.elapsed_s = now_iso(), round(time.time() - t0, 2)
+                r.status = "FAILED"
+                r.error_code = e.code if isinstance(e, MyFinSightError) else StageFailed.code
+                r.error_message = f"{type(e).__name__}: {public_message(e)}"[:1000]  # 화면·API 로 나가는 문장 (DB 주소 등은 지움)
+                log.error("[%s] %s FAILED: %s: %s\n%s", ctx.run_id, s.name, type(e).__name__, e, traceback.format_exc())
+                if state["failed"] is None or order[s.name] < order[state["failed"].name]:
+                    state["failed"] = r
         hook(s.name, r.status, {"label_ko": s.label_ko, "bucket": s.bucket, "started_at": r.started_at, "ended_at": r.ended_at,
                                 "summary": r.summary, "error_code": r.error_code, "error_message": r.error_message})  # fmt: skip
         if dump:
             with io_lock:
                 _dump_outputs(ctx)
+                if stage_user is not None:  # 단계가 끝날 때마다 (실행 중에도 끝난 단계의 경고 전체를 볼 수 있게). 넣기·쓰기 모두 잠금 안
+                    user_by_stage[s.name] = stage_user
+                    step_warnings.save(ctx.run_dir, {k: user_by_stage[k] for k in sorted(user_by_stage, key=order.get)})
 
     def _sort_warnings() -> None:  # 안정 정렬: 단계 순서로 (동시 실행이어도 결과 파일의 순서가 같게). 도는 단계가 없을 때만 부른다
         ctx.warnings.sort(key=lambda w: order.get(w.stage, len(order)))

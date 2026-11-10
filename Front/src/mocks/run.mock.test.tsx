@@ -4,9 +4,11 @@ import { Providers } from "../app/providers"
 import type { AnalysisService } from "../api/service"
 import { proposedCancelOf } from "../api/proposed"
 import { RunScreen } from "../features/run/RunScreen"
+import { HomeScreen } from "../features/home/HomeScreen"
 import { PaperScreen } from "../features/paper/PaperScreen"
 import { CANCEL_MS, LIVE_QUEUE_MS, LIVE_STEP_MS, STEPS } from "./data/runs"
 import { MockService } from "./services/MockService"
+import { REPORTS } from "./scenarios"
 
 // 5단계: 분석 진행(즉시 취소·경고 전체·상태별 시나리오와 이벤트 시퀀스)과 모의투자(원화 기준 성과·환율 대체 여부·이름 연동).
 
@@ -98,8 +100,27 @@ describe("분석 진행 화면 (목업)", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "분석이 취소되었습니다" }, { timeout: 4000 })).toBeInTheDocument()
     expect(screen.getByText("분석 취소 완료")).toBeInTheDocument()
     expect(screen.getByText(/단계에서 멈췄습니다. 완료된 4단계의 결과로는 리포트를 만들지 않았습니다/)).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "같은 조건으로 다시 실행" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "멈춘 곳부터 이어서 실행" })).toBeEnabled()
   }, 10000)
+  it("실제 서버 응답 모양(cancel, immediate=true): 취소 중에는 「○○ 단계를 바로 멈추고 있습니다」, 취소 뒤에는 요청·완료 시각과 멈춘 단계 (목업 표시 없음)", async () => {
+    const s = new MockService({ latencyMs: 0, persist: false })
+    const base = await s.getRun("mock_run_running")
+    const at = base.steps.find((x) => x.status === "STARTED")!
+    const cancel = { requested_at: "2026-11-10T09:00:00+09:00", completed_at: null as string | null, stopped_step: at.step, stopped_step_label_ko: at.label_ko, done_steps: 4, immediate: true }
+    let run = { ...base, status: "cancelling", cancel } as typeof base
+    const svc: AnalysisService = Object.assign(Object.create(s), { mode: "api", getRunWarnings: undefined, getRun: async () => run })
+    const { unmount } = withSvc(svc, <RunScreen runId="mock_run_running" />)
+    expect(await screen.findByText("취소를 처리하고 있습니다.", {}, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.getByText(/단계를 바로 멈추고 있습니다. 잠시 뒤 이 화면이 「분석이 취소되었습니다」로 바뀝니다.$/)).toBeInTheDocument()  // 「(목업: 즉시 취소)」 꼬리 없음
+    unmount()
+    run = { ...base, status: "cancelled", finished_at: "2026-11-10T09:00:07+09:00", steps: base.steps.map((x) => (x.status === "STARTED" || x.status === "QUEUED" ? { ...x, status: "CANCELLED" } : x)),
+      cancel: { ...cancel, completed_at: "2026-11-10T09:00:07+09:00" } } as typeof base  // fmt: skip
+    withSvc(svc, <RunScreen runId="mock_run_running" />)
+    expect(await screen.findByText("분석 취소 완료", {}, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.getByText(/(7초 걸림)/)).toBeInTheDocument()
+    expect(screen.getByText(new RegExp(`단계에서 멈췄습니다. 완료된 4단계의 결과로는 리포트를 만들지 않았습니다`))).toBeInTheDocument()
+    expect(screen.queryByText("목업")).toBeNull()
+  })
   it("일반 모드(전체 경고 목록 없음): 지금처럼 단계 요약의 안내만, 빠진 안내는 건수로 안내하고 「더 보기」가 없다", async () => {
     const { s } = clocked()
     withSvc(plain(s), <RunScreen runId="mock_run_notices" />)
@@ -152,5 +173,64 @@ describe("모의투자 원화 기준 성과 (목업)", () => {
     await screen.findByRole("heading", { name: "핵심 성과" }, { timeout: 5000 })
     expect(screen.queryByRole("heading", { name: "원화 기준 성과" })).toBeNull()
     expect(screen.getByText(/^납입 제외 손익 .+ USD \(수수료 차감 후\)$/)).toBeInTheDocument()
+  })
+})
+
+describe("취소한 분석 이어서 실행 (홈)", () => {
+  afterEach(() => { window.localStorage.clear(); window.sessionStorage.clear() })  // 「지우기」 기록(dismissedResumeIds)이 다음 테스트로 새지 않게 (목업 실행 번호는 매번 같은 순서)
+  const cancelledLive = async () => {
+    const { c, s } = clocked()
+    const id = s.startLiveRun("success")
+    c.now = T0 + LIVE_QUEUE_MS + 2 * LIVE_STEP_MS + 10
+    await s.cancelRun(id)
+    c.now += CANCEL_MS + 10
+    expect((await s.getRun(id)).status).toBe("cancelled")
+    return { s, id }
+  }
+  it("홈에 「취소한 분석이 있습니다」가 남고, 「멈춘 곳부터 이어서 실행」은 같은 요청으로 새 실행 화면을 연다. 이어서 실행했으면 다시 뜨지 않는다", async () => {
+    const { s, id } = await cancelledLive()
+    expect((await s.listRuns()).find((r) => r.run_id === id)?.resumable).toBe(true)
+    const { unmount } = withSvc(s, <HomeScreen />)
+    expect(await screen.findByText("취소한 분석이 있습니다", {}, { timeout: 5000 })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "멈춘 곳부터 이어서 실행" }))
+    await waitFor(() => expect(window.location.hash).toMatch(/^#\/runs\//))
+    expect(window.location.hash).not.toBe(`#/runs/${id}`)
+    expect((await s.listRuns()).find((r) => r.run_id === id)?.resumable).toBe(false)
+    unmount()
+    withSvc(s, <HomeScreen />)
+    await screen.findByRole("heading", { level: 1 }, { timeout: 5000 })
+    await waitFor(() => expect(screen.queryByText("취소한 분석이 있습니다")).toBeNull())
+  })
+  it("여러 건이면 가장 최근 1건만 보이고 나머지는 「나머지 N건 보기」 토글 안에, 첫 건을 지우면 다음 건이 올라온다", async () => {
+    const { c, s } = clocked()
+    const a = s.startLiveRun("success", REPORTS[0].request_id), b = s.startLiveRun("success", REPORTS[1].request_id)
+    c.now = T0 + LIVE_QUEUE_MS + 10
+    await s.cancelRun(a); await s.cancelRun(b)
+    c.now += CANCEL_MS + 10
+    expect((await s.listRuns()).filter((r) => r.resumable).map((r) => r.run_id).sort()).toEqual([a, b].sort())
+    withSvc(s, <HomeScreen />)
+    expect(await screen.findByText("취소한 분석이 2건 있습니다", {}, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: "멈춘 곳부터 이어서 실행" })).toHaveLength(1)  // 접힌 상태: 가장 최근 1건만
+    const toggle = screen.getByRole("button", { name: /나머지 1건 보기/ })
+    expect(toggle).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(toggle)
+    expect(screen.getByRole("list", { name: "나머지 취소한 분석" })).toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: "멈춘 곳부터 이어서 실행" })).toHaveLength(2)
+    fireEvent.click(screen.getByRole("button", { name: /접기/ }))
+    expect(screen.queryByRole("list", { name: "나머지 취소한 분석" })).toBeNull()
+    fireEvent.click(screen.getAllByRole("button", { name: "지우기" })[0])
+    expect(await screen.findByText("취소한 분석이 있습니다")).toBeInTheDocument()  // 남은 1건이 위로, 토글 없음
+    expect(screen.queryByRole("button", { name: /나머지/ })).toBeNull()
+  })
+  it("「지우기」 하면 이 브라우저에서는 그 취소한 분석 카드를 다시 띄우지 않는다", async () => {
+    const { s } = await cancelledLive()
+    const { unmount } = withSvc(s, <HomeScreen />)
+    await screen.findByText("취소한 분석이 있습니다", {}, { timeout: 5000 })
+    fireEvent.click(screen.getByRole("button", { name: "지우기" }))
+    await waitFor(() => expect(screen.queryByText("취소한 분석이 있습니다")).toBeNull())
+    unmount()
+    withSvc(s, <HomeScreen />)
+    await screen.findByRole("heading", { level: 1 }, { timeout: 5000 })
+    expect(screen.queryByText("취소한 분석이 있습니다")).toBeNull()
   })
 })

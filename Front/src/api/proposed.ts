@@ -144,7 +144,8 @@ export type ProposedChatAnswer = { question_id: string; option_value?: unknown; 
 export interface ProposedRunWarning { step: string; step_label_ko: string; message_ko: string; count: number }
 /** GET /runs/{id} 에 붙는 취소 결과. immediate = 서버가 진행 중인 작업을 바로 멈출 수 있음 (지금 서버는 단계가 끝날 때 멈춘다). */
 export interface ProposedRunCancel { requested_at: string; completed_at: string | null; stopped_step: string | null; stopped_step_label_ko: string | null; done_steps: number; immediate: boolean }
-export const proposedCancelOf = <T extends object>(r: T | null | undefined) => ((r as { proposed_cancel?: ProposedRunCancel } | null | undefined)?.proposed_cancel ?? null)
+/** 취소 결과: 실행 상태의 `cancel` (실제 서버 GET /runs/{id}·목업 모두, 취소를 요청한 실행만). 없으면 null. */
+export const proposedCancelOf = <T extends object>(r: T | null | undefined) => ((r as { cancel?: ProposedRunCancel | null } | null | undefined)?.cancel ?? null)
 
 /* ───────── 모의투자 ───────── */
 export type ProposedFxDay = { date: string; rate: number | null; status: "ok" | "carried" | "missing"; carried_from?: string | null }  // ok = 그날 환율, carried = 직전 환율 대체, missing = 환율 없음(환산 불가)

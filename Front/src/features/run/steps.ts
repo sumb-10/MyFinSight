@@ -75,7 +75,7 @@ export function collectNotes(steps: RunStep[]): RunNotes {
   return { notes, unlisted: unlistedKeys.length, total: notes.length + unlistedKeys.length, keys: [...notes.map((n) => n.key), ...unlistedKeys], byBucket }
 }
 
-/** 전체 경고 목록(제안 기능 getRunWarnings, 목업에서만)으로 만든 안내. 같은 문구는 하나로 묶고 나온 단계와 횟수를 함께 둔다. 요약에 빠진 안내가 없으므로 unlisted 는 0. */
+/** 전체 경고 목록(제안 기능 getRunWarnings)으로 만든 안내. 같은 문구는 하나로 묶고 나온 단계와 횟수를 함께 둔다. 요약에 빠진 안내가 없으므로 unlisted 는 0. */
 export function notesFromWarnings(ws: ProposedRunWarning[], steps: RunStep[]): RunNotes {
   const byText = new Map<string, { from: string[]; count: number }>()
   const bucketOf = new Map(steps.map((s) => [s.step, s.bucket]))

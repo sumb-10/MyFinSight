@@ -50,7 +50,7 @@ export function runStatus(id: string): RunStatus | null {
   if (id === "mock_run_notices") { const st = steps(10, "STARTED", true); return { ...base, status: "running", queue_position: null, started_at: "2026-11-04T09:00:30", buckets: buckets(st), steps: st, error: null } }
   if (s.state === "failed") { const st = steps(10, "FAILED"); return { ...base, status: "failed", queue_position: null, started_at: "2026-11-04T09:00:30", finished_at: "2026-11-04T09:12:00", buckets: buckets(st), steps: st, error: { code: "MOCK_STEP_FAILED", message_ko: "[목업] 백테스트 계산 중 가격 자료가 부족해 멈췄습니다.", step: "11_backtest", actions: ["retry"] } } }
   const st = steps(6, "CANCELLED")
-  return { ...base, status: "cancelled", queue_position: null, started_at: "2026-11-04T09:00:30", finished_at: "2026-11-04T09:05:00", buckets: buckets(st), steps: st, error: null, proposed_cancel: cancelInfo(st, "2026-11-04T09:04:58", "2026-11-04T09:05:00") } as RunStatus
+  return { ...base, status: "cancelled", queue_position: null, started_at: "2026-11-04T09:00:30", finished_at: "2026-11-04T09:05:00", buckets: buckets(st), steps: st, error: null, cancel: cancelInfo(st, "2026-11-04T09:04:58", "2026-11-04T09:05:00") } as RunStatus
 }
 
 /** 취소 결과 (제안): 언제 요청·완료됐는지, 어느 단계에서 멈췄는지. */
@@ -81,9 +81,9 @@ export function liveStatus(id: string, lv: LiveRun, now: number): RunStatus {
   else { const st = steps(k, "STARTED", true); r = { ...base, status: "running", queue_position: null, started_at: startedAt, buckets: buckets(st), steps: st, error: null } }
   if (!lv.cancel) return r
   const cancelling = now - lv.cancel.at < CANCEL_MS
-  if (cancelling) return { ...r, status: "cancelling", proposed_cancel: cancelInfo(r.steps, iso(lv.cancel.at), null) } as RunStatus
+  if (cancelling) return { ...r, status: "cancelling", cancel: cancelInfo(r.steps, iso(lv.cancel.at), null) } as RunStatus
   const st = r.steps.map((x) => (x.status === "STARTED" || x.status === "QUEUED" ? { ...x, status: "CANCELLED" as const } : x))
-  return { ...r, status: "cancelled", finished_at: iso(lv.cancel.at + CANCEL_MS), steps: st, buckets: buckets(st), proposed_cancel: cancelInfo(r.steps, iso(lv.cancel.at), iso(lv.cancel.at + CANCEL_MS)) } as RunStatus
+  return { ...r, status: "cancelled", finished_at: iso(lv.cancel.at + CANCEL_MS), steps: st, buckets: buckets(st), cancel: cancelInfo(r.steps, iso(lv.cancel.at), iso(lv.cancel.at + CANCEL_MS)) } as RunStatus
 }
 
 export function runPartial(id: string): RunPartial | null {

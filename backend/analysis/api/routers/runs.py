@@ -1,4 +1,4 @@
-"""/runs: 실행 상태(폴링용), 목록, 취소 (M0-05). 단계 상태는 DB run_step, 큐 상태는 runs.json."""
+"""/runs: 실행 상태(폴링용), 목록, 취소·취소 결과, 단계별 경고 전체 (M0-05). 단계 상태는 DB run_step, 큐 상태는 runs.json."""
 
 from __future__ import annotations
 
@@ -7,7 +7,8 @@ from typing import Any
 from fastapi import APIRouter, Request
 
 from backend.analysis.api.routers import services
-from backend.analysis.errors import redact
+from backend.analysis.errors import NotFound, redact
+from backend.analysis.executor import step_warnings
 from backend.analysis.executor.stages import STAGES
 from backend.analysis.m5_backtest_report.persist import bucket_status, steps_for_api
 from backend.analysis.schemas.run import BUCKETS, RunStatus
@@ -15,6 +16,27 @@ from backend.analysis.schemas.run import BUCKETS, RunStatus
 router = APIRouter(tags=["runs"])
 LABELS = {s.name: (s.label_ko, s.bucket) for s in STAGES}
 LABELS["14_report"] = ("리포트 문서 생성·검증", "report")
+ORDER = [*(s.name for s in STAGES), "14_report"]
+
+
+def cancel_view(e: Any, steps: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """취소 결과 (프런트 제안 계약 ProposedRunCancel). 취소를 요청했고 아직 진행 중(cancelling)이거나 취소로 끝난 실행만.
+    멈춘 단계: 취소 중이면 지금 도는 단계, 취소로 끝났으면 도중에 멈춘 단계(시작했는데 CANCELLED) → 없으면 다음에 돌 차례였던 단계
+    → 그것도 없으면(마지막 단계가 끝난 뒤 취소가 반영됨) 마지막으로 끝난 단계.
+    immediate=True: LLM 응답·재시도를 기다리는 중에도, 백테스트는 포트폴리오마다 취소를 본다 (보통 1초 안팎, 숫자 계산 한 덩어리는 끝까지)."""
+    if not e.cancel_requested_at or e.status not in ("running", "cancelled"):
+        return None
+    rank = {name: i for i, name in enumerate(ORDER)}
+    by_order = sorted(steps, key=lambda s: rank.get(s["step"], len(rank)))
+    if e.status == "running":
+        stopped = next((s for s in by_order if s["status"] == "STARTED"), None)
+    else:
+        cancelled = [s for s in by_order if s["status"] == "CANCELLED"]
+        done = [s for s in by_order if s["status"] in step_warnings.DONE]
+        stopped = next((s for s in cancelled if s.get("started_at")), None) or (cancelled[0] if cancelled else None) or (done[-1] if done else None)
+    return {"requested_at": e.cancel_requested_at, "completed_at": e.finished_at if e.status == "cancelled" else None,
+            "stopped_step": stopped["step"] if stopped else None, "stopped_step_label_ko": stopped["label_ko"] if stopped else None,
+            "done_steps": sum(s["status"] in step_warnings.DONE for s in steps), "immediate": True}  # fmt: skip
 
 
 def run_status(sv, run_id: str) -> RunStatus:
@@ -38,12 +60,34 @@ def run_status(sv, run_id: str) -> RunStatus:
         error = {"code": e.error_code or (failed or {}).get("error_code") or "STAGE_FAILED", "message_ko": redact(e.error_message) or (failed or {}).get("error_message") or "실행에 실패했습니다",
                  "step": (failed or {}).get("step"), "actions": ["edit_conditions", "retry", "home"]}  # fmt: skip
     return RunStatus(run_id=e.run_id, request_id=e.request_id, status=status, queue_position=sv.queue.position(run_id) if e.status == "queued" else None,
-                     queued_at=e.queued_at, started_at=e.started_at, finished_at=e.finished_at, buckets=buckets, steps=steps, report_id=e.report_id, error=error)  # fmt: skip
+                     queued_at=e.queued_at, started_at=e.started_at, finished_at=e.finished_at, buckets=buckets, steps=steps, report_id=e.report_id, error=error,
+                     cancel=cancel_view(e, steps))  # fmt: skip
 
 
 @router.get("/runs", response_model=list[dict[str, Any]])
 def list_runs(request: Request, limit: int = 50) -> list[dict[str, Any]]:
-    return [{**d, "error_message": redact(d.get("error_message"))} for d in (e.model_dump(mode="json") for e in services(request).queue.list(limit))]
+    """실행 목록 (최근 순). resumable = 「멈춘 곳부터 이어서 실행」 할 수 있는 취소된 실행 (홈의 「취소한 분석」 카드), 그때만 idea 를 채운다."""
+    sv = services(request)
+    entries = sv.queue.list(limit)
+    resume = resumable(sv, entries)
+    return [{**e.model_dump(mode="json"), "error_message": redact(e.error_message), "resumable": e.run_id in resume, "idea": resume.get(e.run_id)}
+            for e in entries]  # fmt: skip
+
+
+def resumable(sv: Any, entries: list[Any]) -> dict[str, str]:
+    """취소된 실행 중 이어서 실행할 수 있는 것 → 투자 아이디어. 그 요청의 마지막 실행이 아직 이것이고(다시 실행하지 않음) 요청이 확정 상태.
+    이어서 실행 = 같은 확정 요청으로 새 실행 (POST /runs/{id}/retry). 끝난 단계는 LLM 캐시로 빨리 지나간다."""
+    out: dict[str, str] = {}
+    for e in entries:
+        if e.status != "cancelled":
+            continue
+        try:
+            doc = sv.requests.load(e.request_id)
+        except NotFound:
+            continue
+        if doc.status == "confirmed" and doc.effective_request and doc.run_id == e.run_id:
+            out[e.run_id] = doc.idea
+    return out
 
 
 @router.get("/runs/{run_id}", response_model=RunStatus)
@@ -56,6 +100,16 @@ def cancel_run(run_id: str, request: Request) -> RunStatus:
     sv = services(request)
     sv.queue.request_cancel(run_id)
     return run_status(sv, run_id)
+
+
+@router.get("/runs/{run_id}/warnings")
+def warnings(run_id: str, request: Request) -> list[dict[str, Any]]:
+    """끝난 단계의 사용자 경고 전체, 단계 순서대로 [{step, step_label_ko, message_ko, count}].
+    단계 요약은 「확인 필요 N건」 을 2건까지만 적는다. 같은 경고는 count 로 묶여 있고 단계별 줄 수 = 요약의 N."""
+    from backend.analysis.paths import run_dir
+
+    services(request).queue.get(run_id)  # 없는 실행이면 NotFound
+    return step_warnings.api_rows(step_warnings.load(run_dir(run_id)), {k: v[0] for k, v in LABELS.items()}, ORDER)
 
 
 @router.get("/runs/{run_id}/partial")

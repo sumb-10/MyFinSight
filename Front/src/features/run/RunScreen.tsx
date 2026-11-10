@@ -88,7 +88,7 @@ function RunView({ runId }: { runId: string }) {
   const [partial, setPartial] = useState<RunPartial | null>(null)
   const [partialTried, setPartialTried] = useState(false)
   const summaryNotes = useMemo(() => collectNotes(r?.steps ?? []), [r])
-  // 제안 기능: 전체 경고 목록 (목업에서만). 단계 요약에는 단계마다 2건까지만 오므로, 있으면 전체 목록을 쓴다.
+  // 제안 기능: 전체 경고 목록 (서비스에 getRunWarnings 가 있을 때, 실제 서버 GET /runs/{id}/warnings). 단계 요약에는 단계마다 2건까지만 오므로, 있으면 전체 목록을 쓴다.
   const fullRes = useResource(() => (svc.getRunWarnings ? svc.getRunWarnings(runId) : Promise.resolve(null)), [svc, runId, summaryNotes.keys.join("|"), r?.status])
   const fullWs = fullRes.data
   const collected = useMemo(() => (fullWs ? notesFromWarnings(fullWs, r?.steps ?? []) : summaryNotes), [fullWs, summaryNotes, r])
@@ -143,7 +143,7 @@ function RunView({ runId }: { runId: string }) {
   const title = r.status === "queued" ? `대기 중 (순번 ${r.queue_position ?? "-"})` : r.status === "running" ? "분석을 실행하고 있습니다" : r.status === "cancelling" ? "분석 취소를 요청했습니다" : r.status === "success" ? "분석이 끝났습니다" : r.status === "partial" ? "분석이 끝났습니다 (확인할 점 있음)" : r.status === "failed" ? "분석이 실패했습니다" : "분석이 취소되었습니다"
   const retryBtns = (
     <div className="flex flex-wrap gap-2">
-      <Button variant="secondary" onClick={() => void retry()} disabled={busy !== ""}>{busy === "retry" ? "다시 등록 중…" : "같은 조건으로 다시 실행"}</Button>
+      <Button variant="secondary" onClick={() => void retry()} disabled={busy !== ""}>{busy === "retry" ? "다시 등록 중…" : r.status === "cancelled" ? "멈춘 곳부터 이어서 실행" : "같은 조건으로 다시 실행"}</Button>
       <Button variant="secondary" onClick={() => void newRequest()} disabled={busy !== ""}>{busy === "new" ? "불러오는 중…" : "조건 고쳐 새 요청"}</Button>
       <Button variant="ghost" onClick={() => navigate({ page: "home" })}>홈으로</Button>
     </div>
@@ -181,7 +181,7 @@ function RunView({ runId }: { runId: string }) {
               </div>
             )}
             {r.status === "cancelling" && (proposedCancelOf(r)?.immediate
-              ? <Pending title="취소를 처리하고 있습니다." detail={`${proposedCancelOf(r)!.stopped_step ? `「${stepTitle(proposedCancelOf(r)!.stopped_step!, proposedCancelOf(r)!.stopped_step_label_ko ?? "")}」 단계를 바로 멈추고 있습니다. ` : ""}잠시 뒤 이 화면이 「분석이 취소되었습니다」로 바뀝니다. (목업: 즉시 취소)`} />
+              ? <Pending title="취소를 처리하고 있습니다." detail={`${proposedCancelOf(r)!.stopped_step ? `「${stepTitle(proposedCancelOf(r)!.stopped_step!, proposedCancelOf(r)!.stopped_step_label_ko ?? "")}」 단계를 바로 멈추고 있습니다. ` : ""}잠시 뒤 이 화면이 「분석이 취소되었습니다」로 바뀝니다.${svc.mode === "mock" ? " (목업: 즉시 취소)" : ""}`} />
               : <Pending title="분석 취소를 요청했습니다. 현재 작업이 종료되는 데 시간이 걸릴 수 있습니다." detail="진행 중인 단계가 끝나는 시점에 분석이 멈춥니다. 서버가 취소를 마치면 이 화면이 「분석이 취소되었습니다」로 바뀝니다." />)}
             {done && (
               <>
@@ -202,7 +202,7 @@ function RunView({ runId }: { runId: string }) {
                 {retryBtns}
               </>
             )}
-            {r.status === "cancelled" && <>{proposedCancelOf(r) && <CancelSummary c={proposedCancelOf(r)!} />}<p className="text-sm text-slate-700">리포트는 만들지 않았습니다. 요청 조건은 보존되어 같은 조건으로 다시 시작할 수 있습니다.</p>{retryBtns}</>}
+            {r.status === "cancelled" && <>{proposedCancelOf(r) && <CancelSummary c={proposedCancelOf(r)!} />}<p className="text-sm text-slate-700">리포트는 만들지 않았습니다. 「멈춘 곳부터 이어서 실행」을 누르면 같은 조건으로 다시 돌리되, 취소 전에 끝난 단계는 저장된 결과를 다시 써서 빠르게 지나갑니다.</p>{retryBtns}</>}
             {actErr && actErr.kind !== "cancel" && <ActionError title={actErr.kind === "retry" ? "다시 실행하지 못했습니다" : "요청 조건을 불러오지 못했습니다"} message={actErr.message} />}
           </Part>
           <SelectionPreview partial={partial} selStep={selStep} tried={partialTried} done={done} live={!TERMINAL.has(r.status)} />
@@ -259,7 +259,7 @@ function RunView({ runId }: { runId: string }) {
   )
 }
 
-/** 취소 결과 (제안 기능, 목업에서만): 요청·완료 시각과 멈춘 단계. */
+/** 취소 결과: 요청·완료 시각과 멈춘 단계 (실행 상태의 cancel). */
 function CancelSummary({ c }: { c: NonNullable<ReturnType<typeof proposedCancelOf>> }) {
   const hms = (s: string) => s.slice(11, 19)
   const sec = c.completed_at ? Math.max(0, Math.round((new Date(c.completed_at).getTime() - new Date(c.requested_at).getTime()) / 1000)) : null

@@ -112,7 +112,7 @@ src/mocks/mocks.test.tsx       분리·일관성 테스트
 | (옵션 필드) `proposed_rules.allow_zero_initial_amount` | `GET /options` 에 붙는 입력 규칙. 있으면 초기 투자금 0원 + 매월 추가 투자금 허용 (4단계) |
 | `getMessageResults` | 말로 보태기 결과 (반영됨/반영 안 됨/확인 필요, 바뀐 조건) (4단계) |
 | `getRunWarnings` | 단계별 경고 전체 (같은 단계의 같은 문구는 count 로 묶음, 끝난 단계만) (5단계) |
-| (실행 필드) `proposed_cancel` | `GET /runs/{id}` 에 붙는 취소 결과: 요청·완료 시각, 멈춘 단계, 완료 단계 수, `immediate` (5단계) |
+| (실행 필드) `cancel` | `GET /runs/{id}` 에 붙는 취소 결과: 요청·완료 시각, 멈춘 단계, 완료 단계 수, `immediate` (5단계). 처음 이름은 `proposed_cancel`, 실제 서버 구현(2026-11-10) 때 정식 이름으로 |
 | `getPaperKrw` | 모의투자 원화 성과: 날짜별 환율 상태(ok/carried/missing)·원화 평가액, 넣은 원금(원화), 원화 손익·수익률, 같은 방식의 USD 수익률, 환율 변화·효과, 상태별 일수, 계산 불가 사유 (5단계) |
 
 필드별 상세 명세(타입·예시·기준 시점·백엔드가 할 일·연동 시 고칠 파일)는 7단계에서 이 문서에 추가한다.

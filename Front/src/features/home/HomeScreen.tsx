@@ -9,6 +9,7 @@ import { Alert, Badge, Button, Card, EmptyState, ErrorState, Loading } from "../
 import { date, ko } from "../../lib/format"
 import { DetailConditionsDialog, OVERRIDE_LABELS, overrideText, type Overrides } from "./DetailConditions"
 import { ActionError, IdeaPending } from "../analysis/flow"
+import { ResumeCard } from "./ResumeCard"
 import { tendencyLabel } from "../../lib/tendency"
 import { money, pctText } from "../profile/format"  // 내 투자조건 화면과 같은 표기 (1,000만원 · 10%)
 import { reportName } from "../../lib/reportName"
@@ -34,6 +35,10 @@ export function HomeScreen() {
   const ex = useExample()  // 최근 리포트 맨 위의 「예시」 리포트
   const example = ex.visible
   const [ui, setUi] = useState(() => loadUi())
+  // 취소한 분석 (이어서 실행 가능): 서버 실행 목록 기준이라 다른 브라우저에서도 보인다. 「지우기」 한 것은 이 브라우저에서만 숨김
+  const runs = useResource(() => svc.listRuns(), [svc]).data
+  const resumes = (runs ?? []).filter((r) => r.resumable && !(ui.dismissedResumeIds ?? []).includes(r.run_id))
+  const dismissResume = (runId: string) => setUi(saveUi({ dismissedResumeIds: [...(ui.dismissedResumeIds ?? []), runId], ...(ui.activeRunId === runId ? { activeRunId: null } : {}) }))
   useEffect(() => { saveUi({ draftIdea: idea }) }, [idea])
   useEffect(() => { saveUi({ draftOverrides: overrides }) }, [overrides])
   useEffect(() => { const u = loadUi(); if (u.prefillIdea || u.prefillOverrides || u.prefillNote) setUi(saveUi({ prefillIdea: null, prefillOverrides: null, prefillNote: null })) }, [])  // 미리 채운 값(새 요청)은 한 번만 쓴다
@@ -85,11 +90,12 @@ export function HomeScreen() {
         </div>
       </div>
       {detail && <DetailConditionsDialog profile={profile.profile} initial={overrides} onApply={setOverrides} close={() => setDetail(false)} />}
-      {(ui.activeRequestId || ui.activeRunId) && (
+      <ResumeCard runs={resumes} onDismiss={dismissResume} />
+      {(ui.activeRequestId || (ui.activeRunId && !resumes.some((r) => r.run_id === ui.activeRunId))) && (
         <Alert title="진행 중이던 분석이 있습니다" tone="info">
           <div className="flex gap-2">
             {ui.activeRequestId && <Button variant="secondary" onClick={() => navigate({ page: "clarify", requestId: ui.activeRequestId! })}>조건 확인 이어서</Button>}
-            {ui.activeRunId && <Button variant="secondary" onClick={() => navigate({ page: "run", runId: ui.activeRunId! })}>실행 상태 보기</Button>}
+            {ui.activeRunId && !resumes.some((r) => r.run_id === ui.activeRunId) && <Button variant="secondary" onClick={() => navigate({ page: "run", runId: ui.activeRunId! })}>실행 상태 보기</Button>}
             <Button variant="ghost" onClick={() => setUi(saveUi({ activeRequestId: null, activeRunId: null }))}>지우기</Button>
           </div>
         </Alert>

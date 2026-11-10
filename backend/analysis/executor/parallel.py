@@ -88,3 +88,30 @@ def map_ordered(
 def run_ordered(ctx: Any, stage: str, items: Sequence[T], fn: Callable[[T], R], *, max_workers: int) -> list[R]:
     """RunContext 용: 진행 표시(ctx.progress)와 취소 확인(ctx.cancel_check)을 꽂은 map_ordered."""
     return map_ordered(items, fn, max_workers=max_workers, on_done=lambda i, n: ctx.progress(stage, i, n), cancel_check=ctx.cancel_check)
+
+
+def wait_cancellable(fn: Callable[[], R], cancel_check: Callable[[], bool] | None, *, poll_s: float = 0.25, name: str = "wait") -> R:
+    """오래 막히는 호출 하나(DB 대량 적재 등)를 별도 스레드에서 돌리며 취소를 확인한다. 취소면 기다리지 않고 CancelRequested.
+    호출은 뒤에서 끝까지 돈다 (가격 적재면 결과가 캐시에 남아 다음 실행이 그대로 쓴다). cancel_check 가 없으면 그냥 부른다."""
+    if cancel_check is None:
+        return fn()
+    if cancel_check():
+        raise CancelRequested("취소 요청")
+    done = threading.Event()
+    box: dict[str, Any] = {}
+
+    def target() -> None:
+        try:
+            box["value"] = fn()
+        except BaseException as e:  # noqa: BLE001 — 기다리는 쪽에서 다시 던진다
+            box["error"] = e
+        finally:
+            done.set()
+
+    threading.Thread(target=target, name=f"cancellable-{name}", daemon=True).start()  # daemon: 취소로 버린 호출이 프로세스 종료를 막지 않게
+    while not done.wait(poll_s):
+        if cancel_check():
+            raise CancelRequested("취소 요청")
+    if "error" in box:
+        raise box["error"]
+    return box["value"]

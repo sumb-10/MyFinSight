@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import { createServiceAsync, HttpService, type AnalysisService } from "../api/service"
 import { fetchJson } from "../api/client"
-import { PROPOSED_METHODS, proposedOf, type ProposedApi } from "../api/proposed"
+import { PROPOSED_METHODS, proposedCancelOf, proposedOf, type ProposedApi } from "../api/proposed"
 import { normalizeDoc } from "../lib/reportNormalize"
 import { Providers } from "../app/providers"
 import App from "../app/App"
@@ -41,6 +41,7 @@ describe("목업 모드 분리", () => {
       // B 투자조건 규칙
       // C 질문 화면
       // D 분석 진행
+      "getRunWarnings",
       // E 원화 계산
       // F 변경 이력·모의투자 이름
       "getProfileVersion",
@@ -80,6 +81,13 @@ describe("목업 모드 분리", () => {
     setUrl("/?mock=1#/home")
     await expect(fetchJson("/reports")).rejects.toMatchObject({ code: "MOCK_NETWORK_BLOCKED" })
     expect(f).not.toHaveBeenCalled()
+  })
+  it("단계별 경고 전체는 서버 주소로 요청하고, 취소 결과는 실행 상태의 cancel 을 읽는다", async () => {
+    const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("[]", { status: 200 }))
+    await new HttpService().getRunWarnings("run_1")
+    expect(f.mock.calls.map(([u, i]) => [String(u).replace(/^.*\/api\/v1/, ""), i?.method])).toEqual([["/runs/run_1/warnings", "GET"]])
+    const c = { requested_at: "a", completed_at: null, stopped_step: null, stopped_step_label_ko: null, done_steps: 0, immediate: false }
+    expect(proposedCancelOf({ cancel: c })).toBe(c); expect(proposedCancelOf({ cancel: null })).toBeNull(); expect(proposedCancelOf({})).toBeNull()
   })
   it("목업 서비스는 어떤 메서드도 네트워크를 쓰지 않고, 바뀐 상태는 목업 전용 sessionStorage 에만 둔다", async () => {
     const f = vi.spyOn(globalThis, "fetch")
