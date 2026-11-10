@@ -140,7 +140,7 @@ describe("모의투자 이름 연동 화면", () => {
     withSvc(mock(), <PaperScreen paperId="mock_paper_a2" />)
     const h1 = await screen.findByRole("heading", { level: 1, name: "시가총액 비중 비교용" }, { timeout: 5000 })
     expect(screen.queryByText(/직접 정한 이름 · 리포트 이름:|리포트 이름과 연동된 이름/)).toBeNull()  // 이름 정해진 방식 줄은 두지 않는다
-    expect(screen.queryByRole("button", { name: "이름 바꾸기" })).toBeNull()  // 글자 버튼은 없고 더보기 안에 있다
+    expect(screen.queryByRole("button", { name: "이름 바꾸기" })).toBeNull()  // 글자 버튼은 없다 (제목 옆 연필과 더보기 안)
     const more = () => fireEvent.click(screen.getByRole("button", { name: "더보기" }))
     more(); fireEvent.click(screen.getByRole("menuitem", { name: "리포트 이름과 다시 연동" }))
     await waitFor(() => expect(h1).toHaveTextContent(AUTO))
@@ -151,6 +151,11 @@ describe("모의투자 이름 연동 화면", () => {
     fireEvent.change(within(dlg).getByRole("textbox", { name: "모의투자 이름" }), { target: { value: "시총 비교 2" } })
     fireEvent.click(within(dlg).getByRole("button", { name: "저장" }))
     await waitFor(() => expect(h1).toHaveTextContent("시총 비교 2"))
+    // 제목 옆 연필로도 같은 창이 열린다 (리포트 상세와 같음). 지금 이름 방식(직접 입력)이 골라져 있다
+    fireEvent.click(within(h1.parentElement!).getByRole("button", { name: "모의투자 이름 바꾸기" }))
+    const dlg2 = await screen.findByRole("dialog", { name: "모의투자 이름 바꾸기" })
+    expect(within(dlg2).getByRole("radio", { name: /모의투자 이름 직접 입력/ })).toBeChecked()
+    expect(within(dlg2).getByRole("textbox", { name: "모의투자 이름" })).toHaveValue("시총 비교 2")
   })
   it("일반 모드(제안 메서드 없음): 시작 창에 이름 선택이 없고, 상세에 이름 바꾸기가 없다", async () => {
     const s = plain(mock())
@@ -160,6 +165,7 @@ describe("모의투자 이름 연동 화면", () => {
     unmount()
     withSvc(s, <PaperScreen paperId="mock_paper_a2" />)
     await screen.findByRole("heading", { level: 1 }, { timeout: 5000 })
+    expect(screen.queryByRole("button", { name: "모의투자 이름 바꾸기" })).toBeNull()  // 제목 옆 연필도 없다
     fireEvent.click(screen.getByRole("button", { name: "더보기" }))
     expect(screen.queryByRole("menuitem", { name: "이름 바꾸기" })).toBeNull()
     expect(screen.getByRole("menuitem", { name: "원본 리포트 보기" })).toBeInTheDocument()

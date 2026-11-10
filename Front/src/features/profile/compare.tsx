@@ -11,7 +11,7 @@ import { whenText } from "./history"
 import { useStockNames } from "./stocks"
 import { templateLabel, weightingLabel } from "./strategyInfo"
 
-// 투자조건 버전 비교 (제안 기능): 서비스에 getProfileVersion(과거 버전 값 전체)이 있을 때만 — 지금은 목업뿐.
+// 투자조건 버전 비교 (제안 기능): 서비스에 getProfileVersion(과거 버전 값 전체)이 있을 때만 (실제 서버: GET /profile/versions/{version}).
 // 값 표시는 저장된 투자조건 화면과 같은 글(format.ts)을 쓴다.
 
 export interface ProfileRow { group: string; key: string; label: string; value: string }
