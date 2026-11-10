@@ -41,6 +41,93 @@
    "title": "FieldError",
    "type": "object"
   },
+  "MessageChange": {
+   "description": "「말로 보태기」 전후로 달라진 표시값 하나 (조건 행, 또는 field='intent.themes' 인 해석한 테마).",
+   "properties": {
+    "field": {
+     "title": "Field",
+     "type": "string"
+    },
+    "label_ko": {
+     "title": "Label Ko",
+     "type": "string"
+    },
+    "before_ko": {
+     "title": "Before Ko",
+     "type": "string"
+    },
+    "after_ko": {
+     "title": "After Ko",
+     "type": "string"
+    }
+   },
+   "required": [
+    "field",
+    "label_ko",
+    "before_ko",
+    "after_ko"
+   ],
+   "title": "MessageChange",
+   "type": "object"
+  },
+  "MessageResult": {
+   "description": "「말로 보태기」 한 번의 처리 결과 (제안 계약 ProposedMessageResult). 서버가 그 턴 전후를 비교해 남긴다.\n말은 조건 값을 직접 바꾸지 않는다 — 아이디어 보충으로 붙어 테마 해석을 바꾸거나, 값을 바꿔야 하면 확인 질문으로 이어진다.\napplied = 테마·조건 표시값이 바뀜 / needs_confirmation = 확인 질문이 생김 / not_applied = 둘 다 아님.",
+   "properties": {
+    "text": {
+     "title": "Text",
+     "type": "string"
+    },
+    "at": {
+     "title": "At",
+     "type": "string"
+    },
+    "outcome": {
+     "enum": [
+      "applied",
+      "not_applied",
+      "needs_confirmation"
+     ],
+     "title": "Outcome",
+     "type": "string"
+    },
+    "changes": {
+     "default": [],
+     "items": {
+      "$ref": "#/$defs/MessageChange"
+     },
+     "title": "Changes",
+     "type": "array"
+    },
+    "note_ko": {
+     "default": "",
+     "title": "Note Ko",
+     "type": "string"
+    },
+    "question_seqs": {
+     "default": [],
+     "items": {
+      "type": "integer"
+     },
+     "title": "Question Seqs",
+     "type": "array"
+    },
+    "closed_seqs": {
+     "default": [],
+     "items": {
+      "type": "integer"
+     },
+     "title": "Closed Seqs",
+     "type": "array"
+    }
+   },
+   "required": [
+    "text",
+    "at",
+    "outcome"
+   ],
+   "title": "MessageResult",
+   "type": "object"
+  },
   "ProgressStep": {
    "description": "새 요청 첫 해석의 한 단계 (m1_request/progress.py). detail_ko = 그 단계의 실제 결과 (예: '후보 120개', '분류 2/3 묶음').",
    "properties": {
@@ -204,6 +291,18 @@
      ],
      "default": null,
      "title": "Answered At"
+    },
+    "batch": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Batch"
     }
    },
    "required": [
@@ -694,6 +793,14 @@
    ],
    "default": null,
    "title": "Progress Updated At"
+  },
+  "message_results": {
+   "default": [],
+   "items": {
+    "$ref": "#/$defs/MessageResult"
+   },
+   "title": "Message Results",
+   "type": "array"
   }
  },
  "required": [

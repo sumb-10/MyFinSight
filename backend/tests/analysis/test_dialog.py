@@ -35,10 +35,10 @@ Q_BAD = {"field": "capital.initial_amount", "kind": "preference", "question_ko":
 
 @pytest.fixture
 def svc_factory(seeded_repo, descriptor_dir, tmp_path):
-    def make(answers, *, max_questions=5, sector_rule=False):
+    def make(answers, *, max_questions=5, sector_rule=False, max_batch=3):  # max_batch=1 → 예전처럼 한 턴에 하나씩 (6번 전 흐름을 보는 테스트)
         s = AnalysisSettings()
         s = replace_settings(s, market=replace_settings(s.market, descriptor_dir=str(descriptor_dir), valuation_max_staleness_days=10),
-                             dialog=replace_settings(s.dialog, max_questions=max_questions, ask_sector_cap_conflict=sector_rule))  # fmt: skip
+                             dialog=replace_settings(s.dialog, max_questions=max_questions, ask_sector_cap_conflict=sector_rule, max_batch_questions=max_batch))  # fmt: skip
         store = JsonStore(tmp_path / f"store_{len(list(tmp_path.iterdir()))}")
         ProfileStore(store).save(PROFILE_FIELDS)
         llm = StubLlm({"02_intent": answers})
@@ -48,7 +48,7 @@ def svc_factory(seeded_repo, descriptor_dir, tmp_path):
 
 
 def test_three_turns_converge_and_confirm_is_idempotent(svc_factory):
-    svc, store, llm = svc_factory([_intent([Q_TEMPLATE, Q_REB]), _intent([Q_REB]), _intent([])])
+    svc, store, llm = svc_factory([_intent([Q_TEMPLATE, Q_REB]), _intent([Q_REB]), _intent([])], max_batch=1)  # 하나씩 묻는 흐름 (함께 묻기는 test_batch_questions)
     st = svc.start("미국과 한국의 반도체·메모리 기업에 분산 투자하고 싶다")
     assert st.state == "asking" and st.turn == 1 and st.question.field == "strategy_preference.template" and st.hard_errors == []
     assert st.summary.derived["as_of"] == "2025-12-31" and st.summary.themes[0]["id"] == "semiconductor"
@@ -106,7 +106,7 @@ def test_limit_blocks_and_skip(svc_factory):
     for q in many[2:]:
         q["options"] = []
         q["allow_free_text"] = True
-    svc, store, llm = svc_factory([_intent(many)] * 10, max_questions=2)
+    svc, store, llm = svc_factory([_intent(many)] * 10, max_questions=2, max_batch=1)  # 하나씩 묻는 흐름의 상한 (함께 묻기의 상한은 test_batch_questions)
     st = svc.start("반도체 장기 투자")
     assert st.turn == 1 and st.max_questions == 2
     st = svc.skip(st.request_id, 1)

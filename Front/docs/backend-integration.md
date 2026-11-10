@@ -121,6 +121,13 @@
 - **정책:** 필수 질문 미답이면 422(어느 질문인지 포함). 보기 값은 조건에 반영, `skip` 은 기본 투자조건 유지, 자유 입력은 서버(LLM)가 해석. 반영 후 조건 행(`conditions`)이 바뀐 값·`source:"answer"` 를 정확히 줘야 화면의 「반영 결과」가 맞는다.
 - **목업:** `MockService.getQuestionBatch/answerBatch/advance`, 조건 반영 `mocks/data/dialog.ts` 의 `applyField`·`conditionRows`. **프런트 수정:** `api/service.ts`. 화면 `features/analysis/BatchQuestions.tsx`·`ClarifyScreen.tsx`.
 - **주의:** 「이미 답한 조건을 다시 묻는 문제」는 서버 문제로 남아 있다 (한 번에 묻더라도 같은 필드를 다시 물으면 안 됨).
+- **✅ 실제 서버 구현 (2026-11-10):** `GET /requests/{id}/questions` → `ProposedQuestionBatch` (질문 중이 아니거나 고칠 조건 오류가 있으면 빈 목록), `POST /requests/{id}/answers` body `ProposedBatchAnswer[]` → `DialogState`.
+  **무엇을 함께 묻나:** 가장 급한 질문 하나(예전 규칙 그대로) + 답이 종목 선정·후보 수·기간·배분 가능 비율에 영향이 없는 항목(리밸런싱·비중 방식·뉴스 반영·비교지수·목표 수익률·허용 낙폭·월 적립·투자 목적)만, 최대 3개(`settings.dialog.max_batch_questions`).
+  선정 기준·종목 범위·넣을/뺄 것·아이디어·기간·종목 수·비중 상한·최소 현금은 앞 답에 따라 뒤 질문의 숫자가 바뀌어 다음 턴에 묻는다. 첫 질문이 점검 질문이거나 보기가 여러 조건을 함께 바꾸면(`patch`) 혼자 묻는다.
+  **필수/선택(4절 6번):** 모두 선택(`required: false`) — 지금처럼 어느 질문이든 「답하지 않음 (기본값 사용)」. 목록에서 빠지거나 빈 답도 답하지 않음. 자유 입력은 아이디어 보충으로 LLM 이 해석.
+  답을 모두 반영해 HARD 규칙을 함께 검사하고, 부딪히면 아무것도 바꾸지 않고 422 (`details.seqs`). 답들을 한 메시지로 알려 의도 해석을 **한 번만** 돈다. 지금 묻지 않는 질문은 422, 답할 질문이 없으면 409.
+  하나씩 답하는 `POST /answer`·`/skip` 도 그대로 쓸 수 있고, 묶음의 질문이 남아 있으면 턴을 미룬다. 질문에는 묶음 번호 `batch`(그 턴 첫 질문의 seq). 프런트는 `HttpService.getQuestionBatch/answerBatch`,
+  화면은 **함께 물은 질문이 둘 이상일 때만** 한 번에 답하는 화면(하나면 점검 숫자·바뀌는 조건을 보여 주는 하나씩 화면), 보낸 뒤 질문이 더 생기면 「보낸 답변과 반영 결과」에 확인 화면 버튼 대신 다음 질문.
 
 ### 2-8. 「말로 보태기」 처리 결과 — 4단계
 
@@ -130,6 +137,11 @@
 - **예시:** `{"text":"테슬라도 꼭 넣어 주세요","outcome":"applied","changes":[{"field":"constraints.must_include_tickers","label_ko":"꼭 넣을 종목","before_ko":"엔비디아 (NVDA), 마이크론 테크놀로지 (MU)","after_ko":"엔비디아 (NVDA), 마이크론 테크놀로지 (MU), 테슬라 (TSLA)"}],"note_ko":"말씀하신 종목을 꼭 넣을 종목에 더했습니다."}`
 - **정책:** 반영되지 않으면 기존 조건 유지와 이유, 확인 필요면 무엇을 확인해야 하는지. **실제 자연어 해석·반영은 서버 문제**(목업은 회사명·티커 + 넣다/빼다만 알아듣는다).
 - **목업:** `MockService.sendMessage/getMessageResults`, 해석 `dialog.ts` 의 `interpretMessage`. **프런트 수정:** `api/service.ts`. 화면 `features/analysis/MessageOutcome.tsx`·`ClarifyScreen.tsx`·`ConfirmScreen.tsx`.
+- **✅ 실제 서버 구현 (2026-11-10, 결과 기록만):** `GET /requests/{id}/messages` → 보낸 순서대로 `ProposedMessageResult[]` (+ `question_seqs`·`closed_seqs`: 이 말 다음에 생긴 질문들·닫힌 질문들). 요청 문서의 `message_results` 에 쌓는다.
+  **말로 보태기 동작은 그대로다** — 말은 아이디어 끝에 `[추가 요청] …` 으로 붙어 의도 해석(LLM)을 다시 돌릴 뿐 조건 값을 직접 바꾸지 않는다 (값은 질문의 답·「조건 바꾸기」로만 바뀐다).
+  그래서 결과는 문장을 따로 해석하지 않고 **그 턴 전후로 실제 달라진 것**으로 정한다: 이 턴에 확인 질문이 생김 → `needs_confirmation` / 해석한 테마(`field: "intent.themes"`)나 조건 표시값이 달라짐 → `applied` /
+  둘 다 아님 → `not_applied` (보탠 말은 아이디어 보충으로 남아 리포트 요약에 들어간다는 것과 「조건 바꾸기」 안내, 질문 상한에 닿았으면 그 사실). 말을 보내며 답하지 않은 채 닫힌 질문이 있으면 `note_ko` 에 알린다.
+  따라서 실제 서버의 `applied` 는 대개 「테마 해석이 바뀜」이다 — 결과 카드·리포트 배지 제목을 「조건에 반영됨」 → 「반영됨」 으로 바꿨다. 이 기능 전에 보낸 말은 기록이 없다(빈 목록). 프런트는 `HttpService.getMessageResults`.
 
 ### 2-9. 분석 취소 결과 (즉시 취소) — 5단계
 
@@ -190,6 +202,10 @@
 - **예시:** `execution` → `{"as_of":"2026-10-30","strategy_label_ko":"동일비중","share_basis":"integer","commission_bps":5,"fx":{"rate":1380,"date":"2026-10-30"},"capital":{"amount":20000000,"currency":"KRW"},"items":[{"ticker":"NVDA","price_usd":182.4,"target_weight":0.1667,"target_krw":3333333,"shares":13,"cost_usd":2371.2,"fee_usd":1.19}],"totals":{"invested_usd":13275,"fee_usd":6.64,"cash_left_usd":1211.11}}`
 - **목업:** `mocks/data/report.ts`(`buildReport`, `execution()`, `explanations()`), `mocks/data/backtest.ts`. **프런트 수정:** `api/proposed.ts`(`proposedOf`), `features/report/proposedView.tsx`(어댑터). 카드·섹션 컴포넌트는 어댑터 결과만 본다.
 - **주의:** 일부 값(값 USD 차트의 원화, ETF·변동성 기본값 설명)은 아직 프런트 문구다(2단계 부분 구현). 서버가 `explanations` 를 주면 그쪽을 우선.
+- **✅ 실제 서버 구현 — `request_log` (2026-11-10):** `GET /reports/{id}` 의 `proposed.request_log` = `{ idea, qa[], messages[], final_conditions[] }` (`ProposedRequestLog` 그대로, `m5_backtest_report/request_log.py`).
+  `qa` = 답한 질문(건너뜀 포함, `applied_ko` = 조건에 들어간 값 「선정 기준(템플릿) → 퀄리티(ROE)」, 건너뜀은 `null`), `messages` = 2-8 의 결과 기록(`changes` → 「라벨: 전 → 후」 문장),
+  `final_conditions` = 조건 확인 화면과 같은 확정 조건 표(아이디어 행 제외, `changed` = 기본 투자조건·수정안이면 원안과 다름). 실행이 끝날 때 리포트에 붙여 저장하고, 이 기능 전 리포트는 읽을 때 요청 문서에서 만든다.
+  **결과 기록 없이 보낸 말이 있는 예전 요청은 붙이지 않는다** (화면은 「보낸 문장은 불러올 수 있는 기록이 없다」 안내 그대로). 수정안이 원안에게 물려받은 보충 문장은 세지 않는다.
 
 ---
 

@@ -4,6 +4,7 @@ import { useService } from "../../app/providers"
 import { navigate } from "../../app/router"
 import { errorMessage } from "../../api/client"
 import type { ConditionRow, DialogState, ProgressStep, Question } from "../../api/types"
+import type { ProposedMessageResult } from "../../api/proposed"
 import { saveUi } from "../../state/uiStorage"
 import { Alert, Badge, Button } from "../../ui"
 import { ko } from "../../lib/format"
@@ -201,6 +202,18 @@ export function useFlowNotice(requestId: string) {
   const [n] = useState(() => notices.get(requestId) ?? null)
   useEffect(() => { notices.delete(requestId) }, [requestId])
   return n
+}
+
+/** 질문 화면에서 말로 보탠 직후 더 물을 것이 없으면 곧바로 확인 화면으로 넘어간다 — 결과를 보기 전에 화면이 바뀌지 않도록 그 결과를 확인 화면에 넘긴다.
+ *  results = 서버의 처리 결과 (getMessageResults 가 없으면 null → 조건 표 전후 비교 changes 로 안내). */
+export interface CarriedNote { changes: RowChange[]; results: ProposedMessageResult[] | null }
+const carriedNotes = new Map<string, CarriedNote>()
+export const carryNoteResult = (requestId: string, c: CarriedNote) => { carriedNotes.set(requestId, c) }
+/** 읽고 지운다 (useFlowNotice 와 같은 방식). */
+export function useCarriedNote(requestId: string) {
+  const [c] = useState(() => carriedNotes.get(requestId) ?? null)
+  useEffect(() => { carriedNotes.delete(requestId) }, [requestId])
+  return c
 }
 
 /** 질문 화면 맨 위: 확인 화면에서 바꾼 것 때문에 다시 확인할 것이 생겨 돌아왔다는 안내. */

@@ -42,6 +42,7 @@ describe("목업 모드 분리", () => {
       "recommendStrategy",
       "startProfileChat", "answerProfileChat", "rewindProfileChat",
       // C 질문 화면
+      "getMessageResults", "getQuestionBatch", "answerBatch",
       // D 분석 진행
       "getRunWarnings",
       // E 원화 계산

@@ -11,8 +11,9 @@ import { MockTag } from "../report/proposedView"
 import { Part } from "../profile/parts"
 import { ActionError, Pending, type RowChange } from "./flow"
 
-// 여러 질문에 한 번에 답하기 (제안 기능): 서비스에 getQuestionBatch·answerBatch 가 있을 때만 — 지금은 목업뿐.
-// 일반 모드는 지금처럼 서버가 주는 질문을 하나씩 답한다.
+// 여러 질문에 한 번에 답하기 (제안 기능): 서비스에 getQuestionBatch·answerBatch 가 있고 함께 물은 질문이 둘 이상일 때 (ClarifyScreen).
+// 실제 서버는 가장 급한 질문 + 답이 종목 선정·후보 수에 영향이 없는 질문만 함께 묻고, 모든 질문은 비워 두면 답하지 않음(기본값)이다.
+// 목업은 꼭 넣을 종목 외에는 필수로 둔다.
 
 type Q = ProposedQuestionBatch["questions"][number]
 type Draft = { pick?: { v: unknown }; text: string }
@@ -44,7 +45,7 @@ export function BatchQuestions({ requestId, st, onDone }: { requestId: string; s
   }
 
   return (
-    <Part title="추가 점검 질문" aside={<MockTag />} desc={`질문 ${qs.length}개를 한 화면에서 답하고 한 번에 보냅니다. 필수 ${required.length}개 · 선택 ${qs.length - required.length}개 (선택 질문은 비워 두면 기본 투자조건을 그대로 씁니다).`}>
+    <Part title="추가 점검 질문" aside={<MockTag />} desc={`질문 ${qs.length}개를 한 화면에서 답하고 한 번에 보냅니다. ${required.length ? `필수 ${required.length}개 · 선택 ${qs.length - required.length}개 (선택 질문은 비워 두면 기본 투자조건을 그대로 씁니다).` : "비워 둔 질문은 기본 투자조건을 그대로 씁니다."}`}>
       <ol className="space-y-4">
         {qs.map((q, i) => {
           const x = d(q), e = errs[q.seq]
@@ -82,11 +83,13 @@ export function BatchQuestions({ requestId, st, onDone }: { requestId: string; s
 }
 
 /** 보낸 답변 요약과 최종 조건에 반영된 결과. 확인 화면으로 넘어가기 전에 한 번 보여 준다. */
-export function BatchResult({ requestId, sent, changes }: { requestId: string; sent: Submitted[]; changes: RowChange[] }) {
+/** more = 답을 반영한 뒤 서버가 질문을 더 냈다 (실제 서버는 종목 선정을 바꾸는 질문을 다음 턴에 묻는다) → 확인 화면으로 가는 버튼 대신 아래 질문으로. */
+export function BatchResult({ requestId, sent, changes, more = false }: { requestId: string; sent: Submitted[]; changes: RowChange[]; more?: boolean }) {
+  const svc = useService()
   const byLabel = (label: string) => changes.find((c) => c.label === label)
   const extra = changes.filter((c) => !sent.some((s) => s.fieldLabel === c.label))
   return (
-    <Part title="보낸 답변과 반영 결과" aside={<MockTag />} desc="답변을 조건에 반영했습니다. 확인 화면에서 최종 조건을 한 번 더 보고 분석을 시작합니다.">
+    <Part title="보낸 답변과 반영 결과" aside={<MockTag />} desc={more ? "답변을 조건에 반영했습니다. 답에 따라 더 확인할 질문이 생겨 아래에 이어서 묻습니다." : "답변을 조건에 반영했습니다. 확인 화면에서 최종 조건을 한 번 더 보고 분석을 시작합니다."}>
       <ol className="space-y-2">
         {sent.map((s, i) => {
           const c = byLabel(s.fieldLabel)
@@ -94,7 +97,7 @@ export function BatchResult({ requestId, sent, changes }: { requestId: string; s
             <li key={s.seq} className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
               <p className="text-xs text-slate-500"><b className="text-slate-700">질문 {i + 1}</b> · {s.question}</p>
               <p className="mt-1 font-semibold text-slate-950">{s.answer}</p>
-              <p className="mt-0.5 text-xs text-slate-600">{c ? <>조건에 반영됨 · {c.label}: {c.before} → <b>{c.after}</b></> : s.kind === "skip" ? "기본 투자조건을 그대로 씁니다." : s.kind === "text" ? "직접 적은 답은 기록만 했습니다 (목업은 자유 입력을 해석하지 않습니다)." : "기본 투자조건과 같은 값이라 바뀐 조건은 없습니다."}</p>
+              <p className="mt-0.5 text-xs text-slate-600">{c ? <>조건에 반영됨 · {c.label}: {c.before} → <b>{c.after}</b></> : s.kind === "skip" ? "기본 투자조건을 그대로 씁니다." : s.kind === "text" ? (svc.mode === "mock" ? "직접 적은 답은 기록만 했습니다 (목업은 자유 입력을 해석하지 않습니다)." : "직접 적은 답은 아이디어 보충으로 전달해 분석 모델이 해석했습니다.") : "기본 투자조건과 같은 값이라 바뀐 조건은 없습니다."}</p>
             </li>
           )
         })}
@@ -107,7 +110,7 @@ export function BatchResult({ requestId, sent, changes }: { requestId: string; s
         </div>
       )}
       {changes.length === 0 && <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">답변으로 바뀐 조건 값은 없습니다.</p>}
-      <div className="flex justify-end"><Button onClick={() => navigate({ page: "confirm", requestId })}>조건 최종 확인으로<ArrowRight className="size-4" /></Button></div>
+      {!more && <div className="flex justify-end"><Button onClick={() => navigate({ page: "confirm", requestId })}>조건 최종 확인으로<ArrowRight className="size-4" /></Button></div>}
     </Part>
   )
 }

@@ -8,7 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Request
 from pydantic import BaseModel, Field
 
 from backend.analysis.api.routers import services
-from backend.analysis.schemas.dialog import DialogState
+from backend.analysis.schemas.dialog import DialogState, MessageResult
 
 router = APIRouter(tags=["requests"])
 
@@ -63,6 +63,50 @@ def skip(request_id: str, body: SeqIn, request: Request) -> DialogState:
     return services(request).dialog().skip(request_id, body.seq)
 
 
+class BatchOption(BaseModel):
+    value: Any = None
+    label_ko: str
+
+
+class BatchQuestion(BaseModel):
+    seq: int
+    field: str
+    field_label_ko: str
+    question_ko: str
+    why_ko: str | None = None
+    required: bool = False  # 지금처럼 모든 질문은 「답하지 않음 (기본값 사용)」 으로 넘길 수 있다
+    options: list[BatchOption] = []
+    allow_free_text: bool = True
+
+
+class QuestionBatch(BaseModel):
+    request_id: str
+    questions: list[BatchQuestion] = []
+
+
+class BatchAnswerIn(BaseModel):
+    seq: int
+    option_value: Any | None = None
+    free_text: str | None = None
+    skip: bool = False
+
+
+@router.get("/requests/{request_id}/questions", response_model=QuestionBatch)
+def question_batch(request_id: str, request: Request) -> QuestionBatch:
+    """지금 답을 기다리는 질문들 — 한 턴에 함께 물은 묶음 (서로 영향 없는 항목만 최대 3개). 고칠 조건 오류가 있거나 질문 중이 아니면 빈 목록."""
+    doc = services(request).requests.load(request_id)
+    qs = [q for q in doc.questions if not q.answered_at] if doc.dialog_state == "asking" and not doc.hard_errors else []
+    return QuestionBatch(request_id=request_id, questions=[BatchQuestion(seq=q.seq, field=q.field, field_label_ko=q.field_label_ko or q.field, question_ko=q.question_ko,
+                                                                        why_ko=q.why_ko or None, options=[BatchOption(value=o.value, label_ko=o.label_ko) for o in q.options],
+                                                                        allow_free_text=q.allow_free_text) for q in qs])  # fmt: skip
+
+
+@router.post("/requests/{request_id}/answers", response_model=DialogState)
+def answer_batch(request_id: str, body: list[BatchAnswerIn], request: Request) -> DialogState:
+    """함께 물은 질문들에 한 번에 답한다. 빠진 질문·빈 답은 답하지 않음(기본값). 함께 고른 답이 서로 부딪히면 422 (details.seqs). 턴은 한 번만 돈다."""
+    return services(request).dialog().answer_batch(request_id, [a.model_dump() for a in body])
+
+
 class OverridesIn(BaseModel):
     overrides: dict[str, Any]
 
@@ -81,6 +125,12 @@ def update_overrides(request_id: str, body: OverridesIn, request: Request) -> Di
 def message(request_id: str, body: MessageIn, request: Request) -> DialogState:
     """질문과 상관없이 말로 조건·아이디어를 보탬. 다음 턴에 해석한다."""
     return services(request).dialog().message(request_id, body.text)
+
+
+@router.get("/requests/{request_id}/messages", response_model=list[MessageResult])
+def message_results(request_id: str, request: Request) -> list[MessageResult]:
+    """「말로 보태기」 처리 결과, 보낸 순서 (반영됨·반영 안 됨·확인 필요와 바뀐 것). 이 기능 전에 보낸 말은 기록이 없다."""
+    return services(request).requests.load(request_id).message_results
 
 
 @router.post("/requests/{request_id}/confirm")

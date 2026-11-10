@@ -3,11 +3,12 @@ import type { ProposedMessageResult } from "../../api/proposed"
 import { Disclosure } from "../../ui"
 import { MockTag } from "../report/proposedView"
 
-// 「말로 보태기」 처리 결과 (제안 기능): 서비스에 getMessageResults 가 있을 때만 — 지금은 목업의 미리 정한 해석 결과뿐이다.
-// 처리 중 상태는 기존 Pending 이 보여 주고, 끝나면 반영됨 / 반영되지 않음 / 추가 확인 필요 중 하나를 보여 준다.
+// 「말로 보태기」 처리 결과 (제안 기능): 서비스에 getMessageResults 가 있을 때만. 실제 서버는 그 턴 전후를 비교해 기록한다
+// (테마·조건이 달라짐 = 반영됨, 확인 질문이 생김 = 추가 확인 필요, 둘 다 아님 = 반영되지 않음). 목업은 회사명 + 넣다/빼다만 알아듣는 흉내.
+// 처리 중 상태는 기존 Pending 이 보여 주고, 끝나면 셋 중 하나를 보여 준다.
 
 const LOOK = {
-  applied: { title: "조건에 반영됨", box: "border-emerald-200 bg-emerald-50 text-emerald-950", Icon: CheckCircle2 },
+  applied: { title: "반영됨", box: "border-emerald-200 bg-emerald-50 text-emerald-950", Icon: CheckCircle2 },
   not_applied: { title: "반영되지 않음", box: "border-slate-200 bg-slate-50 text-slate-800", Icon: MinusCircle },
   needs_confirmation: { title: "추가 확인 필요", box: "border-amber-200 bg-amber-50 text-amber-950", Icon: AlertTriangle },
 } as const

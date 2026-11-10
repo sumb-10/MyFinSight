@@ -10,7 +10,7 @@ import { ko } from "../../lib/format"
 import { RevisionCard } from "./RevisionCard"
 import { DetailConditionsDialog, OVERRIDE_LABELS, overrideText } from "../home/DetailConditions"
 import { Part } from "../profile/parts"
-import { ActionError, AllConditions, AnsweredList, BackToQuestions, CancelRequestButton, CancelRequestConfirm, ChangedConditions, FlowHeader, FlowSteps, IdeaPart, KIND_HELP, LLM_DETAIL, NOTE_BUTTON, NOTE_DESC, NOTE_UNSENT, Pending, ResultNote, diffRows, keepPendingNote, pendingNote, startNewWith, useFlowNotice, useLeaveRequest, type RowChange } from "./flow"
+import { ActionError, AllConditions, AnsweredList, BackToQuestions, CancelRequestButton, CancelRequestConfirm, ChangedConditions, FlowHeader, FlowSteps, IdeaPart, KIND_HELP, LLM_DETAIL, NOTE_BUTTON, NOTE_DESC, NOTE_UNSENT, Pending, ResultNote, diffRows, keepPendingNote, pendingNote, carryNoteResult, startNewWith, useFlowNotice, useLeaveRequest, type RowChange } from "./flow"
 import type { ProposedMessageResult } from "../../api/proposed"
 import { BatchQuestions, BatchResult, type Submitted } from "./BatchQuestions"
 import { MessageOutcome } from "./MessageOutcome"
@@ -39,9 +39,9 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
   const [qHint, setQHint] = useState("")
   const [picked, setPicked] = useState<unknown>(undefined)
   const [editing, setEditing] = useState(false)
-  const batchMode = !!(svc.getQuestionBatch && svc.answerBatch)  // 제안 기능: 여러 질문 한 번에 (목업에서만)
+  const batchCapable = !!(svc.getQuestionBatch && svc.answerBatch)  // 제안 기능: 여러 질문 한 번에 (실제 서버는 서로 영향 없는 질문만 함께 묻는다)
   const [batchDone, setBatchDone] = useState<{ sent: Submitted[]; changes: RowChange[] } | null>(null)
-  const [msgs, setMsgs] = useState<ProposedMessageResult[] | null>(null)  // 제안 기능: 말로 보태기 처리 결과 (목업에서만)
+  const [msgs, setMsgs] = useState<ProposedMessageResult[] | null>(null)  // 제안 기능: 말로 보태기 처리 결과 (getMessageResults 가 있을 때)
   const leave = useLeaveRequest(requestId, st)  // 취소·아이디어 고쳐 다시 시작: 요청을 닫고 아이디어·조건을 홈에 채워 둔다
   const notice = useFlowNotice(requestId)        // 확인 화면에서 바꾼 것 때문에 돌아왔으면 그 이유
   useEffect(() => { if (res.data) setSt(res.data) }, [res.data])
@@ -58,12 +58,14 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
   if (st.state === "interpreting" || st.state === "failed") return <Interpreting requestId={requestId} st={st} onDone={setSt} />  // 서버가 번호만 먼저 주고 뒤에서 해석 중 / 그 해석이 실패
 
   const q = st.question
+  // 함께 물은 질문이 둘 이상일 때만 한 번에 답하는 화면. 하나면 하나씩 화면 (점검 질문의 바뀌는 조건·후보 수를 보여 준다)
+  const batchMode = batchCapable && st.questions.filter((x) => !x.answered_at).length > 1
   const rows = st.conditions ?? []
   const locked = busy !== "" || leave.busy
   /** 요청 하나 실행. 성공한 동작의 입력만 비우고, 실패하면 입력을 남긴 채 원인과 다시 시도를 보여 준다. */
   const act = (kind: Exclude<Busy, "">, fn: () => Promise<DialogState>) => {
     const run = async () => {
-      setBusy(kind); setQErr(null); setToolErr(null); setResult(null); setQHint("")
+      setBusy(kind); setQErr(null); setToolErr(null); setResult(null); setQHint(""); setBatchDone(null)  // 지난 묶음 결과는 닫는다 (끝나면 확인 화면으로 바로 넘어가게)
       try {
         const next = await fn()
         if (kind === "answer" || kind === "skip") { setText(""); setPicked(undefined) }
@@ -85,7 +87,14 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
   }
   const sendNote = () => {
     if (!note.trim()) { setNoteHint("보탤 내용을 적어 주세요."); return }
-    act("message", async () => { const next = await svc.sendMessage(requestId, note.trim()); if (svc.getMessageResults) setMsgs(await svc.getMessageResults(requestId)); return next })
+    act("message", async () => {
+      const next = await svc.sendMessage(requestId, note.trim())
+      const results = svc.getMessageResults ? await svc.getMessageResults(requestId) : null
+      if (results) setMsgs(results)
+      // 더 물을 것이 없으면 곧바로 확인 화면으로 넘어간다 → 전에는 결과를 보기 전에 화면이 바뀌었다. 확인 화면이 이어서 보여 주도록 넘긴다
+      if (next.state === "ready") carryNoteResult(requestId, { changes: diffRows(rows, next.conditions ?? []), results })
+      return next
+    })
   }
   const applyOverrides = (o: Record<string, unknown>) => {
     // 폼이 돌려준 값(프로필과 다른 것만) + 이전에 바꿨다가 이번에 프로필 값으로 돌린 것은 null 로 지운다
@@ -99,7 +108,7 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
-      <FlowHeader eyebrow={`${ko(st.mode)} · 조건 확인`} title="부족한 조건을 함께 정합니다" desc={`분석 모델이 아이디어를 해석하고, 결과가 달라질 항목만 ${batchMode ? "골라 한 번에" : "하나씩"} 묻습니다. 답하지 않은 조건은 기본 투자조건을 그대로 씁니다.`}
+      <FlowHeader eyebrow={`${ko(st.mode)} · 조건 확인`} title="부족한 조건을 함께 정합니다" desc={`분석 모델이 아이디어를 해석하고, 결과가 달라질 항목만 ${batchCapable ? "골라 묻습니다. 서로 영향이 없는 질문은 한 번에 묻고, 종목 선정을 바꾸는 질문은 하나씩" : "하나씩"} 묻습니다. 답하지 않은 조건은 기본 투자조건을 그대로 씁니다.`}
         action={<CancelRequestButton c={leave} disabled={busy !== ""} />} />
       <CancelRequestConfirm c={leave} keepLabel="계속 답하기" disabled={busy !== ""} />
       <FlowSteps current={0} />
@@ -120,7 +129,7 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
           <div className="mt-3 flex gap-2">{profile && <Button variant="secondary" onClick={() => setEditing(true)} disabled={locked}>조건 바꾸기</Button>}<Button variant="ghost" onClick={() => void leave.leave()} disabled={locked}>아이디어 고쳐 다시 시작</Button></div>
         </Alert>
       )}
-      {batchDone && <BatchResult requestId={requestId} sent={batchDone.sent} changes={batchDone.changes} />}
+      {batchDone && <BatchResult requestId={requestId} sent={batchDone.sent} changes={batchDone.changes} more={st.state === "asking"} />}
       {batchMode && st.state === "asking" && st.hard_errors.length === 0 && <BatchQuestions requestId={requestId} st={st} onDone={(next, sent) => { setResult(null); setBatchDone({ sent, changes: diffRows(rows, next.conditions ?? []) }); setSt(next) }} />}
       {!batchMode && st.state === "asking" && st.hard_errors.length === 0 && (
         <Part title="추가 점검 질문" desc={`${q ? `${answeredN + 1}번째 질문입니다. ` : ""}지금까지 ${answeredN}개에 답했습니다. 질문은 최대 ${st.max_questions}개까지이며, 남은 질문 수는 답에 따라 달라집니다.`}>
@@ -143,7 +152,7 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
         {result?.kind === "overrides" && !locked && <ResultNote changes={result.changes} what="조건 변경" />}
       </ChangedConditions>
       <AllConditions rows={rows} base="기본 투자조건" />
-      {!batchDone && <AnsweredList questions={st.questions} />}  {/* 한 번에 보낸 직후(목업)에는 「보낸 답변과 반영 결과」와 겹쳐 숨긴다. 최종 확인 화면·일반 모드는 그대로 */}
+      {!batchDone && <AnsweredList questions={st.questions} />}  {/* 한 번에 보낸 직후에는 「보낸 답변과 반영 결과」와 겹쳐 숨긴다. 최종 확인 화면은 그대로 */}
       <Part title="말로 조건 보태기" tag="선택" desc={NOTE_DESC}>
         <textarea className={`${inputClass} min-h-16`} value={note} onChange={(e) => { setNote(e.target.value); setNoteHint("") }} placeholder="예: 배당주 위주로 / 종목은 8개만" readOnly={locked} aria-label="말로 조건 보태기" />
         {note.trim() && busy !== "message" && <p className="text-xs font-medium text-amber-800">{NOTE_UNSENT}</p>}

@@ -31,6 +31,7 @@ from backend.analysis.m2_data.price_cache import PriceBarCache
 from backend.analysis.m5_backtest_report.compare import compare
 from backend.analysis.m5_backtest_report.execution_orders import compute_execution, with_execution
 from backend.analysis.m5_backtest_report.persist import db_step_hook, save_report, save_results
+from backend.analysis.m5_backtest_report.request_log import for_request as request_log_for, with_request_log
 from backend.analysis.m6_tracking.paper import refresh_all_papers
 from backend.analysis.paths import run_dir
 from backend.analysis.schemas.backtest import BacktestRequest
@@ -115,6 +116,7 @@ def execute_run(entry_run_id: str, *, repo: Any, store: JsonStore, settings: Ana
             save_results(repo, entry_run_id, ctx.request_id, results, params, llm.usage_summary())
             if "14_report" in ctx.outputs:
                 doc14 = with_execution(ctx.outputs["14_report"], compute_execution(ctx.outputs["14_report"], md))
+                doc14 = with_request_log(doc14, request_log_for(store, doc))  # 「내 요청」: 아이디어·답·말로 보탠 요청과 결과·최종 조건
                 save_report(repo, entry_run_id, doc14, strategy_name=doc14["header"].get("chosen_label_ko"),
                             request_summary=doc14["header"].get("subtitle_ko"), as_of=dt.date.fromisoformat(str(ctx.request["derived"]["as_of"])))  # fmt: skip
                 report_id = entry_run_id

@@ -121,7 +121,7 @@ describe("상세 섹션", () => {
   it("요청 이력에 말로 보탠 요청과 결과(반영됨/반영 안 됨)와 최종 조건이 보인다", async () => {
     await open("mock_rep_normal", "history")
     expect(await screen.findByText("“마이크론은 꼭 넣어 주세요”")).toBeInTheDocument()
-    expect(screen.getByText("조건에 반영됨")).toBeInTheDocument(); expect(screen.getByText("반영되지 않음")).toBeInTheDocument()
+    expect(screen.getByText("반영됨")).toBeInTheDocument(); expect(screen.getByText("반영되지 않음")).toBeInTheDocument()
     expect(screen.getByText(/기존 조건이 그대로 유지됩니다/)).toBeInTheDocument()
     expect(screen.getByText("최종 분석 조건")).toBeInTheDocument()
   })
