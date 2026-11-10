@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import { createServiceAsync, HttpService, type AnalysisService } from "../api/service"
 import { fetchJson } from "../api/client"
-import { proposedOf } from "../api/proposed"
+import { PROPOSED_METHODS, proposedOf, type ProposedApi } from "../api/proposed"
 import { normalizeDoc } from "../lib/reportNormalize"
 import { Providers } from "../app/providers"
 import App from "../app/App"
@@ -29,11 +29,26 @@ describe("목업 모드 분리", () => {
     setUrl("/?mock=0#/home")
     expect(isMockMode()).toBe(false)
   })
-  it("서버가 아직 주지 않는 제안 계약 메서드는 실제 서버 서비스에 없고, 서버가 구현한 것(리포트 이름·삭제, 투자조건 버전, 모의투자 이름)만 연결된다", () => {
-    const http: AnalysisService = new HttpService()
-    expect(http.searchStocks).toBeUndefined(); expect(http.getPaperKrw).toBeUndefined(); expect(http.recommendStrategy).toBeUndefined()
-    for (const m of ["renameReport", "deleteReport", "getReportName", "getProfileVersion", "getPaperName", "setPaperName"] as const) expect(typeof http[m]).toBe("function")
-    expect(typeof mock().searchStocks).toBe("function")
+  it("제안 계약 메서드: 목업 서비스는 전부 가지고, 실제 서버 서비스는 서버가 구현한 것(CONNECTED)만 가진다", () => {
+    const http: AnalysisService = new HttpService(), m = mock()
+    // 실제 서버에 연결된 제안 메서드. 묶음(이슈 #14)마다 자기 주석 아래에만 이름을 더한다 — 주석 줄이 사이에 있어 묶음 브랜치끼리 충돌하지 않는다
+    const CONNECTED: (keyof ProposedApi)[] = [
+      // 리포트 이름·삭제
+      "getReportName", "renameReport", "deleteReport",
+      // A 종목 이름
+      // B 투자조건 규칙
+      // C 질문 화면
+      // D 분석 진행
+      // E 원화 계산
+      // F 변경 이력·모의투자 이름
+      "getProfileVersion",
+      "getPaperName",
+      "setPaperName",
+    ]
+    for (const name of PROPOSED_METHODS) {
+      expect(typeof m[name], name).toBe("function")
+      expect(typeof http[name], name).toBe(CONNECTED.includes(name) ? "function" : "undefined")
+    }
   })
   it("투자조건 버전·모의투자 이름은 서버 주소로 요청한다", async () => {
     const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("{}", { status: 200 }))
