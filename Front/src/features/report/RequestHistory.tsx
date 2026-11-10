@@ -19,7 +19,8 @@ function Bubble({ who, time, children }: { who: "user" | "system"; time?: string
 const OUTCOME: Record<ProposedRequestLog["messages"][number]["outcome"], [string, string]> = { applied: ["반영됨", "border-emerald-200 bg-emerald-50 text-emerald-800"], not_applied: ["반영되지 않음", "border-slate-200 bg-slate-50 text-slate-700"], needs_confirmation: ["추가 확인 필요", "border-amber-300 bg-amber-50 text-amber-900"] }
 
 /** 이 리포트를 만든 요청의 실제 기록 (GET /requests/{id}): 처음 아이디어와 최종 반영 조건을 먼저, 질문·답변 전체는 펼쳐서. 서버가 주는 기록만 보여 준다.
- *  「말로 보탠 요청」 원문은 서버가 주지 않는다 — 제안 계약 request_log(지금은 목업만)가 있을 때만 그 기록을 보여 준다. */
+ *  「말로 보탠 요청」 원문과 결과는 요청 기록에 없다 — 리포트의 제안 계약 request_log 가 있을 때만 보여 준다
+ *  (실제 서버도 준다. 단 결과 기록이 생기기 전에 말을 보낸 예전 요청은 없음 → 아래 안내 문장). */
 export function RequestHistory({ requestId, log }: { requestId: string; log?: ProposedRequestLog | null }) {
   const svc = useService()
   const res = useResource(() => svc.getRequest(requestId), [svc, requestId])

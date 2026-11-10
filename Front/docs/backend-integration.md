@@ -168,6 +168,10 @@
 - **예시:** `execution` → `{"as_of":"2026-10-30","strategy_label_ko":"동일비중","share_basis":"integer","commission_bps":5,"fx":{"rate":1380,"date":"2026-10-30"},"capital":{"amount":20000000,"currency":"KRW"},"items":[{"ticker":"NVDA","price_usd":182.4,"target_weight":0.1667,"target_krw":3333333,"shares":13,"cost_usd":2371.2,"fee_usd":1.19}],"totals":{"invested_usd":13275,"fee_usd":6.64,"cash_left_usd":1211.11}}`
 - **목업:** `mocks/data/report.ts`(`buildReport`, `execution()`, `explanations()`), `mocks/data/backtest.ts`. **프런트 수정:** `api/proposed.ts`(`proposedOf`), `features/report/proposedView.tsx`(어댑터). 카드·섹션 컴포넌트는 어댑터 결과만 본다.
 - **주의:** 일부 값(값 USD 차트의 원화, ETF·변동성 기본값 설명)은 아직 프런트 문구다(2단계 부분 구현). 서버가 `explanations` 를 주면 그쪽을 우선.
+- **✅ 실제 서버 구현 — `request_log` (2026-11-10):** `GET /reports/{id}` 의 `proposed.request_log` = `{ idea, qa[], messages[], final_conditions[] }` (`ProposedRequestLog` 그대로, `m5_backtest_report/request_log.py`).
+  `qa` = 답한 질문(건너뜀 포함, `applied_ko` = 조건에 들어간 값 「선정 기준(템플릿) → 퀄리티(ROE)」, 건너뜀은 `null`), `messages` = 2-8 의 결과 기록(`changes` → 「라벨: 전 → 후」 문장),
+  `final_conditions` = 조건 확인 화면과 같은 확정 조건 표(아이디어 행 제외, `changed` = 기본 투자조건·수정안이면 원안과 다름). 실행이 끝날 때 리포트에 붙여 저장하고, 이 기능 전 리포트는 읽을 때 요청 문서에서 만든다.
+  **결과 기록 없이 보낸 말이 있는 예전 요청은 붙이지 않는다** (화면은 「보낸 문장은 불러올 수 있는 기록이 없다」 안내 그대로). 수정안이 원안에게 물려받은 보충 문장은 세지 않는다.
 
 ---
 
