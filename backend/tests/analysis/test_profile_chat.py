@@ -215,6 +215,35 @@ def test_rewind_keeps_later_answers(client):
     assert r.status_code == 422 and r.json()["error"]["code"] == "REQUEST_INVALID"
 
 
+def test_zero_start_path(client):
+    """처음 투자금 0원 (이슈 #14 의 3번): 금액 보기로만 고르고, 그러면 월 적립은 0원을 받지 않는다. 저장까지 된다."""
+    v, _ = _answer_all(client, client.post(f"{P}/profile/chat").json(), until="amount")
+    assert v["question"]["options"][-1] == {"value": 0, "label_ko": pc.ZERO_START_LABEL, "help_ko": pc.ZERO_START_HELP}
+    assert v["question"]["input"]["min"] == 100_000  # 직접 입력은 10만원부터 — 0원은 보기로
+    r = _answer(client, v["chat_id"], "amount", option_value=0)
+    assert r["question"]["id"] == "monthly" and r["draft"]["capital"]["initial_amount"] == 0 and _users(r)[-1]["text_ko"] == pc.ZERO_START_SAY
+    assert r["messages"][-1]["text_ko"].startswith(pc.ZERO_MONTHLY_ASK) and 0 not in [o["value"] for o in r["question"]["options"]]
+    r = _answer(client, v["chat_id"], "monthly", number=0)
+    assert r["question"]["id"] == "monthly" and r["messages"][-1] == {"id": "monthly:retry", "role": "bot", "text_ko": pc.ZERO_NEEDS_MONTHLY, "question_id": "monthly"}
+    r, _ = _answer_all(client, r)
+    assert r["state"] == "review" and (r["draft"]["capital"]["initial_amount"], r["draft"]["capital"]["monthly_contribution"]) == (0, 300_000)
+    assert client.put(f"{P}/profile", json={**r["draft"], "note": "첫 등록"}).status_code == 200
+
+
+def test_rewind_amount_to_zero_reasks_monthly_none(client):
+    """요약에서 금액을 0원으로 고치면, 「추가 투자 없음」이던 월 적립만 지워 다시 묻는다 (적립이 있으면 그대로)."""
+    v, _ = _answer_all(client, client.post(f"{P}/profile/chat").json(), path={**PATH, "monthly": {"option_value": 0}})
+    assert v["state"] == "review" and v["draft"]["capital"]["monthly_contribution"] == 0
+    client.post(f"{P}/profile/chat/{v['chat_id']}/rewind", json={"question_id": "amount"})
+    r = _answer(client, v["chat_id"], "amount", option_value=0)
+    assert r["question"]["id"] == "monthly" and r["progress"]["done"] == 10 and "monthly" not in [m["question_id"] for m in _users(r)]
+    r = _answer(client, v["chat_id"], "monthly", option_value=500_000)
+    assert r["state"] == "review" and r["draft"]["capital"]["monthly_contribution"] == 500_000
+    client.post(f"{P}/profile/chat/{v['chat_id']}/rewind", json={"question_id": "amount"})
+    r = _answer(client, v["chat_id"], "amount", option_value=0)
+    assert r["state"] == "review"  # 적립이 있으면 다시 묻지 않는다
+
+
 def test_rewind_diagnosis_reasks_tendency(client):
     v, _ = _answer_all(client, client.post(f"{P}/profile/chat").json())
     r = client.post(f"{P}/profile/chat/{v['chat_id']}/rewind", json={"question_id": "loss"}).json()
@@ -248,7 +277,8 @@ def test_review_drafts_pass_put_profile_checks(tmp_path, tendency):
     """대화로 만들 수 있는 초안은 PUT /profile 검사를 모두 통과한다 (성향 × 종목 기준 × 종목 수·금액·지수의 끝값)."""
     sv = SimpleNamespace(store=JsonStore(tmp_path))
     for strategy in ("recommended", *pc.TEMPLATE_ORDER):
-        for holdings, amount, monthly, universe in ((3, 100_000, 100_000_000, ["KOSPI200"]), (30, 10_000_000_000, 0, ["SP500", "NASDAQ100", "KOSPI200"])):
+        for holdings, amount, monthly, universe in ((3, 100_000, 100_000_000, ["KOSPI200"]), (30, 10_000_000_000, 0, ["SP500", "NASDAQ100", "KOSPI200"]),
+                                                    (5, 0, 10_000, ["SP500"])):  # 마지막: 0원 시작 + 최소 적립
             path = {**PATH, "tendency": {"option_value": tendency}, "strategy": {"option_value": strategy}, "holdings": {"number": holdings},
                     "amount": {"number": amount}, "monthly": {"number": monthly}, "universe": {"option_value": universe}}  # fmt: skip
             st = {"chat_id": "chat_x", "answers": {}, "error": None}
@@ -348,6 +378,7 @@ def test_chat_questions_same_as_front_mock():
         if q.id not in ("tendency", "strategy"):  # 보기가 고정된 질문
             values = [o["value"] for o in q.options(pc.DEFAULT_FORM)]
             assert json.dumps(values, ensure_ascii=False).replace('","', '", "') in block, q.id
-    for text in (pc.GREETING, pc.DONE_TEXT, "아래 보기 중에서 골라 주세요.", "하나 이상 골라 주세요.", "정수로 알려 주세요.", "이 질문은 꼭 답해 주셔야 해요. 아래에서 골라 주세요."):
+    for text in (pc.GREETING, pc.DONE_TEXT, "아래 보기 중에서 골라 주세요.", "하나 이상 골라 주세요.", "정수로 알려 주세요.", "이 질문은 꼭 답해 주셔야 해요. 아래에서 골라 주세요.",
+                 pc.ZERO_START_LABEL, pc.ZERO_START_HELP, pc.ZERO_START_SAY, pc.ZERO_MONTHLY_ASK, pc.ZERO_NEEDS_MONTHLY):
         assert text in src, text
     assert "Object.fromEntries(QUESTIONS.map((q) => [q.id, [\"tendency\"]]))" in src  # 고친 답에 기대는 질문 (DEPENDENTS)

@@ -159,6 +159,8 @@ class Question:
     say: Callable[[Any, dict[str, Any]], str]  # 사용자 답 말풍선
     input: dict[str, Any] | None = None  # money·number 의 직접 입력 범위
     allow_skip: bool = False
+    # 보기·범위 밖의 규칙: 맞지 않으면 다시 묻는 말. 앞 답을 고쳐 이 답이 맞지 않게 되면 이 답을 지우고 다시 묻는다 (answer_chat)
+    check: Callable[[Any, dict[str, Any]], str | None] | None = None
 
 
 def _fixed(*fields: str) -> Callable[[Any], list[str]]:
@@ -228,6 +230,30 @@ def _set(block: str, key: str) -> Callable[[dict[str, Any], Any], None]:
     return apply
 
 
+# 처음 투자금 0원 (이슈 #14 의 3번: 첫 적립일에 처음 매수, /meta/options proposed_rules). 목업 profileChat.ts 와 같은 문장
+ZERO_START_LABEL = "0원 · 매월 적립으로 시작"
+ZERO_START_HELP = "처음 투자금 없이 첫 적립일에 처음 사요. 다음 질문에서 매월 투자금을 꼭 정해 주세요."
+ZERO_START_SAY = "0원으로, 매월 적립으로만 시작할게요"
+ZERO_MONTHLY_ASK = "처음 투자금 없이 시작하니 매월 추가 투자금이 꼭 있어야 해요."
+ZERO_NEEDS_MONTHLY = "처음 투자금이 0원이라 매월 추가 투자금이 꼭 있어야 해요. 0원보다 큰 금액을 골라 주세요."
+
+
+def _amount_options(_d: dict[str, Any]) -> list[dict[str, Any]]:
+    return [{"value": v, "label_ko": won(v)} if v else {"value": 0, "label_ko": ZERO_START_LABEL, "help_ko": ZERO_START_HELP}
+            for v in (5_000_000, 10_000_000, 30_000_000, 50_000_000, 0)]  # fmt: skip
+
+
+def _monthly_ask(d: dict[str, Any]) -> str:
+    day = d["capital"]["contribution_day"]
+    if d["capital"]["initial_amount"] == 0:
+        return f"{ZERO_MONTHLY_ASK} 매월 {day}일에 얼마씩 넣을까요?"
+    return f"매월 추가로 투자할 금액이 있나요? 있다면 매월 {day}일에 넣는 것으로 계산해요."
+
+
+def _monthly_check(v: Any, d: dict[str, Any]) -> str | None:
+    return ZERO_NEEDS_MONTHLY if d["capital"]["initial_amount"] == 0 and not (_num(v) and v > 0) else None
+
+
 def _apply_amount(d: dict[str, Any], v: Any) -> None:
     d["capital"]["initial_amount"] = v
     d["capital"]["currency"] = "KRW"
@@ -245,19 +271,22 @@ CHAT_QUESTIONS: list[Question] = [
         apply=_set("horizon", "purpose"), say=lambda v, _d: PURPOSE_KO[v],
     ),
     Question(
-        # 최소 10만원 (목업과 같음). 0원 시작(묶음 B 의 3번)은 다른 브랜치에서 따로 넣는다.
+        # 직접 입력은 10만원부터 (목업과 같음). 0원(매월 적립으로 시작)은 보기로만 고른다
         id="amount", label="처음 투자할 금액", kind="money", fields=_fixed("capital.initial_amount"),
         ask=lambda _d: "처음에 얼마로 시작할까요? 원화 기준으로 알려 주세요.",
-        options=lambda _d: [{"value": v, "label_ko": won(v)} for v in (5_000_000, 10_000_000, 30_000_000, 50_000_000)],
+        options=_amount_options,
         input={"min": 100_000, "max": 10_000_000_000, "step": 100_000, "unit_ko": "원"},
-        apply=_apply_amount, say=lambda v, _d: won(v),
+        apply=_apply_amount, say=lambda v, _d: won(v) if v else ZERO_START_SAY,
     ),
     Question(
         id="monthly", label="매월 추가 투자금", kind="money", fields=_fixed("capital.monthly"),
-        ask=lambda d: f"매월 추가로 투자할 금액이 있나요? 있다면 매월 {d['capital']['contribution_day']}일에 넣는 것으로 계산해요.",
-        options=lambda _d: [{"value": v, "label_ko": f"매월 {won(v)}" if v else "추가 투자 없음"} for v in (0, 300_000, 500_000, 1_000_000)],
+        ask=_monthly_ask,
+        # 처음 투자금이 0원이면 「추가 투자 없음」 보기를 숨기고, 0원을 보내면 다시 묻는다
+        options=lambda d: [{"value": v, "label_ko": f"매월 {won(v)}" if v else "추가 투자 없음"}
+                           for v in (0, 300_000, 500_000, 1_000_000) if v > 0 or d["capital"]["initial_amount"] > 0],  # fmt: skip
         input={"min": 0, "max": 100_000_000, "step": 10_000, "unit_ko": "원"},
         apply=_set("capital", "monthly_contribution"), say=lambda v, _d: f"매월 {won(v)}" if v else "추가 투자는 없어요",
+        check=_monthly_check,
     ),
     Question(
         id="years", label="투자 기간", kind="number", fields=_fixed("horizon.target_years"),
@@ -403,7 +432,7 @@ def answer_chat(st: dict[str, Any], answer: dict[str, Any], *, check: Callable[[
         if not picked or not all(ok for ok, _ in picked):
             return retry("하나 이상 골라 주세요.")
         v = list(dict.fromkeys(x for _, x in picked))  # 같은 보기를 두 번 보내도 한 번만 (저장 스키마는 중복을 받지 않는다)
-    if q.kind in ("money", "number") and q.input:
+    if q.kind in ("money", "number") and q.input and not _pick(v, values)[0]:  # 보기로 고른 값은 범위 검사 없이 (금액의 0원 보기)
         lo, hi, unit = q.input["min"], q.input["max"], q.input["unit_ko"]
 
         def fmt(n: float) -> str:
@@ -414,7 +443,16 @@ def answer_chat(st: dict[str, Any], answer: dict[str, Any], *, check: Callable[[
         if unit != "원" and not float(v).is_integer():
             return retry("정수로 알려 주세요.")
         v = _plain(v)
+    bad = q.check(v, chat_view(st)["draft"]) if q.check else None
+    if bad:
+        return retry(bad)
     out = accept({"v": v})
+    # 고친 답 때문에 뒤에 이미 답한 값이 규칙에 맞지 않게 되면(금액을 0원으로 고쳤는데 월 적립이 0원) 그 답만 지워 다시 묻는다
+    draft = chat_view(out)["draft"]
+    for q2 in CHAT_QUESTIONS:
+        a2 = out["answers"].get(q2.id)
+        if q2.check and a2 and "skip" not in a2 and q2.check(a2["v"], draft):
+            del out["answers"][q2.id]
     if check is not None and current_question(out) is None:
         errs = check(chat_view(out)["draft"])
         if errs:
