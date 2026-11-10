@@ -22,6 +22,7 @@ from typing import Any
 from backend.analysis.common.jsonio import dump_json, now_iso
 from backend.analysis.common.warnings import merge, render
 from backend.analysis.errors import CancelRequested, StageFailed, public_message
+from backend.analysis.executor import step_warnings
 from backend.analysis.executor.context import RunContext
 from backend.analysis.executor.stages import OUTPUT_FILES, STAGES, Stage
 from backend.schemas.errors import MyFinSightError
@@ -128,6 +129,7 @@ def run(ctx: RunContext, *, stages: Sequence[Stage] | None = None, on_step: Step
     results = {s.name: StepResult(name=s.name, status="QUEUED") for s in stages}
     by_name = {s.name: s for s in stages}
     io_lock = threading.Lock()  # 상태 콜백·파일 덤프는 한 번에 하나씩 (동시에 도는 단계)
+    user_by_stage: dict[str, list[Any]] = {}  # 끝난 단계의 사용자 경고 (step_warnings.json, 화면의 「확인할 점」 전체)
     _hook = on_step or (lambda *_: None)
 
     def hook(step: str, status: str, info: dict[str, Any]) -> None:
@@ -167,6 +169,7 @@ def run(ctx: RunContext, *, stages: Sequence[Stage] | None = None, on_step: Step
         r.status = "STARTED"
         hook(s.name, "STARTED", {"label_ko": s.label_ko, "bucket": s.bucket, "started_at": r.started_at})
         t0 = time.time()
+        stage_user: list[Any] | None = None  # 끝났을 때만 채운다
         try:
             summary = s.fn(ctx)
             r.ended_at, r.elapsed_s = now_iso(), round(time.time() - t0, 2)
@@ -174,6 +177,7 @@ def run(ctx: RunContext, *, stages: Sequence[Stage] | None = None, on_step: Step
             user = [w for w in mine if w.level == "user"]
             info = [w for w in mine if w.level == "info"]
             r.status = "PARTIAL" if user else "SUCCESS"  # 행동이 필요한 경고가 있을 때만 "경고 있음"
+            stage_user = user
             r.summary = (summary or "") + (f" · 확인 필요 {len(user)}건: " + "; ".join(render(w) for w in user[:2])[:400] if user else "") + (f" · 참고 {len(info)}건" if info and not user else "")
             ctx.step_summaries[s.name] = r.summary
             log.info("[%s] %s %s (%.1fs)", ctx.run_id, s.name, r.status, r.elapsed_s)
@@ -193,6 +197,9 @@ def run(ctx: RunContext, *, stages: Sequence[Stage] | None = None, on_step: Step
         if dump:
             with io_lock:
                 _dump_outputs(ctx)
+                if stage_user is not None:  # 단계가 끝날 때마다 (실행 중에도 끝난 단계의 경고 전체를 볼 수 있게). 넣기·쓰기 모두 잠금 안
+                    user_by_stage[s.name] = stage_user
+                    step_warnings.save(ctx.run_dir, {k: user_by_stage[k] for k in sorted(user_by_stage, key=order.get)})
 
     def _sort_warnings() -> None:  # 안정 정렬: 단계 순서로 (동시 실행이어도 결과 파일의 순서가 같게). 도는 단계가 없을 때만 부른다
         ctx.warnings.sort(key=lambda w: order.get(w.stage, len(order)))

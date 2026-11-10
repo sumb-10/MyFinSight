@@ -91,6 +91,7 @@ export class HttpService implements AnalysisService {
   cancelRun(id: string) { return api.post<RunStatus>(`/runs/${id}/cancel`) }
   retryRun(id: string) { return api.post<RunStatus>(`/runs/${id}/retry`) }
   getRunPartial(id: string) { return orNull(api.get<RunPartial>(`/runs/${id}/partial`)) }
+  getRunWarnings(id: string) { return api.get<import("./proposed").ProposedRunWarning[]>(`/runs/${id}/warnings`) }
   listReports() { return api.get<ReportRow[]>("/reports") }
   getReport(id: string) { return api.get<ReportDoc>(`/reports/${id}`) }
   getReportName(id: string) { return api.get<ProposedReportName>(`/reports/${id}/name`) }

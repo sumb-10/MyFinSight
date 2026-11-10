@@ -129,6 +129,9 @@
 - **예시:** `[{"step":"03_candidates","step_label_ko":"후보 수집","message_ko":"최소 거래대금 기준에 못 미친 종목 4개를 후보에서 뺐습니다.","count":1}]`
 - **정책:** 끝난 단계의 경고만. 단계 요약의 N과 합이 맞아야 한다. 경고 ID가 있으면 새 경고 알림(스크린리더)이 더 정확.
 - **목업:** `mocks/data/runs.ts` 의 `RUN_WARNINGS`(9건, 중복 포함), `MockService.getRunWarnings`. **프런트 수정:** `api/service.ts`. 화면 `RunScreen.tsx`(`NotesCard full`), `features/run/steps.ts`(`notesFromWarnings`).
+- **✅ 실제 서버 구현 (2026-11-10):** `GET /runs/{id}/warnings` → `ProposedRunWarning[]` (단계 순서, 단계 이름은 레지스트리의 한국어). 러너가 단계 하나가 끝날 때마다 그 단계의 사용자 경고를
+  `step_warnings.json` 에 써 두어 실행 중에도 끝난 단계 것을 준다. 세는 규칙은 단계 요약과 같다(같은 경고는 묶어 `count`, level user 만) → 단계별 줄 수 = 요약의 「확인 필요 N건」.
+  `message_ko` 는 횟수·날짜 꼬리 없는 문장. 이 기능 전에 끝난 실행은 `run_meta.json` 에서 같은 규칙으로 다시 만든다. 경고 ID 는 아직 없다. 프런트는 `HttpService.getRunWarnings`.
 
 ### 2-11. 모의투자 원화 기준 성과·환율 적용 상태 — 5단계
 

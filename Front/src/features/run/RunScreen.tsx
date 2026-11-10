@@ -88,7 +88,7 @@ function RunView({ runId }: { runId: string }) {
   const [partial, setPartial] = useState<RunPartial | null>(null)
   const [partialTried, setPartialTried] = useState(false)
   const summaryNotes = useMemo(() => collectNotes(r?.steps ?? []), [r])
-  // 제안 기능: 전체 경고 목록 (목업에서만). 단계 요약에는 단계마다 2건까지만 오므로, 있으면 전체 목록을 쓴다.
+  // 제안 기능: 전체 경고 목록 (서비스에 getRunWarnings 가 있을 때, 실제 서버 GET /runs/{id}/warnings). 단계 요약에는 단계마다 2건까지만 오므로, 있으면 전체 목록을 쓴다.
   const fullRes = useResource(() => (svc.getRunWarnings ? svc.getRunWarnings(runId) : Promise.resolve(null)), [svc, runId, summaryNotes.keys.join("|"), r?.status])
   const fullWs = fullRes.data
   const collected = useMemo(() => (fullWs ? notesFromWarnings(fullWs, r?.steps ?? []) : summaryNotes), [fullWs, summaryNotes, r])

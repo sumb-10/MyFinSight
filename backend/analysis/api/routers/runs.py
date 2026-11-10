@@ -1,4 +1,4 @@
-"""/runs: 실행 상태(폴링용), 목록, 취소 (M0-05). 단계 상태는 DB run_step, 큐 상태는 runs.json."""
+"""/runs: 실행 상태(폴링용), 목록, 취소, 단계별 경고 전체 (M0-05). 단계 상태는 DB run_step, 큐 상태는 runs.json."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from fastapi import APIRouter, Request
 
 from backend.analysis.api.routers import services
 from backend.analysis.errors import redact
+from backend.analysis.executor import step_warnings
 from backend.analysis.executor.stages import STAGES
 from backend.analysis.m5_backtest_report.persist import bucket_status, steps_for_api
 from backend.analysis.schemas.run import BUCKETS, RunStatus
@@ -15,6 +16,8 @@ from backend.analysis.schemas.run import BUCKETS, RunStatus
 router = APIRouter(tags=["runs"])
 LABELS = {s.name: (s.label_ko, s.bucket) for s in STAGES}
 LABELS["14_report"] = ("리포트 문서 생성·검증", "report")
+ORDER = [*(s.name for s in STAGES), "14_report"]
+
 
 
 def run_status(sv, run_id: str) -> RunStatus:
@@ -56,6 +59,16 @@ def cancel_run(run_id: str, request: Request) -> RunStatus:
     sv = services(request)
     sv.queue.request_cancel(run_id)
     return run_status(sv, run_id)
+
+
+@router.get("/runs/{run_id}/warnings")
+def warnings(run_id: str, request: Request) -> list[dict[str, Any]]:
+    """끝난 단계의 사용자 경고 전체, 단계 순서대로 [{step, step_label_ko, message_ko, count}].
+    단계 요약은 「확인 필요 N건」 을 2건까지만 적는다. 같은 경고는 count 로 묶여 있고 단계별 줄 수 = 요약의 N."""
+    from backend.analysis.paths import run_dir
+
+    services(request).queue.get(run_id)  # 없는 실행이면 NotFound
+    return step_warnings.api_rows(step_warnings.load(run_dir(run_id)), {k: v[0] for k, v in LABELS.items()}, ORDER)
 
 
 @router.get("/runs/{run_id}/partial")
