@@ -106,7 +106,7 @@ src/mocks/mocks.test.tsx       분리·일관성 테스트
 | `getPaperName` / `setPaperName` | 모의투자 이름: 리포트 이름 연동 / 직접 지정 / 다시 연동 (3단계) |
 | `searchStocks(q)` / `getStocks(tickers)` | 회사명·티커 검색, 티커 → 회사명 조회 (4단계) |
 | `getProfileVersion(v)` | 과거 투자조건 버전 값 전체 → 변경 전후 비교 (4단계) |
-| `recommendStrategy(tendency)` | 성향 기반 전략 추천 (목업 결과, 실제 규칙 아님) (4단계) |
+| `recommendStrategy(tendency)` | 성향 기반 전략 추천. 실제 서버와 같은 고정 규칙 표 (4단계, 실제 서버 연결됨) |
 | `startProfileChat` / `answerProfileChat(id, ProposedChatAnswer)` / `rewindProfileChat(id, questionId)` | 대화형 초기 투자조건: 새 대화 / 지금 질문에 답 / 그 답만 다시 묻기 (15절) |
 | `getQuestionBatch` / `answerBatch(id, ProposedBatchAnswer[])` | 여러 질문 한 번에 답하기. 답마다 보기 값·자유 입력·`skip`(선택 질문만) (4단계) |
 | (옵션 필드) `proposed_rules.allow_zero_initial_amount` | `GET /options` 에 붙는 입력 규칙. 있으면 초기 투자금 0원 + 매월 추가 투자금 허용 (4단계) |

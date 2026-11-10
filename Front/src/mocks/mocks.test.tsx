@@ -37,6 +37,7 @@ describe("목업 모드 분리", () => {
       "getReportName", "renameReport", "deleteReport",
       // A 종목 이름
       // B 투자조건 규칙
+      "recommendStrategy",
       // C 질문 화면
       // D 분석 진행
       // E 원화 계산
@@ -71,6 +72,11 @@ describe("목업 모드 분리", () => {
     expect(f).not.toHaveBeenCalled()
     expect(window.sessionStorage.getItem(MOCK_STORE_KEY)).toContain("내 반도체 리포트")
     expect(window.localStorage.getItem("myfinsight.ui.v1")).toBeNull()  // 일반 모드의 화면 상태 키는 건드리지 않는다
+  })
+  it("성향 기반 추천은 서버 주소로 요청한다 (한글 성향은 인코딩)", async () => {
+    const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("{}", { status: 200 }))
+    await new HttpService().recommendStrategy("위험중립형")
+    expect(f.mock.calls.map(([u, i]) => [String(u).replace(/^.*\/api\/v1/, ""), i?.method])).toEqual([[`/strategy/recommendation?tendency=${encodeURIComponent("위험중립형")}`, "GET"]])
   })
 })
 

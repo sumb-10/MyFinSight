@@ -41,7 +41,7 @@ describe("목업 서비스 규칙", () => {
     expect(await s.searchStocks("spy")).toEqual([])  // ETF 는 종목 후보가 아니다
     expect((await s.getStocks(["NVDA", "ZZZZ"])).map((x) => x.name_ko)).toEqual(["엔비디아"])
   })
-  it("0원 시작 규칙·성향별 추천은 목업 옵션·미리 정한 결과로만 온다", async () => {
+  it("0원 시작 규칙은 목업 옵션으로, 성향별 추천은 서버와 같은 고정 규칙 표로 온다", async () => {
     const s = mock()
     expect(proposedRulesOf(await s.options())?.allow_zero_initial_amount).toBe(true)
     expect((await s.recommendStrategy("안정형")).recommended).toMatchObject({ template: "high_dividend", baseline_weighting: "min_variance", use_news_tilt: false })
@@ -119,6 +119,19 @@ describe("내 투자조건 화면 (목업)", () => {
     expect(screen.getByRole("radio", { name: /수익성이 좋은 기업/ })).toHaveAttribute("aria-checked", "true")
     fireEvent.click(screen.getByRole("radio", { name: /^주가 변동이 작은 기업\(저변동성\)최근/ }))
     expect(await within(card).findByRole("button", { name: "추천 전략 적용" })).toBeInTheDocument()
+  })
+  it("실제 서버 응답: 추천 카드가 일반 모드에서도 보이고, 「목업」 표시 없이 서버 안내 문장을 보여 준다", async () => {
+    const m = mock()
+    const asked: string[] = []
+    const note = "투자성향마다 정해 둔 고정 규칙에 따른 추천입니다. 지금 시장 상황이나 과거 성과를 보고 고른 것은 아닙니다."
+    const svc: AnalysisService = Object.assign(Object.create(m), { mode: "api", recommendStrategy: async (t: Parameters<MockService["recommendStrategy"]>[0]) => { asked.push(t); return { ...(await m.recommendStrategy(t)), note_ko: note } } })
+    withSvc(svc, <ProfileScreen mode="edit" />)
+    await step(4, "투자 전략")
+    const card = (await screen.findByRole("heading", { name: "위험중립형에게 추천하는 전략" })).closest("section")!
+    expect(asked).toContain("위험중립형")
+    expect(within(card).getByText(new RegExp(note))).toBeInTheDocument()
+    expect(screen.queryByText("목업")).toBeNull()
+    expect(screen.getAllByText("추천")).toHaveLength(2)
   })
   it("변경 이력: 앞 버전과 비교하면 바뀐 항목만 강조하고, 그대로인 항목은 따로 접어 둔다", async () => {
     withSvc(mock(), <ProfileScreen mode="view" />)

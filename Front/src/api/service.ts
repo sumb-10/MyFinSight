@@ -72,6 +72,7 @@ export class HttpService implements AnalysisService {
       throw e
     }
   }
+  recommendStrategy(tendency: import("./types").Tendency) { return api.get<import("./proposed").ProposedStrategyRecommendation>(`/strategy/recommendation?tendency=${encodeURIComponent(tendency)}`) }
   saveProfile(fields: ProfileFields) { return api.put<ProfileView>("/profile", fields) }
   createRequest(input: { idea: string; overrides?: Record<string, unknown>; mode?: "new" | "rerun" | "revision"; base_report_id?: string | null }) {
     return api.post<DialogState>("/requests", { idea: input.idea, overrides: input.overrides ?? {}, mode: input.mode ?? "new", base_report_id: input.base_report_id ?? null }, LLM)

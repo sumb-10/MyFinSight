@@ -84,6 +84,10 @@
 - **예시:** `{"tendency":"위험중립형","recommended":{"template":"quality","baseline_weighting":"equal_weight","use_news_tilt":true},"reasons_ko":["수익과 위험을 함께 보는 성향이라 …"],"alternatives":[{"template":"low_volatility","baseline_weighting":"inverse_volatility","use_news_tilt":false,"diff_ko":"변동이 작은 기업 위주라 …"}],"note_ko":"…"}`
 - **정책:** 추천 규칙(성향 → 전략) 확정 필요. 근거 문구는 규칙에서 생성. **목업 표는 예시이며 규칙이 아니다** (`mocks/data/strategy.ts`).
 - **프런트 수정:** `api/service.ts`. 화면 `features/profile/StrategyRecommend.tsx`, `StrategyFields.tsx`(선택 prop `recommended`).
+- **✅ 실제 서버 구현 (2026-11-10):** `GET /strategy/recommendation?tendency=위험중립형` → `ProposedStrategyRecommendation` (성향이 없거나 5개 밖이면 422).
+  규칙은 **팀 결정으로 일단 고정 규칙** — 목업 표(`mocks/data/strategy.ts`)의 조합·이유·차이 문장을 그대로 서버로 옮겼다(`backend/analysis/m1_request/strategy_recommendation.py`).
+  시장 상황·과거 성과는 보지 않고, `note_ko` 가 그렇게 안내한다. 두 표가 같은지는 서버 테스트 `test_strategy_recommendation.py` 가 본다.
+  `tendency` 는 서버의 3단계 `risk_tolerance` 가 아니라 프런트 진단의 5단계 값(`diagnosis.final_tendency`). 프런트는 `HttpService.recommendStrategy`.
 
 ### 2-6. 투자조건 변경 이력 비교 — 4단계
 
