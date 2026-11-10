@@ -6,7 +6,7 @@ import type { ReportDoc } from "../../api/types"
 export interface NavGroup { id: string; label: string; heading: string; sections: string[] }
 
 export const NAV_GROUPS: NavGroup[] = [
-  { id: "summary", label: "결과 요약", heading: "결과 요약", sections: ["summary"] },
+  { id: "summary", label: "개요", heading: "개요", sections: ["summary"] },
   { id: "selection", label: "종목 선정", heading: "종목 선정", sections: ["verdict", "construction", "companies"] },
   { id: "performance", label: "과거 성과", heading: "과거 성과", sections: ["performance"] },
   { id: "market", label: "시장·뉴스", heading: "시장·뉴스", sections: ["market"] },

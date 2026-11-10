@@ -209,8 +209,9 @@ export function Pagination({ page, pages, onChange, total, pageSize }: { page: n
 
 /** "더보기 ▾" 메뉴. Escape·바깥 클릭으로 닫힌다. */
 /** 더보기 메뉴. 목록은 화면 맨 위층(body)에 띄워 표·카드의 잘림(overflow)이나 고정된 탭 목록에 가려지지 않게 하고,
- *  버튼 아래 공간이 모자라면 위로 펼친다. 창 크기가 바뀌면 다시 자리 잡고, 화면을 스크롤하면 닫는다. */
-export function Menu({ label = "더보기", items }: { label?: string; items: { label: string; onClick: () => void; disabled?: boolean; icon?: React.ElementType; danger?: boolean }[] }) {
+ *  버튼 아래 공간이 모자라면 위로 펼친다. 창 크기가 바뀌면 다시 자리 잡고, 화면을 스크롤하면 닫는다.
+ *  compact: 글자 없이 「⋯」 아이콘만 있는 회색 버튼 (표의 줄마다 둘 때). 화면 읽기 프로그램에는 label 로 읽힌다. */
+export function Menu({ label = "더보기", items, compact = false }: { label?: string; items: { label: string; onClick: () => void; disabled?: boolean; icon?: React.ElementType; danger?: boolean }[]; compact?: boolean }) {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState<{ top: number; left: number; up: boolean } | null>(null)
   const ref = useRef<HTMLDivElement>(null)
@@ -239,10 +240,13 @@ export function Menu({ label = "더보기", items }: { label?: string; items: { 
   }, [open])
   return (
     <div ref={ref} className="relative">
-      <Button variant="secondary" onClick={() => setOpen((v) => !v)}><MoreHorizontal className="size-4" />{label}</Button>
+      {compact
+        ? <button type="button" aria-label={label} aria-haspopup="menu" onClick={() => setOpen((v) => !v)} className={`inline-flex size-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${open ? "bg-slate-100 text-slate-900" : ""}`}><MoreHorizontal className="size-5" /></button>
+        : <Button variant="secondary" onClick={() => setOpen((v) => !v)}><MoreHorizontal className="size-4" />{label}</Button>}
       {open && createPortal(
         <ul ref={list} role="menu" style={{ top: pos?.top ?? 0, left: pos?.left ?? 0, visibility: pos ? "visible" : "hidden" }} className="fixed z-40 w-72 max-w-[calc(100vw-16px)] overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
-          {items.map((it) => <li key={it.label} role="none"><button role="menuitem" type="button" disabled={it.disabled} onClick={() => { setOpen(false); it.onClick() }} className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50 disabled:opacity-40 ${it.danger ? "text-red-700" : "text-slate-700"}`}>{it.icon && <it.icon className="size-4 shrink-0" />}<span className="min-w-0">{it.label}</span></button></li>)}
+          {/* 지우기 같은 위험한 항목은 앞 항목들과 선으로 나눈다 */}
+          {items.map((it, i) => <li key={`${i}-${it.label}`} role="none" className={it.danger && i > 0 ? "mt-1 border-t border-slate-100 pt-1" : ""}><button role="menuitem" type="button" disabled={it.disabled} onClick={() => { setOpen(false); it.onClick() }} className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50 disabled:opacity-40 ${it.danger ? "text-red-700" : "text-slate-700"}`}>{it.icon && <it.icon className="size-4 shrink-0" />}<span className="min-w-0">{it.label}</span></button></li>)}
         </ul>, document.body)}
     </div>
   )

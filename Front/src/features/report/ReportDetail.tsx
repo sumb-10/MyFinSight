@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Activity, ArrowLeft, BookOpenText, GitCompareArrows, ListChecks, Pencil, PencilLine, RefreshCw, Sigma, Trash2 } from "lucide-react"
+import { Activity, ArrowLeft, BookOpenText, ChevronDown, GitCompareArrows, ListChecks, Pencil, PencilLine, RefreshCw, Sigma, Trash2 } from "lucide-react"
 import { useService } from "../../app/providers"
 import { navigate as routerNavigate } from "../../app/router"
 import { errorMessage } from "../../api/client"
@@ -23,7 +23,7 @@ import { CalculationPanel, ExecutionPanel } from "./panels"
 import { type DrawerFilter, ReportContext, type ReportCtx } from "./context"
 import { useFluidShell } from "./useFluidShell"
 import { proposedNameOf, proposedOf } from "../../api/proposed"
-import { GlossaryPanel, HelpTip } from "./terms"
+import { GlossaryPanel } from "./terms"
 import { DeleteReportDialog, RenameReportDialog, useRenameTick } from "./ReportName"
 import { findReportRow, reportName } from "../../lib/reportName"
 import { groupOf, groupsFor, SECTION_SEQUENCE } from "./navGroups"
@@ -46,7 +46,8 @@ type Props = { reportId: string; sec?: string; company?: string; rb?: number; re
 const TAB_OFFSET = 110  // 상단 고정 탭(49px) 아래 이 선을 지난 마지막 섹션을 「지금 보는 섹션」으로 친다 (섹션은 scroll-mt-16 = 64px 에 멈춘다)
 const STOP = 64  // scroll-mt-16
 
-/** 리포트 화면: 상단 고정 탭 + 「투자 결과 요약」 4개 카드 + 「자세한 분석 보기」 접이식 섹션들 (모두 접힌 채 시작), 근거는 드로어·패널로. 주소 ?sec=&company=&rb= 를 읽고 쓴다.
+/** 리포트 화면: 상단 고정 탭 + 「개요」(선택 전략·백테스트 핵심 성과·종목 구성·종목별 투자 금액) + 「자세한 분석」(통째로 접힌 채 시작, 안의 섹션도 접힘), 근거는 드로어·패널로.
+ *  주소 ?sec=&company=&rb= 를 읽고 쓴다 (가리키는 곳이 있으면 자세한 분석을 펼친다).
  *  App 이 리포트가 바뀌어도 같은 컴포넌트를 다시 쓰므로, 리포트마다 새로 만들어 앞 리포트의 펼침·선택이 남지 않게 한다. */
 export function ReportDetail(props: Props) {
   return <ReportView key={props.reportId} {...props} />
@@ -77,6 +78,8 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
   const [startPaper, setStartPaper] = useState(false)
   const [revise, setRevise] = useState(false)
   const [openSecs, setOpenSecs] = useState<Record<string, boolean>>({})
+  // 자세한 분석 전체: 처음에는 통째로 접어 둔다 (2026-11-11 사용자 결정, 초보 투자자는 개요만 봐도 된다). 주소가 섹션·기업·시점을 가리키면 펼친 채 시작
+  const [detailsOpen, setDetailsOpen] = useState(() => (!!sec && sec !== "summary") || !!company || rb !== undefined)
   const [selectedRb, setSelectedRb] = useState<number | null>(rb ?? null)
   const [openCompany, setOpenCompany] = useState<string | null>(company ?? null)
   const cmp = useResource(() => svc.getReportComparison(reportId), [svc, reportId])
@@ -95,7 +98,7 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
 
   // 섹션을 펼치고 그 자리(또는 섹션 안 anchor 요소)로 스크롤. 펼친 다음 렌더에서 내용이 생기므로 조금 기다린다.
   const jump = useCallback((id: string, anchor?: string) => {
-    if (id !== "summary") setOpenSecs((o) => ({ ...o, [id]: true }))
+    if (id !== "summary") { setDetailsOpen(true); setOpenSecs((o) => ({ ...o, [id]: true })) }
     setActive(groupOf(id))
     lockActive.current = Date.now() + 900
     const target = () => (anchor && document.getElementById(anchor)) || document.getElementById(`sec-${id}`)
@@ -108,12 +111,12 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
   }, [reportId, openCompany, selectedRb])
 
   useEffect(() => {  // 같은 리포트에서 주소만 바뀐 경우 (링크·뒤로 가기): 가리키는 기업·시점·섹션을 펼친다
-    if (company && company !== openCompany) { setOpenCompany(company); setOpenSecs((o) => ({ ...o, companies: true })) }
+    if (company && company !== openCompany) { setOpenCompany(company); setDetailsOpen(true); setOpenSecs((o) => ({ ...o, companies: true })) }
   }, [company])  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (rb !== undefined && rb !== selectedRb) { setSelectedRb(rb); setOpenSecs((o) => ({ ...o, construction: true })) }
+    if (rb !== undefined && rb !== selectedRb) { setSelectedRb(rb); setDetailsOpen(true); setOpenSecs((o) => ({ ...o, construction: true })) }
   }, [rb])  // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (sec) setOpenSecs((o) => (o[sec] ? o : { ...o, [sec]: true })) }, [sec])
+  useEffect(() => { if (sec && sec !== "summary") { setDetailsOpen(true); setOpenSecs((o) => (o[sec] ? o : { ...o, [sec]: true })) } }, [sec])
   useEffect(() => {  // 주소가 가리키는 곳으로 처음 한 번 이동: 기업 카드 > 리밸런싱 타임라인 > 섹션
     if (!doc || jumped.current || (!sec && !company && rb === undefined)) return
     jumped.current = true
@@ -159,9 +162,9 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
   const allIds = [...doc.sections.map((s) => s.id), "history"]
   const allOpen = allIds.every(isOpen)
   const toggleAll = () => setOpenSecs(Object.fromEntries(allIds.map((id) => [id, !allOpen])))
-  const parts = doc.sections.map((s) => ({ id: s.id, title: sectionTitle(s.id, s.title_ko), sub: s.title_ko, body: <SectionBody s={s} doc={doc} /> as React.ReactNode }))
+  const parts = doc.sections.map((s) => ({ id: s.id, title: sectionTitle(s.id, s.title_ko), body: <SectionBody s={s} doc={doc} /> as React.ReactNode }))
   const at = parts.findIndex((x) => x.id === "assumptions")
-  parts.splice(at < 0 ? parts.length : at, 0, { id: "history", title: HISTORY_TITLE, sub: "투자 아이디어와 요청 내역", body: <RequestHistory requestId={doc.request_id} log={proposedOf(doc)?.request_log ?? null} /> })
+  parts.splice(at < 0 ? parts.length : at, 0, { id: "history", title: HISTORY_TITLE, body: <RequestHistory requestId={doc.request_id} log={proposedOf(doc)?.request_log ?? null} /> })
   const rerun = async () => {
     setBusy("rerun")
     setActErr("")
@@ -177,8 +180,6 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
     ...(svc.deleteReport && !readOnly ? [{ label: "리포트 삭제", icon: Trash2, onClick: () => setRemoving(true), danger: true }] : []),
     ...extraMenu,
   ]
-  // 헤더에는 백테스트 기간만 두고, 나머지 날짜는 (?) 도움말 안에서 본다
-  const otherDates: [string, string][] = [["작성일", h.created_at], ["분석 기준일", h.data_as_of], ["종목 선정 기준일", h.selection_as_of]]
   const groups = groupsFor(doc)
   const jumpGroup = (gid: string) => { const g = groups.find((x) => x.id === gid); jump(g?.sections[0] ?? gid) }
   const groupStart = new Map(groups.map((g) => [g.sections.find((s) => s !== "summary"), g] as const))
@@ -193,7 +194,7 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
                   <p className="mb-2 text-xs font-bold tracking-widest text-blue-700">분석 리포트</p>
                   {/* 제목 = 리포트의 짧은 제목(header.title_ko, 바꾼 이름이 있으면 그것), 회색 글 = 요청과 처리 이유 요약(summary_ko, 없는 옛 리포트는 요청 해석 subtitle_ko) */}
                   <div className="flex items-start gap-1">
-                    <h1 className="break-words text-3xl font-bold tracking-tight text-slate-950">{title || (row && proposedNameOf(row)) || name?.display_ko || h.title_ko}</h1>
+                    <h1 className="break-words text-3xl font-bold tracking-tight text-slate-950">{title || (row && proposedNameOf(row)) || name?.custom_ko || h.title_ko}</h1>
                     {name && svc.renameReport && <button type="button" aria-label="리포트 이름 바꾸기" title="리포트 이름 바꾸기" onClick={() => setRename(true)} className="mt-1 shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"><Pencil className="size-5" /></button>}
                   </div>
                   {(h.summary_ko || h.subtitle_ko) && <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{h.summary_ko || h.subtitle_ko}</p>}
@@ -204,14 +205,8 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
                   <Menu items={menu} />
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-slate-600">
-                <dl aria-label="리포트 날짜" className="contents"><div className="flex gap-1 whitespace-nowrap"><dt>백테스트 기간</dt><dd className="tabular-nums text-slate-800">{h.backtest_period.start} ~ {h.backtest_period.end}</dd></div></dl>
-                <HelpTip label="날짜 구분">
-                  <dl aria-label="다른 기준 날짜" className="mb-2 space-y-0.5">{otherDates.map(([k, v]) => <div key={k} className="flex justify-between gap-3"><dt>{k}</dt><dd className="tabular-nums font-semibold">{v}</dd></div>)}</dl>
-                  작성일은 리포트를 만든 날입니다. 분석 기준일은 분석에 쓴 가격·뉴스 자료의 기준 날짜로, 투자 금액 카드의 현재 구성도 이 날 기준입니다. 종목 선정 기준일은 투자할 종목 목록을 고른 날짜이고, 과거 성과 계산(백테스트)용 종목은 백테스트 시작일 자료로 다시 골랐습니다. 백테스트 기간은 과거 자료로 성과를 계산한 기간입니다.
-                </HelpTip>
-                {doc.presented_from_version === 1 && <Badge tone="slate">예전 형식 리포트 (자동 변환)</Badge>}
-              </div>
+              {/* 날짜(분석 기준일·백테스트 기간과 날짜 구분 도움말)는 개요 첫 줄에 있다 */}
+              {doc.presented_from_version === 1 && <div><Badge tone="slate">예전 형식 리포트 (자동 변환)</Badge></div>}
             </header>
             <ReportTabs doc={doc} active={active} onJump={jumpGroup} onGlossary={() => setTerms(true)} />
             {actErr && <Alert title="처리하지 못했습니다" tone="error">{actErr}</Alert>}
@@ -221,21 +216,27 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
             {removing && <DeleteReportDialog reportId={reportId} name={row ? reportName(row) : (name?.display_ko ?? h.title_ko)} close={() => setRemoving(false)} onDeleted={() => navigate({ page: "reports" })} />}
             {doc.summary && <div id="sec-summary" className="scroll-mt-16"><Dashboard summary={doc.summary} doc={doc} onJump={jump} paperReason={doc.tracking.eligible ? null : (doc.tracking.reason_ko ?? "이 리포트로는 모의투자를 시작할 수 없습니다")} /></div>}
             <section aria-labelledby="h-details" data-tour="details" className="space-y-4">
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <div><h2 id="h-details" className="text-xl font-bold text-slate-950">자세한 분석 보기</h2><p className="mt-1 text-sm text-slate-600">궁금한 부분을 펼쳐 보세요. 판단 근거, 계산 과정, 원문과 출처가 모두 여기에 있습니다.</p></div>
-                <button type="button" onClick={toggleAll} className="shrink-0 rounded-lg px-2 py-1 text-sm font-semibold text-blue-700 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500">{allOpen ? "모두 접기" : "모두 펼치기"}</button>
-              </div>
+              <h2 id="h-details" className="text-xl font-bold text-slate-950">
+                <button type="button" aria-expanded={detailsOpen} aria-controls="details-body" onClick={() => setDetailsOpen((v) => !v)}
+                  className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-300 bg-white px-5 py-4 text-left shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 sm:px-6">
+                  <span>자세한 분석</span>
+                  <span aria-hidden className="flex items-center gap-1 text-sm font-semibold text-slate-500">{detailsOpen ? "접기" : "펼치기"}<ChevronDown className={`size-4 transition-transform ${detailsOpen ? "rotate-180" : ""}`} aria-hidden /></span>
+                </button>
+              </h2>
+              {detailsOpen && <div id="details-body" className="space-y-4">
+              <div className="flex justify-end"><button type="button" onClick={toggleAll} className="shrink-0 rounded-lg px-2 py-1 text-sm font-semibold text-blue-700 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500">{allOpen ? "모두 접기" : "모두 펼치기"}</button></div>
               {parts.map((x, i) => {
                 const g = groupStart.get(x.id)  // 묶음의 첫 섹션 앞에 묶음 소제목 (상단 탭과 같은 이름)
                 return (
                   <Fragment key={x.id}>
                     {g && <h3 id={`grp-${g.id}`} className="pt-2 text-sm font-bold tracking-wide text-slate-600">{g.heading}</h3>}
-                    <SectionShell id={x.id} index={i + 1} title={x.title} sub={x.sub} open={isOpen(x.id)} onToggle={() => setOpenSecs((o) => ({ ...o, [x.id]: !isOpen(x.id) }))}>{x.body}</SectionShell>
+                    <SectionShell id={x.id} index={i + 1} title={x.title} open={isOpen(x.id)} onToggle={() => setOpenSecs((o) => ({ ...o, [x.id]: !isOpen(x.id) }))}>{x.body}</SectionShell>
                   </Fragment>
                 )
               })}
+              </div>}
             </section>
-            <footer className="pb-10 text-xs leading-5 text-slate-500">{h.disclaimer_ko}<br />생성 {doc.generated_at} · 요청 {doc.request_id} · 실행 {doc.run_id}{doc.evidence_summary ? ` · 근거 색인 ${doc.evidence_summary.total}건 (본문 인용 ${doc.evidence_summary.cited}건)` : ""}</footer>
+            <footer className="pb-10 text-xs leading-5 text-slate-500">{h.disclaimer_ko}</footer>
         </div>
         {drawer && <SourceDrawer filter={drawer} close={() => setDrawer(null)} onOpen={(e) => { setDrawer(null); setSource(e) }} />}
         {source && <SourcePanel item={source} close={() => setSource(null)} />}

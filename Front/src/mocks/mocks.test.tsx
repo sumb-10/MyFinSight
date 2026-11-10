@@ -50,6 +50,8 @@ describe("목업 모드 분리", () => {
       "getProfileVersion",
       "getPaperName",
       "setPaperName",
+      // 홈 섹터 성과
+      "getSectorTrends",
     ]
     for (const name of PROPOSED_METHODS) {
       expect(typeof m[name], name).toBe("function")

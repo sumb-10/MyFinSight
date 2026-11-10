@@ -80,21 +80,21 @@ describe("조건 검증·선정 과정·시장 원문", () => {
     render(<ConditionRules bench="SPY" v={{ n_pass: 1, n_warn: 0, n_fail: 0, n_candidates: 16, chosen_status: "pass", failed_rules_ko: [], rules_ko: [{ rule: "R3", name_ko: "비교지수 대비", level: "soft", status: "pass", message_ko: "SPY 대비 초과 CAGR +65.1%p" }] }} verdict={{ status: "recommended", label_ko: "추천", headline_ko: "", chosen_portfolio_id: "x", chosen_label_ko: "x" }} />)
     expect(screen.getByText("SPY 대비 연평균 수익률(CAGR) 차이")).toBeInTheDocument()
     expect(screen.getByText("+65.1%p")).toBeInTheDocument()
-    expect(screen.getByText("같은 기준으로 계산한 과거 연평균 수익률의 차이입니다.")).toBeInTheDocument()
+    expect(screen.queryByText("같은 기준으로 계산한 과거 연평균 수익률의 차이입니다.")).toBeNull()  // 설명 문장 없이 이름과 숫자만
     expect(screen.getByText(/16개 투자 구성안을 .* 1개를 추천했습니다/)).toBeInTheDocument()
   })
   it("선정 과정 번호는 「N단계」로, 제외와 재선정의 뜻을 구분해 적는다", () => {
     render(<Funnel b={{ type: "funnel", items: [{ label_ko: "투자 가능 종목", count: 518 }, { label_ko: "테마 관련 후보", count: 22 }, { label_ko: "최종 선정 (2026-10-30, 섹터 분산 적용)", count: 5 }, { label_ko: "백테스트용 재선정 (2025-10-30)", count: 5 }] }} />)
     expect(screen.getAllByText(/^\d단계$/).map((x) => x.textContent)).toEqual(["1단계", "2단계", "3단계", "4단계"])
-    expect(screen.getByText("선정에서 제외된 종목")).toBeInTheDocument()
-    expect(screen.getByText(/백테스트 시작일 당시 알 수 있던 자료만으로 같은 선정 규칙을 다시 적용/)).toBeInTheDocument()
+    expect(screen.queryByText("선정에서 제외된 종목")).toBeNull()  // 단계 설명 문장은 두지 않는다
+    expect(screen.queryByText(/백테스트 시작일 당시 알 수 있던 자료만으로/)).toBeNull()
   })
   it("시장 섹션의 두 문단 묶음은 내용에 맞는 다른 이름이고, 문단은 모두 남는다", () => {
     const blocks = [{ type: "paragraphs", items: ["아이디어 해석 문단"], src: "14b" }, { type: "table", title_ko: "요청 내용", columns: [{ key: "k", label_ko: "항목" }], rows: [{ k: "투자금" }], group_ko: "요청 조건 확인" }, { type: "paragraphs", items: ["시장 문단 1", "시장 문단 2"], src: "14c" }] as Block[]
     render(<Blocks blocks={blocks} doc={{ sections: [], datasets: { dates: [], series: {} }, kpis: [], header: {} } as unknown as ReportDoc} sec="market" />)
-    fireEvent.click(screen.getByRole("button", { name: /투자 아이디어 해석 읽기/ }))
-    fireEvent.click(screen.getByRole("button", { name: /시장·뉴스 분석 원문 읽기/ }))
-    expect(screen.queryByRole("button", { name: /시장 분석 원문 읽기/ })).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: /아이디어 해석/ }))
+    fireEvent.click(screen.getByRole("button", { name: /시장·뉴스 분석 원문/ }))
+    expect(screen.queryByRole("button", { name: /^시장 분석 원문/ })).toBeNull()
     for (const t of ["아이디어 해석 문단", "시장 문단 1", "시장 문단 2"]) expect(screen.getByText(t)).toBeInTheDocument()
   })
   it("도움말은 눌러서 열고, 닫기 단추·Esc·바깥 누르기로 닫는다", () => {

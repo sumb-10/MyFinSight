@@ -158,7 +158,7 @@ export interface PaperCapital { amount: number; currency: "KRW" | "USD"; usd: nu
 export interface PaperContribution { enabled: boolean; monthly_amount?: number; currency?: "KRW" | "USD"; day?: number }
 export interface PaperIn { report_id: string; strategy_id?: string | null; start_date?: string | null; initial_amount?: number | null; currency?: "KRW" | "USD" | null; monthly_contribution?: number | null; name?: import("./proposed").ProposedPaperNameIn | null }  // name: 등록 때만 (없으면 리포트 이름을 따라감, 미리보기는 무시)
 export interface PaperPreview {
-  report_id: string; run_id: string; report_as_of: string; strategy: PaperStrategy; strategy_options: PaperStrategyOption[]; start_date: string; data_ceiling: string; reconstructed_at_start: boolean
+  report_id: string; run_id: string; report_as_of: string; strategy: PaperStrategy; strategy_options: PaperStrategyOption[]; start_date: string; data_start?: string; data_ceiling: string; reconstructed_at_start: boolean  // data_start: 시작일로 고를 수 있는 가장 이른 날 (가격 자료 시작). 분석일 이전도 된다
   initial_capital: PaperCapital; contribution: PaperContribution; rebalance_rule: { count: number; unit: string }; benchmark: string; tickers: string[]
   weights: Record<string, number>; cash_weight: number; report_weights: Record<string, number>; weight_diff: { ticker: string; report: number; start: number; delta: number }[]
   allocation: { ticker: string; weight: number; usd: number; krw: number; price_usd: number }[]; allocation_basis_ko?: string | null; construct_info: { fallback: boolean; warnings: string[] }; warnings: string[]

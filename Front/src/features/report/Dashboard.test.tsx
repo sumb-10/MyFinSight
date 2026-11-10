@@ -14,14 +14,14 @@ const sm = (over: Partial<ReportSummary> = {}): ReportSummary => ({
 })
 const doc = (over: Partial<ReportDoc> = {}) => ({ header: { chosen_label_ko: "동일비중", chosen_note_ko: "", data_as_of: "2026-10-30", backtest_period: { start: "2025-10-30", end: "2026-10-30", as_of: "2025-10-30" }, chosen_portfolio_id: "eq" }, tracking: { eligible: true, reason_ko: null }, sections: [], kpis: [], datasets: { dates: [], series: {} }, parameters: {}, ...over }) as unknown as ReportDoc
 
-describe("카드 2: 어떤 주식에 얼마를 투자하면 될까요?", () => {
+describe("카드 2: 종목별 투자 금액", () => {
   it("금액을 먼저 보여 주고, 상위 8개 뒤 나머지는 '전체 종목 보기'로 모두 볼 수 있으며 현금은 항상 보인다", () => {
     render(<AllocationCard a={alloc(11)} onMore={() => {}} />)
     const list = () => within(screen.getByRole("list", { name: "종목별 목표 배분액" }))
     expect(list().getByText("14만원")).toBeInTheDocument()  // 140,000원 → 읽기 쉬운 원화 (반올림 없이)
     expect(list().getByText("100.00 USD")).toBeInTheDocument()
     expect(list().queryByText("회사10")).toBeNull()
-    expect(list().getByText("현금 (목표 비중)")).toBeInTheDocument()
+    expect(list().getByText("현금")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /전체 종목 보기 \(11개 \+ 현금\)/ }))
     expect(list().getByText("회사10")).toBeInTheDocument()
     expect(list().getAllByRole("listitem")).toHaveLength(12)  // 11종목 + 현금
@@ -34,16 +34,16 @@ describe("카드 2: 어떤 주식에 얼마를 투자하면 될까요?", () => {
     expect(rows.map((li) => (li.querySelector("[data-bar]") as HTMLElement).style.width)).toEqual(["100%", "50%", "25%"])  // 40% · 20% · 현금 10%
     expect(rows.map((li) => li.children[1].textContent)).toEqual(["40.0%", "20.0%", "10.0%"])  // 비중은 이름 바로 옆 칸
   })
-  it("없는 매수 수량·수수료·잔여 현금은 계산하지 않고 한 줄로만 알리며, 현금 금액도 지어내지 않는다", () => {
+  it("없는 매수 수량·수수료·잔여 현금은 계산하지 않고 안내 문장도 두지 않으며, 현금 금액도 지어내지 않는다", () => {
     render(<AllocationCard a={alloc(3)} doc={doc({ parameters: { backtest: { commission_bps: 5 } } })} onMore={() => {}} />)
-    expect(screen.getByText(/종목별 매수 수량, 거래 수수료\(백테스트는 거래대금의 0.05%를 가정\), 매수 후 남는 현금은 이 분석에서 제공하지 않습니다/)).toBeInTheDocument()
+    expect(screen.queryByText(/이 분석에서 제공하지 않습니다/)).toBeNull()
     expect(screen.getByText("금액 미제공")).toBeInTheDocument()
     expect(screen.queryByText(/주$/)).toBeNull()
   })
-  it("현재 구성 기준이면 선택 전략과 비중이 다를 수 있음을 알리고, 요청 투자금 원문을 기준금액으로 쓴다", () => {
+  it("카드 설명에는 배분 기준(분석 기준일 구성이면 그 날짜)만 두고, 요청 투자금 원문을 기준금액으로 쓴다", () => {
     const d = doc({ sections: [{ id: "market", title_ko: "", blocks: [{ type: "table", title_ko: "요청 내용", columns: [], rows: [{ k: "투자금", v: "20,000,000원 → 백테스트 시작 14,044.85 USD" }] }] }] })
     render(<AllocationCard doc={d} a={alloc(1, { basis: "forward", basis_ko: "분석 기준일 구성" })} onMore={() => {}} />)
-    expect(screen.getByText(/선택된 전략\(동일비중\)은 과거 성과로 고른 구성이라 비중이 다를 수 있습니다/)).toBeInTheDocument()
+    expect(screen.getByText(/^2026-10-30 기준 · 1 USD = 1,400원$/)).toBeInTheDocument(); expect(screen.queryByText(/비중이 다를 수 있습니다/)).toBeNull()
     expect(screen.getByText("20,000,000원")).toBeInTheDocument()
   })
   it("처음 투자금 0원이면 기준금액은 첫 적립금(배분 계산 금액)이고, 요청 원문의 0원을 쓰지 않는다", () => {
@@ -62,16 +62,24 @@ describe("카드 2: 어떤 주식에 얼마를 투자하면 될까요?", () => {
 })
 
 describe("카드 1·4: 결과와 조건", () => {
-  it("추천 없음은 추천처럼 보이지 않고, 미충족·허용 초과·기간 안내를 기본 카드에 보여 준다", () => {
+  it("첫 카드는 선택된 전략과 기준일만: 판정·결론 문장·주의 사항은 아래 상세 섹션에서 본다", () => {
     const s = sm({ verdict: { status: "none_baseline", label_ko: "추천 없음 · 기준 포트폴리오 (동일비중)", headline_ko: "조건을 만족한 구성이 없습니다", chosen_portfolio_id: "eq", chosen_label_ko: "동일비중", period_note_ko: "백테스트 기간이 투자기간보다 짧습니다" },
       validation: vSummary({ n_pass: 0, n_fail: 1, failed_rules_ko: ["최소 종목 수"], rules_ko: [{ rule: "R1", name_ko: "최대낙폭", level: "flag", status: "flag", message_ko: "최대낙폭 30.7% vs 허용 20.0%" }] }) })
+    const { container } = render(<VerdictCard sm={s} doc={doc()} onMore={() => {}} />)
+    expect(screen.getByText("선택된 전략")).toBeInTheDocument(); expect(screen.getByText("동일비중")).toBeInTheDocument()
+    expect(screen.getByText("2026-10-30")).toBeInTheDocument(); expect(screen.getByText(/2025-10-30 ~ 2026-10-30/)).toBeInTheDocument()
+    expect(container.querySelector("section[data-tour='verdict']")).not.toBeNull()  // 둘러보기 1단계는 카드 전체를 비춘다
+    for (const t of [/추천 없음/, "조건을 만족한 구성이 없습니다", "기간 안내", "백테스트 기간이 투자기간보다 짧습니다", /최대낙폭 30.7% vs 허용 20.0%/, /조건 검증에서/]) expect(screen.queryByText(t)).toBeNull()
+    expect(screen.queryByRole("list", { name: "중요한 주의 사항" })).toBeNull()
+    expect(keyAlerts(s).map((a) => a.tag)).toEqual(["기간 안내", "허용 초과", "미충족"])  // 같은 목록이 상세 섹션(「위험과 미충족 조건」·「중요한 주의 사항」)에 나온다
+  })
+  it("같은 조건의 판정 주의와 규칙 결과가 함께 있으면 숫자가 있는 규칙 쪽만 (상세 섹션의 주의 목록)", () => {
+    const s = sm({ verdict: { status: "insufficient", label_ko: "구성 불충분(주의: 비교지수 하회 · 종목 수 부족 (3/8개)): 동일비중", headline_ko: "지금 구성으로는 투자 비율이 낮습니다", chosen_portfolio_id: "eq", chosen_label_ko: "동일비중",
+      cautions_ko: ["비교지수 하회", "종목 수 부족 (3/8개)"], notices_ko: ["시가총액 자료가 없는 종목이 있습니다"], n_notices: 1 },
+      validation: vSummary({ n_pass: 1, n_warn: 1, warned_rules_ko: ["비교지수 대비"], rules_ko: [{ rule: "R3", name_ko: "비교지수 대비", level: "soft", status: "warn", message_ko: "SPY 대비 초과 CAGR -5.2%p" }] }) })
+    expect(keyAlerts(s).map((a) => a.text)).toEqual(["종목 수 부족 (3/8개)", "비교지수 대비: SPY 대비 초과 CAGR -5.2%p"])
     render(<VerdictCard sm={s} doc={doc()} onMore={() => {}} />)
-    expect(screen.getByText("추천 없음 · 기준 포트폴리오 (동일비중)")).toBeInTheDocument()
-    const alerts = within(screen.getByRole("list", { name: "중요한 주의 사항" }))
-    expect(alerts.getByText("허용 초과")).toBeInTheDocument(); expect(alerts.getByText(/최대낙폭 30.7% vs 허용 20.0%/)).toBeInTheDocument()
-    expect(alerts.getByText("미충족")).toBeInTheDocument(); expect(alerts.getByText("최소 종목 수")).toBeInTheDocument()
-    expect(alerts.getByText("기간 안내")).toBeInTheDocument()
-    expect(keyAlerts(s)).toHaveLength(3)
+    for (const t of [/구성 불충분/, /종목 수 부족/, /시가총액 자료가 없는/, /SPY 대비 초과/]) expect(screen.queryByText(t)).toBeNull()
   })
   it("조건 카드: 서버 규칙을 그대로, 상태는 글자로도, 허용 손실은 세 숫자 막대로", () => {
     render(<ConditionRules v={vSummary({ n_candidates: 9, rules_ko: [{ rule: "R1", name_ko: "최대낙폭", level: "flag", status: "flag", message_ko: "최대낙폭 10.9% vs 허용 8.0%" }, { rule: "R2", name_ko: "목표수익", level: "soft", status: "pass", message_ko: "CAGR 9% vs 목표 8%" }], r1: { mdd: 0.109, tolerance: 0.08, benchmark_mdd: 0.188, excess: 0.029, status: "flag" }, info_notes_ko: ["비교지수보다 낙폭이 큼"] })} />)
@@ -114,7 +122,7 @@ describe("카드 3과 KPI 전체", () => {
     expect(bench.querySelector("dt")).toHaveTextContent("비교지수 · SPY")
     expect(within(mine).getByText("+77.00%").className).toBe(within(bench).getByText("+12.23%").className)  // 같은 크기·굵기
     expect(within(c).getByText("전체 기간 수익률이 SPY보다 64.78%p 높았습니다")).toBeInTheDocument()  // 어떤 수익률의 차이인지 문장에 밝힌다
-    expect(within(c).getByText(/같은 기간, 같은 투자금 납입 조건\(동일 적립\)으로 SPY를 사서 계속 보유했다고 가정해 비교했습니다/)).toBeInTheDocument()
+    expect(within(c).queryByText(/사서 계속 보유했다고 가정해 비교했습니다/)).toBeNull()  // 비교 조건은 비교지수 ? 도움말에만
     expect(within(c).getByText(/^분석 기간이 짧아, 위 비교에는 전체 기간 수익률을 사용했습니다\. 연 환산 수익률은 참고용입니다\./)).toBeInTheDocument()
     expect(within(c).queryByText(/\+77\.4%|378|1년 미만/)).toBeNull()  // 연 환산 값·최소 기준은 기본 화면에 늘어놓지 않는다
     expect(screen.queryByText("SPY 대비 전체 기간 수익률 차이")).toBeNull()  // 별도 차이 행과 중복하지 않는다
@@ -135,7 +143,7 @@ describe("카드 3과 KPI 전체", () => {
     render(<PastCard sm={s} doc={doc({ summary: s, parameters: params })} onMore={() => {}} />)
     const c = compare()
     expect(within(c).getByRole("heading", { name: /연평균 수익률\(CAGR\)/ })).toBeInTheDocument()
-    expect(within(c).getByText("백테스트 기간 기준 연 환산")).toBeInTheDocument()
+    expect(within(c).queryByText("백테스트 기간 기준 연 환산")).toBeNull()  // 긴 창의 보조 설명은 두지 않는다
     expect(within(c).getByText("연평균 수익률(CAGR)이 SPY보다 23.27%p 높았습니다")).toBeInTheDocument()
     expect(screen.queryByText(/분석 기간이 짧아/)).toBeNull()
     expect(screen.queryByRole("button", { name: /연 환산 수익률 안내/ })).toBeNull()
@@ -145,7 +153,7 @@ describe("카드 3과 KPI 전체", () => {
     let r = one(-0.031); expect(screen.getByText("전체 기간 수익률이 SPY보다 3.10%p 낮았습니다")).toBeInTheDocument(); r.unmount()
     r = one(0.00001); expect(screen.getByText("전체 기간 수익률이 SPY와 차이가 없었습니다 (0.00%p)")).toBeInTheDocument(); r.unmount()
     one(null); expect(screen.queryByText(/높았습니다|낮았습니다|차이가 없었습니다/)).toBeNull()
-    expect(screen.getByText(/같은 기간, 같은 투자금 납입 조건/)).toBeInTheDocument()  // 비교 조건 안내는 남는다
+    expect(screen.queryByText(/같은 기간, 같은 투자금 납입 조건/)).toBeNull()  // 비교 조건 안내 문장은 두지 않는다
   })
   it("비교지수 값이 없으면 비교지수 칸·차이 문장을 만들지 않고, 서버 차이 값은 기존 행으로 남긴다", () => {
     const s = sm({ kpis: [{ id: "cagr", label_ko: "연평균 수익률 (CAGR)", value: 0.12, format: "pct" }, { id: "excess", label_ko: "비교지수(SPY) 대비", value: 0.02, format: "pp" }] })
@@ -155,12 +163,12 @@ describe("카드 3과 KPI 전체", () => {
     expect(within(c).queryByText(/비교지수 ·/)).toBeNull(); expect(screen.queryByText(/높았습니다/)).toBeNull()
     expect(screen.getByText("SPY 대비 연평균 수익률(CAGR) 차이")).toBeInTheDocument(); expect(screen.getByText("+2.00%p")).toBeInTheDocument()
   })
-  it("수익률 KPI 가 없으면 비교 영역 없이 나머지 지표와 주의 문구만", () => {
+  it("수익률 KPI 가 없으면 비교 영역 없이 나머지 지표만 (면책 문구는 리포트 맨 아래 한 번)", () => {
     const s = sm({ kpis: [{ id: "mdd", label_ko: "최대낙폭 (MDD)", value: -0.3, format: "pct" }] })
     render(<PastCard sm={s} doc={doc({ summary: s })} onMore={() => {}} />)
     expect(screen.queryByRole("region", { name: /비교$/ })).toBeNull()
     expect(screen.getByText("-30.00%")).toBeInTheDocument()
-    expect(screen.getByText(/과거 성과는 미래 수익을 보장하지 않습니다/)).toBeInTheDocument()
+    expect(screen.queryByText(/과거 성과는 미래 수익을 보장하지 않습니다/)).toBeNull()
   })
   it("요약에서 빠진 KPI(뉴스 뷰 적중률 등)도 전체 목록에 남는다", () => {
     const d = doc({ kpis: [{ id: "cagr", label_ko: "CAGR", value: 0.1, format: "pct" }, { id: "view_hit", label_ko: "뉴스 뷰 적중률", value: null, format: "pct", note_ko: "이 포트폴리오에는 뷰가 없습니다" }], summary: sm({ kpis: [{ id: "cagr", label_ko: "CAGR", value: 0.1, format: "pct", benchmark_value: 0.05, benchmark_label_ko: "SPY" }] }) })

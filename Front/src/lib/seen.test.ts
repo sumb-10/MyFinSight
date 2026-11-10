@@ -26,10 +26,10 @@ describe("확인 기록 (이 브라우저에만)", () => {
     expect(loadSeen("mock")).toMatchObject({ reports: ["m1"], papers: { a1: 3 } })
     expect(window.sessionStorage.getItem(SEEN_KEYS.mock)).not.toBeNull()
     expect(window.localStorage.getItem(SEEN_KEYS.api)).toBeNull()
-    expect(loadSeen("api")).toEqual({ v: 1, reports: null, papers: {} })
+    expect(loadSeen("api")).toEqual({ v: 1, reports: null, papers: {}, visits: {} })
   })
   it("깨진 기록은 처음 상태로 읽는다", () => {
     window.localStorage.setItem(SEEN_KEYS.api, "{broken")
-    expect(loadSeen("api")).toEqual({ v: 1, reports: null, papers: {} })
+    expect(loadSeen("api")).toEqual({ v: 1, reports: null, papers: {}, visits: {} })
   })
 })

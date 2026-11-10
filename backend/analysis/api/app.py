@@ -7,7 +7,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import logging
+import threading
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +37,15 @@ from backend.analysis.common.store import JsonStore
 from backend.analysis.settings import AnalysisSettings
 
 API_PREFIX = "/api/v1"
+log = logging.getLogger(__name__)
+
+
+def warm_home(services: Services) -> None:
+    """홈 '요즘엔 뭐가 좋아요?' 섹터 성과를 미리 계산한다 (저장해 둔 결과가 최신 거래일과 같으면 아무것도 하지 않는다)."""
+    try:
+        services.sector_trends().status(lambda: services.market_data().ceiling)
+    except Exception:  # noqa: BLE001 — DB 에 닿지 못해도 서버는 뜬다 (홈을 열 때 다시 시도)
+        log.warning("[home] 섹터 성과 미리 계산을 시작하지 못함", exc_info=True)
 
 
 def create_analysis_app(
@@ -43,10 +55,18 @@ def create_analysis_app(
     settings: AnalysisSettings | None = None,
     llm: Callable[[], LlmClient] | None = None,
     cors_origins: list[str] | None = None,
+    warm: bool = False,
 ) -> FastAPI:
     settings = settings or AnalysisSettings.load()
     services = Services(repo_factory=repo or default_repo, store=JsonStore(store_dir), settings=settings, llm_factory=llm)
-    app = FastAPI(title="MyFinSight 분석 서비스 API", version="1.0", docs_url=f"{API_PREFIX}/docs", openapi_url=f"{API_PREFIX}/openapi.json")
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        if warm:  # 서버를 켜면 홈 섹터 성과를 뒤에서 미리 계산해 둔다 (사용자가 홈을 열 때 기다리지 않게)
+            threading.Thread(target=warm_home, args=(services,), name="warm-home", daemon=True).start()
+        yield
+
+    app = FastAPI(title="MyFinSight 분석 서비스 API", version="1.0", docs_url=f"{API_PREFIX}/docs", openapi_url=f"{API_PREFIX}/openapi.json", lifespan=lifespan)
     origins = cors_origins if cors_origins is not None else [o.strip() for o in (config.get("ANALYSIS_CORS_ORIGINS") or "http://localhost:5173").split(",") if o.strip()]
     app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"])
     app.add_middleware(GZipMiddleware, minimum_size=1024)  # 리포트 문서(수백 KB~MB)는 압축해서 보낸다 (라운드 4)
@@ -57,4 +77,4 @@ def create_analysis_app(
     return app
 
 
-app = create_analysis_app()
+app = create_analysis_app(warm=True)

@@ -92,12 +92,14 @@ describe("리포트 이름 바꾸기 화면", () => {
     expect(await screen.findByText("목록에서 바꾼 이름")).toBeInTheDocument()
     expect(screen.queryByText(AUTO)).toBeNull()
   })
-  it("일반 모드(제안 메서드 없음): 목록에 더보기·상세에 연필 버튼이 없고, 목록 이름은 투자 아이디어·상세 제목은 리포트의 짧은 제목", async () => {
+  it("일반 모드(제안 메서드 없음): 목록 더보기에 이름 변경이 없고 상세에 연필 버튼이 없으며, 목록 이름은 투자 아이디어·상세 제목은 리포트의 짧은 제목", async () => {
     const s = plain(mock())
     const { unmount } = withSvc(s, <ReportList />)
     const idea = REPORTS[0].idea
     expect((await screen.findAllByText(idea, {}, { timeout: 3000 })).length).toBeGreaterThan(0)
-    expect(screen.queryByRole("button", { name: "더보기" })).toBeNull()
+    fireEvent.click(screen.getAllByRole("button", { name: "더보기" })[0])  // 더보기에는 모의투자·삭제만
+    expect(screen.queryByRole("menuitem", { name: "이름 변경" })).toBeNull()
+    expect(screen.getByRole("menuitem", { name: "삭제" })).toBeInTheDocument()
     expect(screen.queryByText(AUTO)).toBeNull()
     unmount()
     withSvc(s, <ReportDetail reportId="mock_rep_normal" />)
@@ -173,7 +175,7 @@ describe("모의투자 이름 연동 화면", () => {
 })
 
 describe("저장된 리포트 목록: 이름으로 열기 · 삭제 (목업)", () => {
-  it("「열기」 버튼 없이 이름을 누르면 열리고, 삭제는 확인 창에서 「확인」을 눌러야 지워진다 (취소하면 그대로)", async () => {
+  it("「열기」 버튼 없이 이름을 누르면 열리고, 삭제(더보기 안)는 확인 창에서 「확인」을 눌러야 지워진다 (취소하면 그대로)", async () => {
     const svc = new MockService({ latencyMs: 0, persist: false })
     withSvc(svc, <ReportList />)
     const first = REPORTS[0], name = svc.reportDisplayName(first.id)
@@ -182,13 +184,14 @@ describe("저장된 리포트 목록: 이름으로 열기 · 삭제 (목업)", (
     fireEvent.click(within(row).getByText(name))
     expect(window.location.hash).toBe(`#/reports/${first.id}`)
 
-    fireEvent.click(within(row).getByRole("button", { name: "삭제" }))
+    const del = () => { fireEvent.click(within(row).getByRole("button", { name: "더보기" })); fireEvent.click(screen.getByRole("menuitem", { name: "삭제" })) }  // 삭제는 더보기 안 맨 아래
+    del()
     const dlg = screen.getByRole("dialog", { name: "리포트를 삭제할까요?" })
     fireEvent.click(within(dlg).getByRole("button", { name: "취소" }))
     expect(screen.queryByRole("dialog")).toBeNull()
     expect((await svc.listReports()).some((r) => r.report_id === first.id)).toBe(true)
 
-    fireEvent.click(within(row).getByRole("button", { name: "삭제" }))
+    del()
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "확인" }))
     await waitFor(() => expect(row).not.toBeInTheDocument())  // 같은 이름의 수정안 리포트가 있을 수 있어 줄로 확인
     expect((await svc.listReports()).some((r) => r.report_id === first.id)).toBe(false)

@@ -106,9 +106,12 @@ def test_preview_defaults_and_rules(paper_run):
     # 기준일에 시작하면 리포트의 현재 구성 그대로
     pv0 = svc.preview(RID, start_date=str(AS_OF), strategy_id="equal_weight")
     assert pv0["reconstructed_at_start"] is False and pv0["weights"] == pv0["report_weights"] and all(d["delta"] == 0 for d in pv0["weight_diff"])
-    # 시작일 규칙: 기준일 전 ✗, 자료 마감 뒤 ✗, 비거래일은 앞 거래일로
-    with pytest.raises(RequestInvalid):
-        svc.preview(RID, start_date="2025-10-30")
+    # 시작일 규칙: 기준일 전도 된다(그날 자료로 비중 재계산 + 알림, 2026-11-11), 가격 자료 시작 전 ✗, 자료 마감 뒤 ✗, 비거래일은 앞 거래일로
+    early = svc.preview(RID, start_date="2025-10-30", strategy_id="equal_weight")
+    assert early["start_date"] == "2025-10-30" and early["reconstructed_at_start"] is True and early["data_start"] == "2021-01-04"
+    assert any("분석일 2025-10-31 보다 앞선 날로 시작합니다" in w for w in early["warnings"])
+    with pytest.raises(RequestInvalid, match="가격 자료가 시작되기 전"):
+        svc.preview(RID, start_date="2020-12-01")
     with pytest.raises(RequestInvalid):
         svc.preview(RID, start_date="2026-01-05")
     pv1 = svc.preview(RID, start_date="2025-11-02")  # 일요일
@@ -212,7 +215,7 @@ def test_paper_api_roundtrip(paper_run, tmp_path):
     P = API_PREFIX
     r = c.post(f"{P}/paper/preview", json={"report_id": RID, "start_date": str(AS_OF), "strategy_id": "equal_weight"})
     assert r.status_code == 200 and r.json()["reconstructed_at_start"] is False
-    r = c.post(f"{P}/paper", json={"report_id": RID, "start_date": "2025-10-01"})
+    r = c.post(f"{P}/paper", json={"report_id": RID, "start_date": "2020-06-01"})  # 가격 자료가 시작되기 전
     assert r.status_code == 422 and r.json()["error"]["code"] == "REQUEST_INVALID"
     r = c.post(f"{P}/paper", json={"report_id": RID, "start_date": str(AS_OF), "strategy_id": "equal_weight", "initial_amount": 3000, "currency": "USD"})
     assert r.status_code == 201
@@ -225,3 +228,39 @@ def test_paper_api_roundtrip(paper_run, tmp_path):
     assert c.post(f"{P}/paper/{pid}/resume").json()["portfolio"]["status"] == "active"
     assert c.get(f"{P}/paper/nope").status_code == 404
     assert c.post(f"{P}/paper/preview", json={"report_id": "nope"}).status_code == 404
+
+
+def test_start_before_report_date_then_refresh(paper_run):
+    """분석일보다 앞선 날로 시작해도 그날 자료로 비중을 계산해 사고, 갱신하면 그날부터 지금까지 평가·적립·리밸런싱을 채운다."""
+    svc = _svc(paper_run, END)
+    d = svc.create(RID, start_date="2025-08-01", strategy_id="equal_weight", initial_amount=10_000, currency="USD", monthly_contribution=0)
+    p = d["portfolio"]
+    assert p["start_date"] == "2025-08-01" and p["reconstructed_at_start"] is True and p["report_as_of"] == str(AS_OF)
+    assert any("앞선 날로 시작합니다" in w for w in p["warnings"])
+    assert d["snapshots"][0]["date"] == "2025-08-01" and d["rebalances"][0]["kind"] == "initial" and d["rebalances"][0]["trades"]
+    d2 = svc.refresh(p["paper_id"])
+    dates = d2["series"]["dates"]
+    assert dates[0] == "2025-08-01" and dates[-1] == str(END) and len(dates) > 80
+    rb = [r["date"] for r in d2["rebalances"] if r["kind"] == "rebalance"]
+    assert rb and rb[0] == "2025-09-01" and all(x > "2025-08-01" for x in rb)  # 매월 첫 거래일 (시작한 달은 시작일이 그 역할)
+
+
+def test_start_too_early_for_weights_is_friendly(paper_run):
+    """가격 자료는 있어도 비중 계산에 쓸 과거 자료가 모자란 날은 알아듣기 쉬운 오류로 막는다."""
+    svc = _svc(paper_run, END)
+    with pytest.raises(RequestInvalid) as e:
+        svc.preview(RID, start_date="2021-01-05", strategy_id="inverse_volatility")
+    assert "자료가 모자랍니다" in str(e.value) or "가격 자료가 시작되기 전" in str(e.value)
+
+
+def test_paper_warnings_are_user_sentences():
+    """비중 계산 경고: 영어 원문은 사용자 문장으로, 내부 기록은 빼고, 이미 한국어인 문장은 그대로 (시작 창·거래 기록에 보인다)."""
+    from backend.analysis.m6_tracking.paper import paper_warnings_ko
+
+    out = paper_warnings_ko(["dropped from model (insufficient returns in window): ['AVGO', 'ALAB']", "some internal note",
+                             "market cap missing for ['KLAC']: treated as 0 in market_cap weights", "뉴스 근거가 부족해 기준 비중을 썼습니다",
+                             "dropped from model (insufficient returns in window): ['AVGO', 'ALAB']"])  # fmt: skip
+    assert out[0] == "AVGO, ALAB은(는) 그때까지의 거래 기록이 짧아(상장 전이거나 자료 부족) 비중을 주지 않았습니다."
+    assert out[1].startswith("시가총액 자료가 없는 1개 종목(KLAC)") and out[2] == "뉴스 근거가 부족해 기준 비중을 썼습니다"
+    assert len(out) == 3 and not any("dropped" in m or "internal" in m for m in out)
+    assert not any("시가총액" in m for m in paper_warnings_ko(["market cap missing for ['KLAC']: treated as 0 in market_cap weights"], market_cap=False))  # 시가총액비중을 안 쓰는 전략

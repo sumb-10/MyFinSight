@@ -30,10 +30,9 @@ export function CompanyList({ b }: { b: CompaniesBlock }) {
         <h3 className="text-base font-bold text-slate-900">{b.title_ko} <span className="text-sm font-normal text-slate-500">{b.items.length}개</span></h3>
         <button type="button" onClick={() => setOpen(open.length === b.items.length ? [] : b.items.map((x) => x.ticker))} className="text-xs font-semibold text-blue-700 hover:underline">{open.length === b.items.length ? "모두 접기" : "모든 기업 펼치기"}</button>
       </div>
-      <p className="text-xs leading-5 text-slate-500">선정 지표 {b.metric_ko}{metricName(b.metric) ? ` (${metricName(b.metric)})` : ""} · {dir} 우선 · 분석 기준일 {b.as_of_now} 선정 {nNow}개 / 백테스트 시작일 {b.as_of_bt} 선정 {nBt}개. 「내 투자 테마와 어떤 관련이 있나요?」는 투자 아이디어에서 뽑은 테마에 기업이 해당하는지 분석 모델이 판정한 이유입니다. 카드를 누르면 선정 근거 전문과 지표·출처를 볼 수 있습니다.</p>
+      <p className="text-xs leading-5 text-slate-500">선정 지표 {b.metric_ko}{metricName(b.metric) ? ` (${metricName(b.metric)})` : ""} · {dir} 우선 · 분석 기준일 {b.as_of_now} 선정 {nNow}개 / 백테스트 시작일 {b.as_of_bt} 선정 {nBt}개</p>
       <ul className="space-y-2" aria-label="기업 목록">{b.items.map((it) => <CompanyCard key={it.ticker} it={it} b={b} open={open.includes(it.ticker)} onToggle={() => toggle(it.ticker)} />)}</ul>
       {b.note_ko && <p className="text-xs text-slate-500">{b.note_ko}</p>}
-      <p className="text-xs leading-5 text-slate-500">비중이 줄었다고 해서 그 종목에 부정적인 근거가 있다는 뜻은 아닙니다. 다른 종목의 비중이 늘면서 상대적으로 줄 수 있습니다. 구체적인 비중 변화는 「투자 종목과 비중은 어떻게 결정됐나요?」에서 확인할 수 있습니다.</p>
     </div>
   )
 }
@@ -76,7 +75,7 @@ function CompanyCard({ it, b, open, onToggle }: { it: CompanyItem; b: CompaniesB
           {view && <span className={`rounded-md border px-1.5 py-0.5 font-semibold ${VIEW_TAG[view.status]?.[1] ?? ""}`}>{VIEW_TAG[view.status]?.[0] ?? view.status}{view.status === "generated" ? ` ${view.n_views}개` : ""}</span>}{view && <MockTag />}
         </span>
         <span className="mt-3 block rounded-lg bg-slate-50 px-3 py-2.5">
-          <span className="block text-sm font-bold text-slate-900">내 투자 테마와 어떤 관련이 있나요?</span>
+          <span className="block text-sm font-bold text-slate-900">테마 관련성</span>
           <span className="mt-1.5 block text-sm leading-6 text-slate-700">{it.theme_reason_ko || "설명이 제공되지 않았습니다"}</span>
         </span>
       </button>
@@ -123,7 +122,7 @@ function CompanyBody({ it, b }: { it: CompanyItem; b: CompaniesBlock }) {
         )}
         <h4 className="text-sm font-bold text-slate-900">{reasons?.length ? "선정 근거 원문" : "선정 근거"}</h4>
         {it.summary && <p className="text-sm text-slate-500"><span className="font-semibold">회사 소개 </span>{it.summary}</p>}
-        {it.rationale_ko.length ? it.rationale_ko.map((t, i) => <p key={i} className="whitespace-pre-line"><CitedText text={t} /></p>) : <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">이 종목의 선정 이유 설명은 제공되지 않았습니다.{it.in_selection_now ? " 설명이 없는 이유는 확인할 수 없습니다." : " 선정 이유 설명은 분석 기준일 선정 종목에 대해 만들어지며, 이 종목은 분석 기준일에 선정되지 않았습니다."}</p>}
+        {it.rationale_ko.length ? it.rationale_ko.map((t, i) => <p key={i} className="whitespace-pre-line"><CitedText text={t} /></p>) : <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{it.in_selection_now ? "선정 이유 설명이 없습니다." : "분석 기준일 선정 종목이 아니어서 선정 이유 설명이 없습니다."}</p>}
       </div>
       <dl className="h-fit space-y-2 rounded-lg bg-slate-50 p-3 text-xs">{facts.map(([k, v]) => <div key={k}><dt className="font-semibold text-slate-500">{k}</dt><dd className="mt-0.5 text-slate-800">{v}</dd></div>)}</dl>
     </div>

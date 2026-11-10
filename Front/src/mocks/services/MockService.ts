@@ -2,14 +2,15 @@
 // 정해진 자료(리포트·백테스트·모의투자 시세)는 시나리오에서 결정적으로 만들고, 사용자가 바꾼 것(이름·조건·새 요청)은 store(sessionStorage)에 둔다.
 import { ApiError } from "../../api/client"
 import type { AnalysisService } from "../../api/service"
-import type { ProposedBatchAnswer, ProposedChatAnswer, ProposedProfileChat, ProposedMessageResult, ProposedOptionsExt, ProposedPaperName, ProposedPaperNameIn, ProposedQuestionBatch, ProposedReportName, ProposedReportRowExt, ProposedRunWarning, ProposedStrategyRecommendation } from "../../api/proposed"
+import type { ProposedBatchAnswer, ProposedChatAnswer, ProposedProfileChat, ProposedMessageResult, ProposedOptionsExt, ProposedPaperName, ProposedPaperNameIn, ProposedQuestionBatch, ProposedReportName, ProposedReportRowExt, ProposedRunWarning, ProposedSectorTrends, ProposedStrategyRecommendation } from "../../api/proposed"
 import type { CheckpointDetail, ComparisonDoc, DialogState, EvidencePage, EvidenceQuery, Health, Options, PaperDetail, PaperIn, PaperPreview, PaperSummary, ProfileFields, ProfileVersion, ProfileView, ReportDoc, ReportRow, RequestRow, RunPartial, RunRow, RunStatus, SeriesResponse, Tendency } from "../../api/types"
 import { MOCK_AS_OF, PAPERS, REPORTS, RUN_STATES, reportScenario, type PaperScenario, type ReportScenario } from "../scenarios"
 import { backtest, type Backtest } from "../data/backtest"
 import { MOCK_CANDIDATES, MOCK_PROGRESS_STEPS, applyField, applyOverrides, askingDialog, conditionRows, confirmedDialog, feasibilityQuestion, interpretMessage, mockProgress, readyDialog, requestFromProfile, requestRows } from "../data/dialog"
 import { recommendation } from "../data/strategy"
+import { SECTOR_TRENDS } from "../data/sectorTrends"
 import { answerChat, chatView, currentQuestion, newChat, rewindChat } from "../data/profileChat"
-import { buildPaper, paperPreview, type MockPaper } from "../data/paper"
+import { buildPaper, paperPreview, paperStartIndex, type MockPaper } from "../data/paper"
 import { PROFILE_VERSIONS, profileView, ZERO_CAPITAL_VERSION } from "../data/profile"
 import { buildReport, checkpointDetail, type MockReportDoc } from "../data/report"
 import { CANCEL_MS, RUN_WARNINGS, STEPS, buckets, cancelInfo, liveStatus, runPartial, runRows, runStatus } from "../data/runs"
@@ -99,6 +100,19 @@ export class MockService implements AnalysisService {
   }
   getProfileVersion(version: number): Promise<ProfileVersion> { return this.wait(() => { const v = this.versions().find((x) => x.version === version); if (!v) throw notFound("투자조건 버전"); return v }) }
   recommendStrategy(tendency: Tendency, purpose?: string | null): Promise<ProposedStrategyRecommendation> { return this.wait(() => recommendation(tendency, purpose)) }  // 실제 서버와 같은 고정 규칙 표 (data/strategy.ts)
+
+  /** 홈 섹터 성과. 서버처럼 처음에는 잠깐 계산 중(진행률)을 보여 준다: 평소 지연 × 12 (기본 약 1.4초, 테스트 latencyMs 0 이면 바로 ready). */
+  private trendsStartedAt: number | null = null
+  getSectorTrends(): Promise<ProposedSectorTrends> {
+    const span = this.latency * 12
+    if (span > 0) {
+      const now = this.now()
+      this.trendsStartedAt ??= now
+      const p = (now - this.trendsStartedAt) / span
+      if (p < 1) return this.wait(() => ({ status: "loading" as const, progress: Math.round(p * 100) / 100, data: null, error: null }))
+    }
+    return this.wait(() => ({ status: "ready" as const, progress: 1, data: SECTOR_TRENDS, error: null }))
+  }
 
   /* 대화형 초기 투자조건: 정해진 질문 순서와 보기로만 묻는다 (data/profileChat.ts). 저장은 saveProfile 그대로.
      봇이 답을 준비하는 「…」가 보이도록 대화 응답만 평소 지연의 5배 (기본 0.6초, 테스트 latencyMs 0 이면 0). */
@@ -372,11 +386,12 @@ export class MockService implements AnalysisService {
   /* ───────── 모의투자 ───────── */
   previewPaper(input: PaperIn): Promise<PaperPreview> {
     const sc = this.sc(input.report_id)
-    return this.wait(() => paperPreview(sc, this.backtestOf(sc), input.strategy_id, input.initial_amount ?? sc.capital.amount, input.currency ?? sc.capital.currency, input.monthly_contribution))
+    return this.wait(() => paperPreview(sc, this.backtestOf(sc), input.strategy_id, input.initial_amount ?? sc.capital.amount, input.currency ?? sc.capital.currency, input.monthly_contribution, input.start_date))
   }
   createPaper(input: PaperIn): Promise<PaperDetail> {
     const sc = this.sc(input.report_id), b = this.backtestOf(sc)
-    const ps: PaperScenario = { id: this.nextId("mock_paper"), report_id: sc.id, strategy: !input.strategy_id || input.strategy_id === b.chosen.def.id ? "chosen" : input.strategy_id, start_date: "2026-10-01", capital: { amount: input.initial_amount ?? sc.capital.amount, currency: input.currency ?? sc.capital.currency, monthly: input.monthly_contribution ?? 0 }, name: input.name ?? { mode: "linked" }, status: "active", fx_gaps: [] }
+    const start = b.sim.dates[paperStartIndex(b, input.start_date)]  // 서버처럼 고른 날(분석일 이전도 됨), 비거래일이면 앞 거래일
+    const ps: PaperScenario = { id: this.nextId("mock_paper"), report_id: sc.id, strategy: !input.strategy_id || input.strategy_id === b.chosen.def.id ? "chosen" : input.strategy_id, start_date: start, capital: { amount: input.initial_amount ?? sc.capital.amount, currency: input.currency ?? sc.capital.currency, monthly: input.monthly_contribution ?? 0 }, name: input.name ?? { mode: "linked" }, status: "active", fx_gaps: [] }
     this.s.createdPapers.push(ps); this.commit()
     return this.wait(() => this.paperOf(ps.id).detail)
   }

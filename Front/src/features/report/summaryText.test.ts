@@ -36,7 +36,7 @@ describe("표기 도우미", () => {
 describe("상단 탭 묶음", () => {
   it("섹션을 5개 묶음으로, 모르는 섹션은 뒤에 따로", () => {
     const doc = { summary: {}, nav: [{ id: "x_new", title_ko: "새 섹션" }], sections: ["verdict", "construction", "companies", "market", "performance", "assumptions", "references", "x_new"].map((id) => ({ id, title_ko: id, blocks: [] })) }
-    expect(groupsFor(doc as never).map((g) => g.label)).toEqual(["결과 요약", "종목 선정", "과거 성과", "시장·뉴스", "요청·주의·자료", "새 섹션"])
+    expect(groupsFor(doc as never).map((g) => g.label)).toEqual(["개요", "종목 선정", "과거 성과", "시장·뉴스", "요청·주의·자료", "새 섹션"])
     expect(groupOf("companies")).toBe("selection")
     expect(groupOf("history")).toBe("notes")
   })

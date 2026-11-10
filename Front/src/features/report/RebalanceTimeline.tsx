@@ -53,7 +53,6 @@ export function RebalanceTimeline({ b }: { b: TimelineBlock }) {
         <h3 className="min-w-0 text-base font-semibold text-slate-900" title={b.title_ko}><TimelineTitle t={b.title_ko} parts={timelineParts(rep?.doc)} /><Term t="리밸런싱" /></h3>
         <p className="text-xs text-slate-500">시점 {items.length}개 (리밸런싱 {stats.n}){b.walkforward ? ` · 뉴스·공시 뷰 적용 ${stats.views}회 · 기준 비중 유지 ${stats.fallback}회` : ""}</p>
       </div>
-      <p className="mb-3 text-xs leading-5 text-slate-600">리밸런싱은 정해진 날짜에 종목별 비중을 다시 맞추는 일입니다. 아래는 백테스트(과거 자료로 계산)의 기록이며 실제 거래가 아닙니다. 날짜를 누르면 그날 비중이 어떻게 바뀌었는지 볼 수 있습니다.</p>
       <div ref={strip} role="listbox" aria-label="리밸런싱 시점 (←/→ 로 이동)" tabIndex={0} onKeyDown={onKey} className="flex gap-2 overflow-x-auto rounded-lg border border-slate-100 bg-slate-50 p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
         {items.map((it) => {
           const on = it.seq === cur.seq
@@ -82,7 +81,7 @@ export function RebalanceTimeline({ b }: { b: TimelineBlock }) {
 function TimelineTitle({ t, parts: given }: { t: string; parts?: string[] | null }) {
   const parts = given ?? timelineTitle(t)  // 구조화된 전략명·비율(제안 계약)이 있으면 그것, 없으면 서버 제목을 읽는다
   if (!parts) return <>{t}</>
-  return <>투자 비중 조정 기록 — {parts.map((x, i) => <span key={i}>{i > 0 && " · "}<span className="inline-block max-w-full">{x}</span></span>)}{given && <MockTag />}</>
+  return <>투자 비중 조정 기록 · {parts.map((x, i) => <span key={i}>{i > 0 && " · "}<span className="inline-block max-w-full">{x}</span></span>)}{given && <MockTag />}</>
 }
 
 function Selected({ it, idx, total, move, detail, walkforward, onRetry }: { it: TimelineItem; idx: number; total: number; move: (d: number) => void; detail: CheckpointDetail | null | "pending" | "error"; walkforward: boolean; onRetry?: () => void }) {

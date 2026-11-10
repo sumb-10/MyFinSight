@@ -17,11 +17,14 @@ from __future__ import annotations
 import copy
 import datetime as dt
 import logging
+import re
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
 import pandas as pd
 
+from backend.analysis.common import warnings as warn_ko
 from backend.analysis.common.store import JsonStore, PaperStore, new_paper_id
 from backend.analysis.errors import Conflict, DataMissing, NotFound, RequestInvalid, public_message
 from backend.analysis.m2_data import descriptor as D
@@ -198,6 +201,33 @@ def rebalance_due_dates(rule: dict[str, Any], calendar: pd.DatetimeIndex, start:
 
 
 # ───────────────────────── 서비스 ─────────────────────────
+_QUOTED = re.compile(r"'([^']+)'")
+_HANGUL = re.compile(r"[가-힣]")
+
+
+def paper_warnings_ko(raw: Iterable[str], *, market_cap: bool = True) -> list[str]:
+    """비중 계산(construct)이 낸 경고(대개 영어 원문)를 사용자 문장으로 바꾼다. 내부용(debug)은 빼고, 같은 문장은 한 번만.
+    시작 창·거래 기록에 그대로 보인다 (분석일보다 이른 날로 시작하면 상장 전 종목이 빠지는 일이 흔하다, 2026-11-11).
+    market_cap=False: 시가총액비중을 쓰지 않는 전략이면 시가총액 자료가 없다는 알림은 뺀다 (construct 는 모든 기준 비중을 함께 만든다)."""
+    out: list[str] = []
+    for text in map(str, raw):
+        w = warn_ko.from_text("paper", text)
+        if w.code == "market_cap_missing" and not market_cap:
+            continue
+        if w.code == "model_dropped":
+            names = ", ".join(_QUOTED.findall(text)) or "일부 종목"
+            msg = f"{names}은(는) 그때까지의 거래 기록이 짧아(상장 전이거나 자료 부족) 비중을 주지 않았습니다."
+        elif w.level == "user":
+            msg = warn_ko.render(w)
+        elif _HANGUL.search(text):
+            msg = text  # 이미 사용자용 한국어 문장 (예: 뉴스 근거가 부족해 기준 비중을 씀)
+        else:
+            continue  # 영어 내부 기록은 서버 로그에만
+        if msg not in out:
+            out.append(msg)
+    return out
+
+
 class PaperService:
     def __init__(self, store: JsonStore, repo: Any, md: MarketData, llm: Any, settings: AnalysisSettings) -> None:
         self.store = store
@@ -270,12 +300,13 @@ class PaperService:
             if strategy.kind == "cash_blend":  # 낙폭 맞춤안(BL 기준): 뷰 비중을 맞춤안의 주식 비중까지
                 w = strategy.blend(w)
                 cash = 1.0 - sum(w.values())
+            info["warnings"] = paper_warnings_ko(info["warnings"], market_cap=(req2.get("strategy_preference") or {}).get("baseline_weighting") == "market_cap")
             return w, cash, info
         intent2["news_tilt"]["enabled"] = False
         req2["strategy_preference"]["baseline_weighting"] = strategy.template
         req2["strategy_preference"]["use_news_tilt"] = False
         res = construct(view, tickers, req2, intent2, self.s, self.llm, desc, mode="paper", stage_tag=stage_tag)
-        info["warnings"] = [w for w in res.warnings]
+        info["warnings"] = paper_warnings_ko(res.warnings, market_cap=strategy.template == "market_cap")
         tpl = next((p for p in res.baselines["portfolios"] if p["id"] == strategy.template), None)
         if tpl is None:
             raise DataMissing(f"{view.as_of} 에 {strategy.template} 비중을 만들 수 없습니다")
@@ -303,12 +334,15 @@ class PaperService:
         if want > ceiling:
             raise RequestInvalid(f"시작일 {want} 의 자료가 아직 없습니다. 가능한 가장 늦은 날은 {ceiling} 입니다",
                                  details={"fields": {"start_date": f"{ceiling} 이하"}, "latest": str(ceiling)})  # fmt: skip
+        data_start = self.md.data_range(markets)[0]
+        if want < data_start:  # 분석일보다 앞선 날도 시작할 수 있다 (2026-11-11). 가격 자료가 시작되기 전만 막는다
+            raise RequestInvalid(f"시작일 {want} 은 가격 자료가 시작되기 전입니다. {data_start} 이후 날짜로 시작해 주세요",
+                                 details={"fields": {"start_date": f"{data_start} 이상"}, "earliest": str(data_start)})  # fmt: skip
         start = self.md.common_trading_day_on_or_before(want, markets)
         if start != want:
             warnings.append(f"{want} 은 거래일이 아니라 {start} 로 옮김")
         if start < report_as_of:
-            raise RequestInvalid(f"시작일 {start} 이 리포트 기준일 {report_as_of} 보다 이릅니다. 기준일 이후 날짜로 시작해 주세요",
-                                 details={"fields": {"start_date": f"{report_as_of} 이상"}})  # fmt: skip
+            warnings.append(f"분석일 {report_as_of} 보다 앞선 날로 시작합니다. 종목은 분석일에 고른 것이라, 그날 실제로 시작했을 때보다 결과가 좋게 나올 수 있습니다.")
         tickers = [s["ticker"] for s in results["selection"]["selected"]] if isinstance(results.get("selection"), dict) and "selected" in results["selection"] else list(results["portfolio"]["forward"]["market_model"]["tickers"])
         bench = results["portfolio"]["backtest_spec"]["benchmark"]
         cap = req["capital"]
@@ -324,22 +358,26 @@ class PaperService:
         rate = float(fx.rate) if cur == "KRW" else 1.0
         usd = round(amount / rate, 2)
         rep_w, rep_cash = self._report_weights(strategy, results)
-        reconstructed = start > report_as_of
+        reconstructed = start != report_as_of  # 기준일이 아닌 날(앞·뒤 모두)은 그날까지의 자료로 비중을 다시 계산한다
         info: dict[str, Any] = {"fallback": False, "views": [], "evidence_window": None, "warnings": []}
-        if reconstructed:
-            w, cash_w, info = self._construct_weights(strategy, view, tickers, req, intent, stage_tag=f"09_views_news_{start}_paper")
-            warnings += info["warnings"]
-        else:
-            w, cash_w = rep_w, rep_cash
-        w = {t: round(float(x), 6) for t, x in w.items() if float(x) > 0}
+        try:
+            if reconstructed:
+                w, cash_w, info = self._construct_weights(strategy, view, tickers, req, intent, stage_tag=f"09_views_news_{start}_paper")
+                warnings += info["warnings"]
+            else:
+                w, cash_w = rep_w, rep_cash
+            w = {t: round(float(x), 6) for t, x in w.items() if float(x) > 0}
+            prices = view.panel(list(w), start, start, required=[*w, bench], benchmarks=[bench])[0].iloc[-1]
+        except DataMissing as e:  # 너무 이른 날: 상장 전 종목이 있거나 비중 계산에 필요한 과거 자료가 모자람
+            raise RequestInvalid(f"시작일 {start} 에는 비중을 계산할 자료가 모자랍니다 ({public_message(e)}). 더 늦은 날로 시작해 주세요",
+                                 details={"fields": {"start_date": "더 늦은 날"}, "earliest": str(data_start)}) from e  # fmt: skip
         diff = [{"ticker": t, "report": round(rep_w.get(t, 0.0), 4), "start": round(w.get(t, 0.0), 4), "delta": round(w.get(t, 0.0) - rep_w.get(t, 0.0), 4)}
                 for t in sorted(set(rep_w) | set(w), key=lambda t: -(w.get(t, 0.0)))]  # fmt: skip
-        prices = view.panel(list(w), start, start, required=[*w, bench], benchmarks=[bench])[0].iloc[-1]
         amt = usd if usd > 0 else round(monthly / rate, 2)  # 0원 시작이면 배분 미리보기는 첫 적립금 기준 (리포트 report_blocks.basis_amount 와 같은 규칙)
         alloc = [{"ticker": t, "weight": x, "usd": round(amt * x, 2), "krw": round(amt * x * float(fx.rate)), "price_usd": round(float(prices[t]), 4)} for t, x in sorted(w.items(), key=lambda kv: -kv[1])]
         rb = req["derived"]["rebalance_rule"]
         return {"report_id": report_id, "run_id": row.get("run_id") or report_id, "report_as_of": str(report_as_of), "strategy": strategy.to_dict(),
-                "strategy_options": strategy_options(results), "start_date": str(start), "data_ceiling": str(ceiling), "reconstructed_at_start": reconstructed,
+                "strategy_options": strategy_options(results), "start_date": str(start), "data_start": str(data_start), "data_ceiling": str(ceiling), "reconstructed_at_start": reconstructed,
                 "initial_capital": {"amount": amount, "currency": cur, "usd": usd, "fx_rate": float(fx.rate), "fx_date": str(fx.date)},
                 "contribution": {"enabled": monthly > 0, "monthly_amount": monthly, "currency": cur, "day": int(cap.get("contribution_day") or 25)},
                 "rebalance_rule": {"count": int(rb["count"]), "unit": rb["unit"]}, "benchmark": bench, "tickers": [t for t in tickers if t in w] or list(w),
@@ -389,16 +427,19 @@ class PaperService:
 
     # ── 갱신 ──
     def refresh(self, paper_id: str) -> dict[str, Any]:
-        doc = self.papers.load(paper_id)
-        if doc["status"] != "active":
-            return self.detail(paper_id)
-        try:
-            self._advance(doc)
-        except DataMissing as e:
-            doc["state"]["update_status"] = "delayed"
-            doc["state"]["delayed_reason_ko"] = str(e)[:300]
-            doc["state"]["last_refresh_at"] = _now()
-            self.papers.save(doc)
+        # 모의투자별 잠금: 화면의 갱신(만든 직후 자동 갱신 포함)과 일꾼의 한가할 때 갱신이 겹치면 같은 날을 두 번 쌓을 수 있다.
+        # 기다린 쪽은 잠금이 풀린 뒤 다시 읽어 이미 채워진 날은 건너뛴다.
+        with self.store.locked(f"paper_{paper_id}"):
+            doc = self.papers.load(paper_id)
+            if doc["status"] != "active":
+                return self.detail(paper_id)
+            try:
+                self._advance(doc)
+            except DataMissing as e:
+                doc["state"]["update_status"] = "delayed"
+                doc["state"]["delayed_reason_ko"] = str(e)[:300]
+                doc["state"]["last_refresh_at"] = _now()
+                self.papers.save(doc)
         return self.detail(paper_id)
 
     def _advance(self, doc: dict[str, Any]) -> None:

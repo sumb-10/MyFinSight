@@ -27,10 +27,10 @@ describe("라운드 5 대시보드 (조건 검증·뉴스 반영 효과)", () =>
   })
   it("뉴스 반영 효과: 두 적중률과 CAGR 차이를 보여 주고, 꺼져 있으면 사유만", () => {
     const { unmount } = render(<NewsEffect n={{ disabled: false, bl_id: "wf_bl_news", bl_label_ko: "뉴스 뷰", base_id: "wf_equal_weight", base_label_ko: "동일비중", bl_cagr: 0.063, base_cagr: 0.062, diff_cagr: 0.001, bl_excess_cagr: -0.11, base_excess_cagr: -0.115, bl_mdd: -0.1086, base_mdd: -0.1085, hit_365: 0.6, hit_next_rb: 0.5, n_views: 28, n_dates: 7, n_rebalances: 7, n_fallback: 0, annualized_reliable: true }} />)
-    expect(screen.getByText(/기준 비중 전략과 어떤 차이가 있었나요/)).toBeInTheDocument()
+    expect(screen.getByText(/뉴스 반영 − 기준 비중/)).toBeInTheDocument()
     expect(screen.getByText("+6.30%")).toBeInTheDocument(); expect(screen.getByText("+6.20%")).toBeInTheDocument()
     expect(screen.getByText("+0.10%p")).toBeInTheDocument()
-    expect(screen.getByText(/뉴스 때문이라고 단정할 수 없습니다/)).toBeInTheDocument()
+    expect(screen.queryByText(/뉴스 때문이라고 단정할 수 없습니다/)).toBeNull()  // 해석 문장 없이 숫자만
     fireEvent.click(screen.getByRole("button", { name: /뉴스 분석 자세히 보기/ }))
     expect(screen.getByText("50.0%")).toBeInTheDocument(); expect(screen.getByText("60.0%")).toBeInTheDocument()
     expect(screen.getByText("7회 중 7회")).toBeInTheDocument()
