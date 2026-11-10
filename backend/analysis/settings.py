@@ -222,6 +222,7 @@ class SelectionSettings:
 class DialogSettings:
     max_questions: int = 5  # 설계보고서 요구 2: 1회 1항목, 최대 5회 (설정으로 조정)
     max_proposals_per_turn: int = 3
+    max_batch_questions: int = 3  # 한 턴에 함께 묻는 질문 수 상한 (서로 영향 없는 항목만, dialog.BATCHABLE_FIELDS). 1 이면 예전처럼 하나씩
     # 코드 규칙 질문: 테마가 한 섹터에 몰려 있는데 섹터 상한이 그보다 작으면(현금이 크게 남음) 분석 전에 묻는다
     ask_sector_cap_conflict: bool = True
     # LLM 이 질문할 수 있는 필드 (SOFT 필드·기본값 필드). HARD 필드 중 값이 있는 것은 묻지 않는다.

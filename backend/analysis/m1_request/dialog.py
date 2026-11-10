@@ -53,6 +53,10 @@ KIND_ORDER = {"feasibility": 0, "missing": 1, "conflict": 2, "ambiguous": 3, "pr
 # 점검 결과로 만든 질문(feasibility: 섹터 상한·종목 수·시작일)보다 먼저 묻는다 — 점검은 지금 조건의 예상 선정 종목으로 계산하기 때문 (024)
 SELECTION_FIELDS = frozenset({"strategy_preference.template", "constraints.universe", "natural_language.idea", "constraints.exclude_sectors",
                               "constraints.exclude_themes", "constraints.exclude_tickers", "constraints.must_include_tickers"})  # fmt: skip
+# 다른 질문과 한 번에 물어도 되는 항목 (6번): 답이 종목 선정·후보 수·기간·배분 가능 비율(점검 질문의 숫자)에 영향이 없다.
+# 선정 기준·종목 범위·넣을/뺄 것·아이디어·기간·종목 수·비중 상한·최소 현금은 앞 답에 따라 뒤 질문의 숫자가 바뀌어 한 턴에 하나씩 묻는다 (024)
+BATCHABLE_FIELDS = frozenset({"constraints.rebalance", "strategy_preference.baseline_weighting", "strategy_preference.use_news_tilt", "risk.benchmark",
+                              "risk.target_annual_return", "risk.max_drawdown_tolerance", "capital.monthly_contribution", "horizon.purpose"})  # fmt: skip
 
 
 def _few_why_ko(counts: dict[str, int], stock_cap: float, sector_cap: float, cash: float) -> str:
@@ -235,31 +239,90 @@ class DialogService:
                 raise Conflict(f"질문 {seq} 에는 이미 답했습니다")
             if option_value is None and not (free_text and free_text.strip()):
                 raise RequestInvalid("선택지를 고르거나 답을 적어 주세요", details={"fields": {"answer": "비어 있음"}})
-            now = now_iso()
-            if option_value is not None:
-                opt = next((o for o in q.options if o.value == option_value), None)
-                shown = opt.label_ko if opt else str(option_value)
-                if opt is not None and (opt.patch or opt.clarification):  # 라운드 5: 여러 필드를 한 번에 바꾸거나 아이디어를 보태는 보기
-                    for k, v in (opt.patch or {}).items():
-                        doc.overrides[k] = v
-                    if opt.clarification:
-                        doc.idea_clarifications.append(opt.clarification)
-                    q.applied = {"field": q.field, "value": option_value, "patch": opt.patch, "clarification": opt.clarification}
-                elif q.field == "natural_language.idea":
-                    doc.idea_clarifications.append(shown)
-                else:
-                    doc.overrides[q.field] = option_value
-                    q.applied = {"field": q.field, "value": option_value}
-                q.answer = shown
-            else:
-                q.free_text = free_text.strip()
-                q.answer = q.free_text
-                doc.idea_clarifications.append(f"[{label(q.field)}] {q.free_text}")
-            q.answered_at = now
+            self._apply_answer(doc, q, option_value, free_text)
             doc.messages.append(DialogMessage(role="user", content=self._answer_message(doc, q)))
-            doc = self._turn(doc)
+            doc = self._turn_when_answered(doc)
             self.requests.save(doc)
         return self.state(doc)
+
+    def answer_batch(self, request_id: str, answers: list[dict[str, Any]]) -> DialogState:
+        """함께 물은 질문들에 한 번에 답한다 (6번). 답마다 보기·자유 입력·skip, 목록에 없는 질문은 답하지 않음(기본값)으로 본다 — 지금처럼 모든 질문은 선택.
+        답을 모두 반영해 HARD 규칙을 함께 검사하고(부딪히면 아무것도 바꾸지 않고 422), 한 메시지로 LLM 에 알려 턴을 한 번만 돈다."""
+        with self.requests.locked(request_id):
+            doc = self.requests.load(request_id)
+            if doc.status != "draft":
+                raise Conflict(f"요청이 이미 {doc.status} 상태입니다")
+            open_qs = [q for q in doc.questions if not q.answered_at]
+            if not open_qs:
+                raise Conflict("지금 답할 질문이 없습니다")
+            by_seq = {int(a.get("seq", 0)): a for a in answers}
+            unknown = sorted(set(by_seq) - {q.seq for q in open_qs})
+            if unknown:
+                raise RequestInvalid(f"지금 답할 수 없는 질문입니다: {', '.join(map(str, unknown))}", details={"seqs": unknown})
+            trial = doc.model_copy(deep=True)
+            batch = [q for q in trial.questions if not q.answered_at]
+            for q in batch:
+                a = by_seq.get(q.seq) or {}
+                text = (a.get("free_text") or "").strip()
+                if a.get("skip") or (a.get("option_value") is None and not text):
+                    self._apply_skip(trial, q)
+                else:
+                    self._apply_answer(trial, q, a.get("option_value"), text or None)
+            self._check_combined(trial, batch)
+            trial.messages.append(DialogMessage(role="user", content=self._reply_message(trial, batch)))
+            doc = self._turn(trial)
+            self.requests.save(doc)
+        return self.state(doc)
+
+    @staticmethod
+    def _apply_answer(doc: AnalysisRequestDoc, q: Question, option_value: Any, free_text: str | None) -> None:
+        """답 하나를 요청에 반영 (보기 = 덮어쓰기·patch·아이디어 보충, 자유 입력 = 아이디어 보충). 턴은 돌지 않는다."""
+        if option_value is not None:
+            opt = next((o for o in q.options if o.value == option_value), None)
+            shown = opt.label_ko if opt else str(option_value)
+            if opt is not None and (opt.patch or opt.clarification):  # 라운드 5: 여러 필드를 한 번에 바꾸거나 아이디어를 보태는 보기
+                for k, v in (opt.patch or {}).items():
+                    doc.overrides[k] = v
+                if opt.clarification:
+                    doc.idea_clarifications.append(opt.clarification)
+                q.applied = {"field": q.field, "value": option_value, "patch": opt.patch, "clarification": opt.clarification}
+            elif q.field == "natural_language.idea":
+                doc.idea_clarifications.append(shown)
+            else:
+                doc.overrides[q.field] = option_value
+                q.applied = {"field": q.field, "value": option_value}
+            q.answer = shown
+        else:
+            q.free_text = (free_text or "").strip()
+            q.answer = q.free_text
+            doc.idea_clarifications.append(f"[{label(q.field)}] {q.free_text}")
+        q.answered_at = now_iso()
+
+    @staticmethod
+    def _apply_skip(doc: AnalysisRequestDoc, q: Question) -> None:
+        q.skipped, q.answer, q.answered_at = True, "(답하지 않음 — 기본값 사용)", now_iso()
+        if q.kind == "feasibility" and q.field == "horizon.backtest_years":  # 질문 문구대로 '답하지 않으면 시작일을 옮긴다' = 이동 동의 (정책 결정 4)
+            doc.overrides["_start_shift_ok"] = True
+
+    def _turn_when_answered(self, doc: AnalysisRequestDoc) -> AnalysisRequestDoc:
+        """함께 물은 질문이 남아 있으면 턴을 미룬다 (질문 하나씩 답하는 기존 API 로 묶음에 답할 때). 모두 답했으면 다음 턴."""
+        return doc if any(not q.answered_at for q in doc.questions) else self._turn(doc)
+
+    def _check_combined(self, doc: AnalysisRequestDoc, batch: list[Question]) -> None:
+        """함께 고른 답이 서로 부딪히면(예: 종목당 상한 × 최소 종목 수 < 투자 비율) 반영하지 않고 422. 보기 하나하나는 질문을 고를 때 이미 검사했다."""
+        if doc.hard_errors:  # 원래 오류가 있던 요청은 질문 화면이 오류 고치기를 먼저 보여 준다 — 여기서 새로 막지 않는다
+            return
+        trial = doc.model_copy(deep=True)
+        self._fix_num_holdings(trial, self.profiles.version(trial.profile_version))
+        req = assemble.build(self.profiles.version(trial.profile_version), trial.idea, overrides=trial.overrides, clarifications=trial.idea_clarifications,
+                             request_id=trial.request_id, created_at=trial.created_at, language=trial.language)  # fmt: skip
+        errs = hard_errors(req)
+        if not errs:
+            return
+        touched = lambda q: [q.field, *((q.applied or {}).get("patch") or {})]  # noqa: E731
+        seqs = sorted({q.seq for q in batch if q.applied for e in errs for f in touched(q) if f.startswith(e.field) or e.field.startswith(f)})
+        raise RequestInvalid("함께 고른 답이 서로 맞지 않습니다: " + "; ".join(e.message_ko for e in errs[:3]),
+                             details={"seqs": seqs, "errors": [e.model_dump() for e in errs]})  # fmt: skip
 
     def update_overrides(self, request_id: str, overrides: dict[str, Any]) -> DialogState:
         """조건 확인 화면에서 사용자가 버튼·폼으로 조건을 직접 바꿈 (값이 None 이면 그 덮어쓰기를 지움 → 프로필 값으로). 새 턴을 돈다."""
@@ -298,13 +361,13 @@ class DialogService:
             if doc.status != "draft":
                 raise Conflict(f"요청이 이미 {doc.status} 상태입니다")
             before, n_asked = msg_result.snapshot(self._rows(doc), doc.intent), len(doc.questions)
-            closed = next((q for q in doc.questions if not q.answered_at), None)
+            closed = [q.model_copy() for q in doc.questions if not q.answered_at]
             self._settle_pending(doc, "(말로 조건을 보태 건너뜀)")
             doc.idea_clarifications.append(f"[추가 요청] {text}")
             doc.messages.append(DialogMessage(role="user", content=f"사용자의 추가 요청: {text}\n아이디어 보충으로 반영해 의도 명세를 다시 출력하세요. 필드 값을 바꿔야 하면 그 필드를 conflict/preference 질문으로 제안하세요."))
             doc = self._turn(doc)
-            asked = doc.questions[-1] if len(doc.questions) > n_asked and doc.dialog_state == "asking" else None
-            capped = asked is None and bool(doc.blocked_reason_ko) and len(doc.questions) >= doc.max_questions  # _turn 이 턴마다 사유를 다시 정한다
+            asked = doc.questions[n_asked:] if doc.dialog_state == "asking" else []  # 이 턴에 생긴 질문 (함께 묻는 묶음이면 여러 개)
+            capped = not asked and bool(doc.blocked_reason_ko) and len(doc.questions) >= doc.max_questions  # _turn 이 턴마다 사유를 다시 정한다
             doc.message_results.append(msg_result.judge(text, now_iso(), before, msg_result.snapshot(self._rows(doc), doc.intent),
                                                         asked=asked, closed=closed, capped=capped))  # fmt: skip
             self.requests.save(doc)
@@ -325,11 +388,9 @@ class DialogService:
                 raise NotFound(f"질문 {seq} 이 없습니다")
             if q.answered_at:
                 raise Conflict("이미 답한 질문입니다")
-            q.skipped, q.answer, q.answered_at = True, "(답하지 않음 — 기본값 사용)", now_iso()
-            if q.kind == "feasibility" and q.field == "horizon.backtest_years":  # 질문 문구대로 '답하지 않으면 시작일을 옮긴다' = 이동 동의 (정책 결정 4)
-                doc.overrides["_start_shift_ok"] = True
-            doc.messages.append(DialogMessage(role="user", content=f"Q{q.seq} ({q.field}) 답: 답하지 않음. 기본값/현재 값을 그대로 쓰고 이 항목은 다시 묻지 마세요."))
-            doc = self._turn(doc)
+            self._apply_skip(doc, q)
+            doc.messages.append(DialogMessage(role="user", content=self._skip_message(q)))
+            doc = self._turn_when_answered(doc)
             self.requests.save(doc)
         return self.state(doc)
 
@@ -430,20 +491,23 @@ class DialogService:
             pg.step("screen", "done", screen_ko(doc.precheck))
         pg.step("question", "running")
         proposals = self._code_proposals(req, intent, desc, overrides=doc.overrides, precheck=doc.precheck) + proposals  # 코드 규칙 질문이 LLM 제안보다 앞
-        chosen = self._pick_question(doc, proposals, req)
-        pg.step("question", "done", "더 물을 것 없음" if chosen is None or len(doc.questions) >= doc.max_questions else f"「{label(chosen.field)}」 묻기")
+        to_ask = self._pick_questions(doc, proposals, req)  # 첫 질문 + 함께 물어도 되는 질문 (6번)
+        picked = to_ask[: max(0, doc.max_questions - len(doc.questions))]
+        chosen = to_ask[0] if to_ask else None
+        pg.step("question", "done", "더 물을 것 없음" if not picked else " · ".join(f"「{label(p.field)}」" for p in picked) + " 묻기")
         if chosen is None:
             doc.dialog_state = "ready"
             doc.blocked_reason_ko = None
-        elif len(doc.questions) >= doc.max_questions:
+        elif not picked:
             # 질문 상한 (라운드 5): 막지 않고 남은 항목을 기본값(지금 조건)으로 두어 바로 확정할 수 있게 한다. 사유는 blocked_reason_ko 로 보여 준다
             doc.dialog_state = "ready"
             doc.blocked_reason_ko = (f"보충 질문 {doc.max_questions}회를 모두 써서 남은 항목은 지금 조건(기본값) 그대로 둡니다: "
                                      + ", ".join(label(p.field) for p in proposals[:3]) + ". 바꾸려면 '조건 바꾸기'나 '말로 조건 보태기'를 쓰세요.")  # fmt: skip
         else:
             doc.blocked_reason_ko = None
-            q = Question(**chosen.model_dump(), seq=len(doc.questions) + 1, asked_at=now_iso(), field_label_ko=label(chosen.field))
-            doc.questions.append(q)
+            now, batch = now_iso(), len(doc.questions) + 1
+            for p in picked:
+                doc.questions.append(Question(**p.model_dump(), seq=len(doc.questions) + 1, asked_at=now, field_label_ko=label(p.field), batch=batch))
             doc.turn = len(doc.questions)
             doc.dialog_state = "asking"
         return doc
@@ -738,6 +802,13 @@ class DialogService:
         )]  # fmt: skip
 
     def _pick_question(self, doc: AnalysisRequestDoc, proposals: list[QuestionProposal], req: dict[str, Any]) -> QuestionProposal | None:
+        """이번 턴에 가장 먼저 물을 질문 하나."""
+        return next(iter(self._pick_questions(doc, proposals, req)), None)
+
+    def _pick_questions(self, doc: AnalysisRequestDoc, proposals: list[QuestionProposal], req: dict[str, Any]) -> list[QuestionProposal]:
+        """이번 턴에 물을 질문들: 가장 급한 질문 하나(예전 규칙 그대로) + 그와 함께 물어도 되는 질문 (6번, 최대 settings.dialog.max_batch_questions 개).
+        함께 묻는 질문은 답이 종목 선정·후보 수·배분 가능 비율에 영향이 없는 항목(BATCHABLE_FIELDS)만 — 앞 답이 뒤 질문의 숫자를 바꾸면 안 된다 (024).
+        첫 질문이 점검 질문이거나 보기가 여러 조건을 함께 바꾸면(patch) 혼자 묻는다 (화면이 그 질문에 바뀌는 조건·점검 숫자를 따로 보여 준다)."""
         askable = set(self.s.dialog.askable_fields)
         asked = {q.field for q in doc.questions}
         asked_text = {(q.field, q.question_ko) for q in doc.questions}
@@ -776,13 +847,25 @@ class DialogService:
                 continue
             valid.append(p.model_copy(update={"options": ok_opts}))
         if not valid:
-            return None
+            return []
         valid.sort(key=lambda p: (p.priority, KIND_ORDER.get(p.kind, 9)))
         # 점검 질문이 첫 순서여도 고르는 종목을 바꾸는 충돌이 남아 있으면 그것을 먼저 묻는다 (우선순위와 관계없이). 점검 질문은 다음 턴에 확정된 기준으로 다시 계산된다
         # (024: 저변동성 기준 예상 종목 '유틸리티 7개, 부동산 3개' 로 섹터 상한을 물은 뒤 '아이디어대로: 고배당' 을 골라 부동산 8개·유틸리티 2개가 됐다. 029·032 도 같은 순서)
-        if valid[0].kind == "feasibility":
-            return next((p for p in valid if p.kind in ("conflict", "missing") and p.field in SELECTION_FIELDS), valid[0])
-        return valid[0]
+        first = valid[0]
+        if first.kind == "feasibility":
+            first = next((p for p in valid if p.kind in ("conflict", "missing") and p.field in SELECTION_FIELDS), valid[0])
+        out = [first]
+        if first.kind == "feasibility" or any(o.patch for o in first.options):
+            return out
+        for p in valid:
+            if len(out) >= self.s.dialog.max_batch_questions:
+                break
+            if p is first or p.field not in BATCHABLE_FIELDS or p.kind == "feasibility" or any(o.patch for o in p.options):
+                continue
+            if any(p.field == q.field or p.field.startswith(q.field + ".") or q.field.startswith(p.field + ".") for q in out):
+                continue
+            out.append(p)
+        return out
 
     # ───────────────────────── 보조 ─────────────────────────
     @staticmethod
@@ -792,11 +875,26 @@ class DialogService:
         return "\n".join(f"Q{q.seq} [{q.kind}] {q.field}: {q.question_ko} → 답: {q.answer or '(대기 중)'}" for q in doc.questions)
 
     def _answer_message(self, doc: AnalysisRequestDoc, q: Question) -> str:
+        return (f"Q{q.seq} ({q.field}) 답: {q.answer}\n코드가 반영한 갱신된 요청:\n```json\n{self._request_json(doc)}\n```\n"
+                "이 답을 반영해 의도 명세를 다시 출력하세요. 같은 항목은 다시 묻지 않습니다.")  # fmt: skip
+
+    @staticmethod
+    def _skip_message(q: Question) -> str:
+        return f"Q{q.seq} ({q.field}) 답: 답하지 않음. 기본값/현재 값을 그대로 쓰고 이 항목은 다시 묻지 마세요."
+
+    def _reply_message(self, doc: AnalysisRequestDoc, batch: list[Question]) -> str:
+        """한 번에 보낸 답들을 LLM 에 알리는 메시지 하나 (질문이 하나면 하나씩 답할 때와 같은 문장)."""
+        if len(batch) == 1:
+            return self._skip_message(batch[0]) if batch[0].skipped else self._answer_message(doc, batch[0])
+        lines = [f"- Q{q.seq} ({q.field}) 답: " + ("답하지 않음 (기본값/현재 값을 그대로 쓰고 다시 묻지 않음)" if q.skipped else str(q.answer)) for q in batch]
+        return (f"사용자가 질문 {len(batch)}개에 한 번에 답했습니다:\n" + "\n".join(lines) + f"\n코드가 반영한 갱신된 요청:\n```json\n{self._request_json(doc)}\n```\n"
+                "이 답들을 반영해 의도 명세를 다시 출력하세요. 같은 항목은 다시 묻지 않습니다.")  # fmt: skip
+
+    def _request_json(self, doc: AnalysisRequestDoc) -> str:
         prof = self.profiles.version(doc.profile_version)
         req = assemble.build(prof, doc.idea, overrides=doc.overrides, clarifications=doc.idea_clarifications, request_id=doc.request_id, created_at=doc.created_at)
         body = {k: req[k] for k in ("capital", "horizon", "risk", "constraints", "strategy_preference", "natural_language")}
-        return (f"Q{q.seq} ({q.field}) 답: {q.answer}\n코드가 반영한 갱신된 요청:\n```json\n{json.dumps(body, ensure_ascii=False, indent=1, default=str)}\n```\n"
-                "이 답을 반영해 의도 명세를 다시 출력하세요. 같은 항목은 다시 묻지 않습니다.")  # fmt: skip
+        return json.dumps(body, ensure_ascii=False, indent=1, default=str)
 
     def _rows(self, doc: AnalysisRequestDoc) -> list[ConditionRow]:
         """「말로 보태기」 전후 비교용 조건 표 (기본 투자조건과 비교, state() 의 질문 중 표와 같은 방법). 만들지 못하면 빈 표 (보조 정보).

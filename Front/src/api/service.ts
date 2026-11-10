@@ -85,6 +85,8 @@ export class HttpService implements AnalysisService {
   updateOverrides(id: string, overrides: Record<string, unknown>) { return api.post<DialogState>(`/requests/${id}/overrides`, { overrides }, LLM) }
   sendMessage(id: string, text: string) { return api.post<DialogState>(`/requests/${id}/message`, { text }, LLM) }
   getMessageResults(id: string) { return api.get<import("./proposed").ProposedMessageResult[]>(`/requests/${id}/messages`) }
+  getQuestionBatch(id: string) { return api.get<import("./proposed").ProposedQuestionBatch>(`/requests/${id}/questions`) }
+  answerBatch(id: string, answers: import("./proposed").ProposedBatchAnswer[]) { return api.post<DialogState>(`/requests/${id}/answers`, answers, LLM) }
   confirm(id: string) { return api.post<{ run_id: string; queue_position: number | null }>(`/requests/${id}/confirm`) }
   cancelRequest(id: string) { return api.post<DialogState>(`/requests/${id}/cancel`) }
   listRuns() { return api.get<RunRow[]>("/runs") }

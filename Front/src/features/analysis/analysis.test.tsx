@@ -178,3 +178,43 @@ describe("추가 점검 질문 화면", () => {
     window.history.replaceState(null, "", "/")
   })
 })
+
+describe("한 번에 답하기 (실제 서버 모양: 서로 영향 없는 질문만 함께, 모두 선택)", () => {
+  const opt = (value: unknown, label_ko: string) => ({ value, label_ko })
+  const qa: Question = { seq: 1, field: "strategy_preference.template", field_label_ko: "선정 기준", kind: "preference", question_ko: "선정 기준을 무엇으로 할까요?", options: [opt("momentum", "모멘텀"), opt("quality", "퀄리티")], allow_free_text: false, priority: 1, asked_at: "t" }
+  const qb: Question = { seq: 2, field: "constraints.rebalance", field_label_ko: "리밸런싱", kind: "preference", question_ko: "얼마나 자주 리밸런싱할까요?", options: [opt({ count: 1, unit: "1q" }, "분기"), opt({ count: 1, unit: "1m" }, "매월")], allow_free_text: true, priority: 2, asked_at: "t" }
+  const qc: Question = { seq: 3, field: "constraints.exclude_sectors", field_label_ko: "제외 섹터", kind: "preference", question_ko: "에너지 섹터를 뺄까요?", options: [opt(["Energy"], "빼기"), opt([], "그대로")], allow_free_text: false, priority: 2, asked_at: "t" }
+  const asked = (...qs: Question[]) => base({ state: "asking", question: qs.find((x) => !x.answered_at) ?? null, questions: qs, confirmation: null })
+  const batchOf = (...qs: Question[]) => ({ request_id: "r1", questions: qs.map((x) => ({ seq: x.seq, field: x.field, field_label_ko: x.field_label_ko!, question_ko: x.question_ko, why_ko: null, required: false, options: x.options.map((o) => ({ value: o.value, label_ko: o.label_ko })), allow_free_text: x.allow_free_text })) })
+  const done = (x: Question, answer: string) => ({ ...x, answer, answered_at: "t2" })
+
+  it("질문 2개를 한 화면에서 보내고(빈 질문은 답하지 않음), 답에 따라 질문이 더 생기면 확인 화면 버튼 없이 다음 질문을 하나씩 화면으로 묻는다", async () => {
+    const answerBatch = vi.fn(() => Promise.resolve(asked(done(qa, "퀄리티"), { ...done(qb, "(답하지 않음 — 기본값 사용)"), skipped: true }, qc)))
+    const answer = vi.fn(() => Promise.resolve(base({})))
+    const svc = fakeService({ getRequest: () => Promise.resolve(asked(qa, qb)), getQuestionBatch: vi.fn(() => Promise.resolve(batchOf(qa, qb))), answerBatch, answer })
+    render(<Providers service={svc}><ClarifyScreen requestId="r1" /></Providers>)
+    const send = await screen.findByRole("button", { name: "답변 2개 한 번에 보내기" })
+    expect(screen.getByText(/비워 둔 질문은 기본 투자조건을 그대로 씁니다/)).toBeInTheDocument()
+    expect(screen.queryByText("필수")).toBeNull()
+    fireEvent.click(screen.getByRole("radio", { name: "퀄리티" }))
+    fireEvent.click(send)
+    await waitFor(() => expect(answerBatch).toHaveBeenCalledWith("r1", [{ seq: 1, option_value: "quality" }, { seq: 2, skip: true }]))
+    const result = (await screen.findByRole("heading", { name: /보낸 답변과 반영 결과/ })).closest("section")!
+    expect(within(result).getByText(/더 확인할 질문이 생겨 아래에 이어서 묻습니다/)).toBeInTheDocument()
+    expect(within(result).queryByRole("button", { name: /조건 최종 확인으로/ })).toBeNull()
+    expect(await screen.findByText("에너지 섹터를 뺄까요?")).toBeInTheDocument()  // 하나 남은 질문은 하나씩 화면
+    fireEvent.click(screen.getByRole("radio", { name: /빼기/ }))
+    fireEvent.click(screen.getByRole("button", { name: "답변 보내기" }))
+    await waitFor(() => expect(answer).toHaveBeenCalledWith("r1", 3, { option_value: ["Energy"] }))
+    await waitFor(() => expect(window.location.hash).toContain("confirm"))  // 지난 묶음 결과가 막지 않고 확인 화면으로
+    window.history.replaceState(null, "", "/")
+  })
+
+  it("함께 물은 질문이 하나면 한 번에 답하는 화면이 아니라 하나씩 화면을 쓴다", async () => {
+    const getQuestionBatch = vi.fn(() => Promise.resolve(batchOf(qa)))
+    render(<Providers service={fakeService({ getRequest: () => Promise.resolve(asked(qa)), getQuestionBatch, answerBatch: vi.fn() })}><ClarifyScreen requestId="r1" /></Providers>)
+    expect(await screen.findByRole("button", { name: "답변 보내기" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /한 번에 보내기/ })).toBeNull()
+    expect(getQuestionBatch).not.toHaveBeenCalled()
+  })
+})

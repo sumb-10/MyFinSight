@@ -103,29 +103,21 @@
      "title": "Note Ko",
      "type": "string"
     },
-    "question_seq": {
-     "anyOf": [
-      {
-       "type": "integer"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null,
-     "title": "Question Seq"
+    "question_seqs": {
+     "default": [],
+     "items": {
+      "type": "integer"
+     },
+     "title": "Question Seqs",
+     "type": "array"
     },
-    "closed_seq": {
-     "anyOf": [
-      {
-       "type": "integer"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null,
-     "title": "Closed Seq"
+    "closed_seqs": {
+     "default": [],
+     "items": {
+      "type": "integer"
+     },
+     "title": "Closed Seqs",
+     "type": "array"
     }
    },
    "required": [
@@ -299,6 +291,18 @@
      ],
      "default": null,
      "title": "Answered At"
+    },
+    "batch": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Batch"
     }
    },
    "required": [

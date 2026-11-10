@@ -47,6 +47,7 @@ class Question(QuestionProposal):
     free_text: str | None = None
     skipped: bool = False
     answered_at: str | None = None
+    batch: int | None = None  # 한 턴에 함께 물은 질문 묶음 (그 턴 첫 질문의 seq). 예전 문서는 없음 = 혼자 물음
 
 
 class FieldError(BaseModel):
@@ -92,8 +93,8 @@ class MessageResult(BaseModel):
     outcome: Literal["applied", "not_applied", "needs_confirmation"]
     changes: list[MessageChange] = []
     note_ko: str = ""
-    question_seq: int | None = None  # 이 말 때문에 생긴 확인 질문
-    closed_seq: int | None = None  # 이 말을 보내며 답하지 않은 채 닫힌(건너뜀) 질문
+    question_seqs: list[int] = []  # 이 말 다음에 생긴 확인 질문 (함께 묻는 묶음이면 여러 개)
+    closed_seqs: list[int] = []  # 이 말을 보내며 답하지 않은 채 닫힌(건너뜀) 질문
 
 
 class RevisionChange(BaseModel):

@@ -33,7 +33,7 @@ def test_new_question_means_needs_confirmation_and_open_question_is_closed(svc_f
     assert st.state == "asking" and st.question.seq == 2 and st.question.field == "constraints.rebalance"
     [r] = RequestStore(store).load(st.request_id).message_results
     assert r.outcome == "needs_confirmation" and r.text == "리밸런싱은 매달 해 주세요" and r.at
-    assert r.question_seq == 2 and r.closed_seq == 1
+    assert r.question_seqs == [2] and r.closed_seqs == [1]
     assert "「리밸런싱」 항목을 확인하는 질문" in r.note_ko and "답하지 않은 「선정 기준(템플릿)」 질문은 건너뛰고" in r.note_ko
     assert r.changes == []  # 테마·조건 값은 그대로
 
@@ -46,7 +46,7 @@ def test_theme_change_is_applied_with_before_and_after(svc_factory):
     st = svc.message(st.request_id, "장비 회사 위주로 봐 주세요")
     assert st.state == "ready"
     [r] = RequestStore(store).load(st.request_id).message_results
-    assert r.outcome == "applied" and r.question_seq is None and r.closed_seq is None
+    assert r.outcome == "applied" and r.question_seqs == [] and r.closed_seqs == []
     assert [(c.field, c.label_ko, c.before_ko, c.after_ko) for c in r.changes] == [(THEMES_FIELD, "해석한 테마", "반도체", "반도체 장비")]
     assert r.note_ko.startswith("아이디어 해석(테마)에 반영했습니다")
 
@@ -71,7 +71,7 @@ def test_question_cap_reached_is_not_applied_with_reason(svc_factory):
     st = svc.message(st.request_id, "리밸런싱은 매달")
     assert st.state == "ready" and st.blocked_reason_ko
     [r] = RequestStore(store).load(st.request_id).message_results
-    assert r.outcome == "not_applied" and "추가 질문을 모두 써서" in r.note_ko and r.closed_seq == 1
+    assert r.outcome == "not_applied" and "추가 질문을 모두 써서" in r.note_ko and r.closed_seqs == [1]
 
 
 def test_judge_reports_condition_rows_and_ignores_idea_row():
@@ -81,10 +81,12 @@ def test_judge_reports_condition_rows_and_ignores_idea_row():
 
     before = snapshot([row("constraints.num_holdings", "종목 범위·제약", "목표 10개"), row("natural_language.idea", "아이디어", "a")], None)
     after = snapshot([row("constraints.num_holdings", "종목 범위·제약", "목표 8개"), row("natural_language.idea", "아이디어", "a [추가 요청] 8개만")], None)
-    r = judge("8개만", "t", before, after, asked=None, closed=None, capped=False)
+    r = judge("8개만", "t", before, after, asked=[], closed=[], capped=False)
     assert r.outcome == "applied" and [c.field for c in r.changes] == ["constraints.num_holdings"] and r.note_ko == "조건에 반영했습니다."
     q = Question(field="constraints.rebalance", kind="preference", question_ko="?", seq=3, asked_at="t", field_label_ko="리밸런싱")
-    assert judge("x", "t", Snapshot(), Snapshot(), asked=q, closed=None, capped=False).question_seq == 3
+    q2 = q.model_copy(update={"seq": 4, "field": "risk.benchmark", "field_label_ko": "비교지수"})
+    r = judge("x", "t", Snapshot(), Snapshot(), asked=[q, q2], closed=[], capped=False)  # 함께 묻는 묶음이면 질문이 여러 개
+    assert r.question_seqs == [3, 4] and r.note_ko.startswith("「리밸런싱」·「비교지수」 항목을 확인하는 질문")
 
 
 def test_messages_endpoint_lists_results_in_order(seeded_repo, descriptor_dir, tmp_path):
