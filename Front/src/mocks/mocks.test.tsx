@@ -36,6 +36,8 @@ describe("목업 모드 분리", () => {
       // 리포트 이름·삭제
       "getReportName", "renameReport", "deleteReport",
       // A 종목 이름
+      "searchStocks",
+      "getStocks",
       // B 투자조건 규칙
       // C 질문 화면
       // D 분석 진행
@@ -65,6 +67,13 @@ describe("목업 모드 분리", () => {
     await http.getReportName("r1"); await http.renameReport("r1", "새 이름"); await http.deleteReport("r1")
     const calls = f.mock.calls.map(([u, i]) => [String(u).replace(/^.*\/api\/v1/, ""), i?.method, i?.body])
     expect(calls).toEqual([["/reports/r1/name", "GET", undefined], ["/reports/r1/name", "PUT", JSON.stringify({ name: "새 이름" })], ["/reports/r1", "DELETE", undefined]])
+  })
+  it("종목 찾기·이름은 서버 주소로 요청하고(검색어는 인코딩), 티커가 없으면 요청하지 않는다", async () => {
+    const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("[]", { status: 200 }))
+    const http = new HttpService()
+    await http.searchStocks("삼성 전자"); await http.getStocks(["MU", "005930.KS"]); expect(await http.getStocks([])).toEqual([])
+    expect(f.mock.calls.map(([u, i]) => [String(u).replace(/^.*\/api\/v1/, ""), i?.method])).toEqual([
+      [`/stocks/search?q=${encodeURIComponent("삼성 전자")}`, "GET"], [`/stocks?tickers=${encodeURIComponent("MU,005930.KS")}`, "GET"]])
   })
   it("목업 모드에서는 서버 요청 함수가 요청을 보내지 않고 막는다", async () => {
     const f = vi.spyOn(globalThis, "fetch")

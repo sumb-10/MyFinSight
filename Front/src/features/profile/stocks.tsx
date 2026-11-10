@@ -5,7 +5,8 @@ import { stockLabel, type ProposedStock } from "../../api/proposed"
 import { MockTag } from "../report/proposedView"
 import { InfoTip } from "./inputs"
 
-// 종목 이름 (제안 기능): 서비스에 종목 검색·조회(searchStocks·getStocks)가 있을 때만 쓴다 — 지금은 목업뿐.
+// 종목 이름 (제안 기능): 서비스에 종목 검색·조회(searchStocks·getStocks)가 있을 때만 쓴다 (실제 서버: GET /stocks/search·/stocks).
+// 실제 서버는 미국 종목의 한국어 이름 자료가 없어 name_ko 에도 영문 이름이 온다 (name_en 과 같으면 한 번만 보여 준다).
 // 저장 값은 그대로 티커 문자열 목록이고, 화면에만 「회사명 (티커)」로 보인다.
 
 /** 티커 → 「회사명 (티커)」 바꾸는 함수. 서비스에 getStocks 가 없으면 null (일반 모드: 지금처럼 티커만). */
@@ -23,7 +24,7 @@ export function useStockNames(tickers: string[]): ((t: string) => string) | null
 
 const looksLikeTicker = (s: string) => /^[A-Za-z]{1,5}$|^\d{6}(\.K[SQ])?$/.test(s.trim())
 
-/** 회사 이름·티커로 찾아 고르는 종목 입력 (목업). 고른 종목은 칩으로 보이고, 저장은 티커로 된다. */
+/** 회사 이름·티커로 찾아 고르는 종목 입력. 고른 종목은 칩으로 보이고, 저장은 티커로 된다. */
 export function StockPicker({ label, values, onChange, error, other }: { label: string; values: string[]; onChange: (v: string[]) => void; error?: string; other?: { label: string; values: string[] } }) {
   const svc = useService()
   const id = useId()
@@ -59,7 +60,7 @@ export function StockPicker({ label, values, onChange, error, other }: { label: 
   const listId = `${id}-list`
   return (
     <div ref={box}>
-      <div className="mb-2 flex items-center gap-1"><label htmlFor={id} className="text-sm font-semibold text-slate-700">{label}</label><InfoTip label={label}>회사 이름(한글·영문)이나 종목 코드(티커)로 찾아 고릅니다. 저장은 티커로 됩니다. 목업 종목 목록에서만 찾습니다.</InfoTip><MockTag /></div>
+      <div className="mb-2 flex items-center gap-1"><label htmlFor={id} className="text-sm font-semibold text-slate-700">{label}</label><InfoTip label={label}>{svc.mode === "mock" ? "회사 이름(한글·영문)이나 종목 코드(티커)로 찾아 고릅니다. 저장은 티커로 됩니다. 목업 종목 목록에서만 찾습니다." : "회사 이름이나 종목 코드(티커)로 찾아 고릅니다. 미국 종목은 영문 이름, 한국 종목은 한글 이름으로 찾습니다. S&P 500·NASDAQ-100·KOSPI 200 종목에서 찾고, 저장은 티커로 됩니다."}</InfoTip><MockTag /></div>
       <div className={`flex flex-wrap items-center gap-1.5 rounded-xl border bg-white px-2 py-1.5 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 ${error ? "border-red-300" : "border-slate-200"}`}>
         {values.map((v) => (
           <span key={v} className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800">
@@ -70,7 +71,7 @@ export function StockPicker({ label, values, onChange, error, other }: { label: 
         <span className="flex min-w-36 flex-1 items-center gap-1.5 px-1">
           <Search className="size-4 shrink-0 text-slate-400" aria-hidden="true" />
           <input id={id} role="combobox" aria-expanded={showList} aria-controls={listId} aria-autocomplete="list" aria-activedescendant={showList && hits[active] ? `${id}-${hits[active].ticker}` : undefined}
-            className="min-w-0 flex-1 bg-transparent py-1 text-sm text-slate-900 outline-none placeholder:text-slate-400" value={q} placeholder={values.length ? "" : "회사 이름이나 티커로 찾기 (예: 마이크론, MU)"}
+            className="min-w-0 flex-1 bg-transparent py-1 text-sm text-slate-900 outline-none placeholder:text-slate-400" value={q} placeholder={values.length ? "" : svc.mode === "mock" ? "회사 이름이나 티커로 찾기 (예: 마이크론, MU)" : "회사 이름이나 티커로 찾기 (예: Micron, 삼성전자, MU)"}
             onChange={(e) => { setQ(e.target.value); setOpen(true) }} onFocus={() => setOpen(true)} onKeyDown={key} />
         </span>
       </div>
@@ -83,13 +84,13 @@ export function StockPicker({ label, values, onChange, error, other }: { label: 
                 <li key={h.ticker} id={`${id}-${h.ticker}`} role="option" aria-selected={i === active} aria-disabled={taken}
                   onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setActive(i)} onClick={() => !taken && add(h.ticker)}
                   className={`flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-sm ${i === active ? "bg-blue-50" : ""} ${taken ? "cursor-default opacity-50" : ""}`}>
-                  <span className="min-w-0"><span className="font-semibold text-slate-900">{h.name_ko}</span> <span className="font-mono text-xs font-semibold text-slate-600">{h.ticker}</span><span className="block truncate text-[11px] text-slate-500">{h.name_en} · {h.sector_ko} · {h.market === "KR" ? "한국" : "미국"}</span></span>
+                  <span className="min-w-0"><span className="font-semibold text-slate-900">{h.name_ko}</span> <span className="font-mono text-xs font-semibold text-slate-600">{h.ticker}</span><span className="block truncate text-[11px] text-slate-500">{[h.name_en !== h.name_ko && h.name_en, h.sector_ko, h.market === "KR" ? "한국" : "미국"].filter(Boolean).join(" · ")}</span></span>
                   <span className="shrink-0 text-[11px] font-semibold text-slate-500">{taken ? "추가됨" : clash ? `${other!.label}에 있음` : ""}</span>
                 </li>
               )
             })}
             {hits.length === 0 && searched === q.trim() && (
-              <li className="px-3 py-2.5 text-xs leading-5 text-slate-500">‘{q.trim()}’와 맞는 종목이 목업 목록에 없습니다.{looksLikeTicker(q) && <> <button type="button" className="font-semibold text-blue-700 hover:underline" onMouseDown={(e) => e.preventDefault()} onClick={() => add(q)}>티커 {q.trim().toUpperCase()} 그대로 추가</button></>}</li>
+              <li className="px-3 py-2.5 text-xs leading-5 text-slate-500">‘{q.trim()}’와 맞는 종목이 {svc.mode === "mock" ? "목업 목록" : "지원 종목(S&P 500·NASDAQ-100·KOSPI 200)"}에 없습니다.{looksLikeTicker(q) && <> <button type="button" className="font-semibold text-blue-700 hover:underline" onMouseDown={(e) => e.preventDefault()} onClick={() => add(q)}>티커 {q.trim().toUpperCase()} 그대로 추가</button></>}</li>
             )}
           </ul>
         </div>

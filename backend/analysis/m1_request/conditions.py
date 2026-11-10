@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from backend.analysis.m1_request.assemble import get_path
@@ -30,9 +31,15 @@ KO = {
 }  # fmt: skip
 
 
-def fmt(field: str, v: Any, req: dict[str, Any]) -> str:
+TICKER_FIELDS = frozenset({"constraints.exclude_tickers", "constraints.must_include_tickers"})
+
+
+def fmt(field: str, v: Any, req: dict[str, Any], stock_label: Callable[[str], str] | None = None) -> str:
+    """stock_label = 티커 → 「회사명 (티커)」 (종목 목록, 없으면 티커만). 제외·필수 포함 종목에만 쓴다."""
     if v is None:
         return "—"
+    if field in TICKER_FIELDS and isinstance(v, list) and stock_label is not None:
+        return ", ".join(stock_label(str(t)) for t in v) if v else "없음"
     if field == "capital.initial_amount":
         cur = get_path(req, "capital.currency") or "KRW"
         return f"{v:,.0f} {KO.get(cur, cur)}"
@@ -63,8 +70,9 @@ def fmt(field: str, v: Any, req: dict[str, Any]) -> str:
 
 
 def condition_rows(req: dict[str, Any], profile_req: dict[str, Any], *, answered_fields: dict[str, int] | None = None,
-                   derived: dict[str, Any] | None = None) -> list[ConditionRow]:  # fmt: skip
-    """req = 이번 요청, profile_req = 프로필 기본값으로만 만든 요청. answered_fields = {필드: 질문 seq}."""
+                   derived: dict[str, Any] | None = None, stock_label: Callable[[str], str] | None = None) -> list[ConditionRow]:  # fmt: skip
+    """req = 이번 요청, profile_req = 프로필 기본값으로만 만든 요청. answered_fields = {필드: 질문 seq}.
+    stock_label = 티커 → 「회사명 (티커)」 (API 가 종목 목록으로 넘긴다, 없으면 티커만)."""
     answered = answered_fields or {}
     rows: list[ConditionRow] = []
     for group, fields in GROUPS:
@@ -77,7 +85,7 @@ def condition_rows(req: dict[str, Any], profile_req: dict[str, Any], *, answered
             supported, note = True, None
             if f == "constraints.asset_types" and v and "etf" in v:
                 note = "ETF 는 아직 후보에 넣지 않습니다 (주식만 선정). 분석은 그대로 진행됩니다"
-            rows.append(ConditionRow(field=f, group_ko=group, label_ko=LABELS.get(f, f), value_ko=fmt(f, v, req), profile_value_ko=fmt(f, pv, profile_req) if changed else None,
+            rows.append(ConditionRow(field=f, group_ko=group, label_ko=LABELS.get(f, f), value_ko=fmt(f, v, req, stock_label), profile_value_ko=fmt(f, pv, profile_req, stock_label) if changed else None,
                                      changed=changed, source=src, supported=supported, note_ko=note))  # fmt: skip
     try:  # 낙폭 맞춤안 목표가 입력과 다르면(손실 시 매도 ×0.8, 경험 없음 ×0.9) 미리 보여 준다. 검증·표시의 허용 낙폭은 입력값 그대로 (라운드 5)
         from backend.analysis.m3_selection.intent import effective_max_drawdown

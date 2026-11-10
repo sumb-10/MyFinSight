@@ -107,7 +107,7 @@ export const proposedNameOf = <T extends object>(row: T): string | null => ((row
 
 /* ───────── 내 투자조건·새 분석 ───────── */
 
-export interface ProposedStock { ticker: string; name_ko: string; name_en: string; market: "US" | "KR"; sector_ko: string }
+export interface ProposedStock { ticker: string; name_ko: string; name_en: string | null; market: "US" | "KR"; sector_ko: string }   // 실제 서버: 미국 종목은 name_ko 도 영문(한국어 이름 자료 없음), 한국 종목은 name_en 이 null
 /** 종목 표기 규칙: 「회사명 (티커)」. 서버가 만드는 조건 문장(value_ko·질문 보기)도 같은 규칙을 쓴다고 가정한다. */
 export const stockLabel = (s: Pick<ProposedStock, "ticker" | "name_ko"> | null | undefined, ticker: string) => (s ? `${s.name_ko} (${ticker})` : ticker)
 /** GET /options 에 붙는 입력 규칙 (지금 서버는 주지 않는다 → 화면은 기존 규칙 그대로). */

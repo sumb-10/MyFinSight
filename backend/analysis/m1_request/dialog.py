@@ -12,6 +12,7 @@ import json
 import logging
 import math
 import re
+from collections.abc import Callable
 from typing import Any
 
 from backend.analysis.common.jsonio import canonical_json, now_iso, sha256_hex
@@ -135,8 +136,11 @@ def _rules_collapse_to_caps(req: dict[str, Any]) -> bool:
 
 
 class DialogService:
-    def __init__(self, store: JsonStore, repo: Any, md: MarketData, llm: LlmClient, settings: AnalysisSettings) -> None:
+    def __init__(self, store: JsonStore, repo: Any, md: MarketData, llm: LlmClient, settings: AnalysisSettings, *,
+                 stock_label: Callable[[str], str] | None = None) -> None:  # fmt: skip
+        """stock_label = 티커 → 「회사명 (티커)」 (조건 표의 제외·필수 포함 종목). 없으면 티커만."""
         self.store, self.repo, self.md, self.llm, self.s = store, repo, md, llm, settings
+        self.stock_label = stock_label
         self.requests = RequestStore(store)
         self.profiles = ProfileStore(store)
         self.queue = Queue(store)
@@ -809,7 +813,7 @@ class DialogService:
                 except (NotFound, RequestInvalid):
                     pass
             answered = {q.field: q.seq for q in doc.questions if q.applied}
-            rows = condition_rows(doc.draft_request, base_req, answered_fields=answered, derived=doc.derived)
+            rows = condition_rows(doc.draft_request, base_req, answered_fields=answered, derived=doc.derived, stock_label=self.stock_label)
             confirmation = {"effective_request": doc.effective_request or doc.draft_request, "rows": [r.model_dump() for r in rows],
                             "all_supported": all(r.supported for r in rows)}  # fmt: skip
         it = doc.intent or {}
@@ -825,7 +829,7 @@ class DialogService:
                     prof = self.profiles.version(doc.profile_version)
                     base_req = assemble.build(prof, doc.idea, request_id=doc.request_id, created_at=doc.created_at)
                     answered = {q.field: q.seq for q in doc.questions if q.applied}
-                    conditions = [r.model_dump() for r in condition_rows(doc.draft_request, base_req, answered_fields=answered, derived=doc.derived)]
+                    conditions = [r.model_dump() for r in condition_rows(doc.draft_request, base_req, answered_fields=answered, derived=doc.derived, stock_label=self.stock_label)]
                 except Exception:  # noqa: BLE001 — 표는 보조 정보
                     conditions = []
         state, error_ko = doc.dialog_state, doc.error_ko

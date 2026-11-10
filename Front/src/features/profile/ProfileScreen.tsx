@@ -56,7 +56,7 @@ function ProfileSummary({ view }: { view: ProfileView }) {
   const p = view.profile
   const c = p.constraints
   const sp = strategySummary(p.strategy_preference)
-  const name = useStockNames([...c.exclude_tickers, ...c.must_include_tickers])  // 제안 기능: 회사명 (목업에서만)
+  const name = useStockNames([...c.exclude_tickers, ...c.must_include_tickers])  // 제안 기능: 회사명 (서비스에 getStocks 가 있을 때만)
   const tickers = (xs: string[]) => (name ? <>{listText(xs.map(name))}{xs.length > 0 && <MockTag />}</> : listText(xs))
   const parts: { title: string; rows: [string, React.ReactNode][] }[] = [
     { title: "기본 조건", rows: [
@@ -355,7 +355,7 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
             <PartDisclosure title="빼거나 꼭 넣을 종목·분야" tag="선택" summary={listCount ? `${listCount}개 설정됨` : "설정 없음"} open={openLists || hasKey(errors, LIST_KEYS)} onToggle={setOpenLists}>
               <div className="space-y-5">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {svc.searchStocks ? (  // 제안 기능: 회사 이름으로 찾기 (목업에서만)
+                  {svc.searchStocks ? (  // 제안 기능: 회사 이름으로 찾기 (서비스에 searchStocks 가 있을 때만)
                     <>
                       <StockPicker label="제외할 종목" values={c.exclude_tickers} error={err("constraints.exclude_tickers")} other={{ label: "반드시 포함할 종목", values: c.must_include_tickers }} onChange={(v) => upd((f) => { f.constraints.exclude_tickers = v })} />
                       <StockPicker label="반드시 포함할 종목" values={c.must_include_tickers} error={err("constraints.must_include_tickers")} other={{ label: "제외할 종목", values: c.exclude_tickers }} onChange={(v) => upd((f) => { f.constraints.must_include_tickers = v })} />

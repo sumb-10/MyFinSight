@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import datetime as dt
+import logging
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -13,10 +15,13 @@ from backend.analysis.executor.queue import Queue
 from backend.analysis.m1_request.dialog import DialogService
 from backend.analysis.m2_data.market_data import MarketData
 from backend.analysis.m2_data.price_cache import PriceBarCache
+from backend.analysis.m2_data.stocks import load_stocks, lookup
 from backend.analysis.m5_backtest_report.execution_orders import compute_execution, with_execution
 from backend.analysis.m6_tracking.paper import PaperService
 from backend.analysis.paths import output_root
 from backend.analysis.settings import AnalysisSettings
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -30,6 +35,7 @@ class Services:
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _results_cache: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)  # report_id → 13_results (불변; 최근 8개)
     _orders_cache: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)  # report_id → 예상 매수 주문 (기준일 값이라 불변; 최근 32개)
+    _stocks: tuple[dt.date, list[dict[str, Any]]] | None = field(default=None, repr=False)  # (읽은 날, 종목 찾기 목록) — 하루 한 번 다시 읽음
 
     @property
     def repo(self) -> Any:
@@ -66,8 +72,25 @@ class Services:
                     self._md = MarketData(self._prices.wrap(repo), self.settings)
             return self._md
 
+    def stocks(self) -> list[dict[str, Any]]:
+        """종목 찾기·이름 목록 (지원 유니버스 구성종목). 구성종목은 가끔 바뀌므로 하루 한 번만 DB 에서 다시 읽는다."""
+        today = dt.date.today()
+        with self._lock:
+            if self._stocks is None or self._stocks[0] != today:
+                self._stocks = (today, load_stocks(self.repo, today))
+            return self._stocks[1]
+
+    def stock_label(self, ticker: str) -> str:
+        """티커 → 「회사명 (티커)」 (조건 표). 종목 목록을 못 읽었거나 목록에 없는 티커면 티커 그대로 (이름은 보조 정보)."""
+        try:
+            hit = lookup(self.stocks(), [ticker])
+        except Exception:  # noqa: BLE001
+            log.warning("stock names unavailable", exc_info=True)
+            return ticker
+        return f"{hit[0]['name_ko']} ({ticker})" if hit else ticker
+
     def dialog(self) -> DialogService:
-        return DialogService(self.store, self.repo, self.market_data(), self.llm(), self.settings)
+        return DialogService(self.store, self.repo, self.market_data(), self.llm(), self.settings, stock_label=self.stock_label)
 
     def paper(self) -> PaperService:
         return PaperService(self.store, self.repo, self.market_data(), self.llm(), self.settings)
