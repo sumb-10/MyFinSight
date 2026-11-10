@@ -164,7 +164,8 @@ export interface ProposedPaperKrw {
 }
 export interface ProposedPaperName { name_ko: string; mode: "linked" | "custom"; report_name_ko: string }
 
-/* ───────── 서비스 확장 (모두 선택). 실제 서버 서비스(HttpService)에는 없다 → 화면은 메서드가 있을 때만 기능을 연다. ───────── */
+/* ───────── 서비스 확장 (모두 선택). 목업 서비스는 모두 가지고, 실제 서버 서비스(HttpService)는 서버가 구현한 것만 가진다
+   (어느 것인지는 mocks/mocks.test.tsx 의 CONNECTED) → 화면은 메서드가 있을 때만 기능을 연다. ───────── */
 export interface ProposedApi {
   getReportName(reportId: string): Promise<ProposedReportName>
   renameReport(reportId: string, name: string | null): Promise<ProposedReportName>   // null = 자동 이름으로 되돌리기
@@ -184,6 +185,14 @@ export interface ProposedApi {
   getPaperName(paperId: string): Promise<ProposedPaperName>
   setPaperName(paperId: string, input: { mode: "linked" } | { mode: "custom"; name_ko: string }): Promise<ProposedPaperName>
 }
+
+/** ProposedApi 메서드 이름 전부. 인터페이스에 메서드를 더하고 여기 빠뜨리면 타입 검사가 잡는다 (테스트가 목업·실제 서버 서비스에 무엇이 있는지 볼 때 쓴다). */
+const PROPOSED_ALL: Record<keyof ProposedApi, true> = {
+  getReportName: true, renameReport: true, deleteReport: true, searchStocks: true, getStocks: true, getProfileVersion: true, recommendStrategy: true,
+  startProfileChat: true, answerProfileChat: true, rewindProfileChat: true, getQuestionBatch: true, answerBatch: true, getMessageResults: true,
+  getRunWarnings: true, getPaperKrw: true, getPaperName: true, setPaperName: true,
+}
+export const PROPOSED_METHODS = Object.keys(PROPOSED_ALL) as (keyof ProposedApi)[]
 
 /** 응답에 붙은 제안 필드 읽기 (없으면 null). 실제 서버 응답에는 없다. */
 export const proposedOf = <T extends object>(x: T): ProposedReport | null => ((x as { proposed?: ProposedReport }).proposed ?? null)
