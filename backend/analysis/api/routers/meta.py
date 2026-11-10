@@ -56,6 +56,8 @@ def options(request: Request) -> dict[str, Any]:
         "labels_ko": {"universes": {"SP500": "S&P 500", "NASDAQ100": "NASDAQ-100", "KOSPI200": "KOSPI 200"},
                       "templates": {"low_per": "저PER", "quality": "퀄리티(ROE)", "momentum": "모멘텀", "low_volatility": "저변동성", "high_dividend": "고배당"},
                       "weightings": {"equal_weight": "동일비중", "market_cap": "시가총액비중", "inverse_volatility": "역변동성", "min_variance": "최소분산"}},
+        # 입력 규칙 (프런트 제안 계약 proposed_rules): 초기 투자금 0원 + 매월 적립 허용 — 첫 적립일에 처음 매수 (이슈 #14 의 3번)
+        "proposed_rules": {"allow_zero_initial_amount": True},
     }  # fmt: skip
     try:
         md = sv.market_data()

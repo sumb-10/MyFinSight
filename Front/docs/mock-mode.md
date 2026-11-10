@@ -109,7 +109,7 @@ src/mocks/mocks.test.tsx       분리·일관성 테스트
 | `recommendStrategy(tendency)` | 성향 기반 전략 추천. 실제 서버와 같은 고정 규칙 표 (4단계, 실제 서버 연결됨) |
 | `startProfileChat` / `answerProfileChat(id, ProposedChatAnswer)` / `rewindProfileChat(id, questionId)` | 대화형 초기 투자조건: 새 대화 / 지금 질문에 답 / 그 답만 다시 묻기. 실제 서버와 같은 질문·규칙 (15절, 실제 서버 연결됨) |
 | `getQuestionBatch` / `answerBatch(id, ProposedBatchAnswer[])` | 여러 질문 한 번에 답하기. 답마다 보기 값·자유 입력·`skip`(선택 질문만) (4단계) |
-| (옵션 필드) `proposed_rules.allow_zero_initial_amount` | `GET /options` 에 붙는 입력 규칙. 있으면 초기 투자금 0원 + 매월 추가 투자금 허용 (4단계) |
+| (옵션 필드) `proposed_rules.allow_zero_initial_amount` | `GET /options` 에 붙는 입력 규칙. 있으면 초기 투자금 0원 + 매월 추가 투자금 허용 (4단계, 실제 서버 연결됨 — 첫 적립일에 처음 매수) |
 | `getMessageResults` | 말로 보태기 결과 (반영됨/반영 안 됨/확인 필요, 바뀐 조건) (4단계) |
 | `getRunWarnings` | 단계별 경고 전체 (같은 단계의 같은 문구는 count 로 묶음, 끝난 단계만) (5단계) |
 | (실행 필드) `proposed_cancel` | `GET /runs/{id}` 에 붙는 취소 결과: 요청·완료 시각, 멈춘 단계, 완료 단계 수, `immediate` (5단계) |

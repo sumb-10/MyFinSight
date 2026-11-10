@@ -46,6 +46,14 @@ describe("카드 2: 어떤 주식에 얼마를 투자하면 될까요?", () => {
     expect(screen.getByText(/선택된 전략\(동일비중\)은 과거 성과로 고른 구성이라 비중이 다를 수 있습니다/)).toBeInTheDocument()
     expect(screen.getByText("20,000,000원")).toBeInTheDocument()
   })
+  it("처음 투자금 0원이면 기준금액은 첫 적립금(배분 계산 금액)이고, 요청 원문의 0원을 쓰지 않는다", () => {
+    const d = doc({ sections: [{ id: "market", title_ko: "", blocks: [{ type: "table", title_ko: "요청 내용", columns: [], rows: [{ k: "투자금", v: "0원 — 매월 적립으로 시작 (첫 적립일에 처음 매수)" }] }] }] })
+    render(<AllocationCard doc={d} a={alloc(1, { basis: "forward", basis_ko: "분석 기준일 구성", initial_amount_usd: 486.27, amount_basis_ko: "첫 적립금" })} onMore={() => {}} />)
+    expect(screen.getByText("투자 기준금액 · 첫 적립금")).toBeInTheDocument()
+    expect(screen.getByText("486.27 USD")).toBeInTheDocument()
+    expect(screen.queryByText(/^0원/)).toBeNull()
+    expect(screen.queryByText("배분 계산에 쓴 금액")).toBeNull()
+  })
   it("환율 1.00(USD 요청)이면 서버 '원화' 값을 원화로 보이지 않고 USD 로만 보여 준다", () => {
     render(<AllocationCard a={alloc(1, { fx_rate: 1, items: [{ ticker: "MU", name: "Micron", sector: "", weight: 1, usd: 1732066, krw: 1732066 }], cash_weight: 0 })} onMore={() => {}} />)
     expect(screen.getByText("1,732,066.00 USD")).toBeInTheDocument()

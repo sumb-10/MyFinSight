@@ -75,6 +75,12 @@
 - **필요한 계산:** 0원 백테스트(첫 적립일부터 매수), 수익률 기준(넣은 원금 대비 / 시간가중) 정의, 모의투자 0원 시작 처리, 리포트의 「투자 기준금액」 표시 규칙.
 - **목업:** `MockService.options`, 프로필 변형 `mocks/data/profile.ts` 의 `ZERO_CAPITAL_VERSION`. **프런트 수정:** `api/proposed.ts`(`proposedRulesOf` 위치). 화면 `ProfileScreen.tsx`(검사·예상 투자 일정)는 규칙 값만 본다.
 - **주의:** 홈·질문·확인 화면의 「상세 조건」 창도 같은 플래그를 본다 (`features/home/DetailConditions.tsx` 의 `validate(f, { allowZero })`, 2026-11 화면 편의성 개선). 예상 투자 일정은 원금만 계산하며 수익을 예측하지 않는다.
+- **✅ 실제 서버 구현 (2026-11-10):** `GET /meta/options` 에 `proposed_rules: {"allow_zero_initial_amount": true}`. 검증은 `initial_amount ≥ 0`, 0이면 `monthly_contribution > 0`
+  (요청·`PUT /profile`·저장 스키마·모의투자 `POST /paper` 모두. 오류 필드는 `capital.monthly_contribution`). 정책은 사용자 결정:
+  **첫 적립일에 처음 매수**하고 그 전 평가액은 0. 시간가중 수익률 지수는 첫 적립일까지 100 으로 두고 그날부터 계산(비교지수도 같은 적립이라 같은 날 출발),
+  넣은 원금 대비 손익·연 IRR 은 그대로. 리포트의 배분 금액·예상 매수 주문은 **첫 적립금 기준** — `summary.allocation.initial_amount_usd` 에 첫 적립금, 새 필드
+  `amount_basis_ko: "첫 적립금"` (원금이 있으면 null). 모의투자는 단위 가격 1.0 에서 출발해 첫 적립일에 처음 사고, 비교지수 수익률도 그날 가격부터 (`benchmark_start_px` 가 그때 정해짐),
+  미리보기 배분은 첫 적립금 기준(`allocation_basis_ko`).
 
 ### 2-5. 투자성향 기반 전략 추천 — 4단계
 
