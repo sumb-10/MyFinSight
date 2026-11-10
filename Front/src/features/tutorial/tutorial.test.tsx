@@ -8,45 +8,19 @@ import { liftSticky, popoverStyle } from "./Coachmark"
 import { ServiceContext } from "../../app/providers"
 import type { AnalysisService } from "../../api/service"
 import { ReportList } from "../report/ReportList"
-import { EXAMPLE_ROW, exampleName, isExampleHidden, resetExampleMemory } from "./exampleReport"
+import { EXAMPLE_ROW, resetExampleMemory } from "./exampleReport"
 
 beforeEach(() => { try { window.localStorage.clear() } catch { /* ignore */ } resetExampleMemory() })
 
-describe("목록의 「[예시]」 리포트", () => {
-  const svc = { mode: "api", listReports: async () => [], listRuns: async () => [] } as unknown as AnalysisService
+describe("목록의 예시 리포트", () => {
+  const svc = { mode: "api", listReports: async () => [], listRuns: async () => [], listPaper: async () => [] } as unknown as AnalysisService
   const list = () => render(<ServiceContext.Provider value={svc}><ReportList /></ServiceContext.Provider>)
 
-  it("서버 리포트가 없어도 맨 위에 예시 리포트가 보이고, 지우면 숨겨졌다가 「다시 보이기」로 돌아온다", async () => {
+  it("분석 리포트 목록에는 예시 리포트를 두지 않는다 (서버 리포트가 없으면 빈 화면, 되돌리기 링크도 없다)", async () => {
     list()
-    const row = (await screen.findByText(EXAMPLE_ROW.name)).closest("tr")!
-    expect(row).toHaveAttribute("data-example")
-    expect(screen.queryByText("아직 리포트가 없습니다")).toBeNull()
-    fireEvent.click(within(row).getByRole("button", { name: /삭제/ }))
-    const dlg = screen.getByRole("dialog", { name: "예시 리포트를 목록에서 지울까요?" })
-    fireEvent.click(within(dlg).getByRole("button", { name: "확인" }))
+    expect(await screen.findByText("아직 리포트가 없습니다")).toBeInTheDocument()
     expect(screen.queryByText(EXAMPLE_ROW.name)).toBeNull()
-    expect(isExampleHidden()).toBe(true)  // 브라우저 저장소에 숨김 (서버는 부르지 않는다)
-    fireEvent.click(screen.getByRole("button", { name: /예시 리포트 다시 보이기/ }))
-    expect(screen.getByText(EXAMPLE_ROW.name)).toBeInTheDocument()
-    expect(isExampleHidden()).toBe(false)
-  })
-
-  it("제목에는 「[예시]」 글자 없이 배지만, 다른 리포트처럼 삭제·더보기가 있고 더보기로 이름을 바꿀 수 있다", async () => {
-    list()
-    const row = (await screen.findByText(EXAMPLE_ROW.name)).closest("tr")!
-    expect(row).not.toHaveTextContent("[예시]")
-    expect(within(row).getAllByText("예시").length).toBeGreaterThan(0)  // 배지
-    fireEvent.click(within(row).getByRole("button", { name: /더보기/ }))
-    fireEvent.click(screen.getByRole("menuitem", { name: /이름 변경/ }))
-    const dlg = screen.getByRole("dialog", { name: "리포트 이름 바꾸기" })
-    fireEvent.change(within(dlg).getByRole("textbox"), { target: { value: "내 연습용 리포트" } })
-    fireEvent.click(within(dlg).getByRole("button", { name: "저장" }))
-    expect(screen.getByText("내 연습용 리포트")).toBeInTheDocument()
-    expect(exampleName()).toBe("내 연습용 리포트")
-    fireEvent.click(within(screen.getByText("내 연습용 리포트").closest("tr")!).getByRole("button", { name: /더보기/ }))
-    fireEvent.click(screen.getByRole("menuitem", { name: /이름 변경/ }))
-    fireEvent.click(screen.getByRole("button", { name: "기본 이름으로 되돌리기" }))
-    expect(screen.getByText(EXAMPLE_ROW.name)).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /예시 리포트 다시 보이기/ })).toBeNull()
   })
 
   it("예시 리포트 화면: 코치마크 없이 열리고, 띠에서 둘러보기를 시작하며, 더보기에 「리포트 삭제」가 있다", async () => {
@@ -94,32 +68,27 @@ describe("리포트 보는 법 둘러보기", () => {
     for (const s of TOUR_STEPS) expect(document.querySelector(`[data-tour="${s.target}"]`), s.target).not.toBeNull()
   }, 20000)
 
-  it("2단계는 배분 카드만 비추고, 3단계에서 「예상 매수 주문」을 따로 펼쳐 주식 수를 안내하며, 떠나면 다시 접는다", async () => {
+  it("종목별 투자 금액 단계는 금액 옆 주식 수 칸까지 안내하고, 따로 펼치는 「예상 매수 주문」은 없다", async () => {
     show()
     await tour()
-    const toggle = () => within(document.querySelector<HTMLElement>('[data-tour="orders"]')!).getByRole("button", { name: /예상 매수 주문/ })
-    expect(toggle()).toHaveAttribute("aria-expanded", "false")
-    fireEvent.click(screen.getByRole("button", { name: "다음" }))
-    expect(screen.getByRole("dialog", { name: TOUR_STEPS[1].title })).not.toHaveTextContent(/몇 주/)
-    expect(toggle()).toHaveAttribute("aria-expanded", "false")
-    fireEvent.click(screen.getByRole("button", { name: "다음" }))
-    expect(TOUR_STEPS[2].target).toBe("orders")
-    expect(screen.getByRole("dialog", { name: TOUR_STEPS[2].title })).toHaveTextContent(/몇 주/)
-    await waitFor(() => expect(toggle()).toHaveAttribute("aria-expanded", "true"))
-    expect(await screen.findByRole("columnheader", { name: "주식 수" })).toBeVisible()
-    fireEvent.click(screen.getByRole("button", { name: "다음" }))
-    expect(toggle()).toHaveAttribute("aria-expanded", "false")
+    expect(document.querySelector('[data-tour="orders"]')).toBeNull()
+    const i = TOUR_STEPS.findIndex((s) => s.target === "allocation-list")
+    for (let n = 0; n < i; n++) fireEvent.click(screen.getByRole("button", { name: "다음" }))
+    expect(screen.getByRole("dialog", { name: TOUR_STEPS[i].title })).toHaveTextContent(/주식 수/)
+    const list = document.querySelector<HTMLElement>('[data-tour="allocation-list"]')!
+    expect(within(list).getByText("주식 수")).toBeInTheDocument()
+    expect(within(within(list).getByRole("list", { name: "종목별 목표 배분액" })).getAllByText(/^[\d,.]+주$/).length).toBeGreaterThan(0)
   }, 20000)
 
   it("용어 단계는 제목을 바꾸고 ? 도움말을 예시로 열며, 「투자 용어 설명」도 함께 비춘 뒤 떠나면 닫는다", async () => {
     show()
     await tour()
     const i = TOUR_STEPS.findIndex((s) => s.target === "term-help")
-    expect(i).toBe(6)
+    expect(i).toBe(2)
     for (let n = 0; n < i; n++) fireEvent.click(screen.getByRole("button", { name: "다음" }))
-    expect(TOUR_STEPS[i].title).toBe("어려운 용어는 '?' 또는 투자 용어 설명으로")
+    expect(TOUR_STEPS[i].title).toBe("용어 설명")
     expect(TOUR_STEPS[i].also).toEqual(["glossary"])
-    expect(screen.getByRole("dialog", { name: TOUR_STEPS[i].title })).toHaveTextContent(/연평균 수익률 옆 \?/)
+    expect(screen.getByRole("dialog", { name: TOUR_STEPS[i].title })).toHaveTextContent(/용어 옆 \? 를 누르면/)
     const help = document.querySelector<HTMLElement>('[data-tour="term-help"]')!
     await waitFor(() => expect(within(help).getByRole("button", { name: /설명 보기/ })).toHaveAttribute("aria-expanded", "true"))
     expect(help.querySelector('[role="dialog"]')).not.toBeNull()
@@ -180,8 +149,8 @@ describe("리포트 보는 법 둘러보기", () => {
     expect(wheel2.defaultPrevented).toBe(false)  // 완료 화면에서는 스크롤 가능
   }, 20000)
 
-  it("큰 강조 영역(배분 카드·예상 매수 주문·자세한 분석)은 말풍선을 왼쪽에, 좁은 화면이면 기본 배치로", () => {
-    expect(TOUR_STEPS.filter((s) => s.placement === "left").map((s) => s.target)).toEqual(["allocation-list", "orders", "details"])
+  it("큰 강조 영역(종목별 투자 금액)은 말풍선을 왼쪽에, 좁은 화면이면 기본 배치로", () => {
+    expect(TOUR_STEPS.filter((s) => s.placement === "left").map((s) => s.target)).toEqual(["allocation-list"])
     const big = { top: 64, left: 272, width: 720, height: 860 }
     const left = popoverStyle(big, "left", 1440, 900)
     expect(left.side).toBe("left")

@@ -16,15 +16,15 @@ const same = (r: Rec, v: StrategyPreference) => r.template === v.template && r.b
 const text = (r: Rec) => [templateLabel(r.template), weightingLabel(r.baseline_weighting), r.use_news_tilt ? "뉴스·공시 반영" : "뉴스·공시 반영 안 함"]
 
 /** 추천 결과. 없으면(일반 모드) null — 화면은 지금처럼 직접 고르기만 한다. */
-export function useRecommendation(tendency: Tendency | undefined) {
+export function useRecommendation(tendency: Tendency | undefined, purpose?: string | null) {
   const svc = useService()
-  return useResource(() => (svc.recommendStrategy && tendency ? svc.recommendStrategy(tendency) : Promise.resolve(null)), [svc, tendency]).data
+  return useResource(() => (svc.recommendStrategy && tendency ? svc.recommendStrategy(tendency, purpose) : Promise.resolve(null)), [svc, tendency, purpose]).data
 }
 
 export function StrategyRecommendation({ rec, value, onPick }: { rec: ProposedStrategyRecommendation; value: StrategyPreference; onPick: (p: Partial<StrategyPreference>) => void }) {
   const applied = same(rec.recommended, value)
   return (
-    <Part title={`${rec.tendency}에게 추천하는 전략`} aside={<MockTag />} desc="2단계에서 정한 투자성향에 맞춘 추천입니다. 추천을 그대로 쓰거나, 아래에서 직접 고를 수 있습니다.">
+    <Part title={`${rec.tendency}에게 추천하는 전략`} aside={<MockTag />} desc="투자성향과 투자 목적에 맞춘 추천입니다. 추천을 그대로 쓰거나, 아래에서 직접 고를 수 있습니다.">
       <div className={`rounded-xl border p-4 ${applied ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-slate-50"}`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">

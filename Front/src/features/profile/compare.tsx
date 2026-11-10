@@ -5,6 +5,7 @@ import type { ProfileFields, ProfileVersion, ProfileView } from "../../api/types
 import { Alert, Disclosure, inputClass } from "../../ui"
 import { ko } from "../../lib/format"
 import { tendencyLabel } from "../../lib/tendency"
+import { reactionText } from "./diagnosis"
 import { MockTag } from "../report/proposedView"
 import { ASSET_KO, benchName, listText, money, monthlyText, pctText, rebalanceText, usdFloor, yearsText } from "./format"
 import { whenText } from "./history"
@@ -29,7 +30,7 @@ export function profileRows(p: ProfileFields, name: (t: string) => string = (t) 
     r("기본 조건", "profile", "나에 대한 참고 정보", `${ko(p.profile.age_band)} · 투자 경험 ${ko(p.profile.investment_experience)} · 금융 지식 ${ko(p.profile.financial_knowledge)} · 자산 중 ${pctText(p.profile.investable_ratio_of_assets)}`),
     r("투자성향", "tendency", "투자성향", tendencyLabel({ final: p.diagnosis?.final_tendency, code: p.risk.risk_tolerance })),
     r("투자성향", "risk.max_drawdown_tolerance", "손실 감내 수준", pctText(p.risk.max_drawdown_tolerance)),
-    r("투자성향", "risk.loss_reaction", "손실 시 대응", ko(p.risk.loss_reaction)),
+    r("투자성향", "risk.loss_reaction", "손실 시 대응", reactionText(p.risk.loss_reaction, p.diagnosis?.answers?.reaction, ko)),
     r("투자성향", "risk.target_annual_return", "목표 연수익률", pctText(p.risk.target_annual_return)),
     r("투자성향", "risk.benchmark", "비교지수", benchName(p.risk.benchmark)),
     r("종목 범위·제약", "constraints.universe", "투자 대상 지수", c.universe.map(ko).join(", ")),

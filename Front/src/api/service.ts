@@ -74,7 +74,8 @@ export class HttpService implements AnalysisService {
       throw e
     }
   }
-  recommendStrategy(tendency: import("./types").Tendency) { return api.get<import("./proposed").ProposedStrategyRecommendation>(`/strategy/recommendation?tendency=${encodeURIComponent(tendency)}`) }
+  getSectorTrends() { return api.get<import("./proposed").ProposedSectorTrends>("/market/sector-trends") }
+  recommendStrategy(tendency: import("./types").Tendency, purpose?: string | null) { return api.get<import("./proposed").ProposedStrategyRecommendation>(`/strategy/recommendation?tendency=${encodeURIComponent(tendency)}${purpose ? `&purpose=${encodeURIComponent(purpose)}` : ""}`) }
   startProfileChat() { return api.post<import("./proposed").ProposedProfileChat>("/profile/chat") }
   answerProfileChat(chatId: string, answer: import("./proposed").ProposedChatAnswer) { return api.post<import("./proposed").ProposedProfileChat>(`/profile/chat/${chatId}/answers`, answer) }
   rewindProfileChat(chatId: string, questionId: string) { return api.post<import("./proposed").ProposedProfileChat>(`/profile/chat/${chatId}/rewind`, { question_id: questionId }) }

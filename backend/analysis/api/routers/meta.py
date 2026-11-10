@@ -1,4 +1,4 @@
-"""GET /health, GET /meta/options, GET /strategy/recommendation."""
+"""GET /health, GET /meta/options, GET /strategy/recommendation, GET /market/sector-trends."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from backend.analysis.api.routers import services
 from backend.analysis.common.dbconn import describe
 from backend.analysis.errors import public_message
 from backend.analysis.executor.queue import pid_alive
-from backend.analysis.m1_request.strategy_recommendation import Tendency, recommend
+from backend.analysis.m1_request.strategy_recommendation import Purpose, Tendency, recommend
 from backend.analysis.schemas import request as R
 
 router = APIRouter(tags=["meta"])
@@ -70,6 +70,17 @@ def options(request: Request) -> dict[str, Any]:
 
 
 @router.get("/strategy/recommendation")
-def strategy_recommendation(tendency: Tendency) -> dict[str, Any]:
-    """투자성향(안정형~공격투자형)에 맞춘 추천 전략·이유·다른 전략 2개. 성향마다 정해 둔 고정 규칙 (m1_request/strategy_recommendation.py)."""
-    return recommend(tendency)
+def strategy_recommendation(tendency: Tendency, purpose: Purpose | None = None) -> dict[str, Any]:
+    """투자성향(안정형~공격투자형)에 맞춘 추천 전략·이유·다른 전략 2개. 투자 목적을 주면 목적이 정하는 부분만 바꾼다 (m1_request/strategy_recommendation.py)."""
+    return recommend(tendency, purpose)
+
+
+@router.get("/market/sector-trends")
+def sector_trends(request: Request) -> dict[str, Any]:
+    """홈 '요즘엔 뭐가 좋아요?': 최근 한 달 성과가 좋았던 섹터와 성향별 추천 섹터 (m2_data/sector_trends.py).
+
+    새 거래일 자료가 들어온 뒤 처음 부르면 뒤에서 계산을 시작하고 status=loading·progress(0~1)·지난 결과(data, 없으면 null)를 준다.
+    화면은 ready 가 될 때까지 다시 묻는다. DB 에 닿지 못하면 저장해 둔 결과를 그대로 쓴다.
+    """
+    sv = services(request)
+    return sv.sector_trends().status(lambda: sv.market_data().ceiling)  # 최신 거래일은 결과가 있을 때만, 1분에 한 번 묻는다

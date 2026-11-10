@@ -6,7 +6,9 @@ import { useEffect, useState } from "react"
 // 처음 켤 때 이미 있던 리포트·리밸런싱은 확인한 것으로 두고 시작한다 — 그 뒤에 새로 생긴 것만 알린다.
 
 export type SeenScope = "api" | "mock"
-export interface SeenState { v: 1; reports: string[] | null; papers: Record<string, number> }  // papers: 모의투자별로 확인한 마지막 리밸런싱 번호(seq)
+export interface SeenState { v: 1; reports: string[] | null; papers: Record<string, number>; visits?: Record<string, PaperVisit> }  // papers: 모의투자별로 확인한 마지막 리밸런싱 번호(seq)
+/** 모의투자 화면에 들어온 기록: 시각(이 컴퓨터 시각, 시간대 없음)과 그때 있던 마지막 거래 기록 번호. 다음에 들어올 때 그 뒤에 생긴 리밸런싱을 팝업으로 알린다. */
+export interface PaperVisit { at: string; seq: number }
 /** 목업 전용: 처음 켤 때 '확인 안 함'으로 둘 항목 (시연용). 일반 모드에는 없다. */
 export interface SeenSeed { unseenReports: string[]; papers: Record<string, number> }
 
@@ -18,9 +20,9 @@ const store = (scope: SeenScope): Storage | null => { try { return scope === "mo
 export function loadSeen(scope: SeenScope): SeenState {
   try {
     const raw = store(scope)?.getItem(SEEN_KEYS[scope])
-    if (raw) { const s = JSON.parse(raw) as SeenState; if (s?.v === 1) return { v: 1, reports: Array.isArray(s.reports) ? s.reports : null, papers: s.papers && typeof s.papers === "object" ? s.papers : {} } }
+    if (raw) { const s = JSON.parse(raw) as SeenState; if (s?.v === 1) return { v: 1, reports: Array.isArray(s.reports) ? s.reports : null, papers: s.papers && typeof s.papers === "object" ? s.papers : {}, visits: s.visits && typeof s.visits === "object" ? s.visits : {} } }
   } catch { /* 깨진 기록은 처음 상태로 */ }
-  return { v: 1, reports: null, papers: {} }
+  return { v: 1, reports: null, papers: {}, visits: {} }
 }
 
 function save(scope: SeenScope, s: SeenState) {
@@ -53,6 +55,17 @@ export function markRebalanceSeen(scope: SeenScope, paperId: string, seq: number
   const s = loadSeen(scope)
   if ((s.papers[paperId] ?? -1) >= seq) return
   save(scope, { ...s, papers: { ...s.papers, [paperId]: seq } })
+}
+
+/** 이 모의투자에 지난번 들어온 기록 (없으면 처음). */
+export const paperVisit = (scope: SeenScope, paperId: string): PaperVisit | null => loadSeen(scope).visits?.[paperId] ?? null
+
+const localNow = () => { const d = new Date(), p = (n: number) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}` }
+
+/** 지금 들어온 것을 기록한다 (seq = 지금 있는 마지막 거래 기록 번호). */
+export function recordPaperVisit(scope: SeenScope, paperId: string, seq: number, at: string = localNow()) {
+  const s = loadSeen(scope)
+  save(scope, { ...s, visits: { ...(s.visits ?? {}), [paperId]: { at, seq } } })
 }
 
 /** 확인 기록이 바뀔 때(이 탭·다른 탭) 다시 그리게 하는 값. */

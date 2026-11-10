@@ -136,9 +136,22 @@ export interface ProposedProfileChat {
   progress: { done: number; total: number }
   draft: import("./types").ProfileFields
   asked_fields: string[]                     // 답으로 정해진 항목 (점 경로). 나머지는 기본값
+  derived_fields?: Record<string, string>    // 답에 맞춰 정한 항목 → 이유 (요약의 「답에 맞춰 정한 조건」: 비중 상한·비교지수·목표 연수익률 등)
 }
 /** 답: 보기를 고르면 option_value(multi 는 배열), 직접 입력하면 number. skip 은 allow_skip 인 질문만. */
 export type ProposedChatAnswer = { question_id: string; option_value?: unknown; number?: number; skip?: boolean }
+
+/* ───────── 홈 ───────── */
+/** 홈 '요즘엔 뭐가 좋아요?': 최근 한 달 성과가 좋았던 GICS 섹터 (서버 m2_data/sector_trends.py). 수익률은 분수, 각 시장 통화 기준.
+ *  good = 종목 5개 이상 · 평균 > 0 · 시장 평균보다 높음 · 절반 이상 상승. top = good 중 평균 순 최대 3개(상자에 보이는 섹터). */
+export interface ProposedSectorRow { code: string; name_ko: string; n: number; up: number; avg_return: number; vol_3m: number | null; good: boolean; leaders: { ticker: string; name: string; return: number }[]; prompt_ko: string }
+export interface ProposedSectorMarket { code: "US" | "KR"; label_ko: string; base_date: string; end_date: string; n: number; avg_return: number; benchmark: { ticker: string; label_ko: string; return: number | null } | null; sectors: ProposedSectorRow[]; top: string[] }
+/** 성향 맞춤 섹터: 안정형·안정추구형 = 변동성이 가장 작은 섹터, 위험중립형 = 수익률÷변동성 1위, 적극·공격투자형 = 수익률 1위 (상자에 보이는 섹터 중). */
+export interface ProposedSectorPick { tendency: Tendency; rule: "low_vol" | "ratio" | "top"; market: "US" | "KR" | null; code: string | null; name_ko: string | null; avg_return: number | null; text_ko: string }
+export type ProposedSectorScope = "US" | "KR" | "ALL"  // 내 투자 대상이 미국만 / 한국만 / 둘 다
+export interface ProposedSectorTrendsData { rule_version: string; as_of: string; computed_at: string; markets: ProposedSectorMarket[]; picks: Record<ProposedSectorScope, Partial<Record<Tendency, ProposedSectorPick>>> }
+/** 새 거래일 자료가 들어온 뒤 처음 부르면 서버가 뒤에서 계산한다: loading + progress(0~1) + 지난 결과(data, 없으면 null). */
+export interface ProposedSectorTrends { status: "ready" | "loading" | "error"; progress: number; data: ProposedSectorTrendsData | null; error: string | null }
 
 /* ───────── 분석 진행 ───────── */
 export interface ProposedRunWarning { step: string; step_label_ko: string; message_ko: string; count: number }
@@ -175,7 +188,7 @@ export interface ProposedApi {
   searchStocks(q: string): Promise<ProposedStock[]>
   getStocks(tickers: string[]): Promise<ProposedStock[]>   // 티커 → 회사명 (목록에 없는 티커는 빠진다)
   getProfileVersion(version: number): Promise<import("./types").ProfileVersion>
-  recommendStrategy(tendency: Tendency): Promise<ProposedStrategyRecommendation>
+  recommendStrategy(tendency: Tendency, purpose?: string | null): Promise<ProposedStrategyRecommendation>
   startProfileChat(): Promise<ProposedProfileChat>   // 대화형 초기 투자조건: 새 대화 시작
   answerProfileChat(chatId: string, answer: ProposedChatAnswer): Promise<ProposedProfileChat>
   rewindProfileChat(chatId: string, questionId: string): Promise<ProposedProfileChat>   // 그 질문만 다시 묻기 (뒤의 답은 남기고, 그 답에 기대는 질문만 함께 다시 묻는다)
@@ -186,13 +199,14 @@ export interface ProposedApi {
   getPaperKrw(paperId: string): Promise<ProposedPaperKrw | null>
   getPaperName(paperId: string): Promise<ProposedPaperName>
   setPaperName(paperId: string, input: ProposedPaperNameIn): Promise<ProposedPaperName>
+  getSectorTrends(): Promise<ProposedSectorTrends>   // 홈 '요즘엔 뭐가 좋아요?' (계산 중이면 status=loading → 다시 묻는다)
 }
 
 /** ProposedApi 메서드 이름 전부. 인터페이스에 메서드를 더하고 여기 빠뜨리면 타입 검사가 잡는다 (테스트가 목업·실제 서버 서비스에 무엇이 있는지 볼 때 쓴다). */
 const PROPOSED_ALL: Record<keyof ProposedApi, true> = {
   getReportName: true, renameReport: true, deleteReport: true, searchStocks: true, getStocks: true, getProfileVersion: true, recommendStrategy: true,
   startProfileChat: true, answerProfileChat: true, rewindProfileChat: true, getQuestionBatch: true, answerBatch: true, getMessageResults: true,
-  getRunWarnings: true, getPaperKrw: true, getPaperName: true, setPaperName: true,
+  getRunWarnings: true, getPaperKrw: true, getPaperName: true, setPaperName: true, getSectorTrends: true,
 }
 export const PROPOSED_METHODS = Object.keys(PROPOSED_ALL) as (keyof ProposedApi)[]
 

@@ -12,8 +12,44 @@ import { money } from "../format"
 type Answer = Omit<ProposedChatAnswer, "question_id">
 type Option = ProposedChatQuestion["options"][number]
 
-const digits = (s: string) => s.replace(/[^\d]/g, "")
-const grouped = (s: string) => (s ? Number(s).toLocaleString("ko-KR") : "")
+const NUM = /^\d+(\.\d+)?$/
+
+/** 천·백·십 단위까지 붙은 숫자 글 (「5천」「1천5백」「2000」). 못 읽으면 null. */
+function smallUnits(s: string): number | null {
+  let rest = s, total = 0
+  for (const [u, mul] of [["천", 1000], ["백", 100], ["십", 10]] as const) {
+    const i = rest.indexOf(u)
+    if (i < 0) continue
+    const part = rest.slice(0, i)
+    if (part !== "" && !NUM.test(part)) return null
+    total += (part === "" ? 1 : Number(part)) * mul
+    rest = rest.slice(i + 1)
+  }
+  if (rest === "") return total
+  return NUM.test(rest) ? total + Number(rest) : null
+}
+
+/** 금액 글을 원 단위 숫자로: 「2천만원」「1억 5천만」「2,000만」「1.5억」「20000000」. 못 읽으면 null. */
+export function parseKrw(input: string): number | null {
+  let rest = input.replace(/[\s,원₩]/g, ""), total = 0
+  if (rest === "") return null
+  for (const [u, mul] of [["억", 1e8], ["만", 1e4]] as const) {
+    const i = rest.indexOf(u)
+    if (i < 0) continue
+    const n = smallUnits(rest.slice(0, i) || "1")
+    if (n === null) return null
+    total += n * mul
+    rest = rest.slice(i + 1)
+  }
+  if (rest !== "") { const n = smallUnits(rest); if (n === null) return null; total += n }
+  return Math.round(total)
+}
+
+/** 숫자 질문(기간·종목 수)의 글: 「3」「3년」「10개」. 소수점은 그대로 둔다 (정수가 아니면 서버가 「정수로 알려 주세요」로 다시 묻는다). */
+export function parseCount(input: string): number | null {
+  const t = input.replace(/[\s,년개종목]/g, "")
+  return NUM.test(t) ? Number(t) : null
+}
 
 function Chip({ o, pressed, disabled, onClick }: { o: Option; pressed?: boolean; disabled: boolean; onClick: () => void }) {
   const card = !!o.help_ko
@@ -71,18 +107,21 @@ export function Composer({ q, busy, waitingText, onAnswer }: { q: ProposedChatQu
   const typed = !!q && (q.kind === "money" || q.kind === "number")
   const isMoney = q?.kind === "money"
   const unit = q?.input?.unit_ko ?? ""
-  const n = text === "" ? null : Number(text)
+  const n = text.trim() === "" ? null : isMoney ? parseKrw(text) : parseCount(text)
+  const unreadable = text.trim() !== "" && n === null
   const range = q?.input ? (isMoney ? `${money(q.input.min, "KRW")} ~ ${money(q.input.max, "KRW")}` : `${q.input.min}~${q.input.max}${unit}`) : ""
-  const placeholder = waitingText ?? (typed ? `직접 입력 (${range})` : "위 보기에서 골라 주세요")
+  const example = isMoney ? "예: 2000만원, 20000000" : "예: 3"
+  const placeholder = waitingText ?? (typed ? `숫자로 적어 주세요 (${example}) · ${range}` : "위 보기에서 골라 주세요")
   const off = busy || !typed || !!waitingText
   return (
     <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); if (q && typed && n !== null) { onAnswer({ number: n }); setText("") } }}>
       <label className="relative min-w-0 flex-1">
-        <input aria-label={q && typed ? `${q.field_label_ko} 직접 입력` : "답 입력"} inputMode="numeric" autoComplete="off" disabled={off} placeholder={placeholder}
-          value={isMoney ? grouped(text) : text} onChange={(e) => setText(digits(e.target.value))}
+        <input aria-label={q && typed ? `${q.field_label_ko} 직접 입력` : "답 입력"} inputMode={isMoney ? "text" : "decimal"} autoComplete="off" disabled={off} placeholder={placeholder}
+          value={text} onChange={(e) => setText(e.target.value)} aria-invalid={unreadable || undefined}
           className="h-11 w-full rounded-full border border-slate-300 bg-slate-50 pl-4 pr-24 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:bg-slate-100" />
         <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center gap-2 text-xs text-slate-500">
-          {isMoney && n !== null && <span className="font-semibold text-blue-700">{money(n, "KRW")}</span>}
+          {unreadable ? <span className="font-semibold text-amber-700">숫자로 적어 주세요</span>
+            : n !== null && <span className="font-semibold text-blue-700">{isMoney ? money(n, "KRW") : n}</span>}
           {typed && unit}
         </span>
       </label>

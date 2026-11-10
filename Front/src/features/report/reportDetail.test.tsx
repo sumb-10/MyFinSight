@@ -29,14 +29,14 @@ describe("기업 상태 문구", () => {
     const { unmount } = render(<CompanyList b={block([company()])} />)
     expect(screen.queryByText(/이 종목은 분석 기준일에 선정되지 않았습니다/)).toBeNull()  // 카드는 접힌 채 시작
     fireEvent.click(screen.getByRole("button", { name: /PLTR/ }))
-    expect(screen.getByText(/이 종목은 분석 기준일에 선정되지 않았습니다/)).toBeInTheDocument()
+    expect(screen.getByText("분석 기준일 선정 종목이 아니어서 선정 이유 설명이 없습니다.")).toBeInTheDocument()
     expect(screen.getAllByText("추천안 비중 없음").length).toBeGreaterThan(0)
     expect(screen.queryByText(/미보유|미선정$|백테스트 미포함$/)).toBeNull()
     expect(screen.getAllByText(/13.34배/).length).toBeGreaterThan(0)
     unmount()
     render(<CompanyList b={block([company({ in_selection_now: true, in_backtest: true, weight: 0.1 })])} />)
     fireEvent.click(screen.getByRole("button", { name: /PLTR/ }))
-    expect(screen.getByText(/설명이 없는 이유는 확인할 수 없습니다/)).toBeInTheDocument()
+    expect(screen.getByText("선정 이유 설명이 없습니다.")).toBeInTheDocument()
   })
 })
 
@@ -51,7 +51,7 @@ describe("투자 아이디어와 요청 내역", () => {
     expect(await screen.findByText("반도체 메모리 기업에 투자하고 싶어")).toBeInTheDocument()
     expect(screen.getByText("섹터당 상한")).toBeInTheDocument()  // 최종 반영 조건은 처음부터 보인다
     expect(screen.queryByRole("list", { name: "요청 기록" })).toBeNull()  // 질문·답변 전체는 접혀 있다
-    fireEvent.click(screen.getByRole("button", { name: /추가 질문 및 답변 전체 보기/ }))
+    fireEvent.click(screen.getByRole("button", { name: /추가 질문과 답변/ }))
     const list = screen.getByRole("list", { name: "요청 기록" }).textContent ?? ""
     expect(list.indexOf("질문1")).toBeLessThan(list.indexOf("질문2"))
     expect(screen.getByText("답하지 않음 (기본값 사용)")).toBeInTheDocument()

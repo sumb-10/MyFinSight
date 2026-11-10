@@ -134,7 +134,7 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
   const [openLists, setOpenLists] = useState(c0.exclude_tickers.length + c0.must_include_tickers.length + c0.exclude_sectors.length + (c0.exclude_themes ?? []).length > 0)
   const [openAdvanced, setOpenAdvanced] = useState(false)
   const allowZero = !!proposedRulesOf(options.data)?.allow_zero_initial_amount  // 제안 규칙: 초기 투자금 0원 + 매월 추가 투자 (실제 서버도 같은 규칙: 첫 적립일에 처음 매수, 이슈 #14 의 3번)
-  const rec = useRecommendation(form.diagnosis?.final_tendency)
+  const rec = useRecommendation(form.diagnosis?.final_tendency, form.horizon.purpose)
   const computed = useMemo(() => (Object.keys(form.diagnosis?.answers ?? {}).length ? computeTendency(form.diagnosis!.answers) : form.diagnosis?.computed_tendency ?? "위험중립형"), [form.diagnosis])
 
   useEffect(() => { setForm((f) => ({ ...f, diagnosis: { ...(f.diagnosis ?? DEFAULT_FORM.diagnosis!), computed_tendency: computed }, risk_type_computed: toRiskTolerance(computed) })) }, [computed])

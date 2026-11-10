@@ -3,24 +3,24 @@ import { BookOpen, ChevronLeft, ChevronRight } from "lucide-react"
 import type { ReportDoc } from "../../api/types"
 import { groupsFor } from "./navGroups"
 
-/** 사용자에게 보이는 섹션 제목 (질문형). 섹션 ID 는 서버 것 그대로 쓰고, 모르는 섹션은 서버 제목을 쓴다. */
+/** 사용자에게 보이는 섹션 제목 (짧은 명사형). 섹션 ID 는 서버 것 그대로 쓰고, 모르는 섹션은 서버 제목을 쓴다. */
 export const SECTION_TITLE: Record<string, string> = {
-  summary: "투자 결과 요약",
-  verdict: "왜 이런 투자 전략이 선택되었나요?",
-  construction: "투자 종목과 비중은 어떻게 결정됐나요?",
-  companies: "왜 이 기업들을 선택했나요?",
-  market: "시장과 뉴스는 어떻게 분석했나요?",
-  performance: "과거 투자 성과는 어땠나요?",
-  history: "내 요청이 어떻게 반영되었나요?",
-  assumptions: "투자 전에 무엇을 주의해야 하나요?",
-  references: "어떤 자료를 근거로 분석했나요?",
+  summary: "개요",
+  verdict: "종합 판단",
+  construction: "포트폴리오 구성",
+  companies: "기업별 근거",
+  market: "시장·뉴스 분석",
+  performance: "과거 성과",
+  history: "요청 내역",
+  assumptions: "주의 사항과 전제",
+  references: "자료와 분석 조건",
 }
 export const sectionTitle = (id: string, fallback: string) => SECTION_TITLE[id] ?? fallback
 export const HISTORY_TITLE = SECTION_TITLE.history
 
-/** 상단 탭에 쓰는 짧은 이름. 섹션 안의 제목은 위 질문형 그대로다. */
+/** 상단 탭에 쓰는 짧은 이름. */
 export const TAB_LABEL: Record<string, string> = {
-  summary: "결과 요약", verdict: "판단 이유", construction: "종목·비중", companies: "기업", market: "시장·뉴스",
+  summary: "개요", verdict: "판단 이유", construction: "종목·비중", companies: "기업", market: "시장·뉴스",
   performance: "과거 성과", history: "내 요청", assumptions: "주의 사항", references: "자료",
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
-import { Activity, BellRing, ChevronRight, FileText, Link2, Pause, Pencil, PencilLine, Play, RefreshCw } from "lucide-react"
+import { createPortal } from "react-dom"
+import { Activity, BellRing, Check, ChevronRight, FileText, Link2, Pause, Pencil, PencilLine, Play, RefreshCw } from "lucide-react"
 import { useService } from "../../app/providers"
 import { navigate } from "../../app/router"
 import { errorMessage } from "../../api/client"
@@ -11,16 +12,16 @@ import { datetime, fmt, ko, PALETTE, pct, usd, weight } from "../../lib/format"
 import { FlowHeader } from "../analysis/flow"
 import { Part, PartDisclosure } from "../profile/parts"
 import { rebalanceText } from "../profile/format"
-import { useFluidShell } from "../report/useFluidShell"
+import { useFluidShell, useWideShell } from "../report/useFluidShell"
 import { Money, fxByDate, inCur, type Cur } from "./money"
 import { PaperNameDialog } from "./PaperName"
 import { FxStatus, KrwPerformance } from "./KrwPerformance"
 import { MockTag } from "../report/proposedView"
 import { paperBasis, paperStrategy, samePapers } from "./paperLabel"
 import { findReportRow, reportName } from "../../lib/reportName"
-import { initPapers, markRebalanceSeen, useSeen } from "../../lib/seen"
-import { RebalanceCard } from "./RebalanceCard"
-import { freshRebalance } from "./rebalance"
+import { initPapers, markRebalanceSeen, paperVisit, recordPaperVisit, useSeen } from "../../lib/seen"
+import { RebalanceCard, TradeSide } from "./RebalanceCard"
+import { freshRebalance, nextRebalanceText, shownTrades } from "./rebalance"
 import { useRebalanceAlerts } from "../attention"
 
 /** Module6 모의투자: 목록(#/paper) 과 상세(#/paper/:id). 서버가 저장한 수치만 보여 주고 화면에서 다시 계산하지 않는다 (원화는 날짜별 환율로 표시만 바꾼다). */
@@ -83,7 +84,7 @@ function PaperList() {
   const rows = res.data ?? []
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="모의투자" title="모의투자" description="완료된 리포트의 전략을 가상 자본으로 따라갑니다. 시작은 리포트 화면의 ‘모의투자 시작’ 버튼에서 합니다. 실제 매매는 하지 않습니다." />
+      <PageHeader eyebrow="모의투자" title="모의투자" description="완료된 리포트의 전략을 가상으로 시뮬레이션 합니다." />
       {rows.length === 0 ? (
         <EmptyState title="진행 중인 모의투자가 없습니다" description="리포트를 열고 ‘모의투자 시작’을 누르면 여기에 나타납니다." action={<Button variant="secondary" onClick={() => navigate({ page: "reports" })}>리포트 보기</Button>} />
       ) : (
@@ -126,7 +127,7 @@ const kindText = (r: PaperRebalance) => (r.skipped ? "리밸런싱 건너뜀" : 
 /** 첫 화면의 최근 이벤트: 거래 기록 + 중지·재개·갱신 실패. 건너뜀은 거래 기록에 있으므로 이력에서 다시 세지 않는다. */
 function recentEvents(d: PaperDetail): Event[] {
   const rb = d.rebalances.map((r): Event => ({ date: r.date, title: kindText(r), detail: r.note_ko, tone: r.skipped ? "amber" : "slate" }))
-  const his = d.portfolio.history.flatMap((h): Event[] => h.event === "stopped" ? [{ date: h.at.slice(0, 10), title: "모의운용 중지", detail: h.note }] : h.event === "resumed" ? [{ date: h.at.slice(0, 10), title: "모의운용 재개", detail: h.note }] : h.event === "refresh_failed" ? [{ date: h.at.slice(0, 10), title: "자료 갱신 실패", detail: h.note, tone: "amber" }] : [])
+  const his = d.portfolio.history.flatMap((h): Event[] => h.event === "stopped" ? [{ date: h.at.slice(0, 10), title: "모의투자 중지", detail: h.note }] : h.event === "resumed" ? [{ date: h.at.slice(0, 10), title: "모의투자 재개", detail: h.note }] : h.event === "refresh_failed" ? [{ date: h.at.slice(0, 10), title: "자료 갱신 실패", detail: h.note, tone: "amber" }] : [])
   return [...rb, ...his].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5)
 }
 
@@ -217,7 +218,96 @@ function SiblingPapersDialog({ papers, close }: { papers: PaperSummary[]; close:
   )
 }
 
+/** 개요 그래프: 시작 이후 운용 수익률과 비교지수 수익률 (USD 기준). 평가 기록이 두 날 미만이면 안내 문장. */
+function ReturnChart({ d, rows }: { d: PaperDetail; rows: Record<string, string | number | null | undefined>[] }) {
+  if (d.series.dates.length < 2) {
+    return <p className="flex h-full items-center justify-center rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-600">{d.series.dates.length === 0 ? "아직 평가 기록이 없습니다. 첫 평가가 기록되면 그래프가 그려집니다." : `평가 기록이 ${d.series.dates[0]} 하루치입니다. 다음 거래일 자료가 들어오면 그래프가 그려집니다.`}</p>
+  }
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <LineChart data={rows} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+        <CartesianGrid stroke="#e2e8f0" vertical={false} />
+        <XAxis dataKey="date" tick={{ fontSize: 11 }} minTickGap={32} />
+        <YAxis tickFormatter={(v: number) => pct(v)} tick={{ fontSize: 11 }} width={64} />
+        <Tooltip formatter={(v, n) => [typeof v === "number" ? pct(v) : "–", String(n)]} />
+        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <Line type="monotone" dataKey="운용수익률" name="운용 수익률" stroke={PALETTE[0]} dot={false} strokeWidth={2} isAnimationActive={false} />
+        <Line type="monotone" dataKey="비교지수수익률" name={`비교지수 ${d.portfolio.benchmark}`} stroke={PALETTE[1]} dot={false} strokeDasharray="4 4" isAnimationActive={false} />
+      </LineChart>
+    </ResponsiveContainer>
+  )
+}
+
+/** 개요의 보유 구성: 현재 비중이 큰 5종목, 나머지, 현금. 회사명·목표 비중은 아래 「현재 보유 구성」에 있다. */
+function HoldingsGlance({ d, onAll }: { d: PaperDetail; onAll: () => void }) {
+  const latest = d.snapshots[d.snapshots.length - 1]
+  const ws = latest ? Object.entries(latest.weights).filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1]) : []
+  const top = ws.slice(0, 5), rest = ws.slice(5)
+  const row = (key: string, label: React.ReactNode, w: number | null) => (
+    <li key={key} className="grid grid-cols-[minmax(0,1fr)_5rem_3.5rem] items-center gap-3 text-sm">
+      <span className="min-w-0 truncate text-slate-700">{label}</span>
+      <span className="block h-1.5 overflow-hidden rounded-full bg-slate-100">{w != null && <span className="block h-full rounded-full bg-blue-600" style={{ width: `${Math.min(100, w * 100)}%` }} />}</span>
+      <span className="text-right font-semibold tabular-nums text-slate-900">{w == null ? "–" : weight(w)}</span>
+    </li>
+  )
+  return (
+    <Part title="보유 구성" desc={latest ? `${latest.date} 평가 기준 · ${ws.length}종목` : undefined} aside={<button type="button" onClick={onAll} className="shrink-0 text-xs font-semibold text-blue-700 hover:underline">전체 보기</button>}>
+      {!latest ? <p className="text-sm text-slate-600">평가 기록이 없습니다.</p> : (
+        <ul className="space-y-2.5">
+          {top.map(([t, w]) => row(t, <b className="font-semibold text-slate-900">{t}</b>, w))}
+          {rest.length > 0 && row("rest", `나머지 ${rest.length}종목`, rest.reduce((a, [, w]) => a + w, 0))}
+          {row("cash", "현금 비중", latest.value_usd ? latest.cash_usd / latest.value_usd : null)}
+        </ul>
+      )}
+    </Part>
+  )
+}
+
+/** 개요의 리밸런싱: 다음 시점, 마지막 거래, 주기. 확인하지 않은 리밸런싱이 있으면 표시만 한다 (확인은 팝업·아래 거래 카드에서). */
+function RebalanceGlance({ d, fresh, onAll }: { d: PaperDetail; fresh: boolean; onAll: () => void }) {
+  const p = d.portfolio
+  const holdOnly = p.rebalance_rule.count === 0
+  const next = holdOnly || p.status === "stopped" ? null : nextRebalanceText(p.rebalance_rule, p.start_date, d.summary.last_date)
+  const r = shownTrades(d)
+  const n = (side: "buy" | "sell") => r?.trades.filter((t) => t.side === side).length ?? 0
+  return (
+    <Part title="리밸런싱" aside={<button type="button" onClick={onAll} className="shrink-0 text-xs font-semibold text-blue-700 hover:underline">거래 보기</button>}>
+      <dl className="space-y-3">
+        <Small label="다음 리밸런싱" value={next ?? (holdOnly ? "하지 않음 (처음 산 뒤 보유)" : "중지 중에는 하지 않음")} />
+        <Small label="마지막 거래" value={r ? <>{r.date} {r.kind === "initial" ? "최초 매수" : "정기 리밸런싱"}{fresh && <span className="ml-1.5"><Badge tone="blue"><BellRing className="size-3" aria-hidden />확인 필요</Badge></span>}</> : "아직 없음"} note={r ? `매수 ${n("buy")}종목 · 매도 ${n("sell")}종목` : undefined} />
+        <Small label="주기" value={holdOnly ? "리밸런싱 없음" : `${rebalanceText(p.rebalance_rule as never)} · 기간 첫 거래일`} />
+      </dl>
+    </Part>
+  )
+}
+
+/** 들어왔을 때 지난 접속 이후 새 리밸런싱이 있으면 띄우는 안내. 확인하면 아래 거래 카드 안내·사이드바 숫자도 사라진다. */
+function RebalancePopup({ r, count, cur, fx, names, onAck, onShow, close }: { r: PaperRebalance; count: number; cur: Cur; fx: Map<string, number>; names: Map<string, string>; onAck: () => void; onShow: () => void; close: () => void }) {
+  const byValue = (side: "buy" | "sell") => r.trades.filter((t) => t.side === side).sort((a, b) => b.value_usd - a.value_usd)
+  return createPortal(
+    <Dialog title="리밸런싱할 시점입니다" close={close}>
+      <div className="space-y-4 px-6 py-5 text-sm leading-6 text-slate-700">
+        <p>{count > 1 ? `지난 접속 이후 리밸런싱이 ${count}번 있었습니다. ` : ""}{r.date} 정기 리밸런싱에서 아래처럼 사고팔아 비중을 목표대로 맞췄습니다. 이 전략을 실제로 따라 하신다면 같은 거래를 해 주세요.</p>
+        <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+          <TradeSide title="매수" dot="bg-red-500" items={byValue("buy")} date={r.date} cur={cur} fx={fx} names={names} />
+          <TradeSide title="매도" dot="bg-blue-500" items={byValue("sell")} date={r.date} cur={cur} fx={fx} names={names} />
+        </div>
+      </div>
+      <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
+        <Button variant="neutral" onClick={onShow}>거래 내역 보기</Button>
+        <Button onClick={onAck}><Check className="size-4" aria-hidden />확인했어요</Button>
+      </div>
+    </Dialog>,
+    document.body,
+  )
+}
+
+/** 거래가 있었던 정기 리밸런싱 (건너뜀·거래 없음 제외) */
+const tradedRebalances = (d: PaperDetail) => d.rebalances.filter((r) => r.kind === "rebalance" && !r.skipped && r.trades.length > 0)
+const lastSeq = (d: PaperDetail) => d.rebalances.reduce((m, r) => Math.max(m, r.seq), -1)
+
 function PaperDetailScreen({ paperId }: { paperId: string }) {
+  useWideShell()  // 개요를 한 화면에 담도록 본문 폭을 리포트 상세처럼 넓힌다
   const svc = useService()
   const res = useResource(() => svc.getPaper(paperId), [svc, paperId])
   const [override, setOverride] = useState<PaperDetail | null>(null)
@@ -229,6 +319,8 @@ function PaperDetailScreen({ paperId }: { paperId: string }) {
   const [naming, setNaming] = useState(false)
   const [siblings, setSiblings] = useState(false)
   const [tradesOpen, setTradesOpen] = useState(false)
+  const [prevVisit] = useState(() => paperVisit(svc.mode, paperId))  // 지난번 들어온 기록 (이번 기록을 남기기 전에 읽는다)
+  const [popupClosed, setPopupClosed] = useState(false)
   const seen = useSeen(svc.mode)  // 이 브라우저에서 확인한 리밸런싱 번호 (서버에는 없다)
   const pname = useResource(() => (svc.getPaperName ? svc.getPaperName(paperId) : Promise.resolve(null)), [svc, paperId, nameTick]).data  // 제안 기능: 서비스에 이름 조회가 있을 때만 (없으면 이름 바꾸기 메뉴를 숨김)
   const allPapers = useResource(() => svc.listPaper(), [svc, nameTick]).data  // 같은 리포트의 다른 모의투자 구분
@@ -241,6 +333,8 @@ function PaperDetailScreen({ paperId }: { paperId: string }) {
   const names = useMemo(() => new Map((partial.data?.selection?.rows ?? []).filter((x) => x.name).map((x) => [x.ticker, x.name as string])), [partial.data])
   const fx = useMemo(() => (d ? fxByDate(d) : new Map<string, number>()), [d])
   useEffect(() => { if (d) initPapers(svc.mode, [d.summary], svc.seenSeed?.()) }, [svc, d])  // 처음 보는 모의투자는 지금까지의 리밸런싱을 확인한 것으로 둔다
+  const seqNow = d ? lastSeq(d) : null
+  useEffect(() => { if (seqNow !== null) recordPaperVisit(svc.mode, paperId, seqNow) }, [svc, paperId, seqNow])  // 들어온 기록 (다음 접속 때 그 뒤 리밸런싱을 알린다)
   if (res.status === "loading" && !d) return <Loading label="모의투자를 불러오는 중…" />
   if (res.status === "error" && !d) return <EmptyState title="이 모의투자를 열 수 없습니다" description={res.error ?? ""} action={<Button onClick={() => navigate({ page: "paper" })}>목록으로</Button>} />
   if (!d) return null
@@ -265,8 +359,13 @@ function PaperDetailScreen({ paperId }: { paperId: string }) {
   const { rows, gap } = chartRows(d)
   const events = recentEvents(d)
   const stopped = p.status === "stopped"
-  const fresh = freshRebalance(d, seen.papers[paperId])  // 확인하지 않은 리밸런싱 → 거래 카드를 강조
-  const showAllTrades = () => { setTradesOpen(true); requestAnimationFrame(() => document.getElementById("paper-trades")?.scrollIntoView?.({ behavior: "smooth", block: "start" })) }
+  const seenSeq = seen.papers[paperId]
+  const fresh = freshRebalance(d, seenSeq)  // 확인하지 않은 리밸런싱 → 거래 카드를 강조
+  // 팝업: 지난 접속 이후에 생겼고 아직 확인하지 않은 리밸런싱 (처음 들어온 모의투자는 알리지 않는다)
+  const due = prevVisit ? tradedRebalances(d).filter((r) => r.seq > prevVisit.seq && r.seq > (seenSeq ?? -1)) : []
+  const popup = !popupClosed && due.length > 0 ? due[due.length - 1] : null
+  const scrollTo = (id: string) => requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView?.({ behavior: "smooth", block: "start" }))
+  const showAllTrades = () => { setTradesOpen(true); scrollTo("paper-trades") }
   const others = samePapers(allPapers ?? [], p.report_id).filter((x) => x.paper_id !== paperId)
   const relink = async () => { setErr(null); try { await svc.setPaperName!(paperId, { mode: "linked" }); setNameTick((n) => n + 1) } catch (e) { setErr(errorMessage(e)) } }
   // 더보기: 원본 리포트 · 이름 바꾸기·다시 연동(이름 기능이 있을 때) · 같은 리포트로 시작한 다른 모의투자(목록 창). 이름 바꾸기는 제목 옆 연필로도 연다 (리포트 상세와 같음)
@@ -276,59 +375,83 @@ function PaperDetailScreen({ paperId }: { paperId: string }) {
     ...(others.length ? [{ label: `같은 리포트로 시작한 다른 모의투자 ${others.length}개`, icon: Activity, onClick: () => setSiblings(true) }] : []),
   ]
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
-      {/* 머리말 한 묶음: 제목·설명·구분 정보(적용 전략·시작일·초기 투자금) + 오른쪽 위 버튼, 바로 아래 운용 상태 줄.
+    <div className="space-y-6">
+      {/* 머리말: 제목·구분 정보(적용 전략·시작일·초기 투자금) + 오른쪽 위 버튼, 바로 아래 운용 상태 줄.
           원본 리포트·이름 바꾸기·같은 리포트의 다른 모의투자는 「더보기」 안에 있고, 이름 바꾸기는 제목 옆 연필로도 연다. */}
-      <div className="space-y-4">
+      <div className="space-y-3">
         <FlowHeader eyebrow="모의투자" title={pname?.name_ko ?? p.name_ko}
           titleAction={pname && svc.setPaperName ? <button type="button" aria-label="모의투자 이름 바꾸기" title="모의투자 이름 바꾸기" onClick={() => setNaming(true)} className="mt-1 shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"><Pencil className="size-5" /></button> : undefined}
-          desc={<>원본 리포트의 전략을 {p.start_date}부터 가상 자본으로 따라갑니다. 실제 매매는 하지 않습니다.<span className="mt-1 block text-xs font-semibold text-slate-700">{paperBasis(s, pname?.name_ko ?? p.name_ko)}</span></>}
-          action={<div className="flex flex-col gap-2 sm:items-end sm:pt-6"><div className="flex flex-wrap items-center gap-2">
-            <span title="서버에 수집된 최근 종가 자료까지 평가를 추가합니다. 실시간 시세를 조회하지 않습니다."><Button variant="secondary" onClick={() => act("refresh")} disabled={busy !== "" || stopped}><RefreshCw className={`size-4 ${busy === "refresh" ? "animate-spin" : ""}`} />{busy === "refresh" ? "자료 확인 중…" : "최신 자료로 갱신"}</Button></span>
-            {stopped ? <Button onClick={() => act("resume")} disabled={busy !== ""}><Play className="size-4" />{busy === "resume" ? "재개하는 중…" : "모의운용 재개"}</Button> : <Button variant="danger" onClick={() => setAskStop(true)} disabled={busy !== ""}><Pause className="size-4" />모의운용 중지</Button>}
+          desc={<span className="text-xs font-semibold text-slate-700">{paperBasis(s, pname?.name_ko ?? p.name_ko)}</span>}
+          action={<div className="flex flex-col gap-2 sm:items-end"><div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" onClick={() => act("refresh")} disabled={busy !== "" || stopped}><RefreshCw className={`size-4 ${busy === "refresh" ? "animate-spin" : ""}`} />{busy === "refresh" ? "자료 확인 중…" : "최신 자료로 갱신"}</Button>
+            {stopped ? <Button onClick={() => act("resume")} disabled={busy !== ""}><Play className="size-4" />{busy === "resume" ? "재개하는 중…" : "모의투자 재개"}</Button> : <Button variant="danger" onClick={() => setAskStop(true)} disabled={busy !== ""}><Pause className="size-4" />모의투자 중지</Button>}
             <Menu items={menu} />
           </div>
-          {/* 갱신 설명은 갱신 버튼 바로 아래 */}
-          <p className="max-w-xs text-xs leading-5 text-slate-500 sm:text-right">갱신은 실시간 시세가 아니라, 서버에 수집된 최근 종가 자료까지 평가를 추가합니다.</p>
+          <p className="text-xs leading-5 text-slate-500 sm:text-right">직전 거래일까지 갱신합니다.</p>
           </div>} />
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-slate-200 pt-4 text-xs text-slate-600">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-slate-200 pt-3 text-xs text-slate-600">
           {runBadge(s)}{dataBadge(s)}
-          <span>마지막 평가일 {s.last_date ?? "–"}</span><span>· 자료 마감 {s.data_ceiling}</span>{s.last_refresh_at && <span>· 마지막 갱신 {datetime(s.last_refresh_at)}</span>}
+          <span>마지막 평가일 {s.last_date ?? "–"}</span><span>· 자료 마감 {s.data_ceiling}</span>{s.last_refresh_at && <span>· 마지막 갱신 {datetime(s.last_refresh_at)}</span>}{prevVisit && <span>· 지난 접속 {datetime(prevVisit.at)}</span>}
           {p.reconstructed_at_start && <Badge tone="amber">시작일에 비중 재계산</Badge>}
         </div>
         {refreshed && <p role="status" className="text-sm font-semibold text-slate-700">{refreshed}</p>}
       </div>
       {siblings && <SiblingPapersDialog papers={others} close={() => setSiblings(false)} />}
       {naming && pname && <PaperNameDialog paperId={paperId} name={pname} close={() => setNaming(false)} saved={() => setNameTick((n) => n + 1)} />}
+      {popup && <RebalancePopup r={popup} count={due.length} cur={cur} fx={fx} names={names} close={() => setPopupClosed(true)}
+        onAck={() => { markRebalanceSeen(svc.mode, paperId, popup.seq); setPopupClosed(true) }} onShow={() => { setPopupClosed(true); scrollTo("paper-rebalance") }} />}
       {askStop && (
-        <div role="alertdialog" aria-label="모의운용 중지 확인" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-950">
+        <div role="alertdialog" aria-label="모의투자 중지 확인" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-950">
           <p>보유 종목을 매도하지 않고 평가와 리밸런싱 기록을 중지합니다. 재개 시 중지 기간의 기록은 소급해서 채우지 않습니다. 중지 기간의 적립도 진행되지 않습니다.</p>
           <div className="mt-3 flex flex-wrap gap-2"><Button variant="danger" onClick={() => act("stop")} disabled={busy !== ""}>{busy === "stop" ? "중지하는 중…" : "중지 확정"}</Button><Button variant="ghost" onClick={() => setAskStop(false)}>계속 운용</Button></div>
         </div>
       )}
       {err && <Alert tone="error" title="처리하지 못했습니다">{err}</Alert>}
       {s.update_status === "delayed" && <Alert tone="warning" title="자료가 아직 없어 마지막 평가일 이후를 기록하지 못했습니다">{s.delayed_reason_ko}</Alert>}
-      {stopped && <Alert tone="info" title="모의운용이 중지된 상태입니다">보유는 그대로 두고 평가와 리밸런싱을 멈췄습니다. 재개하면 중지 기간은 비워 두고 재개일부터 다시 기록합니다. 중지 중 지나간 리밸런싱은 건너뛴 것으로 남깁니다.</Alert>}
+      {stopped && <Alert tone="info" title="모의투자가 중지된 상태입니다">보유는 그대로 두고 평가와 리밸런싱을 멈췄습니다. 재개하면 중지 기간은 비워 두고 재개일부터 다시 기록합니다. 중지 중 지나간 리밸런싱은 건너뛴 것으로 남깁니다.</Alert>}
 
-      <Part title="핵심 성과" desc={cur === "KRW" ? `금액은 원화, 수익률은 ${USD_BASIS}` : "금액과 수익률 모두 USD 기준"}>
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-          <Stat label="현재 평가액" value={<Money usd={s.value_usd} date={latest?.date} cur={cur} fx={fx} compact />} note={cur === "KRW" ? (lastFx && latest ? usd(s.value_usd) : "평가 기록의 환율이 없어 USD 로 표시합니다") : undefined} />
-          <Stat label="운용 수익률 (납입 제외)" value={pct(s.return_since_start)} tone={s.return_since_start >= 0 ? "up" : "down"} />
-          <Stat label="비교지수 대비 차이" value={s.excess_return == null ? "–" : fmt(s.excess_return, "pp")} note={`${p.benchmark} ${s.benchmark_return_since_start == null ? "–" : pct(s.benchmark_return_since_start)}`} />
+      {/* 개요: 들어오자마자 한 화면에서 보는 핵심. 핵심 성과(왼쪽 그래프 · 오른쪽 숫자) 아래에 보유 구성 · 리밸런싱 · 최근 운용 기록. 자세한 내용은 그 아래로 */}
+      <section aria-label="개요" className="space-y-5">
+        <Part title="핵심 성과" desc={cur === "KRW" ? `금액은 원화, 수익률은 ${USD_BASIS}` : "금액과 수익률 모두 USD 기준"}>
+          <div className="grid grid-cols-1 gap-x-8 gap-y-6 lg:grid-cols-2">
+            <div className="flex min-w-0 flex-col gap-2">
+              <div className="h-64 min-w-0">
+                <ReturnChart d={d} rows={rows} />
+              </div>
+              {gap > 0 && <p className="text-xs text-slate-500">끊긴 구간은 모의투자를 중지한 기간입니다. 평가하지 않은 기간을 선으로 잇지 않습니다.</p>}
+              <p className="text-xs text-slate-500">과거 백테스트는 이어 붙이지 않습니다. <button type="button" onClick={() => navigate({ page: "report", reportId: p.report_id, sec: "performance" })} className="font-semibold text-blue-700 hover:underline">원본 리포트의 과거 성과 보기</button></p>
+            </div>
+            <div className="min-w-0 space-y-5">
+              <Stat label="현재 평가액" value={<Money usd={s.value_usd} date={latest?.date} cur={cur} fx={fx} compact />} note={cur === "KRW" ? (lastFx && latest ? usd(s.value_usd) : "평가 기록의 환율이 없어 USD 로 표시합니다") : undefined} />
+              <div className="grid grid-cols-2 gap-5">
+                <Stat label="운용 수익률 (납입 제외)" value={pct(s.return_since_start)} tone={s.return_since_start >= 0 ? "up" : "down"} note={`납입 제외 손익 ${usd(s.gain_usd)} (수수료 차감 후)`} />
+                <Stat label="비교지수 대비 차이" value={s.excess_return == null ? "–" : fmt(s.excess_return, "pp")} note={`${p.benchmark} ${s.benchmark_return_since_start == null ? "–" : pct(s.benchmark_return_since_start)}`} />
+              </div>
+              <dl className="grid grid-cols-3 gap-4 border-t border-slate-100 pt-4">
+                <Small label="총 납입금" value={inCur(p.initial_capital.amount + added, cur)} note={added > 0 ? `초기 ${inCur(p.initial_capital.amount, cur)} · 추가 ${inCur(added, cur)} (${paidCount}회 납입)` : `초기 ${inCur(p.initial_capital.amount, cur)} · 추가 납입 없음`} />
+                <Small label="최대 낙폭" value={<span className={over ? "text-amber-800" : ""}>{pct(s.max_drawdown)}</span>} note={tolerance != null ? `허용 ${weight(tolerance)}${over ? " 넘음" : ""}` : "허용 기준 없음"} />
+                <Small label="평가 기준일" value={s.last_date ?? "–"} note={`평가 ${s.days_tracked}일 · 리밸런싱 ${s.n_rebalances}회`} />
+              </dl>
+            </div>
+          </div>
+        </Part>
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+          <HoldingsGlance d={d} onAll={() => scrollTo("paper-holdings")} />
+          <RebalanceGlance d={d} fresh={!!fresh} onAll={() => scrollTo("paper-rebalance")} />
+          <Part title="최근 운용 기록">
+            {events.length ? (
+              <ol className="divide-y divide-slate-100">
+                {events.map((e, i) => <li key={i} className="flex gap-3 py-1.5 first:pt-0 last:pb-0"><span className="w-20 shrink-0 pt-0.5 text-xs tabular-nums text-slate-500">{e.date}</span><span className="min-w-0 text-sm"><b className={e.tone === "amber" ? "text-amber-800" : "text-slate-900"}>{e.title}</b>{e.detail && <span className="block truncate text-xs text-slate-500" title={e.detail}>{e.detail}</span>}</span></li>)}
+              </ol>
+            ) : <p className="text-sm text-slate-600">운용 기록이 없습니다.</p>}
+          </Part>
         </div>
-        <dl className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-4 sm:grid-cols-4">
-          <Small label="초기 투자금" value={inCur(p.initial_capital.amount, cur)} />
-          <Small label="추가 납입금" value={added > 0 ? inCur(added, cur) : "없음"} note={added > 0 ? `${paidCount}회 납입` : undefined} />
-          <Small label="총 납입금" value={inCur(p.initial_capital.amount + added, cur)} />
-          <Small label="평가 기준일" value={s.last_date ?? "–"} note={`평가 ${s.days_tracked}일 · 리밸런싱 ${s.n_rebalances}회`} />
-        </dl>
-        <p className="text-xs leading-5 text-slate-500">납입 제외 손익 {usd(s.gain_usd)} (수수료 차감 후)</p>
-      </Part>
+      </section>
 
       {k && <KrwPerformance k={k} />}
 
-      {/* 리밸런싱 거래: 접힌 상세 기록에 숨기지 않고 성과 카드 바로 아래(위험 위)에 둔다 */}
-      <RebalanceCard d={d} cur={cur} fx={fx} names={names} fresh={!!fresh} onAck={() => fresh && markRebalanceSeen(svc.mode, paperId, fresh.seq)} onAll={showAllTrades} />
+      {/* 자세한 내용: 리밸런싱 거래(위험 위) → 위험 → 현재 보유 구성 → 접힌 상세 기록 */}
+      <div id="paper-rebalance" className="scroll-mt-6"><RebalanceCard d={d} cur={cur} fx={fx} names={names} fresh={!!fresh} onAck={() => fresh && markRebalanceSeen(svc.mode, paperId, fresh.seq)} onAll={showAllTrades} /></div>
 
       <Part title="위험" desc="운용 수익률과 같은 기준으로 계산한 낙폭입니다.">
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
@@ -338,37 +461,7 @@ function PaperDetailScreen({ paperId }: { paperId: string }) {
         </dl>
       </Part>
 
-      <Part title={`시작 이후 수익률 (${cur === "KRW" ? USD_BASIS : "USD 기준"})`}>
-        {d.series.dates.length === 0 ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">아직 평가 기록이 없습니다. 첫 평가가 기록되면 이곳에 표시됩니다.</p>
-          : d.series.dates.length === 1 ? <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">평가 기록이 {d.series.dates[0]} 하루치입니다. 다음 거래일 자료가 들어오면 그래프가 그려집니다.</p>
-          : (
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={rows}>
-                  <CartesianGrid stroke="#e2e8f0" vertical={false} />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} minTickGap={32} />
-                  <YAxis tickFormatter={(v: number) => pct(v)} tick={{ fontSize: 11 }} width={64} />
-                  <Tooltip formatter={(v, n) => [typeof v === "number" ? pct(v) : "–", `${String(n)} (USD 기준)`]} />
-                  <Legend formatter={(v) => `${String(v)} (USD 기준)`} />
-                  <Line type="monotone" dataKey="운용수익률" name="운용 수익률" stroke={PALETTE[0]} dot={false} strokeWidth={2} isAnimationActive={false} />
-                  <Line type="monotone" dataKey="비교지수수익률" name={`비교지수 ${p.benchmark} 수익률`} stroke={PALETTE[1]} dot={false} strokeDasharray="4 4" isAnimationActive={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        {gap > 0 && <p className="text-xs text-slate-500">끊긴 구간은 모의운용을 중지한 기간입니다. 평가하지 않은 기간을 선으로 잇지 않습니다.</p>}
-        <p className="text-xs text-slate-500">과거 백테스트는 이어 붙이지 않습니다. <button type="button" onClick={() => navigate({ page: "report", reportId: p.report_id, sec: "performance" })} className="font-semibold text-blue-700 hover:underline">원본 리포트의 과거 성과 보기</button></p>
-      </Part>
-
-      <Holdings d={d} names={names} />
-
-      <Part title="최근 운용 기록">
-        {events.length ? (
-          <ol className="divide-y divide-slate-100">
-            {events.map((e, i) => <li key={i} className="flex flex-col gap-0.5 py-2 first:pt-0 last:pb-0 sm:flex-row sm:gap-4"><span className="shrink-0 text-xs tabular-nums text-slate-500 sm:w-24 sm:pt-0.5">{e.date}</span><span className="min-w-0 text-sm"><b className={e.tone === "amber" ? "text-amber-800" : "text-slate-900"}>{e.title}</b>{e.detail && <span className="block break-words text-xs text-slate-500">{e.detail}</span>}</span></li>)}
-          </ol>
-        ) : <p className="text-sm text-slate-600">운용 기록이 없습니다.</p>}
-      </Part>
+      <div id="paper-holdings" className="scroll-mt-6"><Holdings d={d} names={names} /></div>
 
       <div id="paper-trades" className="scroll-mt-6"><PartDisclosure title="거래·리밸런싱 상세" summary={`${d.rebalances.length}건`} open={tradesOpen} onToggle={setTradesOpen}>
         {d.rebalances.length === 0 ? <p className="text-sm text-slate-600">기록이 없습니다.</p> : (

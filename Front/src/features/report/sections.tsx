@@ -16,16 +16,16 @@ import { analysisRisk, benchName, idByLabel, isShortWindow, shortWindowNote } fr
 // 긴 문단·큰 비교표는 접어서 둔다. 어떤 블록도 버리지 않는다 — 분류하지 못한 블록은 원래 순서대로 끝에 그린다.
 
 const PROSE: Record<string, string> = {
-  verdict: "판단 근거 전문 보기", construction: "비중 결정 과정 설명 읽기", companies: "선정 과정 설명 읽기", market: "시장 분석 원문 읽기",
-  performance: "성과 해석 설명 읽기", assumptions: "분석의 전제 설명 읽기", references: "자세한 설명 읽기",
+  verdict: "판단 근거 전문", construction: "비중 결정 설명", companies: "선정 과정 설명", market: "시장 분석 원문",
+  performance: "성과 해석", assumptions: "분석의 전제", references: "자세한 설명",
 }
 
 /** 한 섹션에 문단 묶음이 둘 이상이면 내용(서버 src: 14a 해석 · 14b 서술 · 14c 시장 분석)에 맞는 다른 이름을 쓴다. 같은 이름이 반복되지 않게. */
 const PROSE_BY_SRC: Record<string, Record<string, string>> = {
-  market: { "14b": "투자 아이디어 해석 읽기", "14c": "시장·뉴스 분석 원문 읽기" },
-  construction: { "14b": "비중 결정 과정 설명 읽기", "14a": "뉴스 반영 내용 해석 읽기" },
+  market: { "14b": "아이디어 해석", "14c": "시장·뉴스 분석 원문" },
+  construction: { "14b": "비중 결정 설명", "14a": "뉴스 반영 해석" },
 }
-const proseLabel = (sec: string, bs: Block[]) => (bs[0]?.src && PROSE_BY_SRC[sec]?.[bs[0].src]) || PROSE[sec] || "자세한 설명 읽기"
+const proseLabel = (sec: string, bs: Block[]) => (bs[0]?.src && PROSE_BY_SRC[sec]?.[bs[0].src]) || PROSE[sec] || "자세한 설명"
 
 type Entry = { kind: "group"; title: string; open: boolean; blocks: Block[] } | { kind: "prose"; blocks: Block[] } | { kind: "block"; b: Block }
 
@@ -74,9 +74,9 @@ export function Blocks({ blocks, doc, sec }: { blocks: Block[]; doc: ReportDoc; 
         if (e.kind === "group") return <Disclosure key={i} title={e.title} summary={`${e.blocks.length}개 항목`}><div className="space-y-5">{e.blocks.map((b, j) => <RenderBlock key={j} b={b} doc={doc} />)}</div></Disclosure>
         if (e.kind === "prose") return <ProseFold key={i} label={nth(i)} blocks={e.blocks} />
         const b = e.b
-        if (b.type === "weights_compare") return <Disclosure key={i} title="전략별 비중 전체 비교표 보기" summary={`${b.columns.length}개 전략 · ${b.rows.length}종목`}><RenderBlock b={b} doc={doc} /></Disclosure>
+        if (b.type === "weights_compare") return <Disclosure key={i} title="전략별 비중 비교표" summary={`${b.columns.length}개 전략 · ${b.rows.length}종목`}><RenderBlock b={b} doc={doc} /></Disclosure>
         if (b.type === "cards" && (b.items.length >= 3 || textLen(b) > 600)) return <Disclosure key={i} title={b.title_ko ?? "자세히 보기"} summary={`${b.items.length}개`}><RenderBlock b={b} doc={doc} /></Disclosure>
-        if (isCompareTable(b)) return <Disclosure key={i} title="전체 전략 비교표 보기" summary={`${b.rows.length}개`}><StrategyTable doc={doc} t={b} /></Disclosure>
+        if (isCompareTable(b)) return <Disclosure key={i} title="전체 전략 비교표" summary={`${b.rows.length}개`}><StrategyTable doc={doc} t={b} /></Disclosure>
         return <RenderBlock key={i} b={b} doc={doc} />
       })}
     </div>
@@ -90,11 +90,11 @@ export function SectionBody({ s, doc }: { s: Section; doc: ReportDoc }) {
   const hasPerf = doc.sections.some((x) => x.id === "performance")
   switch (s.id) {
     case "verdict": return <><VerdictWhy doc={doc} /><Blocks blocks={hasPerf ? s.blocks.filter((b) => b.type !== "kpis") : s.blocks} doc={doc} sec={s.id} /></>  // KPI 전체는 「과거 투자 성과」 맨 위에
-    case "construction": return <><BuildFlow doc={doc} /><ChosenWeights doc={doc} /><SubPart title="비중과 운용 기록 자세히" desc="전략별 비중, 뉴스 반영 내용, 배분 금액, 리밸런싱 기록입니다."><Blocks blocks={s.blocks} doc={doc} sec={s.id} /></SubPart></>
-    case "market": return <><MarketTopics s={s} doc={doc} /><SubPart title="시장 분석 자세히" desc="투자 아이디어를 어떻게 해석했는지, 요청 조건, 시장·뉴스 분석 원문이 원래 순서대로 있습니다."><Blocks blocks={s.blocks.map((b) => riskRowsKo(b, doc))} doc={doc} sec={s.id} /></SubPart></>
+    case "construction": return <><BuildFlow doc={doc} /><ChosenWeights doc={doc} /><SubPart title="비중과 운용 기록"><Blocks blocks={s.blocks} doc={doc} sec={s.id} /></SubPart></>
+    case "market": return <><MarketTopics s={s} doc={doc} /><SubPart title="시장 분석 상세"><Blocks blocks={s.blocks.map((b) => riskRowsKo(b, doc))} doc={doc} sec={s.id} /></SubPart></>
     case "companies": return <Blocks blocks={s.blocks.map((b) => rejectKo(b, doc))} doc={doc} sec={s.id} />
     case "performance": return <PerformanceBody s={s} doc={doc} />
-    case "assumptions": return <><Cautions doc={doc} s={s} /><SubPart title="상세 전제와 재검토 조건" desc="분석의 가정, 자료 품질, 확인한 한계, 다시 검토해 볼 선택지입니다."><Blocks blocks={s.blocks} doc={doc} sec={s.id} /></SubPart></>
+    case "assumptions": return <><Cautions doc={doc} s={s} /><SubPart title="전제와 재검토 조건"><Blocks blocks={s.blocks} doc={doc} sec={s.id} /></SubPart></>
     case "references": return <><ReferencesTop doc={doc} s={s} /><SubPart title="자료 출처·용어·근거 색인"><Blocks blocks={s.blocks} doc={doc} sec={s.id} /></SubPart></>
     default: return <Blocks blocks={s.blocks} doc={doc} sec={s.id} />
   }
@@ -148,12 +148,12 @@ function VerdictWhy({ doc }: { doc: ReportDoc }) {
               </li>
             ))}
           </ul>
-        ) : <p className="text-sm text-slate-600">요약된 판단 이유가 없습니다. 아래 판단 근거 전문을 확인하세요.</p>}
-        {o.short && reasons.some(({ r }) => r.annual) && <p className="text-xs leading-5 text-slate-600">「연 환산」 표시: {o.shortNote}</p>}
+        ) : <p className="text-sm text-slate-600">요약된 판단 이유가 없습니다.</p>}
+        {o.short && reasons.some(({ r }) => r.annual) && <p className="text-xs leading-5 text-slate-600">연 환산 표시: {o.shortNote}</p>}
       </SubPart>
       <SubPart title="위험과 미충족 조건">
-        {alerts.length ? <AlertList items={alerts} /> : <p className="text-sm text-slate-600">조건 검증에서 미충족·주의로 표시된 항목은 없습니다.</p>}
-        {rep && <MoreLink label="투자 전에 주의할 점 전체 보기" onClick={() => rep.jump("assumptions")} />}
+        {alerts.length ? <AlertList items={alerts} /> : <p className="text-sm text-slate-600">미충족·주의 항목이 없습니다.</p>}
+        {rep && <MoreLink label="주의 사항 전체 보기" onClick={() => rep.jump("assumptions")} />}
       </SubPart>
     </>
   )
@@ -169,12 +169,12 @@ function BuildFlow({ doc }: { doc: ReportDoc }) {
   const nBl = wc?.columns.filter((c) => c.kind === "black_litterman").length ?? 0
   const steps: { t: string; d: string; off?: boolean }[] = []
   if (comp) steps.push({ t: "투자 종목 선정", d: `분석 기준일 ${comp.items.filter((x) => x.in_selection_now).length}개 · 백테스트 시작일 ${comp.items.filter((x) => x.in_backtest).length}개 · ${comp.metric_ko} 순위` })
-  if (base) steps.push({ t: "기준 투자 비중 계산", d: `${base.label_ko}${base.rule_ko ? ` — ${base.rule_ko}` : ""}` })
-  if (nBl > 0 || (ne && !ne.disabled)) steps.push({ t: "뉴스·공시 반영", d: nBl ? `뉴스·공시로 만든 시나리오 ${nBl}개로 기준 비중을 조정한 구성도 계산` : "뉴스·공시로 기준 비중을 조정한 구성도 계산" })
+  if (base) steps.push({ t: "기준 투자 비중 계산", d: `${base.label_ko}${base.rule_ko ? ` · ${base.rule_ko}` : ""}` })
+  if (nBl > 0 || (ne && !ne.disabled)) steps.push({ t: "뉴스·공시 반영", d: nBl ? `뉴스·공시 시나리오 ${nBl}개로 기준 비중 조정` : "뉴스·공시로 기준 비중 조정" })
   else if (ne?.disabled) steps.push({ t: "뉴스·공시 반영 안 함", d: ne.reason_ko ?? "이 분석에서는 뉴스를 반영하지 않았습니다", off: true })
-  steps.push({ t: "최종 비중 결정", d: `후보 구성의 과거 성과와 내 조건을 비교해 선택: ${doc.header.chosen_label_ko}` })
+  steps.push({ t: "최종 비중 결정", d: `선택: ${doc.header.chosen_label_ko}` })
   return (
-    <SubPart title="비중이 정해진 과정" desc="이 분석에서 실제로 거친 단계만 표시합니다.">
+    <SubPart title="비중이 정해진 과정">
       <ol className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4" aria-label="비중 결정 과정">
         {steps.map((x, i) => (
           <li key={x.t} className={`relative rounded-xl border p-3 ${x.off ? "border-dashed border-slate-300 bg-white text-slate-500" : "border-slate-200 bg-slate-50"}`}>
@@ -197,7 +197,7 @@ function ChosenWeights({ doc }: { doc: ReportDoc }) {
   if (!wc) return null
   const col = wc.columns.find((c) => c.id === chosen)
   const base = wc.columns.find((c) => c.id === wc.baseline_id)
-  if (!col || !base) return <SubPart title="선택 전략의 비중"><p className="text-sm text-slate-600">선택된 전략({doc.header.chosen_label_ko})은 아래 「전략별 비중 전체 비교표」(백테스트 시작일의 규칙·뉴스 시나리오 구성)에 따로 없어 기준 비중과 나란히 그리지 않았습니다. 선택 전략의 비중은 아래 배분 금액 표와 리밸런싱 기록에서 볼 수 있습니다.</p></SubPart>
+  if (!col || !base) return <SubPart title="선택 전략의 비중"><p className="text-sm text-slate-600">선택 전략의 비중은 개요의 종목별 투자 금액과 리밸런싱 기록에 있습니다.</p></SubPart>
   const same = col.id === base.id
   const rows = [...wc.rows].sort((a, b) => (b.weights[col.id] ?? 0) - (a.weights[col.id] ?? 0))
   const max = Math.max(0.01, ...wc.rows.flatMap((r) => [r.weights[col.id] ?? 0, r.weights[base.id] ?? 0]), wc.cash[col.id] ?? 0, wc.cash[base.id] ?? 0)
@@ -219,7 +219,6 @@ function ChosenWeights({ doc }: { doc: ReportDoc }) {
         {rows.map((r) => line(r.ticker, <span title={r.name}>{r.ticker}<span className="ml-1 hidden text-xs font-normal text-slate-500 sm:inline">{r.name !== r.ticker ? r.name : ""}</span></span>, r.weights[col.id], r.weights[base.id]))}
         {((wc.cash[col.id] ?? 0) >= 0.0005 || (wc.cash[base.id] ?? 0) >= 0.0005) && line("cash", "현금", wc.cash[col.id], wc.cash[base.id])}
       </ul>
-      <p className="text-xs leading-5 text-slate-500">비중이 줄었다고 그 종목에 부정적인 근거가 있다는 뜻은 아닙니다. 다른 종목의 비중이 늘면서 상대적으로 줄 수 있습니다. 위 투자 금액 카드의 구성은 분석 기준일 기준이라 이 표(백테스트 시작일)와 다를 수 있습니다.</p>
     </SubPart>
   )
 }
@@ -236,7 +235,7 @@ function MarketTopics({ s, doc }: { s: Section; doc: ReportDoc }) {
   return (
     <>
       {topics && topics.length > 0 && (
-        <SubPart title="주제별로 보기" desc="시장 분석을 주제별로 나눠 요약했습니다. 원문은 아래 「시장 분석 자세히」에 그대로 있습니다.">
+        <SubPart title="주제별 요약">
           <p className="-mt-1 flex items-center text-xs text-slate-500">주제 분류<MockTag /></p>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {topics.map((t) => (
@@ -252,7 +251,7 @@ function MarketTopics({ s, doc }: { s: Section; doc: ReportDoc }) {
         </SubPart>
       )}
       {(themes || ref) && (
-        <SubPart title="무엇을 살펴봤나요?">
+        <SubPart title="분석 범위">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {themes && (
               <div className="rounded-xl border border-slate-200 p-4">
@@ -299,18 +298,18 @@ function PerformanceBody({ s, doc }: { s: Section; doc: ReportDoc }) {
   }
   const draw = (es: Entry[]) => es.map((e, i) => e.kind === "group" ? <Disclosure key={i} title={e.title} summary={`${e.blocks.length}개 항목`} defaultOpen={e.open}><div className="space-y-5">{e.blocks.map((b, j) => <RenderBlock key={j} b={b} doc={doc} />)}</div></Disclosure>
     : e.kind === "prose" ? <ProseFold key={i} label={PROSE.performance} blocks={e.blocks} />
-    : isCompareTable(e.b) ? <Disclosure key={i} title="전체 전략 비교표 보기" summary={`${e.b.rows.length}개`}><StrategyTable doc={doc} t={e.b} /></Disclosure>
+    : isCompareTable(e.b) ? <Disclosure key={i} title="전체 전략 비교표" summary={`${e.b.rows.length}개`}><StrategyTable doc={doc} t={e.b} /></Disclosure>
     : <RenderBlock key={i} b={e.b} doc={doc} />)
   const cmp = C.map((e) => (e.kind === "block" && isCompareTable(e.b) ? e.b : null)).find(Boolean) ?? null
   const sm = doc.summary
   return (
     <>
-      <SubPart title="성과 지표 전체" desc="요약 카드에 없는 지표까지 서버가 준 성과 지표를 모두 보여 줍니다.">{isShortWindow(doc) && <p className="text-xs leading-5 text-slate-600">{shortWindowNote(doc)} 전체 기간 수익률은 연평균이 아닌 기간 전체의 수익률입니다.</p>}<KpiRow kpis={allKpis(doc)} doc={doc} /></SubPart>
+      <SubPart title="성과 지표 전체">{isShortWindow(doc) && <p className="text-xs leading-5 text-slate-600">{shortWindowNote(doc)} 전체 기간 수익률은 연평균이 아닌 기간 전체의 수익률입니다.</p>}<KpiRow kpis={allKpis(doc)} doc={doc} /></SubPart>
       {top.length > 0 && <div className="space-y-3">{draw(top)}</div>}
-      {A.length > 0 && <SubPart title="수익률은 어떻게 변했나요?" desc="선택 전략과 비교지수의 누적 수익률을 먼저 보여 줍니다. 다른 전략은 계열 단추로 켤 수 있습니다.">{draw(A)}</SubPart>}
-      <SubPart title="투자 중 얼마나 하락했나요?"><RiskFacts doc={doc} cmp={cmp} />{draw(B)}</SubPart>
-      {(C.length > 0 || cmp) && <SubPart title="다른 투자 전략과 비교하면 어떤가요?" desc="각 투자 방법의 과거 수익률과 손실 위험을 같은 기간·같은 적립 조건으로 비교한 결과입니다. 선택 전략·기준 전략·비교지수를 먼저 보여 줍니다.">{cmp && <CompareMini doc={doc} t={cmp} />}{draw(C)}</SubPart>}
-      <SubPart id="perf-validation" title="내 투자 조건과 비교하면 어떤가요?">{sm && <ConditionRules v={sm.validation} verdict={sm.verdict} bench={benchName(sm)} doc={doc} />}{draw(V)}</SubPart>
+      {A.length > 0 && <SubPart title="수익률 추이">{draw(A)}</SubPart>}
+      <SubPart title="하락과 변동성"><RiskFacts doc={doc} cmp={cmp} />{draw(B)}</SubPart>
+      {(C.length > 0 || cmp) && <SubPart title="전략 비교">{cmp && <CompareMini doc={doc} t={cmp} />}{draw(C)}</SubPart>}
+      <SubPart id="perf-validation" title="조건별 검증">{sm && <ConditionRules v={sm.validation} verdict={sm.verdict} bench={benchName(sm)} doc={doc} />}{draw(V)}</SubPart>
       {prose.length > 0 && draw(prose)}
       {other.length > 0 && <SubPart title="그 밖의 성과 분석">{draw(other)}</SubPart>}
     </>
@@ -324,14 +323,14 @@ function RiskFacts({ doc, cmp }: { doc: ReportDoc; cmp: TableBlock | null }) {
   const mdd = k.find((x) => x.id === "mdd"), sharpe = k.find((x) => x.id === "sharpe")
   const row = chosenRow(doc, cmp)
   const vol = typeof row?.vol === "number" ? row.vol : null
-  const tiles: [string, string, string | null, string][] = []
-  if (mdd) tiles.push([mdd.label_ko, fmt(mdd.value, mdd.format), mdd.benchmark_value != null ? `${mdd.benchmark_label_ko ?? "비교지수"} ${fmt(mdd.benchmark_value, mdd.format)}` : null, "가장 높았던 때보다 가장 많이 떨어졌던 비율"])
-  if (vol !== null) tiles.push(["변동성 (연)", fmt(vol, "pct"), null, "수익률이 오르내린 폭. 클수록 많이 흔들렸습니다 (전체 전략 비교표의 선택 전략 값)"])
-  if (sharpe) tiles.push([sharpe.label_ko, fmt(sharpe.value, sharpe.format), sharpe.benchmark_value != null ? `${sharpe.benchmark_label_ko ?? "비교지수"} ${fmt(sharpe.benchmark_value, sharpe.format)}` : null, "감수한 흔들림에 비해 얻은 수익. 높을수록 위험 대비 수익이 좋았습니다"])
+  const tiles: [string, string, string | null, string][] = []  // [이름, 값, 비교지수 값, 용어(? 도움말)]
+  if (mdd) tiles.push([mdd.label_ko, fmt(mdd.value, mdd.format), mdd.benchmark_value != null ? `${mdd.benchmark_label_ko ?? "비교지수"} ${fmt(mdd.benchmark_value, mdd.format)}` : null, "최대낙폭"])
+  if (vol !== null) tiles.push(["변동성 (연)", fmt(vol, "pct"), null, "변동성"])
+  if (sharpe) tiles.push([sharpe.label_ko, fmt(sharpe.value, sharpe.format), sharpe.benchmark_value != null ? `${sharpe.benchmark_label_ko ?? "비교지수"} ${fmt(sharpe.benchmark_value, sharpe.format)}` : null, "Sharpe"])
   if (!tiles.length) return null
   return (
     <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      {tiles.map(([l, v, bm, help]) => <div key={l} className="rounded-xl border border-slate-200 p-3"><dt className="text-xs font-semibold text-slate-600">{l}</dt><dd className="mt-1 text-xl font-bold tabular-nums text-slate-950">{v}</dd>{bm && <dd className="text-xs tabular-nums text-slate-500">{bm}</dd>}<dd className="mt-1 text-[11px] leading-4 text-slate-500">{help}</dd></div>)}
+      {tiles.map(([l, v, bm, term]) => <div key={l} className="rounded-xl border border-slate-200 p-3"><dt className="flex items-center gap-1 text-xs font-semibold text-slate-600"><span>{l}</span><Term t={term} label={l} /></dt><dd className="mt-1 text-xl font-bold tabular-nums text-slate-950">{v}</dd>{bm && <dd className="text-xs tabular-nums text-slate-500">{bm}</dd>}</div>)}
     </dl>
   )
 }
@@ -347,7 +346,7 @@ function useRoles(doc: ReportDoc) {
   const baseName = wc?.columns.find((c) => c.id === wc.baseline_id)?.label_ko
   const ids = idByLabel(doc)
   const role = (r: Record<string, unknown>): Role => { const x = compareRowOf(doc, r.name); if (x) return x.role === "benchmark" ? "bench" : x.role === "candidate" ? "other" : x.role; return r.name === doc.header.chosen_label_ko ? "chosen" : r.kind === "비교지수" ? "bench" : baseName && r.name === baseName ? "baseline" : "other" }
-  return { role, baseName, idOf: (name: unknown) => compareRowOf(doc, name)?.id ?? ids.get(String(name)) }
+  return { role, idOf: (name: unknown) => compareRowOf(doc, name)?.id ?? ids.get(String(name)) }
 }
 
 function StrategyName({ name, id, doc }: { name: string; id?: string; doc: ReportDoc }) {
@@ -392,7 +391,7 @@ const PAGE_ROWS = 25
 
 /** 전체 전략 비교표: 서버 표의 모든 열·값 그대로 + 역할 표시·전략 설명. 최종 선택은 서버 판정을 따르며, 수익률이 가장 높은 전략과 다를 수 있다. */
 function StrategyTable({ doc, t }: { doc: ReportDoc; t: TableBlock }) {
-  const { role, baseName, idOf } = useRoles(doc)
+  const { role, idOf } = useRoles(doc)
   const [page, setPage] = useState(0)
   const pages = Math.max(1, Math.ceil(t.rows.length / PAGE_ROWS))
   const rows = t.rows.slice(page * PAGE_ROWS, (page + 1) * PAGE_ROWS)
@@ -400,10 +399,6 @@ function StrategyTable({ doc, t }: { doc: ReportDoc; t: TableBlock }) {
   return (
     <div className="space-y-3">
       {t.title_ko && <h3 className="text-base font-semibold text-slate-900">{t.title_ko}</h3>}
-      <div className="space-y-1 text-xs leading-5 text-slate-600">
-        <p>각 투자 방법의 과거 수익률과 손실 위험을 같은 기간·같은 적립 조건으로 비교한 결과입니다. 「최종 선택」은 분석이 고른 전략이고{baseName ? `, 「기준 전략」(${baseName})은 다른 비중을 견주는 출발점` : ""}이며, 「시장 비교지수」는 투자 후보가 아닌 비교 기준입니다.</p>
-        <p>수익률이 가장 높은 전략과 최종 선택된 전략은 다를 수 있습니다. 선택 기준은 아래 「내 투자 조건과 비교하면 어떤가요?」에 있습니다. 전략 이름 옆 「?」에서 투자 방식을 볼 수 있습니다.</p>
-      </div>
       <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full min-w-[960px] text-sm">
           <thead><tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold text-slate-600"><th className="px-3 py-2">역할</th><th className="min-w-[14rem] px-3 py-2">{t.columns.find((c) => c.key === "name")?.label_ko ?? "포트폴리오"}</th>{cols.map((c) => <th key={c.key} className={`whitespace-nowrap px-3 py-2 ${c.format && c.format !== "text" ? "text-right" : ""}`}><ColHead c={c} /></th>)}</tr></thead>
@@ -438,12 +433,12 @@ function Cautions({ doc, s }: { doc: ReportDoc; s: Section }) {
   const next = sm.next_actions_ko.filter((t) => !cardTexts.has(t))  // 아래 「다음에 검토할 수 있는 선택지」와 같은 문장은 한 번만
   const info = sm.validation.info_notes_ko ?? []
   return (
-    <SubPart title="중요한 주의 사항" desc="미충족 조건, 위험 경고, 분석 중 확인한 점입니다. 요약 카드에도 같은 내용이 표시됩니다.">
+    <SubPart title="중요한 주의 사항">
       {notRecommended && <AlertList items={[{ tone: "slate", tag: "추천 결과", text: sm.verdict.label_ko }]} label="추천 결과" />}
-      {alerts.length ? <AlertList items={alerts} /> : <p className="text-sm text-slate-600">조건 검증에서 미충족·주의로 표시된 항목은 없습니다. 아래 전제와 한계는 함께 확인하세요.</p>}
+      {alerts.length ? <AlertList items={alerts} /> : <p className="text-sm text-slate-600">미충족·주의 항목이 없습니다.</p>}
       {(sm.verdict.notices_ko?.length ?? 0) > 0 && <div className="rounded-xl border border-slate-200 p-3"><p className="text-xs font-semibold text-slate-600">분석 중 확인한 점 {sm.verdict.n_notices ?? sm.verdict.notices_ko!.length}건</p><ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm leading-6 text-slate-700">{sm.verdict.notices_ko!.map((n, i) => <li key={i}>{n}</li>)}</ul></div>}
-      {info.length > 0 && <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-semibold text-slate-600">참고 (검증에서 함께 확인한 점)</p><ul className="mt-1 list-disc pl-5 text-sm leading-6 text-slate-700">{info.map((t, i) => <li key={i}>{t}</li>)}</ul></div>}
-      {next.length > 0 && <div><p className="text-xs font-semibold text-slate-600">다음에 검토해 볼 수 있는 점</p><ul className="mt-1 space-y-1 text-sm leading-6 text-slate-700">{next.map((t, i) => <li key={i} className="flex gap-2"><span className="text-slate-400">{i + 1}.</span><span><CitedText text={t} /></span></li>)}</ul></div>}
+      {info.length > 0 && <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-semibold text-slate-600">참고</p><ul className="mt-1 list-disc pl-5 text-sm leading-6 text-slate-700">{info.map((t, i) => <li key={i}>{t}</li>)}</ul></div>}
+      {next.length > 0 && <div><p className="text-xs font-semibold text-slate-600">다음 검토 사항</p><ul className="mt-1 space-y-1 text-sm leading-6 text-slate-700">{next.map((t, i) => <li key={i} className="flex gap-2"><span className="text-slate-400">{i + 1}.</span><span><CitedText text={t} /></span></li>)}</ul></div>}
     </SubPart>
   )
 }
@@ -461,7 +456,7 @@ function ReferencesTop({ doc, s }: { doc: ReportDoc; s: Section }) {
   const h = doc.header
   return (
     <>
-      <SubPart title="자료 종류별로 보기" desc={`근거 자료 ${total}건${doc.evidence_summary ? ` · 본문 인용 ${doc.evidence_summary.cited}건` : ""}. 누르면 그 종류만 걸러 볼 수 있습니다.`}>
+      <SubPart title="자료 종류별" desc={`근거 자료 ${total}건${doc.evidence_summary ? ` · 본문 인용 ${doc.evidence_summary.cited}건` : ""}`}>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           {Object.entries(byKind).filter(([, n]) => n > 0).map(([k, n]) => (
             <button key={k} type="button" disabled={!rep} onClick={() => rep?.openDrawer({ ids: null, kind: k, title: `${ko(k)} 자료` })} className="rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-blue-300 hover:bg-blue-50/40 focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -471,7 +466,7 @@ function ReferencesTop({ doc, s }: { doc: ReportDoc; s: Section }) {
         </div>
         {rep && <Button variant="secondary" onClick={() => rep.openDrawer({ ids: null, title: "출처 전체" })}><BookOpenText className="size-4" />전체 자료 검색 ({total})</Button>}
       </SubPart>
-      <SubPart title="계산 조건과 실행 기록" desc="기본 정보만 먼저 보여 줍니다. 세부 계산 값과 원래 설정값은 「계산 조건」, 단계별 기록은 「실행 기록」에서 볼 수 있습니다.">
+      <SubPart title="계산 조건과 실행 기록">
         <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <div><dt className="text-xs font-semibold text-slate-500">분석 기준일</dt><dd className="mt-0.5 tabular-nums text-slate-900">{h.data_as_of}</dd></div>
           <div><dt className="text-xs font-semibold text-slate-500">종목 선정 기준일</dt><dd className="mt-0.5 tabular-nums text-slate-900">{h.selection_as_of}</dd></div>

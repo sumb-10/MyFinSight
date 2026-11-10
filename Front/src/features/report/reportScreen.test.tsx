@@ -5,7 +5,7 @@ import type { AnalysisService } from "../../api/service"
 import type { CompanyItem, ReportDoc, ReportSummary } from "../../api/types"
 import { ReportDetail } from "./ReportDetail"
 
-// 리포트 화면 전체: 요약 4카드 → 상세 8섹션(접힘). 정보가 사라지지 않는지(모두 펼치면 전부 보이는지)와 주소로 들어온 부분이 펼쳐지는지 확인한다.
+// 리포트 화면 전체: 개요 → 자세한 분석(통째로 접힘, 안의 섹션도 접힘). 정보가 사라지지 않는지(모두 펼치면 전부 보이는지)와 주소로 들어온 부분이 펼쳐지는지 확인한다.
 
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn()
@@ -56,23 +56,36 @@ const service = (d: ReportDoc) => ({
 }) as unknown as AnalysisService
 const show = (d: ReportDoc, props: { sec?: string; company?: string; rb?: number } = {}) => render(<ServiceContext.Provider value={service(d)}><ReportDetail reportId="run_1" {...props} /></ServiceContext.Provider>)
 const section = (name: RegExp) => screen.getAllByRole("button", { name }).find((b) => b.hasAttribute("aria-expanded"))!  // 좁은 화면 칩과 같은 이름이라 접기 단추만
+const details = () => screen.findByRole("button", { name: "자세한 분석" })  // 자세한 분석 전체를 여닫는 단추 (처음에는 접혀 있다)
+const openDetails = async () => fireEvent.click(await details())
 
 describe("리포트 화면 구조", () => {
-  it("요약 4카드가 먼저 보이고, 상세 섹션은 질문형 제목으로 모두 접힌 채 시작한다", async () => {
+  it("개요가 먼저 보이고, 자세한 분석은 통째로 접힌 채 시작하며 펼쳐도 안의 섹션은 접혀 있다", async () => {
     show(doc())
-    expect(await screen.findByRole("heading", { name: "이번 투자 전략은 어떤 결과인가요?" })).toBeInTheDocument()
-    for (const q of ["어떤 주식에 얼마를 투자하면 될까요?", "과거에 투자했다면 어땠을까요?", "내 투자 조건에 맞나요?"]) expect(screen.getByRole("heading", { name: q })).toBeInTheDocument()
-    expect(within(screen.getByRole("list", { name: "중요한 주의 사항" })).getByText("허용 초과")).toBeInTheDocument()  // 위험은 기본 카드에도
-    for (const q of [/왜 이런 투자 전략이 선택되었나요/, /투자 종목과 비중은 어떻게 결정됐나요/, /왜 이 기업들을 선택했나요/, /과거 투자 성과는 어땠나요/, /내 요청이 어떻게 반영되었나요/, /투자 전에 무엇을 주의해야 하나요/]) expect(section(q)).toHaveAttribute("aria-expanded", "false")
+    expect(await screen.findByRole("region", { name: "분석 개요" })).toHaveTextContent("동일비중")
+    for (const q of ["백테스트 핵심 성과", "종목 구성 · 2종목 + 현금", "종목별 투자 금액"]) expect(screen.getByRole("heading", { name: q })).toBeInTheDocument()
+    expect(screen.getByRole("img", { name: "누적 수익률 그래프" })).toBeInTheDocument()  // 핵심 성과 왼쪽 그래프
+    for (const q of ["조건 점검", "중요한 주의 사항"]) expect(screen.queryByRole("heading", { name: q })).toBeNull()  // 판정·주의·조건 점검은 개요에 두지 않는다
+    expect(screen.queryByRole("list", { name: "중요한 주의 사항" })).toBeNull()
+    expect(screen.queryByText(/추천\(주의\)|동일비중을 추천하지만/)).toBeNull()
+    expect(await details()).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByRole("button", { name: "모두 펼치기" })).toBeNull()
+    expect(screen.queryByRole("button", { name: /^\d+\. 과거 성과/ })).toBeNull()
+    await openDetails()
+    expect(await details()).toHaveAttribute("aria-expanded", "true")
+    for (const q of [/^\d+\. 종합 판단/, /^\d+\. 포트폴리오 구성/, /^\d+\. 기업별 근거/, /^\d+\. 과거 성과/, /^\d+\. 요청 내역/, /^\d+\. 주의 사항과 전제/]) expect(section(q)).toHaveAttribute("aria-expanded", "false")
     expect(screen.queryByText("판단 리드 문단 전문")).toBeNull()
+    fireEvent.click(section(/^\d+\. 주의 사항과 전제/))
+    expect(within(screen.getByRole("list", { name: "중요한 주의 사항" })).getByText("허용 초과")).toBeInTheDocument()
   })
-  it("모두 펼치면 요약에서 빠진 KPI·판단 원문·비교표·기업 카드·전제가 모두 화면에 나온다", async () => {
+  it("모두 펼치면 개요에서 빠진 KPI·판단 원문·비교표·기업 카드·전제가 모두 화면에 나온다", async () => {
     show(doc())
+    await openDetails()
     fireEvent.click((await screen.findAllByRole("button", { name: "모두 펼치기" }))[0])
-    expect(section(/과거 투자 성과는 어땠나요/)).toHaveAttribute("aria-expanded", "true")
+    expect(section(/^\d+\. 과거 성과/)).toHaveAttribute("aria-expanded", "true")
     expect(screen.getByText("뉴스 뷰 적중률")).toBeInTheDocument(); expect(screen.getByText("이 포트폴리오에는 뷰가 없습니다")).toBeInTheDocument()
     expect(screen.getAllByText("Sharpe 비율").length).toBeGreaterThan(0)
-    fireEvent.click(screen.getByRole("button", { name: /판단 근거 전문 보기/ }))
+    fireEvent.click(screen.getByRole("button", { name: /판단 근거 전문/ }))
     expect(screen.getByText("판단 리드 문단 전문")).toBeInTheDocument(); expect(screen.getByText("판단 둘째 문단")).toBeInTheDocument()
     expect(screen.getByText("비교한 투자 구성안 중 1위")).toBeInTheDocument()  // 서버 판단 이유를 구분자로 나누고, 아는 틀이면 제목 + 설명으로
     expect(screen.getByText(/4개 투자 구성안을 정해진 순서대로 비교했을 때/)).toBeInTheDocument()
@@ -81,7 +94,7 @@ describe("리포트 화면 구조", () => {
     expect(within(why).getAllByRole("listitem")).toHaveLength(2)
     expect(screen.queryByRole("button", { name: /판단 이유 원문 보기/ })).toBeNull()  // 같은 내용을 다시 보여 주던 원문 보기는 없다
     expect(screen.getByText("검증 상세 문단")).toBeInTheDocument()  // 서버가 펼쳐 두라고 한 묶음
-    fireEvent.click(screen.getByRole("button", { name: /전체 전략 비교표 보기/ }))
+    fireEvent.click(screen.getByRole("button", { name: /전체 전략 비교표/ }))
     expect(screen.getAllByText("시가총액비중").length).toBeGreaterThan(0)
     expect(screen.getByText(/선택 전략 = 기준 비중\(동일비중\)/)).toBeInTheDocument()  // 선택 = 기준이면 비교 막대 없이 한 줄
     fireEvent.click(screen.getByRole("button", { name: /확인한 한계/ }))
@@ -96,39 +109,45 @@ describe("리포트 화면 구조", () => {
     expect(list).toHaveTextContent("+25.00%p"); expect(list).toHaveTextContent("-25.00%p"); expect(list).toHaveTextContent("변화 없음")  // 현금 10% → 10%
     unmount()
     show({ ...d, header: { ...d.header, chosen_portfolio_id: "dd_match", chosen_label_ko: "낙폭 맞춤안" } }, { sec: "construction" })
-    expect(await screen.findByText(/낙폭 맞춤안\)은 아래 「전략별 비중 전체 비교표」/)).toBeInTheDocument()
+    expect(await screen.findByText(/선택 전략의 비중은 개요의 종목별 투자 금액과 리밸런싱 기록에 있습니다/)).toBeInTheDocument()
     expect(screen.queryByRole("list", { name: "종목별 비중 비교" })).toBeNull()
   })
   it("주소의 기업·시점으로 들어오면 그 섹션과 그 기업만 펼친다", async () => {
     show(doc(), { company: "BBB", rb: 1 })
     expect(await screen.findByText("BBB 선정 근거 전문 문단")).toBeInTheDocument()
     expect(screen.queryByText("AAA 선정 근거 전문 문단")).toBeNull()
-    expect(section(/투자 종목과 비중은 어떻게 결정됐나요/)).toHaveAttribute("aria-expanded", "true")
+    expect(section(/^\d+\. 포트폴리오 구성/)).toHaveAttribute("aria-expanded", "true")
     expect(screen.getByRole("option", { name: "2024-01-02 리밸런싱" })).toHaveAttribute("aria-selected", "true")
-    expect(section(/과거 투자 성과는 어땠나요/)).toHaveAttribute("aria-expanded", "false")
+    expect(section(/^\d+\. 과거 성과/)).toHaveAttribute("aria-expanded", "false")
   })
   it("다른 리포트로 옮기면 앞 리포트의 펼침이 남지 않고, 같은 리포트에서 주소만 바뀌면 가리키는 기업을 펼친다", async () => {
     const svc = service(doc())
     const ui = (p: { reportId: string; company?: string }) => <ServiceContext.Provider value={svc}><ReportDetail {...p} /></ServiceContext.Provider>
     const { rerender } = render(ui({ reportId: "run_1" }))
+    await openDetails()
     fireEvent.click((await screen.findAllByRole("button", { name: "모두 펼치기" }))[0])
-    expect(section(/과거 투자 성과는 어땠나요/)).toHaveAttribute("aria-expanded", "true")
+    expect(section(/^\d+\. 과거 성과/)).toHaveAttribute("aria-expanded", "true")
     rerender(ui({ reportId: "run_2" }))
-    await waitFor(() => expect(section(/과거 투자 성과는 어땠나요/)).toHaveAttribute("aria-expanded", "false"))
+    await waitFor(() => expect(screen.getByRole("button", { name: "자세한 분석" })).toHaveAttribute("aria-expanded", "false"))
+    expect(screen.queryByRole("button", { name: /^\d+\. 과거 성과/ })).toBeNull()
     rerender(ui({ reportId: "run_2", company: "AAA" }))
     expect(await screen.findByText("AAA 선정 근거 전문 문단")).toBeInTheDocument()
-    expect(section(/왜 이 기업들을 선택했나요/)).toHaveAttribute("aria-expanded", "true")
+    expect(section(/^\d+\. 기업별 근거/)).toHaveAttribute("aria-expanded", "true")
   })
-  it("요약 카드의 링크는 해당 상세 섹션을 펼친다", async () => {
+  it("개요의 링크는 자세한 분석을 펼치고 해당 섹션을 연다", async () => {
     show(doc())
-    fireEvent.click(await screen.findByRole("button", { name: /검증 결과 자세히 보기/ }))
-    await waitFor(() => expect(section(/과거 투자 성과는 어땠나요/)).toHaveAttribute("aria-expanded", "true"))
-    expect(document.getElementById("perf-validation")).not.toBeNull()
+    fireEvent.click(await screen.findByRole("button", { name: /과거 성과 자세히 보기/ }))
+    await waitFor(() => expect(section(/^\d+\. 과거 성과/)).toHaveAttribute("aria-expanded", "true"))
+    expect(screen.getByRole("button", { name: "자세한 분석" })).toHaveAttribute("aria-expanded", "true")
+    expect(document.getElementById("perf-validation")).toHaveTextContent("조건별 검증")  // 조건 점검은 과거 성과 안으로 옮겼다
+    expect(section(/^\d+\. 종합 판단/)).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(screen.getByRole("button", { name: /선택 이유/ }))
+    await waitFor(() => expect(section(/^\d+\. 종합 판단/)).toHaveAttribute("aria-expanded", "true"))
   })
   it("summary 가 없는 예전 형식 리포트도 요약 카드를 만들고 '자동 변환'을 알린다", async () => {
     const v1 = doc({ doc_version: 1, summary: null, presented_from_version: 1 })
     show(v1)
-    expect(await screen.findByRole("heading", { name: "이번 투자 전략은 어떤 결과인가요?" })).toBeInTheDocument()
+    expect(await screen.findByRole("region", { name: "분석 개요" })).toBeInTheDocument()
     expect(screen.getByText("예전 형식 리포트 (자동 변환)")).toBeInTheDocument()
   })
 })
@@ -143,8 +162,9 @@ describe("분석 당시 투자성향", () => {
     ] }]
     const getProfile = vi.fn(async () => ({ profile_id: "p", current_version: 9, versions: [], profile: { diagnosis: { answers: {}, computed_tendency: "공격투자형", final_tendency: "공격투자형" } } }))
     render(<ServiceContext.Provider value={{ ...service(d), getProfile } as unknown as AnalysisService}><ReportDetail reportId="run_1" sec="market" /></ServiceContext.Provider>)
-    const fit = (await screen.findByRole("heading", { name: "내 투자 조건에 맞나요?" })).closest("section")!
-    fireEvent.click(within(fit).getByRole("button", { name: /조건별 자세한 결과/ }))  // 카드 4는 체크리스트가 먼저, 조건별 카드는 접혀 있다
+    await screen.findAllByRole("button", { name: /^\d+\. 과거 성과/ })
+    fireEvent.click(section(/^\d+\. 과거 성과/))  // 조건별 검증은 과거 성과 안에 있다
+    const fit = document.getElementById("perf-validation")!
     expect(fit).toHaveTextContent("이번 분석의 변동성 기준: 중간 변동성 기준투자성향: 위험중립형")
     fireEvent.click(screen.getByRole("button", { name: /요청 조건 확인/ }))
     expect(screen.getByText("위험중립형 · 손실 감내 수준 30.0% · 손실 시 보유")).toBeInTheDocument()
@@ -163,7 +183,7 @@ describe("핵심 판단 이유", () => {
     expect(within(why).getByRole("button", { name: "근거 ev1 보기" })).toBeInTheDocument()
     expect(within(why).getByText(/Sharpe 비율은 0\.90입니다/)).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /판단 이유 원문 보기/ })).toBeNull()
-    fireEvent.click(screen.getByRole("button", { name: /판단 근거 전문 보기/ }))
+    fireEvent.click(screen.getByRole("button", { name: /판단 근거 전문/ }))
     expect(screen.getByText("판단 리드 문단 전문")).toBeInTheDocument()
   })
 })
@@ -171,24 +191,27 @@ describe("핵심 판단 이유", () => {
 describe("리포트 상단 탐색·용어", () => {
   it("왼쪽 리포트 목차 없이 상단 가로 탭 하나로 이동하고, 탭을 누르면 그 섹션을 펼치고 강조한다", async () => {
     show(doc())
-    await screen.findByRole("heading", { name: "이번 투자 전략은 어떤 결과인가요?" })
+    await screen.findByRole("region", { name: "분석 개요" })
     const navs = screen.getAllByRole("navigation", { name: "리포트 섹션" })
     expect(navs).toHaveLength(1)  // 예전 왼쪽 목차 + 좁은 화면 칩이 하나로
     const tabs = within(navs[0]).getAllByRole("button").map((b) => b.textContent)
-    expect(tabs).toEqual(["결과 요약", "종목 선정", "과거 성과", "요청·주의·자료"])  // 섹션 묶음 단위 탭. 이 문서에 market 섹션은 없다
-    expect(within(navs[0]).getByRole("button", { name: "결과 요약" })).toHaveAttribute("aria-current", "true")
-    fireEvent.click(within(navs[0]).getByRole("button", { name: "종목 선정" }))
+    expect(tabs).toEqual(["개요", "종목 선정", "과거 성과", "요청·주의·자료"])  // 섹션 묶음 단위 탭. 이 문서에 market 섹션은 없다
+    expect(within(navs[0]).getByRole("button", { name: "개요" })).toHaveAttribute("aria-current", "true")
+    expect(screen.getByRole("button", { name: "자세한 분석" })).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(within(navs[0]).getByRole("button", { name: "종목 선정" }))  // 탭을 누르면 접혀 있던 자세한 분석도 펼친다
+    expect(screen.getByRole("button", { name: "자세한 분석" })).toHaveAttribute("aria-expanded", "true")
     expect(within(navs[0]).getByRole("button", { name: "종목 선정" })).toHaveAttribute("aria-current", "true")
-    expect(section(/왜 이런 투자 전략이 선택되었나요/)).toHaveAttribute("aria-expanded", "true")  // 묶음의 첫 섹션을 펼친다 (섹션 제목은 질문형 그대로)
+    expect(section(/^\d+\. 종합 판단/)).toHaveAttribute("aria-expanded", "true")  // 묶음의 첫 섹션을 펼친다 (섹션 제목은 질문형 그대로)
     expect(screen.getByRole("heading", { name: "종목 선정", level: 3 })).toBeInTheDocument()  // 아래 접이식 섹션도 같은 묶음 소제목으로 묶인다
     expect(screen.queryByRole("complementary")).toBeNull()
   })
-  it("헤더에는 백테스트 기간만, 나머지 날짜는 (?) 도움말 안에 두고, 더보기에 출처 전체·계산 조건·실행 기록이 있다", async () => {
+  it("날짜는 개요 첫 줄(분석 기준일·백테스트 기간)에만 두고 나머지는 (?) 도움말 안에, 더보기에 출처 전체·계산 조건·실행 기록이 있다", async () => {
     show(doc())
-    const dates = await screen.findByLabelText("리포트 날짜")
-    for (const t of ["백테스트 기간", "2023-10-30 ~ 2026-10-30"]) expect(within(dates).getByText(t)).toBeInTheDocument()
-    for (const t of ["작성일", "분석 기준일", "종목 선정 기준일"]) expect(within(dates).queryByText(t)).toBeNull()
-    fireEvent.click(screen.getByRole("button", { name: /날짜 구분/ }))
+    const strip = await screen.findByRole("region", { name: "분석 개요" })
+    for (const t of ["분석 기준일", "백테스트 기간", "2023-10-30 ~ 2026-10-30"]) expect(within(strip).getByText(t)).toBeInTheDocument()
+    for (const t of ["작성일", "종목 선정 기준일"]) expect(within(strip).queryByText(t)).toBeNull()
+    expect(screen.queryByLabelText("리포트 날짜")).toBeNull()  // 머리말에 같은 백테스트 기간을 한 번 더 쓰지 않는다
+    fireEvent.click(within(strip).getByRole("button", { name: /날짜 구분/ }))
     const other = screen.getByLabelText("다른 기준 날짜")
     for (const t of ["작성일", "분석 기준일", "종목 선정 기준일"]) expect(within(other).getByText(t)).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /더보기/ }))
@@ -207,18 +230,19 @@ describe("리포트 상단 탐색·용어", () => {
     fireEvent.change(within(panel).getByPlaceholderText(/용어 찾기/), { target: { value: "낙폭 맞춤" } })
     expect(within(panel).queryByText("서버가 준 CAGR 설명")).toBeNull()
     fireEvent.click(within(panel).getByRole("button", { name: "리포트의 전체 용어 풀이로 이동" }))
-    expect(section(/어떤 자료를 근거로 분석했나요/)).toHaveAttribute("aria-expanded", "true")
+    expect(section(/^\d+\. 자료와 분석 조건/)).toHaveAttribute("aria-expanded", "true")
     expect(screen.getByText("서버가 준 CAGR 설명")).toBeInTheDocument()  // 하단 전체 용어 풀이
   })
   it("전체 전략 비교표는 서버 값 그대로 두고 최종 선택·기준 전략·비교지수 역할을 표시한다", async () => {
     show(doc())
+    await openDetails()
     fireEvent.click((await screen.findAllByRole("button", { name: "모두 펼치기" }))[0])
-    fireEvent.click(await screen.findByRole("button", { name: /전체 전략 비교표 보기/ }))
+    fireEvent.click(await screen.findByRole("button", { name: /전체 전략 비교표/ }))
     const table = screen.getAllByRole("table").at(-1)!
     const row = (name: string) => within(table).getByText(name).closest("tr")!
     expect(within(row("동일비중")).getByText("최종 선택")).toBeInTheDocument()
     expect(within(table).getByRole("columnheader", { name: /연평균 수익률\(CAGR\)/ })).toBeInTheDocument()
-    expect(screen.getByText(/수익률이 가장 높은 전략과 최종 선택된 전략은 다를 수 있습니다/)).toBeInTheDocument()
+    expect(screen.queryByText(/수익률이 가장 높은 전략과 최종 선택된 전략은 다를 수 있습니다/)).toBeNull()  // 표 위 설명 문장은 두지 않는다
   })
 })
 

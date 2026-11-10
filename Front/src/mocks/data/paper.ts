@@ -4,6 +4,7 @@ import type { PaperDetail, PaperPreview, PaperRebalance, PaperSnapshot, PaperStr
 import type { ProposedPaperKrw } from "../../api/proposed"
 import type { PaperScenario, ReportScenario } from "../scenarios"
 import { MOCK_AS_OF } from "../scenarios"
+import { ApiError } from "../../api/client"
 import { COMMISSION_BPS, templateWeights, type Backtest } from "./backtest"
 import { normal, rng, round, seedOf, sum } from "./util"
 
@@ -108,11 +109,23 @@ export function buildPaper(ps: PaperScenario, sc: ReportScenario, bt: Backtest, 
   return { detail, krw }
 }
 
-export function paperPreview(sc: ReportScenario, bt: Backtest, strategyId: string | null | undefined, amount: number, currency: "KRW" | "USD", monthly: number | null | undefined): PaperPreview {
+/** 목업 시작일 규칙 (서버 m6_tracking/paper.py _plan 과 같은 뜻): 분석일 이전도 되고, 가장 이른 날은 가격 경로의 앞쪽 약 6개월(비중 계산에 쓸 과거 자료)을 뺀 날. */
+export const paperDataStart = (bt: Backtest) => bt.sim.dates[Math.min(bt.sim.dates.length - 1, 126)]
+export function paperStartIndex(bt: Backtest, startDate: string | null | undefined): number {
+  const dates = bt.sim.dates, earliest = paperDataStart(bt)
+  const want = startDate && startDate < MOCK_AS_OF ? startDate : MOCK_AS_OF
+  if (want < earliest) throw new ApiError("REQUEST_INVALID", `[목업] 시작일 ${want} 에는 비중을 계산할 자료가 모자랍니다. ${earliest} 이후 날짜로 시작해 주세요`, 422)
+  let i = dates.length - 1
+  while (i > 0 && dates[i] > want) i--  // 거래일이 아니면 앞 거래일
+  return i
+}
+
+export function paperPreview(sc: ReportScenario, bt: Backtest, strategyId: string | null | undefined, amount: number, currency: "KRW" | "USD", monthly: number | null | undefined, startDate?: string | null): PaperPreview {
   const ps = { strategy: !strategyId || strategyId === bt.chosen.def.id ? "chosen" : strategyId }
-  const at = bt.sim.dates.length - 1
+  const at = paperStartIndex(bt, startDate)
+  const start = bt.sim.dates[at]
   const { s, w, cash } = strategyFor(bt, sc, ps, at)
   const fx = 1380, usdAmt = currency === "KRW" ? amount / fx : amount
   const options = bt.runs.map((r) => ({ id: r.def.id, kind: (r.def.kind === "black_litterman" ? "black_litterman" : r.def.kind === "matched" ? "cash_blend" : "template") as PaperStrategy["kind"], template: r.def.kind === "template" ? r.def.id : null, cash_ratio: r.def.cash, name_ko: r.def.label_ko, status: bt.status[r.def.id], recommended: r.def.id === bt.chosen.def.id, chosen: r.def.id === s.id }))
-  return { report_id: sc.id, run_id: sc.run_id, report_as_of: MOCK_AS_OF, strategy: s, strategy_options: options, start_date: MOCK_AS_OF, data_ceiling: MOCK_AS_OF, reconstructed_at_start: false, initial_capital: { amount, currency, usd: round(usdAmt), fx_rate: fx, fx_date: MOCK_AS_OF }, contribution: { enabled: !!monthly, monthly_amount: monthly ?? 0, currency, day: 1 }, rebalance_rule: { count: 1, unit: "1m" }, benchmark: "SPY", tickers: Object.keys(w), weights: w, cash_weight: cash, report_weights: bt.chosen.def.weights, weight_diff: Object.keys(w).map((t) => ({ ticker: t, report: bt.chosen.def.weights[t] ?? 0, start: w[t], delta: w[t] - (bt.chosen.def.weights[t] ?? 0) })), allocation: Object.entries(w).map(([t, x]) => ({ ticker: t, weight: x, usd: round(usdAmt * x), krw: Math.round(usdAmt * x * fx), price_usd: round(bt.sim.price[t][at]) })), construct_info: { fallback: false, warnings: [] }, warnings: ["[목업] 목업 모의투자는 서버에 저장되지 않습니다."] }
+  return { report_id: sc.id, run_id: sc.run_id, report_as_of: MOCK_AS_OF, strategy: s, strategy_options: options, start_date: start, data_start: paperDataStart(bt), data_ceiling: MOCK_AS_OF, reconstructed_at_start: start !== MOCK_AS_OF, initial_capital: { amount, currency, usd: round(usdAmt), fx_rate: fx, fx_date: MOCK_AS_OF }, contribution: { enabled: !!monthly, monthly_amount: monthly ?? 0, currency, day: 1 }, rebalance_rule: { count: 1, unit: "1m" }, benchmark: "SPY", tickers: Object.keys(w), weights: w, cash_weight: cash, report_weights: bt.chosen.def.weights, weight_diff: Object.keys(w).map((t) => ({ ticker: t, report: bt.chosen.def.weights[t] ?? 0, start: w[t], delta: w[t] - (bt.chosen.def.weights[t] ?? 0) })), allocation: Object.entries(w).map(([t, x]) => ({ ticker: t, weight: x, usd: round(usdAmt * x), krw: Math.round(usdAmt * x * fx), price_usd: round(bt.sim.price[t][at]) })), construct_info: { fallback: false, warnings: [] }, warnings: [...(start < MOCK_AS_OF ? [`분석일 ${MOCK_AS_OF} 보다 앞선 날로 시작합니다. 종목은 분석일에 고른 것이라, 그날 실제로 시작했을 때보다 결과가 좋게 나올 수 있습니다.`] : []), "[목업] 목업 모의투자는 서버에 저장되지 않습니다."] }
 }

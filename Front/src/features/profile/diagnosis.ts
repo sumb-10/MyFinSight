@@ -33,3 +33,18 @@ export const TENDENCY_HELP: Record<Tendency, string> = {
   적극투자형: "더 높은 수익을 위해 변동성을 감수합니다.",
   공격투자형: "큰 변동성과 손실 가능성을 감수하고 장기 성장을 노립니다.",
 }
+
+/** 투자성향별 기본값: 진단과 다른 성향을 고르면 「이렇게 바뀝니다」로 보여 주고 고른 대로 둔다 (대화형 설정의 「성향 기본값」 질문).
+ *  목표 연수익률은 따로 묻지 않으므로 진단 성향의 값을 쓴다. 서버 profile_chat.py TENDENCY_DEFAULTS 와 같다 (서버 테스트가 확인). */
+export const TENDENCY_DEFAULTS: Record<Tendency, { max_drawdown_tolerance: number; loss_reaction: "sell" | "hold" | "buy_more"; target_annual_return: number }> = {
+  안정형: { max_drawdown_tolerance: 0.1, loss_reaction: "sell", target_annual_return: 0.04 },
+  안정추구형: { max_drawdown_tolerance: 0.15, loss_reaction: "hold", target_annual_return: 0.06 },
+  위험중립형: { max_drawdown_tolerance: 0.2, loss_reaction: "hold", target_annual_return: 0.08 },
+  적극투자형: { max_drawdown_tolerance: 0.25, loss_reaction: "hold", target_annual_return: 0.1 },
+  공격투자형: { max_drawdown_tolerance: 0.3, loss_reaction: "buy_more", target_annual_return: 0.12 },
+}
+
+/** 「일부를 줄이고 상황을 지켜봅니다」(진단 reaction 점수 1)는 보유로 저장하지만, 보일 때는 그 뜻을 붙인다. */
+export const PARTIAL_REACTION_SCORE = 1
+export const reactionText = (reaction: string, reactionScore: number | undefined, ko: (x: string) => string) =>
+  ko(reaction) + (reaction === "hold" && reactionScore === PARTIAL_REACTION_SCORE ? " (일부 줄이고 지켜봄)" : "")

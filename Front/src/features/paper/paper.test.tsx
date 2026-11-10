@@ -42,7 +42,8 @@ describe("모의투자 통화와 환율", () => {
     expect(screen.getByText(/금액은 원화, 수익률은 USD 기준 · 원화 환율 변동 미반영/)).toBeInTheDocument()
     expect(screen.queryByText(/원화 수익률/)).toBeNull()
     expect(screen.getByText("+3.00%p")).toBeInTheDocument()
-    expect(screen.getAllByText("14,000,000원")).toHaveLength(2)  // 적립이 없어 초기 투자금 = 총 납입금
+    expect(screen.getAllByText("14,000,000원")).toHaveLength(1)  // 총 납입금 (적립이 없어 초기 투자금과 같다)
+    expect(screen.getByText("초기 14,000,000원 · 추가 납입 없음")).toBeInTheDocument()
     expect(screen.getByText(/^납입 제외 손익 .+ USD \(수수료 차감 후\)$/)).toBeInTheDocument()
     openPart(/거래·리밸런싱 상세/)
     const trades = within(screen.getByRole("button", { name: /거래·리밸런싱 상세/ }).closest("section")!)
@@ -53,7 +54,8 @@ describe("모의투자 통화와 환율", () => {
     show(detail("USD", [snap("2026-01-02", 10_000), snap("2026-02-02", 11_000)]))
     await screen.findByText("핵심 성과")
     expect(screen.getByText("11,000.00 USD")).toBeInTheDocument()
-    expect(screen.getAllByText("10,000.00 USD")).toHaveLength(2)
+    expect(screen.getAllByText("10,000.00 USD")).toHaveLength(1)
+    expect(screen.getByText("초기 10,000.00 USD · 추가 납입 없음")).toBeInTheDocument()
     expect(screen.queryByText(/환율 변동 미반영/)).toBeNull()
   })
   it("환율 기록이 없으면 다른 환율을 쓰지 않고 환산 불가와 USD 를 보여 준다", async () => {
@@ -66,7 +68,7 @@ describe("모의투자 통화와 환율", () => {
   it("추가 납입금은 원화 납입액을 그대로 쓰고 손익과 구분한다", async () => {
     show(detail("KRW", [snap("2026-01-02", 10_000), snap("2026-01-25", 10_400, { contribution_usd: 350 }), snap("2026-02-25", 10_800, { contribution_usd: 340 })], { p: { contribution: { enabled: true, monthly_amount: 500_000, currency: "KRW", day: 25 } }, s: { contributions_total_usd: 690 } }))
     await screen.findByText("핵심 성과")
-    expect(screen.getByText("1,000,000원")).toBeInTheDocument()
+    expect(screen.getByText("초기 14,000,000원 · 추가 1,000,000원 (2회 납입)")).toBeInTheDocument()
     expect(screen.getByText("15,000,000원")).toBeInTheDocument()
     expect(screen.getByText(/2회 납입/)).toBeInTheDocument()
   })
@@ -130,11 +132,11 @@ describe("모의투자 상세 상태", () => {
     const stopPaper = vi.fn(() => Promise.resolve(detail("KRW", [snap("2026-01-02", 10_000)], { p: { status: "stopped" }, s: { status: "stopped", update_status: "delayed", delayed_reason_ko: "자료 없음" } })))
     show(detail("KRW", [snap("2026-01-02", 10_000)]), { stopPaper })
     await screen.findByText("핵심 성과")
-    fireEvent.click(screen.getByRole("button", { name: "모의운용 중지" }))
+    fireEvent.click(screen.getByRole("button", { name: "모의투자 중지" }))
     expect(stopPaper).not.toHaveBeenCalled()
     expect(screen.getByText(/보유 종목을 매도하지 않고 평가와 리밸런싱 기록을 중지합니다. 재개 시 중지 기간의 기록은 소급해서 채우지 않습니다./)).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "중지 확정" }))
-    expect(await screen.findByRole("button", { name: "모의운용 재개" })).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: "모의투자 재개" })).toBeInTheDocument()
     expect(screen.getByText("운용 중지")).toBeInTheDocument()
     expect(screen.getByText("자료 지연")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /최신 자료로 갱신/ })).toBeDisabled()
@@ -145,9 +147,9 @@ describe("모의투자 상세 상태", () => {
     await screen.findByText("핵심 성과")
     const box = screen.getByRole("heading", { name: "최근 운용 기록" }).closest("section")!
     expect(within(box).getAllByRole("listitem")).toHaveLength(5)
-    expect(within(box).getByText("모의운용 재개")).toBeInTheDocument()
+    expect(within(box).getByText("모의투자 재개")).toBeInTheDocument()
     expect(within(box).getByText("리밸런싱 건너뜀")).toBeInTheDocument()
-    expect(screen.getByText(/끊긴 구간은 모의운용을 중지한 기간입니다/)).toBeInTheDocument()
+    expect(screen.getByText(/끊긴 구간은 모의투자를 중지한 기간입니다/)).toBeInTheDocument()
   })
 })
 
@@ -187,6 +189,47 @@ describe("모의투자 시작", () => {
   })
 })
 
+describe("모의투자 시작일: 분석일 이전도 (2026-11-11)", () => {
+  const pv = (f: PaperIn): PaperPreview => ({ report_id: "r", run_id: "r", report_as_of: "2026-01-01", strategy: { id: "s", kind: "template", template: null, cash_ratio: 0, name_ko: "동일비중" }, strategy_options: [{ id: "s", kind: "template", template: null, cash_ratio: 0, name_ko: "동일비중", status: "pass", recommended: true, chosen: true }],
+    start_date: f.start_date ?? "2026-03-02", data_start: "2021-01-04", data_ceiling: "2026-03-02", reconstructed_at_start: (f.start_date ?? "2026-03-02") !== "2026-01-01", initial_capital: cap("KRW"), contribution: { enabled: false, monthly_amount: 0, currency: "KRW", day: 25 },
+    rebalance_rule: { count: 1, unit: "1m" }, benchmark: "SPY", tickers: ["MU"], weights: { MU: 1 }, cash_weight: 0, report_weights: { MU: 1 }, weight_diff: [{ ticker: "MU", report: 1, start: 1, delta: 0 }], allocation: [{ ticker: "MU", weight: 1, usd: 10_000, krw: 14_000_000, price_usd: 100 }],
+    construct_info: { fallback: false, warnings: [] }, warnings: f.start_date && f.start_date < "2026-01-01" ? ["분석일 2026-01-01 보다 앞선 날로 시작합니다. 종목은 분석일에 고른 것이라, 그날 실제로 시작했을 때보다 결과가 좋게 나올 수 있습니다."] : [] })
+
+  it("가격 자료가 있는 날부터 고를 수 있고 분석일 이전이면 알린다. 지난 날로 만들면 바로 지금까지 계산한 뒤 연다", async () => {
+    window.history.replaceState(null, "", "/")
+    const previewPaper = vi.fn((f: PaperIn) => Promise.resolve(pv(f)))
+    const made = detail("KRW", [snap("2025-06-02", 10_000)], { p: { start_date: "2025-06-02" } })
+    const createPaper = vi.fn(() => Promise.resolve(made)), refreshPaper = vi.fn(() => Promise.resolve(made))
+    render(<ServiceContext.Provider value={service({ previewPaper, createPaper, refreshPaper })}><StartPaperDialog reportId="r" close={() => {}} /></ServiceContext.Provider>)
+    const date = await screen.findByDisplayValue("2026-03-02")
+    expect(date).toHaveAttribute("min", "2021-01-04")
+    expect(date).toHaveAttribute("max", "2026-03-02")
+    expect(screen.getByText(/2021-01-04 ~ 2026-03-02 사이 · 분석일 2026-01-01 이전도 됩니다/)).toBeInTheDocument()
+    expect(screen.queryByText(/분석일보다 앞선 날입니다/)).toBeNull()
+    fireEvent.change(date, { target: { value: "2025-06-02" } })
+    expect(screen.getByText("분석일보다 앞선 날입니다. 종목은 분석일에 고른 것이라 결과가 실제보다 좋게 나올 수 있습니다.")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "시작 조건 확인" }))
+    expect(await screen.findByText(/분석일 2026-01-01 보다 앞선 날로 시작합니다/)).toBeInTheDocument()
+    expect(screen.getByText("시작일이 리포트 기준일과 달라 그날 자료로 비중을 다시 계산했습니다")).toBeInTheDocument()
+    expect(previewPaper).toHaveBeenLastCalledWith(expect.objectContaining({ start_date: "2025-06-02" }))
+    fireEvent.click(screen.getByRole("button", { name: "이 조건으로 시작" }))
+    await waitFor(() => expect(refreshPaper).toHaveBeenCalledWith("p1"))
+    await waitFor(() => expect(window.location.hash).toBe("#/paper/p1"))
+  })
+
+  it("마지막 거래일에 시작하면 따로 계산하지 않고 바로 연다", async () => {
+    window.history.replaceState(null, "", "/")
+    const made = detail("KRW", [snap("2026-03-02", 10_000)], { p: { start_date: "2026-03-02" } })
+    const refreshPaper = vi.fn(() => Promise.resolve(made))
+    render(<ServiceContext.Provider value={service({ previewPaper: (f: PaperIn) => Promise.resolve(pv(f)), createPaper: () => Promise.resolve(made), refreshPaper })}><StartPaperDialog reportId="r" close={() => {}} /></ServiceContext.Provider>)
+    await screen.findByDisplayValue("2026-03-02")
+    fireEvent.click(screen.getByRole("button", { name: "시작 조건 확인" }))
+    fireEvent.click(await screen.findByRole("button", { name: "이 조건으로 시작" }))
+    await waitFor(() => expect(window.location.hash).toBe("#/paper/p1"))
+    expect(refreshPaper).not.toHaveBeenCalled()
+  })
+})
+
 describe("리밸런싱 거래 (첫 화면) · 리밸런싱 알림", () => {
   beforeEach(() => { window.localStorage.clear(); window.sessionStorage.clear() })  // 앞 테스트가 남긴 확인 기록을 지운다
   const t = (ticker: string, side: "buy" | "sell", value_usd: number) => ({ ticker, side, shares: value_usd / 100, price: 100, value_usd })
@@ -196,11 +239,12 @@ describe("리밸런싱 거래 (첫 화면) · 리밸런싱 알림", () => {
   ]
   const usdDetail = () => detail("USD", [snap("2026-01-02", 10_000), snap("2026-02-02", 11_000)], { rebalances: rebs })
 
-  it("접힌 상세를 열지 않아도 핵심 성과와 위험 사이에서 마지막 리밸런싱의 매수·매도와 다음 리밸런싱 시점을 보여 준다 (평소에는 강조 없음)", async () => {
+  it("접힌 상세를 열지 않아도 개요 바로 아래(위험 위)에서 마지막 리밸런싱의 매수·매도와 다음 리밸런싱 시점을 보여 준다 (평소에는 강조 없음)", async () => {
     show(usdDetail())
     await screen.findByText("핵심 성과")
     const heads = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)
-    expect(heads.indexOf("리밸런싱 거래")).toBe(heads.indexOf("핵심 성과") + 1)
+    expect(heads.slice(0, 4)).toEqual(["핵심 성과", "보유 구성", "리밸런싱", "최근 운용 기록"])  // 개요
+    expect(heads.indexOf("리밸런싱 거래")).toBe(heads.indexOf("최근 운용 기록") + 1)
     expect(heads.indexOf("위험")).toBe(heads.indexOf("리밸런싱 거래") + 1)
     const card = within(screen.getByRole("heading", { name: "리밸런싱 거래" }).closest("section")!)
     await waitFor(() => expect(card.getByRole("list", { name: "매수한 종목" })).toHaveTextContent(/MU.*Micron Technology.*200\.00 USD.*2\.00주/))  // 회사명은 실행 결과에서 따로 온다
@@ -230,3 +274,80 @@ describe("리밸런싱 거래 (첫 화면) · 리밸런싱 알림", () => {
   })
 })
 
+describe("개요 · 접속 기록 · 리밸런싱 팝업 (2026-11-11)", () => {
+  beforeEach(() => { window.localStorage.clear(); window.sessionStorage.clear() })
+  const t = (ticker: string, side: "buy" | "sell", value_usd: number) => ({ ticker, side, shares: value_usd / 100, price: 100, value_usd })
+  const reb = (seq: number, date: string, kind: "initial" | "rebalance", trades: ReturnType<typeof t>[]): PaperRebalance => ({ date, seq, kind, before_weights: {}, target_weights: {}, applied_weights: {}, trades, commission_usd: 0.5, turnover: 0.05, fallback: false, skipped: false })
+  const base = [reb(0, "2026-01-02", "initial", [t("MU", "buy", 6000), t("NOW", "buy", 3000)]), reb(1, "2026-02-02", "rebalance", [t("MU", "buy", 200), t("NOW", "sell", 300)])]
+  const withRebs = (rebalances: PaperRebalance[]) => detail("USD", [snap("2026-01-02", 10_000), snap("2026-03-02", 11_000)], { rebalances })
+  const seenState = () => JSON.parse(window.localStorage.getItem("myfinsight.seen.v1")!)
+
+  it("개요: 핵심 성과(왼쪽 그래프·오른쪽 숫자) 아래에 보유 구성·리밸런싱·최근 운용 기록. 바뀐 문구", async () => {
+    show(withRebs(base))
+    const overview = await screen.findByRole("region", { name: "개요" })
+    expect(within(overview).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["핵심 성과", "보유 구성", "리밸런싱", "최근 운용 기록"])
+    expect(within(overview).getByText("현재 평가액")).toBeInTheDocument()
+    expect(within(overview).getByText("2026년 4월 첫 거래일")).toBeInTheDocument()  // 다음 리밸런싱 (마지막 평가일 3월 2일 다음 달)
+    expect(within(overview).getByText("매수 1종목 · 매도 1종목")).toBeInTheDocument()
+    expect(within(overview).getByText("현금 비중")).toBeInTheDocument()
+    expect(screen.getByText("직전 거래일까지 갱신합니다.")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "모의투자 중지" })).toBeInTheDocument()
+    expect(screen.queryByText(/실시간 시세가 아니라/)).toBeNull()
+    expect(screen.queryByText(/가상 자본으로 따라갑니다/)).toBeNull()
+    expect(screen.queryByText(/모의운용/)).toBeNull()
+  })
+
+  it("처음 들어오면 팝업 없이 접속을 기록하고, 다음에 들어왔을 때 그 뒤 새 리밸런싱이 있으면 팝업으로 알린다. 확인하면 확인 기록을 남긴다", async () => {
+    const first = show(withRebs(base))
+    await screen.findByText("핵심 성과")
+    expect(screen.queryByRole("dialog", { name: "리밸런싱할 시점입니다" })).toBeNull()
+    await waitFor(() => expect(seenState().visits.p1.seq).toBe(1))
+    expect(seenState().visits.p1.at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/)  // 이 컴퓨터 시각
+    first.unmount()
+    show(withRebs([...base, reb(2, "2026-03-02", "rebalance", [t("MU", "sell", 400), t("NOW", "buy", 500)])]))
+    const dlg = await screen.findByRole("dialog", { name: "리밸런싱할 시점입니다" })
+    expect(dlg).toHaveTextContent("2026-03-02 정기 리밸런싱")
+    expect(within(dlg).getByRole("list", { name: "매수한 종목" })).toHaveTextContent(/NOW.*500\.00 USD/)
+    await waitFor(() => expect(within(dlg).getByRole("list", { name: "매도한 종목" })).toHaveTextContent(/MU.*Micron Technology.*400\.00 USD/))  // 회사명은 실행 결과에서 따로 온다
+    expect(screen.getByText(/지난 접속 \d{4}-\d{2}-\d{2} \d{2}:\d{2}/)).toBeInTheDocument()
+    fireEvent.click(within(dlg).getByRole("button", { name: "확인했어요" }))
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "리밸런싱할 시점입니다" })).toBeNull())
+    expect(seenState().papers.p1).toBe(2)
+    expect(screen.queryByText("지금 리밸런싱할 시점입니다")).toBeNull()  // 아래 거래 카드 안내도 함께 사라진다
+  })
+
+  it("팝업을 닫기만 하면 확인 기록은 그대로(아래 안내는 남음)이고, 다음 접속에는 다시 띄우지 않는다", async () => {
+    window.localStorage.setItem("myfinsight.seen.v1", JSON.stringify({ v: 1, reports: [], papers: { p1: 1 }, visits: { p1: { at: "2026-02-10T09:30:00", seq: 1 } } }))
+    const more = withRebs([...base, reb(2, "2026-03-02", "rebalance", [t("MU", "sell", 400)])])
+    const r1 = show(more)
+    const dlg = await screen.findByRole("dialog", { name: "리밸런싱할 시점입니다" })
+    expect(screen.getByText("· 지난 접속 2026-02-10 09:30")).toBeInTheDocument()
+    fireEvent.click(within(dlg).getByRole("button", { name: "닫기" }))
+    expect(screen.queryByRole("dialog", { name: "리밸런싱할 시점입니다" })).toBeNull()
+    expect(screen.getByText("지금 리밸런싱할 시점입니다")).toBeInTheDocument()
+    expect(seenState().papers.p1).toBe(1)
+    r1.unmount()
+    show(more)
+    await screen.findByText("핵심 성과")
+    expect(screen.queryByRole("dialog", { name: "리밸런싱할 시점입니다" })).toBeNull()
+    expect(screen.getByText("지금 리밸런싱할 시점입니다")).toBeInTheDocument()
+  })
+
+  it("이미 확인한 리밸런싱이나 거래 없는 리밸런싱은 팝업을 띄우지 않는다", async () => {
+    window.localStorage.setItem("myfinsight.seen.v1", JSON.stringify({ v: 1, reports: [], papers: { p1: 2 }, visits: { p1: { at: "2026-02-10T09:30:00", seq: 1 } } }))
+    const r = show(withRebs([...base, reb(2, "2026-03-02", "rebalance", [t("MU", "sell", 400)])]))
+    await screen.findByText("핵심 성과")
+    expect(screen.queryByRole("dialog", { name: "리밸런싱할 시점입니다" })).toBeNull()
+    r.unmount()
+    window.localStorage.setItem("myfinsight.seen.v1", JSON.stringify({ v: 1, reports: [], papers: { p1: 1 }, visits: { p1: { at: "2026-02-10T09:30:00", seq: 1 } } }))
+    show(withRebs([...base, reb(2, "2026-03-02", "rebalance", [])]))
+    await screen.findByText("핵심 성과")
+    expect(screen.queryByRole("dialog", { name: "리밸런싱할 시점입니다" })).toBeNull()
+  })
+
+  it("목록 설명 문장", async () => {
+    render(<ServiceContext.Provider value={service({ listPaper: () => Promise.resolve([withRebs(base).summary]), getPaper: () => Promise.resolve(withRebs(base)) })}><PaperScreen /></ServiceContext.Provider>)
+    expect(await screen.findByText("완료된 리포트의 전략을 가상으로 시뮬레이션 합니다.")).toBeInTheDocument()
+    expect(screen.queryByText(/가상 자본으로 따라갑니다/)).toBeNull()
+  })
+})

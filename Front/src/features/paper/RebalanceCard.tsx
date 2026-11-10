@@ -54,7 +54,7 @@ export function RebalanceCard({ d, cur, fx, names, fresh, onAck, onAll }: { d: P
   )
 }
 
-function TradeSide({ title, dot, items, date, cur, fx, names }: { title: string; dot: string; items: PaperTrade[]; date: string; cur: Cur; fx: Map<string, number>; names: Map<string, string> }) {
+export function TradeSide({ title, dot, items, date, cur, fx, names }: { title: string; dot: string; items: PaperTrade[]; date: string; cur: Cur; fx: Map<string, number>; names: Map<string, string> }) {
   return (
     <div className="min-w-0">
       <p className="flex items-center gap-1.5 text-xs font-bold text-slate-600"><span className={`size-2 rounded-full ${dot}`} aria-hidden />{title} {items.length}종목</p>

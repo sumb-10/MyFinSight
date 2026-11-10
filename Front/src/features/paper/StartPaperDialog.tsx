@@ -20,7 +20,7 @@ export function StartPaperDialog({ reportId, close }: { reportId: string; close:
   const [form, setForm] = useState<PaperIn>({ report_id: reportId })
   const [preview, setPreview] = useState<PaperPreview | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState<"preview" | "create" | "">("")
+  const [busy, setBusy] = useState<"preview" | "create" | "catchup" | "">("")
   const [stage, setStage] = useState<"form" | "confirm">("form")
   // 모의투자 이름 (제안 기능): 서비스에 이름 연동(setPaperName·getReportName)이 있을 때만 고른다. 없으면 서버가 정한 이름 그대로.
   const [reportName, setReportName] = useState<string | null>(null)
@@ -48,6 +48,8 @@ export function StartPaperDialog({ reportId, close }: { reportId: string; close:
     setBusy("create"); setError(null)
     try {
       const d = await svc.createPaper(reportName && nameMode === "custom" ? { ...form, name: { mode: "custom", name_ko: customName.trim() } } : form)  // 이름도 등록 때 함께 (따로 부르면 등록만 되고 이름은 실패할 수 있다)
+      // 지난 날짜로 시작하면 만든 직후 그날부터 직전 거래일까지 바로 계산한다 (실패해도 만든 모의투자는 그대로, 일꾼이 나중에 채운다)
+      if (preview && d.portfolio.start_date < preview.data_ceiling) { setBusy("catchup"); await svc.refreshPaper(d.portfolio.paper_id).catch(() => null) }
       close(); navigate({ page: "paper", paperId: d.portfolio.paper_id })
     } catch (e) { setError(errorMessage(e)) } finally { setBusy("") }
   }
@@ -76,8 +78,9 @@ export function StartPaperDialog({ reportId, close }: { reportId: string; close:
                   {preview.strategy_options.map((o) => <option key={o.id} value={o.id}>{o.name_ko}{o.chosen ? " · 리포트 선택안" : o.recommended ? " · 추천" : ""} ({o.status === "pass" ? "통과" : o.status === "warn" ? "주의" : "미통과"})</option>)}
                 </select>
               </Field>{picked && <p className="mt-1.5 break-words text-xs leading-5 text-slate-600">선택: <b>{picked.name_ko}</b> · {statusKo(picked.status)}{picked.chosen ? " · 리포트 선택안" : picked.recommended ? " · 추천" : ""}</p>}</div>
-              <Field label="시작일" help={`리포트 기준일 ${preview.report_as_of} 이후, 자료가 있는 마지막 날 ${preview.data_ceiling} 까지`}>
-                <input className={inputClass} type="date" value={form.start_date ?? ""} min={preview.report_as_of} max={preview.data_ceiling} onChange={(e) => set("start_date", e.target.value)} />
+              <Field label="시작일" help={`${preview.data_start ? `${preview.data_start} ~ ${preview.data_ceiling} 사이` : `${preview.data_ceiling} 까지`} · 분석일 ${preview.report_as_of} 이전도 됩니다`}>
+                <input className={inputClass} type="date" value={form.start_date ?? ""} min={preview.data_start} max={preview.data_ceiling} onChange={(e) => set("start_date", e.target.value)} />
+                {form.start_date && form.start_date < preview.report_as_of && <p className="mt-1.5 text-xs leading-5 text-amber-800">분석일보다 앞선 날입니다. 종목은 분석일에 고른 것이라 결과가 실제보다 좋게 나올 수 있습니다.</p>}
               </Field>
               <Field label="가상 초기자본">
                 <div className="flex gap-2">
@@ -105,7 +108,7 @@ export function StartPaperDialog({ reportId, close }: { reportId: string; close:
               <div><dt className="text-xs font-semibold text-slate-500">현금 비중</dt><dd className="mt-0.5 font-semibold text-slate-900">{weight(preview.cash_weight)}</dd></div>
               <div><dt className="text-xs font-semibold text-slate-500">리밸런싱</dt><dd className="mt-0.5 font-semibold text-slate-900">{preview.rebalance_rule.count === 0 ? "하지 않음" : rebalanceText(preview.rebalance_rule as never)}</dd></div>
             </dl>
-            {preview.reconstructed_at_start && <Alert tone="warning" title="시작일이 리포트 기준일보다 늦어 비중을 다시 계산했습니다">리포트 비중과 다른 종목이 있으면 아래 표의 차이 열에 표시됩니다. 종목은 그대로이고 비중만 다릅니다.</Alert>}
+            {preview.reconstructed_at_start && <Alert tone="warning" title="시작일이 리포트 기준일과 달라 그날 자료로 비중을 다시 계산했습니다">리포트 비중과 다른 종목이 있으면 아래 표의 차이 열에 표시됩니다. 종목은 그대로이고 비중만 다릅니다.</Alert>}
             {preview.warnings.map((w, i) => <Alert key={i} tone="warning" title="알림">{w}</Alert>)}
             <div className="max-h-72 overflow-auto rounded-xl border border-slate-200">
               <table className="w-full min-w-[420px] text-sm">
@@ -119,7 +122,7 @@ export function StartPaperDialog({ reportId, close }: { reportId: string; close:
               </table>
             </div>
             <p className="text-xs text-slate-500">시작일 종가(USD 환산)로 소수 주식까지 사며, 거래대금의 0.05%를 수수료로 뺍니다. 여기 보이는 비중이 그대로 적용됩니다.{preview.allocation_basis_ko && " 초기자본이 0원이라 금액은 첫 적립금 기준이며, 첫 적립일에 처음 매수합니다."}</p>
-            <div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setStage("form")}>조건 바꾸기</Button><Button onClick={create} disabled={busy !== ""}>{busy === "create" ? "등록하는 중…" : "이 조건으로 시작"}</Button></div>
+            <div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setStage("form")}>조건 바꾸기</Button><Button onClick={create} disabled={busy !== ""}>{busy === "create" ? "등록하는 중…" : busy === "catchup" ? "지금까지 계산하는 중…" : "이 조건으로 시작"}</Button></div>
           </>
         )}
       </div>

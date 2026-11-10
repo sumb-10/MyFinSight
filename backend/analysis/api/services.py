@@ -15,6 +15,7 @@ from backend.analysis.executor.queue import Queue
 from backend.analysis.m1_request.dialog import DialogService
 from backend.analysis.m2_data.market_data import MarketData
 from backend.analysis.m2_data.price_cache import PriceBarCache
+from backend.analysis.m2_data.sector_trends import SectorTrendsJob, compute_sector_trends
 from backend.analysis.m2_data.stocks import load_stocks, lookup
 from backend.analysis.m5_backtest_report.execution_orders import compute_execution, with_execution
 from backend.analysis.m6_tracking.paper import PaperService
@@ -36,6 +37,7 @@ class Services:
     _results_cache: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)  # report_id → 13_results (불변; 최근 8개)
     _orders_cache: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)  # report_id → 예상 매수 주문 (기준일 값이라 불변; 최근 32개)
     _stocks: tuple[dt.date, list[dict[str, Any]]] | None = field(default=None, repr=False)  # (읽은 날, 종목 찾기 목록) — 하루 한 번 다시 읽음
+    _trends: SectorTrendsJob | None = field(default=None, repr=False)  # 홈 '요즘엔 뭐가 좋아요?' 섹터 성과 (새 거래일마다 한 번 계산)
 
     @property
     def repo(self) -> Any:
@@ -88,6 +90,12 @@ class Services:
             log.warning("stock names unavailable", exc_info=True)
             return ticker
         return f"{hit[0]['name_ko']} ({ticker})" if hit else ticker
+
+    def sector_trends(self) -> SectorTrendsJob:
+        with self._lock:
+            if self._trends is None:
+                self._trends = SectorTrendsJob(self.store, lambda progress: compute_sector_trends(self.market_data(), self.settings, progress=progress))
+            return self._trends
 
     def dialog(self) -> DialogService:
         return DialogService(self.store, self.repo, self.market_data(), self.llm(), self.settings, stock_label=self.stock_label)

@@ -144,31 +144,30 @@ function useRows(doc: ReportDoc, dataset: "index" | "value_usd" | "drawdown", id
   }), [doc, dataset, ids])
 }
 
-/** 선·면 차트: 기본 켜진 계열 ≤ 3, 나머지는 칩으로 켠다. 캡션에 기간·단위·표본 안내. */
+/** 선·면 차트: 기본 켜진 계열 ≤ 3, 나머지는 칩으로 켠다. 캡션에 기간·단위·표본 안내.
+ *  칩은 늘 같은 순서(서버 series_ids)로 모두 보인다. 눌러도 자리가 바뀌지 않고, 「모두 보기」로 한 번에 켠다 (2026-11-11: 켠 칩이 맨 앞으로 오고 나머지는 「계열 더 보기」에 숨던 것을 고침). */
 export function LineSeries({ b, doc }: { b: LineBlock | AreaBlock; doc: ReportDoc }) {
-  const [on, setOn] = useState<string[]>(b.default_on.slice(0, 3))
+  const defaults = b.default_on.slice(0, 3)
+  const [on, setOn] = useState<string[]>(defaults)
   const rows = useRows(doc, b.dataset, b.series_ids)
   const toggle = (id: string) => setOn((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
   const last = rows[rows.length - 1] ?? {}
   const yf = (v: number) => (b.y_format === "pct" ? `${(v * 100).toFixed(0)}%` : b.y_format === "usd" ? `${Math.round(v / 1000)}k` : v.toFixed(0))
   const dates = doc.datasets.dates
-  const samp = doc.datasets.sampling
   const unit = b.y_format === "pct" ? "고점 대비 낙폭(%)" : b.y_format === "usd" ? "USD" : "시작 = 100"
-  const caption = `${dates[0] ?? ""} ~ ${dates[dates.length - 1] ?? ""} · ${unit} · 분석 기준일 ${doc.header.data_as_of}${samp ? ` · 표본 ${samp.points}/${samp.full_points}점 (전체는 서버 조회)` : ""}`
+  const caption = `${dates[0] ?? ""} ~ ${dates[dates.length - 1] ?? ""} · ${unit}`
   const table = { columns: [{ key: "date", label_ko: "날짜" }, ...on.map((id) => ({ key: id, label_ko: doc.datasets.series[id]?.label_ko ?? id, format: b.y_format }))], rows }
   const color = (id: string) => colorOf(id, b.series_ids)
-  const [moreChips, setMoreChips] = useState(false)
-  const MAX_CHIPS = 8
-  const shown = moreChips || b.series_ids.length <= MAX_CHIPS ? b.series_ids : [...b.series_ids.filter((id) => on.includes(id)), ...b.series_ids.filter((id) => !on.includes(id))].slice(0, MAX_CHIPS)
-  const hidden = b.series_ids.length - shown.length
+  const dash = (id: string) => (b.series_ids.indexOf(id) >= PALETTE.length ? "6 3" : undefined)  // 색이 한 바퀴 돈 뒤(9번째 계열부터)는 같은 색을 점선으로
+  const allOn = b.series_ids.every((id) => on.includes(id))
   const controls = (
     <div className="flex flex-wrap gap-2">
-      {shown.map((id) => (
+      {b.series_ids.length > 1 && <button type="button" onClick={() => setOn(allOn ? defaults : [...b.series_ids])} aria-pressed={allOn} className="rounded-full border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">{allOn ? "기본만 보기" : "모두 보기"}</button>}
+      {b.series_ids.map((id) => (
         <button key={id} type="button" onClick={() => toggle(id)} aria-pressed={on.includes(id)} className={`max-w-full truncate rounded-full border px-3 py-1 text-xs ${on.includes(id) ? "border-slate-800 bg-slate-800 text-white" : "border-slate-300 text-slate-600"}`}>
-          <span className="mr-1 inline-block h-2 w-2 rounded-full" style={{ background: color(id) }} />{doc.datasets.series[id]?.label_ko ?? id}
+          {dash(id) ? <span aria-hidden className="mr-1 inline-block w-3 align-middle" style={{ borderTop: `2px dashed ${color(id)}` }} /> : <span aria-hidden className="mr-1 inline-block h-2 w-2 rounded-full" style={{ background: color(id) }} />}{doc.datasets.series[id]?.label_ko ?? id}
         </button>
       ))}
-      {b.series_ids.length > MAX_CHIPS && <button type="button" onClick={() => setMoreChips((v) => !v)} className="rounded-full border border-dashed border-slate-300 px-3 py-1 text-xs text-slate-500 hover:bg-slate-50">{moreChips ? "계열 접기" : `계열 더 보기 (+${hidden})`}</button>}
     </div>
   )
   const footer = <p className="text-xs text-slate-600">{b.series_ids.filter((id) => on.includes(id)).map((id) => <span key={id} className="mr-4 inline-block">{doc.datasets.series[id]?.label_ko}: 마지막 값 <b className="tabular-nums">{fmt(last[id] as number, b.y_format)}</b></span>)}</p>
@@ -180,14 +179,14 @@ export function LineSeries({ b, doc }: { b: LineBlock | AreaBlock; doc: ReportDo
             <AreaChart data={rows}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" /><XAxis dataKey="date" minTickGap={60} tick={{ fontSize: 11 }} /><YAxis tickFormatter={yf} tick={{ fontSize: 11 }} width={48} />
               <Tooltip formatter={(v: unknown, n: unknown) => [fmt(v as number, b.y_format), doc.datasets.series[String(n)]?.label_ko ?? String(n)]} />
-              {b.series_ids.filter((id) => on.includes(id)).map((id) => <Area key={id} type="monotone" dataKey={id} stroke={color(id)} fill={color(id)} fillOpacity={0.12} dot={false} isAnimationActive={false} />)}
+              {b.series_ids.filter((id) => on.includes(id)).map((id) => <Area key={id} type="monotone" dataKey={id} stroke={color(id)} strokeDasharray={dash(id)} fill={color(id)} fillOpacity={0.12} dot={false} isAnimationActive={false} />)}
             </AreaChart>
           ) : (
             <LineChart data={rows}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" /><XAxis dataKey="date" minTickGap={60} tick={{ fontSize: 11 }} /><YAxis tickFormatter={yf} tick={{ fontSize: 11 }} width={48} domain={["auto", "auto"]} />
               <Tooltip formatter={(v: unknown, n: unknown) => [fmt(v as number, b.y_format), doc.datasets.series[String(n)]?.label_ko ?? String(n)]} />
               {b.dataset === "index" && <ReferenceLine y={100} stroke="#94a3b8" strokeDasharray="4 4" />}
-              {b.series_ids.filter((id) => on.includes(id)).map((id) => <Line key={id} type="monotone" dataKey={id} stroke={color(id)} dot={false} strokeWidth={id === doc.header.chosen_portfolio_id ? 2.5 : 1.5} isAnimationActive={false} />)}
+              {b.series_ids.filter((id) => on.includes(id)).map((id) => <Line key={id} type="monotone" dataKey={id} stroke={color(id)} strokeDasharray={dash(id)} dot={false} strokeWidth={id === doc.header.chosen_portfolio_id ? 2.5 : 1.5} isAnimationActive={false} />)}
             </LineChart>
           )}
         </ResponsiveContainer>
@@ -214,8 +213,6 @@ export function BarItems({ b }: { b: BarBlock }) {
 /** 선정 과정: 단계 번호(「1단계」…) + 막대 + 종목 수 + 단계 이름. 아래에 「제외된 종목」과 「재선정」이 무엇인지 짧게 구분한다. */
 export function Funnel({ b }: { b: FunnelBlock }) {
   const max = Math.max(...b.items.map((x) => x.count))
-  const final = b.items.find((x) => x.label_ko.startsWith("최종 선정"))
-  const re = b.items.find((x) => x.label_ko.startsWith("백테스트용 재선정"))
   return (
     <div className={card}>
       <h3 className={h3}>선정 과정</h3>
@@ -228,12 +225,6 @@ export function Funnel({ b }: { b: FunnelBlock }) {
           </li>
         ))}
       </ol>
-      {(final || re) && (
-        <dl className="mt-4 grid grid-cols-1 gap-3 border-t border-slate-100 pt-4 text-xs leading-5 md:grid-cols-2">
-          {final && <div><dt className="font-semibold text-slate-800">선정에서 제외된 종목</dt><dd className="mt-0.5 text-slate-600">테마에는 해당하지만 분석 기준일에 적용한 선정 조건(선정 지표 계산 가능 여부·지표 순위·섹터 분산)을 거쳐 최종 목록에 들지 못한 종목입니다. 제외 이유가 있는 경우 아래 「제외된 종목과 재선정 차이」에 있습니다.</dd></div>}
-          {re && <div><dt className="font-semibold text-slate-800">과거 시점 기준으로 종목 다시 선정 (재선정)</dt><dd className="mt-0.5 text-slate-600">과거 성과를 계산하려고, 백테스트 시작일 당시 알 수 있던 자료만으로 같은 선정 규칙을 다시 적용해 고른 목록입니다. 미래 정보를 쓰지 않기 위한 절차이며, 분석 기준일 목록을 고친다는 뜻은 아닙니다.</dd></div>}
-        </dl>
-      )}
     </div>
   )
 }

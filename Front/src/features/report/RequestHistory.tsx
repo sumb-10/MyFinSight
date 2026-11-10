@@ -43,7 +43,7 @@ export function RequestHistory({ requestId, log }: { requestId: string; log?: Pr
           ) : <p className="mt-2 text-sm text-slate-600">기본 투자조건과 달라진 항목이 없습니다.</p>}
         </div>
       </div>
-      <Disclosure title="추가 질문 및 답변 전체 보기" summary={`${answered.length}건`}>
+      <Disclosure title="추가 질문과 답변" summary={`${answered.length}건`}>
         {answered.length ? (
           <ol className="space-y-3" aria-label="요청 기록">
             <Bubble who="user">{st.idea}</Bubble>
@@ -74,7 +74,6 @@ export function RequestHistory({ requestId, log }: { requestId: string; log?: Pr
         </div>
       )}
       {st.revision && <RevisionCard rev={st.revision} />}
-      <p className="text-xs leading-5 text-slate-500">{log ? "아이디어, 답한 질문과 답, 말로 보탠 요청과 그 결과, 조건 변경 결과를 표시합니다." : "저장된 기록(아이디어, 답한 질문과 답, 조건 변경 결과)만 표시합니다. 「말로 조건 보태기」로 보낸 문장 자체는 불러올 수 있는 기록이 없어 여기에 나오지 않습니다."}</p>
     </div>
   )
 }
