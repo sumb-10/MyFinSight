@@ -107,7 +107,7 @@ src/mocks/mocks.test.tsx       분리·일관성 테스트
 | `searchStocks(q)` / `getStocks(tickers)` | 회사명·티커 검색, 티커 → 회사명 조회 (4단계) |
 | `getProfileVersion(v)` | 과거 투자조건 버전 값 전체 → 변경 전후 비교 (4단계) |
 | `recommendStrategy(tendency)` | 성향 기반 전략 추천. 실제 서버와 같은 고정 규칙 표 (4단계, 실제 서버 연결됨) |
-| `startProfileChat` / `answerProfileChat(id, ProposedChatAnswer)` / `rewindProfileChat(id, questionId)` | 대화형 초기 투자조건: 새 대화 / 지금 질문에 답 / 그 답만 다시 묻기 (15절) |
+| `startProfileChat` / `answerProfileChat(id, ProposedChatAnswer)` / `rewindProfileChat(id, questionId)` | 대화형 초기 투자조건: 새 대화 / 지금 질문에 답 / 그 답만 다시 묻기. 실제 서버와 같은 질문·규칙 (15절, 실제 서버 연결됨) |
 | `getQuestionBatch` / `answerBatch(id, ProposedBatchAnswer[])` | 여러 질문 한 번에 답하기. 답마다 보기 값·자유 입력·`skip`(선택 질문만) (4단계) |
 | (옵션 필드) `proposed_rules.allow_zero_initial_amount` | `GET /options` 에 붙는 입력 규칙. 있으면 초기 투자금 0원 + 매월 추가 투자금 허용 (4단계) |
 | `getMessageResults` | 말로 보태기 결과 (반영됨/반영 안 됨/확인 필요, 바뀐 조건) (4단계) |
@@ -307,9 +307,10 @@ src/mocks/mocks.test.tsx       분리·일관성 테스트
 | 선정 지표 설명 | 목업 문장에서도 지표 ID 를 뺐다 (퀄리티 지표 ID 는 서버와 같은 `roe_ttm`) |
 
 
-## 15. 대화형 초기 투자조건 (목업 전용)
+## 15. 대화형 초기 투자조건 (목업에서 먼저 만듦, 지금은 실제 서버에도 있음)
 
 처음 쓰는 사용자가 챗봇처럼 필수 항목만 답해 기본 투자조건을 만든다. 백엔드 요청은 [backend-requests-profile-chat.md](./backend-requests-profile-chat.md).
+2026-11-10 부터 실제 서버(`POST /profile/chat` …, `backend/analysis/m1_request/profile_chat.py`)가 아래 규칙을 그대로 옮겨 쓴다 — 규칙을 바꾸면 둘 다 바꾼다 (서버 `test_profile_chat.py` 가 확인).
 
 **여는 법:** `?mock=1` → 목업 패널 「내 투자조건」의 「처음 사용자 (투자조건 없음)」 → 앱이 `#/profile/chat` 으로 보낸다 (또는 주소를 바로 연다).
 
@@ -322,4 +323,4 @@ src/mocks/mocks.test.tsx       분리·일관성 테스트
 | 고치기 | 사용자 답 말풍선의 「고치기」 → 그 답만 다시 묻는다. 뒤의 답은 남기고(말풍선은 다시 답할 때까지 숨김), 성향 진단을 고치면 「성향 확인」도 다시 묻는다 |
 | 초안 | 기본값(`features/profile/defaults.ts`)에 답을 반영. 종목 수에 맞춰 범위(±20%)·종목당 상한을 같이 정해 폼 검사(`validate.ts`)를 통과하게 한다 |
 | 저장 | 요약에서 「이대로 저장」 → 기존 `saveProfile` (note 「첫 등록」). 「폼에서 세부 수정」·「폼으로 한 번에 입력」은 초안을 ui 저장소(`profileDraft`)로 넘겨 4단계 폼이 미리 채운다. 그때의 대화도 `profileChat` 에 남겨, 폼의 「대화로 이어서 하기」로 돌아오면 그 질문부터 이어 간다 (저장·「처음부터 다시」에서 지움). 대화 중간에 넘어오면 폼의 묻지 않은 단계는 「완료」로 표시하지 않는다 |
-| 일반 모드 | 대화 메서드가 없으므로 처음 사용자는 4단계 폼으로 간다. 폼의 「대화로 설정하기」도 보이지 않는다 |
+| 일반 모드 | 실제 서버 서비스에도 대화 메서드가 있어 처음 사용자는 대화형으로 간다 (「목업」 표시만 없음). 대화 메서드가 없는 서비스면 4단계 폼으로 가고, 폼의 「대화로 설정하기」도 보이지 않는다 |

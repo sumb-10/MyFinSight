@@ -38,6 +38,7 @@ describe("목업 모드 분리", () => {
       // A 종목 이름
       // B 투자조건 규칙
       "recommendStrategy",
+      "startProfileChat", "answerProfileChat", "rewindProfileChat",
       // C 질문 화면
       // D 분석 진행
       // E 원화 계산
@@ -77,6 +78,14 @@ describe("목업 모드 분리", () => {
     const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("{}", { status: 200 }))
     await new HttpService().recommendStrategy("위험중립형")
     expect(f.mock.calls.map(([u, i]) => [String(u).replace(/^.*\/api\/v1/, ""), i?.method])).toEqual([[`/strategy/recommendation?tendency=${encodeURIComponent("위험중립형")}`, "GET"]])
+  })
+  it("대화형 초기 투자조건은 서버 주소로 요청한다 (시작 / 답 / 되감기)", async () => {
+    const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("{}", { status: 200 }))
+    const http = new HttpService()
+    await http.startProfileChat(); await http.answerProfileChat("chat_1", { question_id: "amount", number: 5_000_000 }); await http.rewindProfileChat("chat_1", "amount")
+    const calls = f.mock.calls.map(([u, i]) => [String(u).replace(/^.*\/api\/v1/, ""), i?.method, i?.body])
+    expect(calls).toEqual([["/profile/chat", "POST", undefined], ["/profile/chat/chat_1/answers", "POST", JSON.stringify({ question_id: "amount", number: 5_000_000 })],
+      ["/profile/chat/chat_1/rewind", "POST", JSON.stringify({ question_id: "amount" })]])
   })
 })
 

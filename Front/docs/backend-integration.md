@@ -199,6 +199,13 @@
 - **자세한 명세·정책:** [backend-requests-profile-chat.md](./backend-requests-profile-chat.md)
 - **목업:** `MockService.startProfileChat/answerProfileChat/rewindProfileChat`, `mocks/data/profileChat.ts`. **프런트 수정:** `api/service.ts`. 화면 `features/profile/chat/*`, 진입 `app/App.tsx`·`features/home/HomeScreen.tsx`.
 - **지금 일반 모드:** 대화 메서드가 없으므로 처음 사용자는 지금처럼 4단계 폼(`#/profile/setup`)으로 간다.
+- **✅ 실제 서버 구현 (2026-11-10):** `POST /profile/chat`, `POST /profile/chat/{chat_id}/answers`, `POST /profile/chat/{chat_id}/rewind` → `ProposedProfileChat`.
+  목업 대화(`mocks/data/profileChat.ts`)를 그대로 서버로 옮겼다(`backend/analysis/m1_request/profile_chat.py`): 고정 11문항, 보기·숫자만(LLM 없음), 말풍선 id·문구·초안이 목업과 같다.
+  기본값·성향 진단 문항은 서버가 프런트(`defaults.ts`·`diagnosis.ts`)와 같은 표를 갖고, 「종목을 고르는 기준」의 추천은 서버 규칙 `recommend()`(2-5).
+  맞지 않는 답은 200 + 봇의 다시 묻는 말풍선, 차례가 아닌 질문은 409, 없는 대화 404, 되감기의 없는 질문 id 는 422.
+  요약(`review`)으로 넘어가기 전에 `PUT /profile` 과 같은 검사를 하고, 통과하지 못하면 마지막 답을 받지 않고 다시 묻는다. 처음 투자금 최소는 목업처럼 10만원(0원 시작은 2-4 에서 따로).
+  대화는 서버 로컬 저장소(기본 `data/analysis_store`)의 `profile_chats/<chat_id>.json` 에 답만 저장하고, 새 대화를 시작할 때 마지막으로 답한 지 7일이 지난 대화를 지운다.
+  저장은 그대로 `PUT /profile` (투자조건이 있는 사용자도 대화를 쓸 수 있고, 저장하면 새 버전). 프런트는 `HttpService` 세 메서드 → 일반 모드에서도 처음 사용자는 대화형으로 간다.
 
 ## 3. 일반 모드에 반영한 세 가지 (서버 추가 없이 기존 데이터만 사용)
 

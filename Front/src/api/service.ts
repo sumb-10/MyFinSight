@@ -73,6 +73,9 @@ export class HttpService implements AnalysisService {
     }
   }
   recommendStrategy(tendency: import("./types").Tendency) { return api.get<import("./proposed").ProposedStrategyRecommendation>(`/strategy/recommendation?tendency=${encodeURIComponent(tendency)}`) }
+  startProfileChat() { return api.post<import("./proposed").ProposedProfileChat>("/profile/chat") }
+  answerProfileChat(chatId: string, answer: import("./proposed").ProposedChatAnswer) { return api.post<import("./proposed").ProposedProfileChat>(`/profile/chat/${chatId}/answers`, answer) }
+  rewindProfileChat(chatId: string, questionId: string) { return api.post<import("./proposed").ProposedProfileChat>(`/profile/chat/${chatId}/rewind`, { question_id: questionId }) }
   saveProfile(fields: ProfileFields) { return api.put<ProfileView>("/profile", fields) }
   createRequest(input: { idea: string; overrides?: Record<string, unknown>; mode?: "new" | "rerun" | "revision"; base_report_id?: string | null }) {
     return api.post<DialogState>("/requests", { idea: input.idea, overrides: input.overrides ?? {}, mode: input.mode ?? "new", base_report_id: input.base_report_id ?? null }, LLM)

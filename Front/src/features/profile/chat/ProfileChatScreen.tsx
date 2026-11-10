@@ -14,8 +14,8 @@ import { ProfileScreen } from "../ProfileScreen"
 import { Composer, QuickReplies } from "./ChatInput"
 import { ChatReviewActions, ChatReviewSummary } from "./ChatReview"
 
-// 대화형 초기 투자조건 (제안 기능): 서비스에 대화 메서드(startProfileChat 등)가 있을 때만 — 지금은 목업뿐.
-// 없으면(실제 서버) 기존 4단계 폼으로 연다. 대화는 초안만 만들고, 저장은 기존 saveProfile 로 한다.
+// 대화형 초기 투자조건 (제안 기능): 서비스에 대화 메서드(startProfileChat 등)가 있을 때만 — 목업과 실제 서버(POST /profile/chat …) 모두.
+// 없으면 기존 4단계 폼으로 연다. 대화는 초안만 만들고, 저장은 기존 saveProfile 로 한다.
 //
 // 모양은 메신저 창 하나: 위 막대(도우미·진행) / 가운데 대화(이 영역만 스크롤) / 아래 입력줄(요약 단계에선 저장 버튼).
 // 보기는 마지막 질문 바로 아래 내 쪽에 「추천 답장」처럼 뜨고, 입력줄은 금액·숫자 직접 입력에만 쓴다.

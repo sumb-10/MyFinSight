@@ -1,6 +1,8 @@
 // 대화형 초기 투자조건 (목업). 서버가 대화를 이끄는 제안 계약(ProposedProfileChat)을 정해진 규칙으로만 흉내 낸다.
 // 질문 순서·보기·답 반영·다시 묻기가 모두 여기 한 곳에 있다. 자유 문장은 해석하지 않는다 (서버 연동 때 LLM 이 맡을 부분).
 // 상태는 질문별 답만 저장하고, 말풍선·초안(draft)·다음 질문은 매번 답에서 다시 만든다 → 「고치기」는 그 답(과 그 답에 기대는 답)만 지우면 끝.
+// 실제 서버(backend/analysis/m1_request/profile_chat.py, POST /profile/chat …)가 이 규칙을 그대로 옮겨 쓴다 — 바꾸면 둘 다 바꾼다
+// (서버 test_profile_chat 이 질문 순서·이름·고정 보기·입력 범위·정해진 말풍선이 같은지 본다).
 import type { ProposedChatAnswer, ProposedChatKind, ProposedChatMessage, ProposedChatQuestion, ProposedProfileChat } from "../../api/proposed"
 import type { ProfileFields, Template, Tendency } from "../../api/types"
 import { DEFAULT_FORM } from "../../features/profile/defaults"

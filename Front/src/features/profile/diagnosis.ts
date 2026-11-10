@@ -2,6 +2,7 @@ import type { RiskTolerance, Tendency } from "../../api/types"
 
 export const TENDENCIES: Tendency[] = ["안정형", "안정추구형", "위험중립형", "적극투자형", "공격투자형"]
 
+// 성향 진단 문항·점수·성향 설명은 실제 서버의 대화형 설정(backend/analysis/m1_request/profile_chat.py)에도 같은 표가 있다 — 바꾸면 함께 바꾼다 (서버 test_profile_chat 이 확인).
 export const QUESTIONS = [
   { id: "loss", question: "과거에 투자금이 일시적으로 하락했을 때 어느 수준까지 감수할 수 있나요?", options: [
     { label: "약 5% 하락도 크게 부담됩니다", score: 0, loss: 0.05 }, { label: "약 10% 하락까지 감수할 수 있습니다", score: 1, loss: 0.1 },

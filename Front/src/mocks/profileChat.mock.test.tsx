@@ -213,3 +213,34 @@ describe("일반 모드 (대화 메서드 없음)", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "기본 투자조건을 알려주세요." }, { timeout: 5000 })).toBeInTheDocument()
   })
 })
+
+describe("일반 모드 (실제 서버에 대화 API 가 있음)", () => {
+  /** 실제 서버(POST /profile/chat …)처럼 대화 메서드가 있는 일반 모드 서비스. 응답은 서버와 같은 규칙인 목업 대화로 만든다. */
+  const real = (s: MockService) => {
+    const calls: string[] = []
+    const svc: AnalysisService = Object.assign(Object.create(s), {
+      mode: "api",
+      startProfileChat: async () => { calls.push("start"); return s.startProfileChat() },
+      answerProfileChat: async (id: string, a: ProposedChatAnswer) => { calls.push(`answer:${a.question_id}`); return s.answerProfileChat(id, a) },
+      rewindProfileChat: async (id: string, q: string) => { calls.push(`rewind:${q}`); return s.rewindProfileChat(id, q) },
+    })
+    return { svc, calls }
+  }
+  it("처음 사용자는 앱을 열면 대화형 설정으로 가고, 「목업」 표시 없이 서버 대화를 이어 간다", async () => {
+    const s = firstUser()
+    const { svc, calls } = real(s)
+    window.history.replaceState(null, "", "/#/home")
+    render(<Providers service={svc}><App /></Providers>)
+    expect(await screen.findByRole("heading", { level: 1, name: "대화로 기본 투자조건을 정해요" }, { timeout: 5000 })).toBeInTheDocument()
+    expect(window.location.hash).toBe("#/profile/chat")
+    expect(screen.queryByText("목업")).toBeNull()
+    await pick(/^자산 증식/)
+    const input = await screen.findByRole("textbox", { name: "처음 투자할 금액 직접 입력" }, { timeout: 5000 })
+    fireEvent.change(input, { target: { value: "5,000" } })
+    fireEvent.click(screen.getByRole("button", { name: /보내기/ }))
+    expect(await screen.findByText(/10만원 이상 100억원 이하로 알려 주세요/, {}, { timeout: 5000 })).toBeInTheDocument()  // 서버의 다시 묻는 말풍선
+    fireEvent.click(screen.getByRole("button", { name: "‘자산 증식’ 답 고치기" }))
+    expect(await screen.findByRole("button", { name: /^원금 보존/ }, { timeout: 5000 })).toBeInTheDocument()
+    expect(calls).toEqual(["start", "answer:purpose", "answer:amount", "rewind:purpose"])
+  })
+})
