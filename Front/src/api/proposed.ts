@@ -136,6 +136,7 @@ export interface ProposedProfileChat {
   progress: { done: number; total: number }
   draft: import("./types").ProfileFields
   asked_fields: string[]                     // 답으로 정해진 항목 (점 경로). 나머지는 기본값
+  derived_fields?: Record<string, string>    // 답에 맞춰 정한 항목 → 이유 (요약의 「답에 맞춰 정한 조건」: 비중 상한·비교지수·목표 연수익률 등)
 }
 /** 답: 보기를 고르면 option_value(multi 는 배열), 직접 입력하면 number. skip 은 allow_skip 인 질문만. */
 export type ProposedChatAnswer = { question_id: string; option_value?: unknown; number?: number; skip?: boolean }
@@ -175,7 +176,7 @@ export interface ProposedApi {
   searchStocks(q: string): Promise<ProposedStock[]>
   getStocks(tickers: string[]): Promise<ProposedStock[]>   // 티커 → 회사명 (목록에 없는 티커는 빠진다)
   getProfileVersion(version: number): Promise<import("./types").ProfileVersion>
-  recommendStrategy(tendency: Tendency): Promise<ProposedStrategyRecommendation>
+  recommendStrategy(tendency: Tendency, purpose?: string | null): Promise<ProposedStrategyRecommendation>
   startProfileChat(): Promise<ProposedProfileChat>   // 대화형 초기 투자조건: 새 대화 시작
   answerProfileChat(chatId: string, answer: ProposedChatAnswer): Promise<ProposedProfileChat>
   rewindProfileChat(chatId: string, questionId: string): Promise<ProposedProfileChat>   // 그 질문만 다시 묻기 (뒤의 답은 남기고, 그 답에 기대는 질문만 함께 다시 묻는다)

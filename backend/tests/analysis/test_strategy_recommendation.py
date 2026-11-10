@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import get_args
 
@@ -83,3 +84,49 @@ def test_api(tmp_path):
     for params in ({}, {"tendency": "moderate"}, {"tendency": "중립형"}):
         r = c.get(f"{P}/strategy/recommendation", params=params)
         assert r.status_code == 422 and r.json()["error"]["code"] == "VALIDATION_ERROR", params
+
+
+# ───────────────────────── 투자 목적 규칙 (2026-11-11, docs/update_hojin_11.11.md) ─────────────────────────
+from backend.analysis.m1_request.strategy_recommendation import _PURPOSE, PURPOSE_ALT_DIFF  # noqa: E402
+
+
+@pytest.mark.parametrize("tendency", TENDENCIES)
+def test_purpose_rules(tendency):
+    base = recommend(tendency)
+    assert recommend(tendency, "wealth_growth") == base == recommend(tendency, None)  # 자산 증식은 성향 표 그대로
+    assert recommend(tendency, "income")["recommended"] == {**base["recommended"], "template": "high_dividend"}
+    assert recommend(tendency, "capital_preservation")["recommended"] == {"template": "low_volatility", "baseline_weighting": "min_variance", "use_news_tilt": False}
+    ret = recommend(tendency, "retirement")["recommended"]
+    assert ret == ({**base["recommended"], "template": "quality"} if tendency in ("위험중립형", "적극투자형", "공격투자형") else base["recommended"])
+    for p in ("income", "capital_preservation", "retirement"):
+        r = recommend(tendency, p)
+        if r["recommended"] == base["recommended"]:
+            assert r == base  # 바뀌지 않으면 이유·다른 전략도 그대로
+            continue
+        assert r["reasons_ko"][0] == _PURPOSE[p]["reasons"]["template"]
+        assert r["alternatives"][0] == {**base["recommended"], "diff_ko": PURPOSE_ALT_DIFF}  # 성향만 본 추천을 첫 번째 다른 전략으로
+        assert r["recommended"] not in [{k: a[k] for k in ("template", "baseline_weighting", "use_news_tilt")} for a in r["alternatives"]]
+
+
+def test_purpose_rules_same_as_front_mock():
+    src = MOCK_TABLE.read_text(encoding="utf-8")
+    assert f'const PURPOSE_ALT_DIFF = "{PURPOSE_ALT_DIFF}"' in src
+    for p, rule in _PURPOSE.items():
+        block = src.split(f"  {p}: {{", 1)[1].split("\n", 1)[0]
+        for k, v in rule["set"].items():
+            assert (f"{k}: {str(v).lower()}" if isinstance(v, bool) else f'{k}: "{v}"') in block, (p, k)
+        for k, text in rule["reasons"].items():
+            assert f'{k}: "{text}"' in block, (p, k)
+        if "only" in rule:
+            assert "only: " + json.dumps(list(rule["only"]), ensure_ascii=False).replace('","', '", "') in block, p
+
+
+def test_api_purpose(tmp_path):
+    def no_db():
+        raise AssertionError("추천은 DB 를 읽지 않는다")
+
+    c = TestClient(create_analysis_app(no_db, store_dir=tmp_path / "store", settings=AnalysisSettings(), llm=lambda: StubLlm()))
+    r = c.get(f"{P}/strategy/recommendation", params={"tendency": "공격투자형", "purpose": "income"})
+    assert r.status_code == 200 and r.json() == recommend("공격투자형", "income")
+    r = c.get(f"{P}/strategy/recommendation", params={"tendency": "공격투자형", "purpose": "travel"})
+    assert r.status_code == 422

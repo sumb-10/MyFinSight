@@ -10,7 +10,7 @@ from backend.analysis.api.routers import services
 from backend.analysis.common.dbconn import describe
 from backend.analysis.errors import public_message
 from backend.analysis.executor.queue import pid_alive
-from backend.analysis.m1_request.strategy_recommendation import Tendency, recommend
+from backend.analysis.m1_request.strategy_recommendation import Purpose, Tendency, recommend
 from backend.analysis.schemas import request as R
 
 router = APIRouter(tags=["meta"])
@@ -70,6 +70,6 @@ def options(request: Request) -> dict[str, Any]:
 
 
 @router.get("/strategy/recommendation")
-def strategy_recommendation(tendency: Tendency) -> dict[str, Any]:
-    """투자성향(안정형~공격투자형)에 맞춘 추천 전략·이유·다른 전략 2개. 성향마다 정해 둔 고정 규칙 (m1_request/strategy_recommendation.py)."""
-    return recommend(tendency)
+def strategy_recommendation(tendency: Tendency, purpose: Purpose | None = None) -> dict[str, Any]:
+    """투자성향(안정형~공격투자형)에 맞춘 추천 전략·이유·다른 전략 2개. 투자 목적을 주면 목적이 정하는 부분만 바꾼다 (m1_request/strategy_recommendation.py)."""
+    return recommend(tendency, purpose)

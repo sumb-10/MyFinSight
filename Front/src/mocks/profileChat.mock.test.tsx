@@ -9,6 +9,10 @@ import { ProfileScreen } from "../features/profile/ProfileScreen"
 import { validateProfile } from "../features/profile/validate"
 import { loadUi } from "../state/uiStorage"
 import { CHAT_QUESTIONS, holdingsFor } from "./data/profileChat"
+import { recommendation } from "./data/strategy"
+import { parseCount, parseKrw } from "../features/profile/chat/ChatInput"
+import { ChatReviewSummary } from "../features/profile/chat/ChatReview"
+import { profileRows } from "../features/profile/compare"
 import { MockService } from "./services/MockService"
 
 beforeAll(() => { globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver; Element.prototype.scrollIntoView = vi.fn() })
@@ -21,9 +25,13 @@ const mock = () => new MockService({ latencyMs: 0, persist: false })
 /** 위험중립형이 나오는 기본 답 (진단 점수 2+2+2=6 → 위험중립형). */
 const PATH: Record<string, Omit<ProposedChatAnswer, "question_id">> = {
   purpose: { option_value: "wealth_growth" }, amount: { option_value: 10_000_000 }, monthly: { number: 300_000 }, years: { option_value: 5 },
+  age: { option_value: "40s" }, experience: { option_value: "intermediate" }, knowledge: { option_value: "intermediate" }, ratio: { option_value: 0.5 },
   loss: { option_value: 2 }, reaction: { option_value: 2 }, priority: { option_value: 2 },
-  tendency: { option_value: "위험중립형" }, universe: { option_value: ["SP500"] }, holdings: { option_value: 5 }, strategy: { option_value: "recommended" },
+  tendency: { option_value: "위험중립형" }, tendency_apply: { option_value: "apply" }, universe: { option_value: ["SP500"] }, holdings: { option_value: 5 },
+  strategy: { option_value: "recommended" },
 }
+/** 진단 결과대로 고르면 묻는 질문 수 (「성향 기본값」은 진단과 다른 성향일 때만 묻는다). */
+const ASKED = CHAT_QUESTIONS.length - 1
 async function answerAll(s: MockService, c: ProposedProfileChat, until?: string): Promise<ProposedProfileChat> {
   while (c.question && c.question.id !== until) c = await s.answerProfileChat(c.chat_id, { question_id: c.question.id, ...PATH[c.question.id] })
   return c
@@ -32,14 +40,14 @@ async function answerAll(s: MockService, c: ProposedProfileChat, until?: string)
 describe("대화형 초기 투자조건 · 목업 규칙", () => {
   it("인사와 첫 질문으로 시작하고, 초안은 기본값으로 채워져 있다", async () => {
     const c = await mock().startProfileChat()
-    expect(c).toMatchObject({ state: "asking", progress: { done: 0, total: CHAT_QUESTIONS.length }, question: { id: "purpose", kind: "choice" }, asked_fields: [] })
+    expect(c).toMatchObject({ state: "asking", progress: { done: 0, total: ASKED }, question: { id: "purpose", kind: "choice" }, asked_fields: [], derived_fields: {} })
     expect(c.messages.map((m) => m.role)).toEqual(["bot", "bot"])
     expect(validateProfile(c.draft)).toEqual({})
   })
   it("끝까지 답하면 요약 단계가 되고, 초안은 답을 반영해 폼 검사를 통과한다", async () => {
     const s = mock()
     const c = await answerAll(s, await s.startProfileChat())
-    expect(c).toMatchObject({ state: "review", question: null, progress: { done: CHAT_QUESTIONS.length } })
+    expect(c).toMatchObject({ state: "review", question: null, progress: { done: ASKED, total: ASKED } })
     const d = c.draft
     expect(d.capital).toMatchObject({ initial_amount: 10_000_000, monthly_contribution: 300_000, currency: "KRW" })
     expect(d.horizon).toMatchObject({ purpose: "wealth_growth", target_years: 5 })
@@ -49,7 +57,9 @@ describe("대화형 초기 투자조건 · 목업 규칙", () => {
     expect(d.strategy_preference).toEqual({ template: "quality", baseline_weighting: "equal_weight", use_news_tilt: true })  // 위험중립형 추천 예시
     expect(validateProfile(d)).toEqual({})
     expect(c.asked_fields).toEqual(expect.arrayContaining(["capital.initial_amount", "capital.monthly", "tendency", "constraints.universe", "strategy.template", "strategy.weighting"]))
-    expect(c.asked_fields).not.toContain("risk.benchmark")  // 묻지 않은 항목은 기본값
+    expect(c.asked_fields).not.toContain("risk.benchmark")  // 답에 맞춰 정한 항목은 따로 (이유와 함께)
+    expect(c.derived_fields).toEqual({ "risk.target_annual_return": "투자성향 ‘위험중립형’ 기본값", "risk.benchmark": "투자 대상(S&P 500)에 맞춤", "constraints.max_weight": "종목 5개에 맞춤 · 같은 업종이 많으면 섹터 상한(40%) 때문에 현금이 남을 수 있어요" })
+    expect(d.profile).toMatchObject({ age_band: "40s", investment_experience: "intermediate", financial_knowledge: "intermediate", investable_ratio_of_assets: 0.5 })
     expect(c.messages.at(-1)?.text_ko).toMatch(/요약을 확인하고 저장/)
   })
   it("범위 밖 금액은 저장하지 않고 다시 묻는다. 맞는 값을 주면 안내가 사라진다", async () => {
@@ -86,7 +96,7 @@ describe("대화형 초기 투자조건 · 목업 규칙", () => {
     await s.rewindProfileChat(c.chat_id, "amount")
     const r = await s.answerProfileChat(c.chat_id, { question_id: "amount", option_value: 0 })
     expect(r.question?.id).toBe("monthly")
-    expect(r.progress.done).toBe(CHAT_QUESTIONS.length - 1)
+    expect(r.progress.done).toBe(ASKED - 1)
   })
   it("지금 질문이 아닌 답은 거절하고, 꼭 답해야 하는 질문은 건너뛸 수 없다", async () => {
     const s = mock()
@@ -109,13 +119,13 @@ describe("대화형 초기 투자조건 · 목업 규칙", () => {
     const s = mock()
     const c = await answerAll(s, await s.startProfileChat())
     const r = await s.rewindProfileChat(c.chat_id, "amount")
-    expect(r).toMatchObject({ state: "asking", question: { id: "amount" }, progress: { done: CHAT_QUESTIONS.length - 1 } })
+    expect(r).toMatchObject({ state: "asking", question: { id: "amount" }, progress: { done: ASKED - 1 } })
     expect(r.messages.filter((m) => m.role === "user")).toHaveLength(1)  // 뒤의 말풍선은 지금 질문에 답할 때까지 숨긴다
-    expect(r.messages.at(-1)?.text_ko).toMatch(/뒤에 답한 9개는 그대로/)
+    expect(r.messages.at(-1)?.text_ko).toMatch(/뒤에 답한 13개는 그대로/)
     expect(r.draft.constraints.universe).toEqual(["SP500"])               // 뒤의 답은 초안에 남아 있다
     const back = await s.answerProfileChat(c.chat_id, { question_id: "amount", option_value: 30_000_000 })
     expect(back).toMatchObject({ state: "review", draft: { capital: { initial_amount: 30_000_000, monthly_contribution: 300_000 } } })
-    expect(back.messages.filter((m) => m.role === "user")).toHaveLength(CHAT_QUESTIONS.length)
+    expect(back.messages.filter((m) => m.role === "user")).toHaveLength(ASKED)
   })
   it("성향 진단 답을 고치면 진단 결과가 바뀔 수 있어 「성향 확인」도 다시 묻는다", async () => {
     const s = mock()
@@ -142,11 +152,15 @@ describe("대화형 초기 투자조건 화면 (목업)", () => {
   it("보기를 눌러 끝까지 답하고 요약에서 저장하면 버전 1이 생기고 홈으로 간다", async () => {
     const s = firstUser()
     show(s, <ProfileChatScreen />)
-    expect(await screen.findByRole("heading", { level: 1, name: "대화로 기본 투자조건을 정해요" }, { timeout: 5000 })).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { level: 1, name: "내 프로필을 정해봅시다" }, { timeout: 5000 })).toBeInTheDocument()
     await pick(/^자산 증식/)
     await pick(/^1,000만원/)
     await pick(/^추가 투자 없음/)
     await pick(/^5년/)
+    await pick(/^40대/)
+    await pick(/^중급/)  // 투자 경험
+    await pick(/^중급/)  // 금융 지식
+    await pick(/^50% 정도/)
     await pick(/^약 20% 하락까지/)
     await pick(/^계획을 유지합니다/)
     await pick(/^균형/)
@@ -156,7 +170,7 @@ describe("대화형 초기 투자조건 화면 (목업)", () => {
     await pick(/^10개/)
     await pick(/^추천:/)
     expect(await screen.findByRole("heading", { name: "이렇게 정리했어요" }, { timeout: 5000 })).toBeInTheDocument()
-    expect(screen.getByRole("progressbar", { name: "답한 질문" })).toHaveAttribute("aria-valuenow", String(CHAT_QUESTIONS.length))
+    expect(screen.getByRole("progressbar", { name: "답한 질문" })).toHaveAttribute("aria-valuenow", String(ASKED))
     fireEvent.click(screen.getByRole("button", { name: /이대로 저장/ }))
     await waitFor(() => expect(window.location.hash).toBe("#/home"))
     expect(await s.getProfile()).toMatchObject({ current_version: 1, profile: { note: "첫 등록", capital: { initial_amount: 10_000_000 }, constraints: { universe: ["SP500"] } } })
@@ -219,7 +233,7 @@ describe("대화형 초기 투자조건 화면 (목업)", () => {
   })
   it("처음 사용자는 앱을 열면 대화형 설정으로 간다", async () => {
     show(firstUser(), <App />, "#/home")
-    expect(await screen.findByRole("heading", { level: 1, name: "대화로 기본 투자조건을 정해요" }, { timeout: 5000 })).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { level: 1, name: "내 프로필을 정해봅시다" }, { timeout: 5000 })).toBeInTheDocument()
     expect(window.location.hash).toBe("#/profile/chat")
   })
 })
@@ -256,7 +270,7 @@ describe("일반 모드 (실제 서버에 대화 API 가 있음)", () => {
     const { svc, calls } = real(s)
     window.history.replaceState(null, "", "/#/home")
     render(<Providers service={svc}><App /></Providers>)
-    expect(await screen.findByRole("heading", { level: 1, name: "대화로 기본 투자조건을 정해요" }, { timeout: 5000 })).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { level: 1, name: "내 프로필을 정해봅시다" }, { timeout: 5000 })).toBeInTheDocument()
     expect(window.location.hash).toBe("#/profile/chat")
     expect(screen.queryByText("목업")).toBeNull()
     await pick(/^자산 증식/)
@@ -267,5 +281,67 @@ describe("일반 모드 (실제 서버에 대화 API 가 있음)", () => {
     fireEvent.click(screen.getByRole("button", { name: "‘자산 증식’ 답 고치기" }))
     expect(await screen.findByRole("button", { name: /^원금 보존/ }, { timeout: 5000 })).toBeInTheDocument()
     expect(calls).toEqual(["start", "answer:purpose", "answer:amount", "rewind:purpose"])
+  })
+})
+
+// 2026-11-11 (docs/update_hojin_11.11.md): 한국식 금액 입력, 성향 기본값 확인, 목적에 맞춘 추천, 답에 맞춰 정한 조건, 일부 줄이기 표시
+describe("대화형 설정 2026-11-11", () => {
+  it("금액 칸은 「2천만원」「1억 5천만」「2,000만」「1.5억」도 읽고, 숫자 칸은 「3년」「10개」를 읽는다. 못 읽으면 null", () => {
+    expect([parseKrw("2천만원"), parseKrw("1억 5천만원"), parseKrw("2,000만"), parseKrw("1.5억"), parseKrw("20000000"), parseKrw("천만원"), parseKrw("50만 원")])
+      .toEqual([20_000_000, 150_000_000, 20_000_000, 150_000_000, 20_000_000, 10_000_000, 500_000])
+    expect([parseKrw("많이"), parseKrw(""), parseKrw("2천만달러")]).toEqual([null, null, null])
+    expect([parseCount("3년"), parseCount("10개"), parseCount("1.5"), parseCount("세 개")]).toEqual([3, 10, 1.5, null])
+  })
+  it("화면: 「2천만원」을 입력하면 2,000만원으로 미리 보이고 그대로 보낼 수 있다. 숫자가 아니면 「숫자로 적어 주세요」에 보내기가 잠긴다", async () => {
+    show(firstUser(), <ProfileChatScreen />)
+    await pick(/^자산 증식/)
+    const input = await screen.findByRole("textbox", { name: "처음 투자할 금액 직접 입력" }, { timeout: 5000 })
+    expect(input).toHaveAttribute("placeholder", expect.stringMatching(/^숫자로 적어 주세요 \(예: 2000만원, 20000000\)/))
+    fireEvent.change(input, { target: { value: "많이" } })
+    expect(screen.getByText("숫자로 적어 주세요")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "보내기" })).toBeDisabled()
+    fireEvent.change(input, { target: { value: "2천만원" } })
+    expect(screen.getByText("2,000만원")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "보내기" }))
+    expect(await screen.findByText(/매월 추가로 투자할 금액이 있나요/, {}, { timeout: 5000 })).toBeInTheDocument()
+  })
+  it("진단과 다른 성향을 고르면 그 성향 기본값으로 바뀌는 항목을 보여 주고, 「네」면 바꾸고 「아니요」면 그대로 둔다", async () => {
+    for (const [choice, expected] of [["apply", { max_drawdown_tolerance: 0.3, loss_reaction: "buy_more", target_annual_return: 0.12 }], ["keep", { max_drawdown_tolerance: 0.2, loss_reaction: "hold", target_annual_return: 0.08 }]] as const) {
+      const s = mock()
+      let c = await answerAll(s, await s.startProfileChat(), "tendency")
+      c = await s.answerProfileChat(c.chat_id, { question_id: "tendency", option_value: "공격투자형" })
+      expect(c.question?.id).toBe("tendency_apply")
+      expect(c.progress).toEqual({ done: 12, total: ASKED + 1 })
+      expect(c.messages.at(-1)?.text_ko).toBe("‘공격투자형’으로 바꾸면 아래 조건도 이 성향의 기본값으로 바뀌어요.\n· 손실 감내 수준: 20% → 30%\n· 손실 시 대응: 보유 → 추가 매수\n· 목표 연수익률: 8% → 12%\n괜찮으신가요?")
+      c = await answerAll(s, await s.answerProfileChat(c.chat_id, { question_id: "tendency_apply", option_value: choice }))
+      expect(c.state).toBe("review")
+      expect(c.draft.risk).toMatchObject({ risk_tolerance: "aggressive", ...expected })
+    }
+  })
+  it("투자 목적을 보고 추천을 바꾼다: 배당 → 고배당, 원금 보존 → 저변동성·최소분산·뉴스 반영 끔, 은퇴 대비 → 퀄리티(위험중립형 이상)", () => {
+    expect(recommendation("공격투자형", "income").recommended).toEqual({ template: "high_dividend", baseline_weighting: "equal_weight", use_news_tilt: true })
+    expect(recommendation("위험중립형", "capital_preservation").recommended).toEqual({ template: "low_volatility", baseline_weighting: "min_variance", use_news_tilt: false })
+    expect(recommendation("적극투자형", "retirement").recommended.template).toBe("quality")
+    expect(recommendation("안정형", "retirement")).toEqual(recommendation("안정형"))
+    expect(recommendation("공격투자형", "income").alternatives[0]).toMatchObject({ ...recommendation("공격투자형").recommended, diff_ko: "투자 목적을 빼고 투자성향만 보고 고른 조합입니다." })
+  })
+  it("KOSPI 200 만 고르면 비교지수는 KODEX 200, 요약은 답한 내용 · 답에 맞춰 정한 조건(이유) · 기본값으로 나눠 보인다", async () => {
+    const s = mock()
+    const c = await answerAll(s, await s.startProfileChat(), "universe")
+    const r = await answerAll(s, await s.answerProfileChat(c.chat_id, { question_id: "universe", option_value: ["KOSPI200"] }))
+    expect(r.draft.risk.benchmark).toBe("069500.KS")
+    expect(r.derived_fields?.["risk.benchmark"]).toBe("투자 대상(KOSPI 200)에 맞춤")
+    render(<Providers service={s}><ChatReviewSummary chat={r} allowZero /></Providers>)
+    expect(screen.getByText(`질문 ${ASKED}개에 답하신 내용입니다. 저장하면 기본 투자조건으로 기록됩니다.`)).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "답에 맞춰 정한 조건 3개" })).toBeInTheDocument()
+    expect(screen.getByText("투자 대상(KOSPI 200)에 맞춤")).toBeInTheDocument()
+    expect(screen.getByText(/종목 5개에 맞춤 · 같은 업종이 많으면 섹터 상한\(40%\)/)).toBeInTheDocument()
+  })
+  it("「일부를 줄이고 상황을 지켜봅니다」는 보유로 저장하되 요약에는 그 뜻을 붙인다", async () => {
+    const s = mock()
+    const c = await answerAll(s, await s.startProfileChat(), "reaction")
+    const r = await answerAll(s, await s.answerProfileChat(c.chat_id, { question_id: "reaction", option_value: 1 }))
+    expect(r.draft.risk.loss_reaction).toBe("hold")
+    expect(profileRows(r.draft).find((x) => x.key === "risk.loss_reaction")?.value).toBe("보유 (일부 줄이고 지켜봄)")
   })
 })

@@ -1,6 +1,8 @@
 """대화형 초기 투자조건 (POST /profile/chat …, 이슈 #14 묶음 B 의 1번).
 
-프런트 목업 `Front/src/mocks/data/profileChat.ts` 를 그대로 옮긴 고정 11문항 대화다. 보기·숫자만 받고 자유 문장은 해석하지 않는다 (LLM 없음).
+프런트 목업 `Front/src/mocks/data/profileChat.ts` 를 그대로 옮긴 고정 문항 대화다 (15문항 + 진단과 다른 성향을 고르면 「성향 기본값」 1문항).
+보기·숫자만 받고 자유 문장은 해석하지 않는다 (LLM 없음). 2026-11-11: 나에 대한 참고 정보 4문항, 성향 기본값 확인, 목적에 맞춘 추천,
+투자 대상에 맞춘 비교지수, 요약의 「답에 맞춰 정한 조건」(derived_fields) 을 더했다 (docs/update_hojin_11.11.md).
 상태는 질문별 답만 저장하고, 말풍선·초안(draft)·다음 질문은 매번 답에서 다시 만든다 → 「고치기」는 그 답(과 그 답에 기대는 답)만 지우면 끝.
 응답은 프런트 `ProposedProfileChat` 모양이고, 같은 말풍선은 늘 같은 id 를 가진다 (프런트가 React key 로 쓴다).
 
@@ -67,9 +69,27 @@ TENDENCY_HELP: dict[str, str] = {
     "공격투자형": "큰 변동성과 손실 가능성을 감수하고 장기 성장을 노립니다.",
 }
 
+# 투자성향별 기본값 (프런트 features/profile/diagnosis.ts TENDENCY_DEFAULTS 와 같다). 진단과 다른 성향을 고르면 「이렇게 바뀝니다」로 보여 주고
+# 사용자가 고른 대로 둔다(「성향 기본값」 질문). 목표 연수익률은 따로 묻지 않으므로 진단 성향의 값을 쓴다.
+TENDENCY_DEFAULTS: dict[str, dict[str, Any]] = {
+    "안정형": {"max_drawdown_tolerance": 0.1, "loss_reaction": "sell", "target_annual_return": 0.04},
+    "안정추구형": {"max_drawdown_tolerance": 0.15, "loss_reaction": "hold", "target_annual_return": 0.06},
+    "위험중립형": {"max_drawdown_tolerance": 0.2, "loss_reaction": "hold", "target_annual_return": 0.08},
+    "적극투자형": {"max_drawdown_tolerance": 0.25, "loss_reaction": "hold", "target_annual_return": 0.1},
+    "공격투자형": {"max_drawdown_tolerance": 0.3, "loss_reaction": "buy_more", "target_annual_return": 0.12},
+}  # fmt: skip
+
 # 화면 문구 (프런트 lib/format.ts KO·features/profile/format.ts UNIVERSE_HELP·features/profile/strategyInfo.ts 와 같은 글).
 PURPOSE_KO = {"wealth_growth": "자산 증식", "income": "현금흐름(배당)", "capital_preservation": "원금 보존", "retirement": "은퇴 대비"}
 UNIVERSE_KO = {"SP500": "S&P 500", "NASDAQ100": "NASDAQ-100", "KOSPI200": "KOSPI 200"}
+REACTION_KO = {"sell": "매도", "hold": "보유", "buy_more": "추가 매수"}
+# 나에 대한 참고 정보 (값 이름은 lib/format.ts KO 와 같고, 설명은 대화 보기에만 쓴다)
+AGE_KO = {"20s": "20대", "30s": "30대", "40s": "40대", "50s": "50대", "60s+": "60대 이상"}
+EXPERIENCE = [("none", "없음", "주식·펀드에 투자해 본 적이 없어요"), ("beginner", "초보", "투자해 본 지 얼마 안 됐어요"),
+              ("intermediate", "중급", "몇 년 꾸준히 투자해 봤어요"), ("advanced", "고급", "오래 투자했고 종목도 직접 골라요")]  # fmt: skip
+KNOWLEDGE = [("basic", "기초", "예금·주식·펀드 정도만 알아요"), ("intermediate", "중급", "수익률·분산 투자 같은 말이 익숙해요"),
+             ("expert", "전문가", "재무제표나 투자 지표를 직접 볼 수 있어요")]  # fmt: skip
+RATIO = [(0.1, "10% 이하"), (0.3, "30% 정도"), (0.5, "50% 정도"), (0.8, "80% 이상")]
 UNIVERSE_HELP = {"SP500": "미국 대표 대형주 약 500개", "NASDAQ100": "나스닥 상장 대형 비금융 기업 약 100개 (기술주 비중이 큼)", "KOSPI200": "한국 유가증권시장 대표 기업 200개"}
 TEMPLATE_INFO: dict[str, tuple[str, str, str]] = {  # 쉬운 이름, 전문용어, 설명
     "low_per": ("가격이 상대적으로 저평가된 기업", "저PER", "벌어들이는 이익에 비해 주가가 낮은 기업을 고릅니다."),
@@ -161,6 +181,8 @@ class Question:
     allow_skip: bool = False
     # 보기·범위 밖의 규칙: 맞지 않으면 다시 묻는 말. 앞 답을 고쳐 이 답이 맞지 않게 되면 이 답을 지우고 다시 묻는다 (answer_chat)
     check: Callable[[Any, dict[str, Any]], str | None] | None = None
+    when: Callable[[dict[str, Any]], bool] | None = None  # 이 조건일 때만 묻는다 (그 앞 답으로 만든 초안을 본다). 없으면 늘 묻는다
+    derive: Callable[[Any, dict[str, Any]], dict[str, str]] | None = None  # 이 답에 맞춰 정한 항목 (요약표 행 키 → 이유) = 「답에 맞춰 정한 조건」
 
 
 def _fixed(*fields: str) -> Callable[[Any], list[str]]:
@@ -198,16 +220,67 @@ def _diag_question(i: int) -> Question:
     )  # fmt: skip
 
 
+def _pct(v: float) -> str:
+    return f"{round(v * 100)}%"
+
+
 def _apply_tendency(d: dict[str, Any], t: Any) -> None:
     dg = d["diagnosis"]
     dg["final_tendency"] = t
     d["risk"]["risk_tolerance"] = to_risk_tolerance(t)
     d["risk_type_overridden"] = t != dg["computed_tendency"]
+    # 목표 연수익률은 묻지 않으므로 진단 성향의 기본값. 다른 성향을 골랐으면 다음 질문(성향 기본값)에서 그 성향 값으로 바꿀지 묻는다
+    d["risk"]["target_annual_return"] = TENDENCY_DEFAULTS[dg["computed_tendency"]]["target_annual_return"]
+
+
+PARTIAL_REACTION_SCORE = 1  # 「일부를 줄이고 상황을 지켜봅니다」 (진단 reaction 문항 점수)
+
+
+def reaction_ko(d: dict[str, Any]) -> str:
+    """손실 시 대응 이름. 「일부를 줄이고 상황을 지켜봅니다」는 보유로 저장하지만 그 뜻을 붙여 보인다 (프런트 compare.tsx 와 같은 글)."""
+    r = d["risk"]["loss_reaction"]
+    partial = r == "hold" and d["diagnosis"]["answers"].get("reaction") == PARTIAL_REACTION_SCORE
+    return REACTION_KO[r] + (" (일부 줄이고 지켜봄)" if partial else "")
+
+
+def tendency_changes(d: dict[str, Any]) -> list[tuple[str, str, str]]:
+    """고른 성향의 기본값으로 바꾸면 달라지는 항목 (이름, 지금 값, 바뀌는 값). 같은 값은 뺀다."""
+    base, r = TENDENCY_DEFAULTS[d["diagnosis"]["final_tendency"]], d["risk"]
+    rows = [("손실 감내 수준", _pct(r["max_drawdown_tolerance"]), _pct(base["max_drawdown_tolerance"])),
+            ("손실 시 대응", reaction_ko(d), REACTION_KO[base["loss_reaction"]]),
+            ("목표 연수익률", _pct(r["target_annual_return"]), _pct(base["target_annual_return"]))]  # fmt: skip
+    return [x for x in rows if x[1] != x[2]]
+
+
+def _defaults_ask(d: dict[str, Any]) -> str:
+    lines = "\n".join(f"· {n}: {a} → {b}" for n, a, b in tendency_changes(d))
+    return f"‘{d['diagnosis']['final_tendency']}’으로 바꾸면 아래 조건도 이 성향의 기본값으로 바뀌어요.\n{lines}\n괜찮으신가요?"
+
+
+def _apply_defaults(d: dict[str, Any], v: Any) -> None:
+    if v == "apply":
+        d["risk"].update(TENDENCY_DEFAULTS[d["diagnosis"]["final_tendency"]])
+
+
+def _by_tendency(t: str, *keys: str) -> dict[str, str]:
+    return dict.fromkeys(keys, f"투자성향 ‘{t}’ 기본값")
+
+
+def benchmark_for(universe: list[str]) -> str:
+    """투자 대상 지수에 맞춘 비교지수: KOSPI 200 만 → KODEX 200(069500.KS), NASDAQ-100 만 → QQQ, 그 밖(S&P 500 포함·미국+한국) → SPY.
+    한국 종목이 섞이면 분석이 KODEX 200 을 보조 비교지수로 더한다 (m4_portfolio/spec.py)."""
+    u = set(universe)
+    return "069500.KS" if u == {"KOSPI200"} else "QQQ" if u == {"NASDAQ100"} else "SPY"
+
+
+def _apply_universe(d: dict[str, Any], v: Any) -> None:
+    d["constraints"]["universe"] = list(v)
+    d["risk"]["benchmark"] = benchmark_for(list(v))
 
 
 def _strategy_options(d: dict[str, Any]) -> list[dict[str, Any]]:
-    """첫 보기 = 최종 성향의 추천 묶음 (GET /strategy/recommendation 과 같은 고정 규칙), 그다음 기업 고르는 기준 5개."""
-    r = recommend(d["diagnosis"]["final_tendency"])
+    """첫 보기 = 최종 성향·투자 목적의 추천 묶음 (GET /strategy/recommendation 과 같은 고정 규칙), 그다음 기업 고르는 기준 5개."""
+    r = recommend(d["diagnosis"]["final_tendency"], d["horizon"]["purpose"])
     rec = r["recommended"]
     return [
         {"value": "recommended", "label_ko": f"추천: {template_label(rec['template'])} · {weighting_label(rec['baseline_weighting'])}", "help_ko": r["reasons_ko"][0], "recommended": True},
@@ -217,7 +290,7 @@ def _strategy_options(d: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _apply_strategy(d: dict[str, Any], v: Any) -> None:
     if v == "recommended":
-        rec = recommend(d["diagnosis"]["final_tendency"])["recommended"]
+        rec = recommend(d["diagnosis"]["final_tendency"], d["horizon"]["purpose"])["recommended"]
         d["strategy_preference"] = {"template": rec["template"], "baseline_weighting": rec["baseline_weighting"], "use_news_tilt": rec["use_news_tilt"]}
     else:
         d["strategy_preference"] = {**d["strategy_preference"], "template": v}
@@ -295,6 +368,30 @@ CHAT_QUESTIONS: list[Question] = [
         input={"min": 1, "max": 10, "step": 1, "unit_ko": "년"},
         apply=_set("horizon", "target_years"), say=lambda v, _d: f"{v}년",
     ),
+    Question(
+        id="age", label="나이대", kind="choice", fields=_fixed("profile"),
+        ask=lambda _d: "이제 나에 대해 조금만 알려 주세요. 나이대가 어떻게 되세요?",
+        options=lambda _d: [{"value": v, "label_ko": t} for v, t in AGE_KO.items()],
+        apply=_set("profile", "age_band"), say=lambda v, _d: AGE_KO[v],
+    ),
+    Question(
+        id="experience", label="투자 경험", kind="choice", fields=_fixed("profile"),
+        ask=lambda _d: "주식이나 펀드에 투자해 본 경험은 어느 정도인가요?",
+        options=lambda _d: [{"value": v, "label_ko": t, "help_ko": h} for v, t, h in EXPERIENCE],
+        apply=_set("profile", "investment_experience"), say=lambda v, _d: f"투자 경험 {dict((x, t) for x, t, _h in EXPERIENCE)[v]}",
+    ),
+    Question(
+        id="knowledge", label="금융 지식", kind="choice", fields=_fixed("profile"),
+        ask=lambda _d: "금융 지식은 어느 정도라고 생각하세요?",
+        options=lambda _d: [{"value": v, "label_ko": t, "help_ko": h} for v, t, h in KNOWLEDGE],
+        apply=_set("profile", "financial_knowledge"), say=lambda v, _d: f"금융 지식 {dict((x, t) for x, t, _h in KNOWLEDGE)[v]}",
+    ),
+    Question(
+        id="ratio", label="자산 중 투자 비중", kind="choice", fields=_fixed("profile"),
+        ask=lambda _d: "전체 자산 중 이번에 투자하려는 돈은 어느 정도인가요?",
+        options=lambda _d: [{"value": v, "label_ko": t} for v, t in RATIO],
+        apply=_set("profile", "investable_ratio_of_assets"), say=lambda v, _d: f"자산의 {dict(RATIO)[v]}",
+    ),
     _diag_question(0), _diag_question(1), _diag_question(2),
     Question(
         id="tendency", label="투자성향", kind="choice", fields=_fixed("tendency"),
@@ -303,24 +400,36 @@ CHAT_QUESTIONS: list[Question] = [
         options=lambda d: [{"value": t, "label_ko": f"{t} (진단 결과)" if t == d["diagnosis"]["computed_tendency"] else t, "help_ko": TENDENCY_HELP[t],
                             "recommended": t == d["diagnosis"]["computed_tendency"]} for t in TENDENCIES],
         apply=_apply_tendency, say=lambda v, d: f"좋아요, {v}으로 할게요" if v == d["diagnosis"]["computed_tendency"] else f"{v}으로 할게요",
+        derive=lambda _v, d: _by_tendency(d["diagnosis"]["computed_tendency"], "risk.target_annual_return"),
+    ),
+    Question(
+        # 진단과 다른 성향을 골랐을 때만: 그 성향의 기본값(손실 감내·손실 시 대응·목표 연수익률)으로 바꿀지 묻고, 고른 대로 둔다
+        id="tendency_apply", label="성향 기본값", kind="choice", fields=lambda _v: [],
+        ask=_defaults_ask,
+        options=lambda _d: [{"value": "apply", "label_ko": "네, 이렇게 바꿀게요"}, {"value": "keep", "label_ko": "아니요, 지금 값 그대로 둘게요"}],
+        apply=_apply_defaults, say=lambda v, _d: "네, 이렇게 바꿀게요" if v == "apply" else "지금 값 그대로 둘게요",
+        when=lambda d: d["diagnosis"]["final_tendency"] != d["diagnosis"]["computed_tendency"],
+        derive=lambda v, d: _by_tendency(d["diagnosis"]["final_tendency"], "risk.max_drawdown_tolerance", "risk.loss_reaction", "risk.target_annual_return") if v == "apply" else {},
     ),
     Question(
         id="universe", label="투자 대상 지수", kind="multi", fields=_fixed("constraints.universe"),
         ask=lambda _d: "어느 시장의 종목에서 고를까요? 여러 개 골라도 돼요.",
         options=lambda _d: [{"value": u, "label_ko": UNIVERSE_KO[u], "help_ko": UNIVERSE_HELP[u]} for u in UNIVERSE_KO],
-        apply=lambda d, v: d["constraints"].__setitem__("universe", list(v)), say=lambda v, _d: ", ".join(UNIVERSE_KO[u] for u in v),
+        apply=_apply_universe, say=lambda v, _d: ", ".join(UNIVERSE_KO[u] for u in v),
+        derive=lambda v, _d: {"risk.benchmark": f"투자 대상({', '.join(UNIVERSE_KO[u] for u in v)})에 맞춤"},
     ),
     Question(
-        id="holdings", label="종목 수", kind="number", fields=_fixed("constraints.num_holdings", "constraints.max_weight"),
+        id="holdings", label="종목 수", kind="number", fields=_fixed("constraints.num_holdings"),
         ask=lambda _d: "몇 종목 정도에 나눠 담을까요? 종목이 많을수록 한 종목에 덜 쏠려요.",
         options=lambda _d: [{"value": v, "label_ko": f"{v}개"} for v in (5, 10, 15, 20)],
         input={"min": 3, "max": 30, "step": 1, "unit_ko": "개"},
         apply=_apply_holdings, say=lambda v, _d: f"{v}개 정도요",
+        derive=lambda v, d: {"constraints.max_weight": f"종목 {v}개에 맞춤 · 같은 업종이 많으면 섹터 상한({_pct(d['constraints']['max_weight_per_sector'])}) 때문에 현금이 남을 수 있어요"},
     ),
     Question(
         id="strategy", label="종목을 고르는 기준", kind="choice",
         fields=lambda v: ["strategy.template", "strategy.weighting", "strategy.news"] if v == "recommended" else ["strategy.template"],
-        ask=lambda d: f"마지막으로 종목을 고르는 기준을 정해요. ‘{d['diagnosis']['final_tendency']}’ 성향이면 첫 번째 추천을 먼저 권해요.",
+        ask=lambda d: f"마지막으로 종목을 고르는 기준을 정해요. ‘{d['diagnosis']['final_tendency']}’ 성향과 투자 목적({PURPOSE_KO[d['horizon']['purpose']]})에 맞춘 추천을 먼저 권해요.",
         options=_strategy_options, apply=_apply_strategy,
         say=lambda v, d: f"추천대로 할게요 ({template_label(d['strategy_preference']['template'])})" if v == "recommended" else template_label(v),
     ),
@@ -329,9 +438,9 @@ CHAT_QUESTIONS: list[Question] = [
 QUESTION_IDS = tuple(q.id for q in CHAT_QUESTIONS)
 _BY_ID = {q.id: q for q in CHAT_QUESTIONS}
 
-# 고친 답에 기대는 질문: 성향 진단 답이 바뀌면 진단 결과가 바뀌므로 「성향 확인」도 다시 묻는다.
-# (종목 기준의 「추천」은 성향에서 매번 다시 계산하므로 지우지 않는다.)
-DEPENDENTS: dict[str, list[str]] = {q["id"]: ["tendency"] for q in DIAGNOSIS}
+# 고친 답에 기대는 질문: 성향 진단 답이 바뀌면 진단 결과가 바뀌므로 「성향 확인」과 「성향 기본값」도 다시 묻는다. 성향을 고치면 「성향 기본값」도.
+# (종목 기준의 「추천」은 성향·목적에서 매번 다시 계산하므로 지우지 않는다.)
+DEPENDENTS: dict[str, list[str]] = {**{q["id"]: ["tendency", "tendency_apply"] for q in DIAGNOSIS}, "tendency": ["tendency_apply"]}
 
 GREETING = "안녕하세요! 몇 가지만 여쭤보고 기본 투자조건을 만들어 드릴게요. 답하신 내용은 마지막에 한 번에 확인하고 저장해요."
 DONE_TEXT = "필요한 내용을 모두 들었어요. 아래 요약을 확인하고 저장해 주세요. 나머지 조건은 기본값으로 두었고, 저장한 뒤 언제든 바꿀 수 있어요."
@@ -341,13 +450,32 @@ DONE_TEXT = "필요한 내용을 모두 들었어요. 아래 요약을 확인하
 # 상태 = {"chat_id", "answers": {질문 id: {"v": 값} | {"skip": True}}, "error": {"question_id", "text_ko"} | None, ...저장 정보}
 
 
+def _asked(q: Question, draft: dict[str, Any]) -> bool:
+    """이 질문을 묻는가 (조건부 질문은 그 앞 답으로 만든 초안을 본다)."""
+    return q.when is None or q.when(draft)
+
+
+def _walk(st: dict[str, Any]) -> list[str]:
+    """지금 답으로 묻게 되는 질문 id (순서대로)."""
+    draft, ids = copy.deepcopy(DEFAULT_FORM), []
+    for q in CHAT_QUESTIONS:
+        if not _asked(q, draft):
+            continue
+        ids.append(q.id)
+        a = st["answers"].get(q.id)
+        if a is not None and not a.get("skip"):
+            q.apply(draft, a["v"])
+    return ids
+
+
 def current_question(st: dict[str, Any]) -> Question | None:
     """지금 답할 질문 (다 답했으면 None)."""
-    return next((q for q in CHAT_QUESTIONS if q.id not in st["answers"]), None)
+    return next((_BY_ID[i] for i in _walk(st) if i not in st["answers"]), None)
 
 
 def chat_view(st: dict[str, Any]) -> dict[str, Any]:
-    """답에서 말풍선·초안·다음 질문을 만든다 (프런트 ProposedProfileChat).
+    """답에서 말풍선·초안·다음 질문을 만든다 (프런트 ProposedProfileChat). 묻지 않는 조건부 질문은 건너뛴다.
+    derived_fields = 답에 맞춰 정한 항목(요약의 「답에 맞춰 정한 조건」, 이유 문장), asked_fields 는 그 밖에 답으로 정한 항목.
 
     말풍선은 처음으로 답이 비어 있는 질문까지만 보인다. 그 뒤에 이미 답한 질문(「고치기」로 앞 답만 지운 경우)은
     말풍선은 숨기되 초안에는 반영해 두고, 지금 질문에 답하면 다시 나타난다 → 고친 뒤 나머지를 다시 답할 필요가 없다."""
@@ -355,9 +483,14 @@ def chat_view(st: dict[str, Any]) -> dict[str, Any]:
     draft = copy.deepcopy(DEFAULT_FORM)
     messages: list[dict[str, Any]] = [{"id": "hello", "role": "bot", "text_ko": GREETING}]
     asked: dict[str, None] = {}  # 순서 있는 집합
+    derived: dict[str, str] = {}  # 답에 맞춰 정한 항목 → 이유 (같은 항목을 뒤 답이 다시 정하면 뒤 것)
     current: Question | None = None
     question: dict[str, Any] | None = None
+    total = done = later = 0
     for q in CHAT_QUESTIONS:
+        if not _asked(q, draft):
+            continue
+        total += 1
         a = answers.get(q.id)
         if current is None:
             messages.append({"id": f"{q.id}:q", "role": "bot", "text_ko": q.ask(draft), "question_id": q.id})
@@ -367,15 +500,18 @@ def chat_view(st: dict[str, Any]) -> dict[str, Any]:
                 question = {"id": q.id, "field_label_ko": q.label, "kind": q.kind, "options": q.options(draft),
                             "input": dict(q.input) if q.input else None, "allow_skip": q.allow_skip}  # fmt: skip
             continue
+        done += 1
+        later += current is not None
         skipped = bool(a.get("skip"))
         if not skipped:
             q.apply(draft, a["v"])
             asked.update(dict.fromkeys(q.fields(a["v"])))
+            if q.derive:
+                derived.update(q.derive(a["v"], draft))
         if current is None:
             text = "건너뛸게요 (기본값 사용)" if skipped else q.say(a["v"], draft)
             messages.append({"id": f"{q.id}:a", "role": "user", "text_ko": text, "question_id": q.id, "editable": True})
     if current is not None:
-        later = sum(1 for q in CHAT_QUESTIONS[CHAT_QUESTIONS.index(current) + 1 :] if q.id in answers)
         if later:
             messages.append({"id": f"{current.id}:keep", "role": "bot", "question_id": current.id,
                              "text_ko": f"이 질문만 다시 답해 주세요. 뒤에 답한 {later}개는 그대로 두었다가 답하시면 다시 보여 드릴게요."})  # fmt: skip
@@ -384,9 +520,9 @@ def chat_view(st: dict[str, Any]) -> dict[str, Any]:
             messages.append({"id": f"{current.id}:retry", "role": "bot", "text_ko": err["text_ko"], "question_id": current.id})
     else:
         messages.append({"id": "done", "role": "bot", "text_ko": DONE_TEXT})
-    done = sum(1 for q in CHAT_QUESTIONS if q.id in answers)
     return {"chat_id": st["chat_id"], "state": "asking" if current else "review", "messages": messages, "question": question,
-            "progress": {"done": done, "total": len(CHAT_QUESTIONS)}, "draft": draft, "asked_fields": list(asked)}  # fmt: skip
+            "progress": {"done": done, "total": total}, "draft": draft, "asked_fields": [k for k in asked if k not in derived],
+            "derived_fields": derived}  # fmt: skip
 
 
 def _same(a: Any, b: Any) -> bool:
@@ -453,6 +589,8 @@ def answer_chat(st: dict[str, Any], answer: dict[str, Any], *, check: Callable[[
         a2 = out["answers"].get(q2.id)
         if q2.check and a2 and "skip" not in a2 and q2.check(a2["v"], draft):
             del out["answers"][q2.id]
+    still = set(_walk(out))  # 이제 묻지 않는 조건부 질문의 답은 지운다 (성향을 진단 결과로 다시 고르면 「성향 기본값」 답은 필요 없다)
+    out["answers"] = {k: v for k, v in out["answers"].items() if k in still}
     if check is not None and current_question(out) is None:
         errs = check(chat_view(out)["draft"])
         if errs:

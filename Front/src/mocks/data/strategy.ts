@@ -34,7 +34,28 @@ const TABLE: Record<Tendency, { rec: Pick3; reasons: string[]; alts: (Pick3 & { 
   },
 }
 
-export function recommendation(tendency: Tendency): ProposedStrategyRecommendation {
+/** 투자 목적에 따른 조정 (성향 표 다음에 적용): 목적이 정하는 항목만 바꾸고 나머지는 성향 표를 따른다. reasons 는 바꾼 항목의 이유 문장
+ *  (성향 표의 이유는 [기업 고르는 기준, 비중 나누는 방식, 뉴스 반영] 순서라 같은 자리를 바꾼다). only = 이 성향에서만 바꾼다. 자산 증식은 성향 표 그대로.
+ *  서버 strategy_recommendation.py _PURPOSE 와 같다 (서버 테스트가 확인). */
+export const PURPOSE_RULES: Record<string, { set: Partial<Pick3>; only?: Tendency[]; reasons: { template?: string; weighting?: string; news?: string } }> = {
+  income: { set: { template: "high_dividend" }, reasons: { template: "투자 목적이 현금흐름(배당)이라, 배당을 많이 주는 기업(고배당)을 고릅니다." } },
+  capital_preservation: { set: { template: "low_volatility", baseline_weighting: "min_variance", use_news_tilt: false }, reasons: { template: "투자 목적이 원금 보존이라, 주가 변동이 작은 기업(저변동성)을 고릅니다.", weighting: "포트폴리오 전체의 오르내림이 가장 작아지도록 투자금을 나눕니다(최소분산).", news: "뉴스로 비중을 바꾸면 변동이 커질 수 있어 반영하지 않습니다." } },
+  retirement: { set: { template: "quality" }, only: ["위험중립형", "적극투자형", "공격투자형"], reasons: { template: "투자 목적이 은퇴 대비라, 오래 들고 갈 수 있게 꾸준히 돈을 잘 버는 기업(퀄리티)을 고릅니다." } },
+}
+const PURPOSE_ALT_DIFF = "투자 목적을 빼고 투자성향만 보고 고른 조합입니다."
+const same = (a: Pick3, b: Pick3) => a.template === b.template && a.baseline_weighting === b.baseline_weighting && a.use_news_tilt === b.use_news_tilt
+
+export function recommendation(tendency: Tendency, purpose?: string | null): ProposedStrategyRecommendation {
   const t = TABLE[tendency]
-  return { tendency, recommended: t.rec, reasons_ko: t.reasons, alternatives: t.alts, note_ko: "목업 추천입니다. 실제 서버와 같은 고정 규칙(투자성향마다 정해 둔 표)입니다." }
+  let rec = t.rec, reasons = [...t.reasons], alts = t.alts
+  const rule = purpose ? PURPOSE_RULES[purpose] : undefined
+  if (rule && (!rule.only || rule.only.includes(tendency))) {
+    const next = { ...rec, ...rule.set }
+    if (!same(next, rec)) {
+      ;(["template", "weighting", "news"] as const).forEach((k, i) => { if (rule.reasons[k]) reasons[i] = rule.reasons[k]! })
+      alts = [{ ...rec, diff_ko: PURPOSE_ALT_DIFF }, ...alts.filter((a) => !same(a, next))].slice(0, 2)
+      rec = next
+    }
+  }
+  return { tendency, recommended: rec, reasons_ko: reasons, alternatives: alts, note_ko: "목업 추천입니다. 실제 서버와 같은 고정 규칙(투자성향마다 정해 둔 표)입니다." }
 }

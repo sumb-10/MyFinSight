@@ -132,7 +132,7 @@ function ChatFlow({ hasProfile, onSaved }: { hasProfile: boolean; onSaved: (v: P
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-8">
         <div className="min-w-0">
           <p className="mb-2 flex items-center text-xs font-bold tracking-widest text-blue-700">처음 설정<MockTag /></p>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-950">대화로 기본 투자조건을 정해요</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-950">내 프로필을 정해봅시다</h1>
           <p className="mt-2 text-sm leading-6 text-slate-600">질문 {total}개에 답하면 마지막에 한 번에 확인하고 저장합니다.</p>
         </div>
         <div className="flex shrink-0 gap-2"><Button variant="neutral" disabled={busy} onClick={toForm}><ListChecks className="size-4" aria-hidden />폼으로 한 번에 입력</Button></div>
