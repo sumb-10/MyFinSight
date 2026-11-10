@@ -259,7 +259,7 @@ function RunView({ runId }: { runId: string }) {
   )
 }
 
-/** 취소 결과 (제안 기능, 목업에서만): 요청·완료 시각과 멈춘 단계. */
+/** 취소 결과: 요청·완료 시각과 멈춘 단계 (실행 상태의 cancel). */
 function CancelSummary({ c }: { c: NonNullable<ReturnType<typeof proposedCancelOf>> }) {
   const hms = (s: string) => s.slice(11, 19)
   const sec = c.completed_at ? Math.max(0, Math.round((new Date(c.completed_at).getTime() - new Date(c.requested_at).getTime()) / 1000)) : null

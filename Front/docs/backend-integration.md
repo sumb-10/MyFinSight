@@ -17,7 +17,7 @@
 | 종류 | 화면이 보는 곳 | 실제 연동 시 할 일 |
 |---|---|---|
 | 새 메서드 (`getReportName`, `searchStocks` …) | `AnalysisService` 의 선택 메서드 (`src/api/service.ts` 의 `ProposedApi`) | `HttpService` 에 같은 이름의 메서드를 추가해 새 API를 부른다. 메서드가 생기는 순간 해당 UI가 열린다 |
-| 기존 응답에 붙는 확장 필드 (`proposed`, `proposed_name`, `proposed_cancel`, `proposed_rules`) | 접근 함수 한 곳: `proposedOf`, `proposedNameOf`, `proposedCancelOf`, `proposedRulesOf` (`src/api/proposed.ts`) | 서버가 정식 필드 이름으로 주면 **접근 함수만** 새 위치를 읽게 바꾼다. 리포트 확장은 `src/features/report/proposedView.tsx` 의 어댑터가 한 번 더 감싼다 |
+| 기존 응답에 붙는 확장 필드 (`proposed`, `proposed_name`, `cancel`(처음 `proposed_cancel`), `proposed_rules`) | 접근 함수 한 곳: `proposedOf`, `proposedNameOf`, `proposedCancelOf`, `proposedRulesOf` (`src/api/proposed.ts`) | 서버가 정식 필드 이름으로 주면 **접근 함수만** 새 위치를 읽게 바꾼다. 리포트 확장은 `src/features/report/proposedView.tsx` 의 어댑터가 한 번 더 감싼다 |
 | 목업 전용 표시 | `MockTag`(「목업」 표시)는 서비스 `mode === "mock"` 일 때만 보인다 | 실제 서버 값에는 자동으로 붙지 않는다. 손댈 필요 없음 |
 
 교체 순서 제안: ① 서버가 엔드포인트·필드 제공 → ② `HttpService` 메서드 추가(또는 접근 함수 위치 변경) → ③ 타입을 `proposed.ts` 에서 `types.ts` 로 옮기고 이름 확정 → ④ 목업 테스트(`src/mocks/*.test.tsx`)의 기대값을 서버 응답 형식으로 맞춘 계약 테스트 추가.
@@ -120,6 +120,9 @@
 - **정책:** 상태 전이 `running → cancelling → cancelled`. 끝난 실행 취소는 409. 완료된 단계 결과로 리포트를 만들지 않음.
 - **목업:** `mocks/data/runs.ts` 의 `liveStatus/cancelInfo`, `MockService.cancelRun/runOf`. **프런트 수정:** `api/proposed.ts`(`proposedCancelOf` 위치). 화면 `features/run/RunScreen.tsx`(`CancelSummary`, 즉시 취소 문구).
 - **주의:** **실제 서버의 즉시 취소는 구현하지 않았다** (백엔드 작업). `immediate` 가 없으면 화면은 기존 「시간이 걸릴 수 있습니다」 문구를 쓴다.
+- **✅ 실제 서버 구현 (2026-11-10):** `GET /runs/{id}` 의 **`cancel`**(정식 이름, 목업도 `proposed_cancel` → `cancel`). 취소를 요청했고 취소 중(`cancelling`)이거나 취소로 끝난 실행만, 아니면 `null`.
+  `stopped_step`: 취소 중이면 지금 도는 단계, 끝났으면 도중에 멈춘 단계 → 없으면 다음 차례였던 단계, 대기 중 취소면 `null`. `done_steps` = SUCCESS·PARTIAL 단계 수.
+  **`immediate: false`** — 서버는 단계 사이·LLM 묶음 사이에서만 멈추고 도는 계산을 바로 끊지 않는다 (화면은 「시간이 걸릴 수 있습니다」). 끝난 실행 취소는 지금처럼 그 상태를 돌려준다(409 아님).
 
 ### 2-10. 단계별 경고 전체 — 5단계
 

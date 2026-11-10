@@ -67,3 +67,4 @@ class RunStatus(BaseModel):
     steps: list[RunStep]
     report_id: str | None = None
     error: dict | None = None
+    cancel: dict | None = None  # 취소를 요청한 실행(cancelling·cancelled)만: 요청·완료 시각, 멈춘 단계, 끝난 단계 수, 즉시 취소 여부 (routers/runs.py cancel_view)

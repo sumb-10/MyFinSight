@@ -278,9 +278,9 @@ export class MockService implements AnalysisService {
     const c = this.s.runs[id]
     if (!c) return r
     const iso = localIso
-    if (this.now() - c.cancel_at < CANCEL_MS) return { ...r, status: "cancelling", proposed_cancel: cancelInfo(r.steps, iso(c.cancel_at), null) } as RunStatus
+    if (this.now() - c.cancel_at < CANCEL_MS) return { ...r, status: "cancelling", cancel: cancelInfo(r.steps, iso(c.cancel_at), null) } as RunStatus
     const st = r.steps.map((x) => (x.status === "STARTED" || x.status === "QUEUED" ? { ...x, status: "CANCELLED" as const } : x))
-    return { ...r, status: "cancelled", finished_at: iso(c.cancel_at + CANCEL_MS), steps: st, buckets: buckets(st), proposed_cancel: cancelInfo(r.steps, iso(c.cancel_at), iso(c.cancel_at + CANCEL_MS)) } as RunStatus
+    return { ...r, status: "cancelled", finished_at: iso(c.cancel_at + CANCEL_MS), steps: st, buckets: buckets(st), cancel: cancelInfo(r.steps, iso(c.cancel_at), iso(c.cancel_at + CANCEL_MS)) } as RunStatus
   }
   listRuns(): Promise<RunRow[]> {
     return this.wait(() => [...Object.keys(this.s.live).map((id) => this.runOf(id)), ...runRows().map((r) => this.runOf(r.run_id))].map((r) => ({ run_id: r.run_id, request_id: r.request_id, status: r.status, queued_at: r.queued_at, started_at: r.started_at ?? null, finished_at: r.finished_at ?? null, report_id: r.report_id ?? null, error_message: r.error?.message_ko ?? null })))

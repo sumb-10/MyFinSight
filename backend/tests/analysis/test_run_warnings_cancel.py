@@ -1,14 +1,16 @@
-"""분석 진행 화면 (이슈 #14 묶음 D): 단계별 경고 전체(GET /runs/{id}/warnings)."""
+"""분석 진행 화면 (이슈 #14 묶음 D): 단계별 경고 전체(GET /runs/{id}/warnings)와 취소 결과(GET /runs/{id} 의 cancel)."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
 from backend.analysis.api.app import API_PREFIX as P
 from backend.analysis.api.app import create_analysis_app
+from backend.analysis.api.routers.runs import cancel_view
 from backend.analysis.common.llm import StubLlm
 from backend.analysis.common.store import JsonStore
 from backend.analysis.common.warnings import make
@@ -76,3 +78,29 @@ def test_warnings_api(tmp_path, monkeypatch):
     assert all(r["step_label_ko"] != r["step"] and r["message_ko"] and r["count"] == 1 for r in rows)  # 단계 이름은 레지스트리의 한국어
     assert c.get(f"{P}/runs/nope/warnings").status_code == 404
 
+
+def _e(status, requested="2026-11-10T09:00:00+09:00", finished=None):
+    return SimpleNamespace(status=status, cancel_requested_at=requested, finished_at=finished)
+
+
+def _st(step, status, started=None):
+    return {"step": step, "label_ko": {"03_candidates": "후보 수집", "05_selection": "종목 선정", "11_backtest": "백테스트"}.get(step, step), "status": status, "started_at": started}
+
+
+def test_cancel_view_states():
+    done = [_st("03_candidates", "SUCCESS", "t"), _st("05_selection", "PARTIAL", "t")]
+    # 취소 중: 지금 도는 단계
+    v = cancel_view(_e("running"), [*done, _st("11_backtest", "STARTED", "t")])
+    assert v == {"requested_at": "2026-11-10T09:00:00+09:00", "completed_at": None, "stopped_step": "11_backtest", "stopped_step_label_ko": "백테스트",
+                 "done_steps": 2, "immediate": False}  # fmt: skip
+    # 단계 도중에 멈춤 (시작했는데 CANCELLED) — 순서가 섞여 와도 단계 순서로 고른다
+    v = cancel_view(_e("cancelled", finished="2026-11-10T09:00:07+09:00"), [_st("11_backtest", "CANCELLED", "t"), *done])
+    assert (v["stopped_step"], v["completed_at"], v["done_steps"]) == ("11_backtest", "2026-11-10T09:00:07+09:00", 2)
+    # 단계 사이에 멈춤: 다음 차례였던 단계
+    v = cancel_view(_e("cancelled", finished="x"), [_st("11_backtest", "CANCELLED"), _st("05_selection", "CANCELLED"), _st("03_candidates", "SUCCESS", "t")])
+    assert (v["stopped_step"], v["done_steps"]) == ("05_selection", 1)
+    # 대기 중 취소: 시작 전
+    v = cancel_view(_e("cancelled", finished="x"), [_st("03_candidates", "QUEUED")])
+    assert (v["stopped_step"], v["done_steps"]) == (None, 0)
+    # 취소를 요청하지 않았거나, 요청이 반영되기 전에 끝난 실행은 없음
+    assert cancel_view(_e("running", requested=None), done) is None and cancel_view(_e("success"), done) is None and cancel_view(_e("failed"), done) is None

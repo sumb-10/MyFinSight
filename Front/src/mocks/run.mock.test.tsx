@@ -100,6 +100,24 @@ describe("분석 진행 화면 (목업)", () => {
     expect(screen.getByText(/단계에서 멈췄습니다. 완료된 4단계의 결과로는 리포트를 만들지 않았습니다/)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "같은 조건으로 다시 실행" })).toBeEnabled()
   }, 10000)
+  it("실제 서버 응답 모양(cancel, immediate=false): 취소 중에는 「시간이 걸릴 수 있습니다」, 취소 뒤에는 요청·완료 시각과 멈춘 단계 (목업 표시 없음)", async () => {
+    const s = new MockService({ latencyMs: 0, persist: false })
+    const base = await s.getRun("mock_run_running")
+    const at = base.steps.find((x) => x.status === "STARTED")!
+    const cancel = { requested_at: "2026-11-10T09:00:00+09:00", completed_at: null as string | null, stopped_step: at.step, stopped_step_label_ko: at.label_ko, done_steps: 4, immediate: false }
+    let run = { ...base, status: "cancelling", cancel } as typeof base
+    const svc: AnalysisService = Object.assign(Object.create(s), { mode: "api", getRunWarnings: undefined, getRun: async () => run })
+    const { unmount } = withSvc(svc, <RunScreen runId="mock_run_running" />)
+    expect(await screen.findByText("분석 취소를 요청했습니다. 현재 작업이 종료되는 데 시간이 걸릴 수 있습니다.", {}, { timeout: 5000 })).toBeInTheDocument()
+    unmount()
+    run = { ...base, status: "cancelled", finished_at: "2026-11-10T09:00:07+09:00", steps: base.steps.map((x) => (x.status === "STARTED" || x.status === "QUEUED" ? { ...x, status: "CANCELLED" } : x)),
+      cancel: { ...cancel, completed_at: "2026-11-10T09:00:07+09:00" } } as typeof base  // fmt: skip
+    withSvc(svc, <RunScreen runId="mock_run_running" />)
+    expect(await screen.findByText("분석 취소 완료", {}, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.getByText(/(7초 걸림)/)).toBeInTheDocument()
+    expect(screen.getByText(new RegExp(`단계에서 멈췄습니다. 완료된 4단계의 결과로는 리포트를 만들지 않았습니다`))).toBeInTheDocument()
+    expect(screen.queryByText("목업")).toBeNull()
+  })
   it("일반 모드(전체 경고 목록 없음): 지금처럼 단계 요약의 안내만, 빠진 안내는 건수로 안내하고 「더 보기」가 없다", async () => {
     const { s } = clocked()
     withSvc(plain(s), <RunScreen runId="mock_run_notices" />)
