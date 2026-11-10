@@ -136,14 +136,14 @@ def _check(a: dict[str, Any]) -> None: ...
 [classify.py](../../backend/analysis/m3_selection/classify.py#L31)
 
 ```python
-def classify(cand: Candidates, intent: IntentSpec | dict[str, Any], llm: LlmClient, *, batch_size: int=BATCH, max_workers: int=1, cancel_check: Callable[[], bool] | None=None) -> Tagging: ...
+def classify(cand: Candidates, intent: IntentSpec | dict[str, Any], llm: LlmClient, *, batch_size: int=BATCH, max_workers: int=1, cancel_check: Callable[[], bool] | None=None, broad: bool=False, on_batch: Callable[[int, int], None] | None=None) -> Tagging: ...
 ```
 
-후보를 기본 40개 배치로 나누고 순서를 보존하는 병렬 호출기로 LLM 분류를 수행합니다. 누락 후보는 미해당·신뢰도 0으로 보완하고 신뢰도를 0~1로 제한합니다. 모르는 테마 ID를 제거하고 제외 테마·최저 신뢰도·필수 포함 규칙으로 통과 티커를 만들어 Tagging을 반환합니다. excluded_theme가 지정된 항목은 필수 포함 여부와 별개로 제외 목록에 들어갑니다.
+후보를 기본 40개 배치로 나누고 순서를 보존하는 병렬 호출기로 LLM 분류를 수행합니다. 누락 후보는 미해당·신뢰도 0으로 보완하고 신뢰도를 0~1로 제한합니다. 모르는 테마 ID를 제거하고 제외 테마·최저 신뢰도·필수 포함 규칙으로 통과 티커를 만들어 Tagging을 반환합니다. excluded_theme가 지정된 항목은 필수 포함 여부와 별개로 제외 목록에 들어갑니다. `on_batch(끝난 배치 수, 전체 배치 수)`가 있으면 시작할 때 (0, n), 배치를 하나 받을 때마다 `map_ordered`의 `on_done`으로 다시 부릅니다(동시 실행이어도 주 스레드에서 순서대로 셈). 새 요청 해석 중 화면의 「후보 분류 1/2 묶음」에 씁니다(2026-11-09).
 
 직접 연결: [map_ordered](executor_구현보고서.md#executor-parallel-py-map_ordered-24), [Tagging](schemas_구현보고서.md#schemas-selection-py-Tagging-63).
 
-호출하는 코드: [st_tagging](executor_구현보고서.md#executor-stages-py-st_tagging-95).
+호출하는 코드: [st_tagging](executor_구현보고서.md#executor-stages-py-st_tagging-95), [precheck](m1_request_구현보고서.md#m1_request-precheck-py-precheck-54).
 
 
 <a id="m3_selection-classify-py-classify-_one-43"></a>

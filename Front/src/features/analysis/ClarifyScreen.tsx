@@ -14,6 +14,7 @@ import { ActionError, AllConditions, AnsweredList, BackToQuestions, CancelReques
 import type { ProposedMessageResult } from "../../api/proposed"
 import { BatchQuestions, BatchResult, type Submitted } from "./BatchQuestions"
 import { MessageOutcome } from "./MessageOutcome"
+import { Interpreting } from "./Interpreting"
 
 type Busy = "" | "answer" | "skip" | "message" | "overrides"
 const PENDING: Record<Exclude<Busy, "">, string> = {
@@ -54,6 +55,7 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
   if (res.status === "error" && !st) return <ErrorState message={res.error ?? ""} retry={res.reload} />
   if (!st) return null
   if (st.status === "cancelled") return <EmptyState title="취소된 요청입니다" description="이 요청은 취소되어 더 진행할 수 없습니다. 같은 아이디어와 조건으로 새 요청을 시작할 수 있습니다." action={<div className="flex gap-2"><Button onClick={() => startNewWith(st.idea, st.overrides)}>같은 조건으로 새 요청</Button><Button variant="ghost" onClick={() => navigate({ page: "home" })}>홈으로</Button></div>} />
+  if (st.state === "interpreting" || st.state === "failed") return <Interpreting requestId={requestId} st={st} onDone={setSt} />  // 서버가 번호만 먼저 주고 뒤에서 해석 중 / 그 해석이 실패
 
   const q = st.question
   const rows = st.conditions ?? []

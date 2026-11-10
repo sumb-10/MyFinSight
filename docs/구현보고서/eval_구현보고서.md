@@ -4,7 +4,7 @@
 
 > 작성 기준: 2026-10-25 작업 공간의 실제 소스. 기존 설계 문서는 배경 참고용이며 아래 동작 설명은 구현을 기준으로 합니다.
 
-대상: Python 파일 4개 · 클래스 1개 · 함수/메서드 45개(중첩 함수와 비공개 보조 함수 포함).
+대상: Python 파일 4개 · 클래스 1개 · 함수/메서드 46개(중첩 함수와 비공개 보조 함수 포함).
 
 [역할](#role) · [파일 구성](#files) · [처리 흐름](#flow) · [클래스](#classes) · [함수](#functions) · [모듈 연계](#interactions) · [오류·검증](#verification)
 
@@ -25,7 +25,7 @@
 | [eval/__init__.py](../../backend/analysis/eval/__init__.py) | 패키지 목적 설명; 독립 함수·클래스 정의 없음 | 정의 없음 |
 | [eval/grade.py](../../backend/analysis/eval/grade.py) | 저장 실행의 자동 지표·독립 재계산·채점 초안·실행 비교 | [클래스 0 · 함수 17](#file-eval-grade-py) |
 | [eval/requirements.py](../../backend/analysis/eval/requirements.py) | 요구사항별 테스트와 저장 결과 점검표 | [클래스 0 · 함수 16](#file-eval-requirements-py) |
-| [eval/run_scenarios.py](../../backend/analysis/eval/run_scenarios.py) | 실제 API 시나리오·자동 답·워커·결과 수집 | [클래스 1 · 함수 12](#file-eval-run_scenarios-py) |
+| [eval/run_scenarios.py](../../backend/analysis/eval/run_scenarios.py) | 실제 API 시나리오·자동 답·워커·결과 수집 | [클래스 1 · 함수 13](#file-eval-run_scenarios-py) |
 
 <a id="flow"></a>
 ## 3. 처리 흐름과 예시
@@ -712,6 +712,21 @@ def wait_for_run(api: Api, run_id: str, timeout_s: float, poll_s: float=10.0) ->
 호출하는 코드: [run_scenario](#eval-run_scenarios-py-run_scenario-162).
 
 
+<a id="eval-run_scenarios-py-wait_for_first_turn-125"></a>
+#### `wait_for_first_turn`
+
+<!-- source-symbol: eval/run_scenarios.py:125:wait_for_first_turn -->
+[run_scenarios.py](../../backend/analysis/eval/run_scenarios.py#L125)
+
+```python
+def wait_for_first_turn(api: Api, rid: str, state: dict[str, Any], timeout_s: float=900.0, poll_s: float=2.0) -> dict[str, Any]: ...
+```
+
+새 요청은 번호와 해석 중(`interpreting`) 상태만 먼저 오고 의도 해석·첫 질문은 서버가 응답 뒤에 합니다. 상태가 해석 중인 동안 `GET /requests/{rid}`를 2초 간격(화면과 같음)으로 다시 읽고, 끝나면 그 상태를 반환합니다. 실패(`failed`)나 15분(서버의 멈춤 판정과 같음) 시간 초과면 그 상태 그대로 반환해 `run_scenario`가 not_confirmed(`dialog_state`, `error_ko`)로 기록합니다 (2026-11-09).
+
+호출하는 코드: [run_scenario](#eval-run_scenarios-py-run_scenario-162).
+
+
 <a id="eval-run_scenarios-py-collect-125"></a>
 #### `collect`
 
@@ -752,9 +767,9 @@ def normalize_request(req: dict[str, Any]) -> tuple[dict[str, Any], list[str]]: 
 def run_scenario(name: str, api: Api, env: dict[str, str], policy: str, wait_s: float) -> dict[str, Any]: ...
 ```
 
-시나리오 프로필을 실제 API에 저장하고 요청 생성·자동 답·확정·worker --once·완료 대기·리포트 수집을 수행합니다. 대화가 ready가 아니면 not_confirmed 결과를 반환합니다. 자식 워커는 큐 전체의 다음 항목을 처리하므로 자기 run_id를 즉시 실행한다고 보장할 수 없습니다.
+시나리오 프로필을 실제 API에 저장하고 요청 생성·첫 턴 대기(`wait_for_first_turn`)·자동 답·확정·worker --once·완료 대기·리포트 수집을 수행합니다. 대화가 ready가 아니면 not_confirmed 결과(해석 실패면 `error_ko` 포함)를 반환합니다. 자식 워커는 큐 전체의 다음 항목을 처리하므로 자기 run_id를 즉시 실행한다고 보장할 수 없습니다.
 
-직접 연결: [normalize_request](#eval-run_scenarios-py-normalize_request-149), [load_request](#eval-run_scenarios-py-load_request-45), [answer_questions](#eval-run_scenarios-py-answer_questions-89), [wait_for_run](#eval-run_scenarios-py-wait_for_run-115).
+직접 연결: [normalize_request](#eval-run_scenarios-py-normalize_request-149), [load_request](#eval-run_scenarios-py-load_request-45), [wait_for_first_turn](#eval-run_scenarios-py-wait_for_first_turn-125), [answer_questions](#eval-run_scenarios-py-answer_questions-89), [wait_for_run](#eval-run_scenarios-py-wait_for_run-115).
 
 호출하는 코드: [main](#eval-run_scenarios-py-main-229).
 
@@ -814,4 +829,4 @@ grade의 output·store는 고정 경로이며 실행 당시 설정 전체로 재
 
 ### 문서 검증
 
-구문 분석 정의 목록과 대조하여 이 보고서의 클래스 1개와 함수/메서드 45개를 모두 설명했습니다. 상대경로 링크와 내부 앵커를 별도로 확인합니다.
+구문 분석 정의 목록과 대조하여 이 보고서의 클래스 1개와 함수/메서드 46개를 모두 설명했습니다. 상대경로 링크와 내부 앵커를 별도로 확인합니다.

@@ -4,7 +4,7 @@
 
 > 작성 기준: 2026-10-25 작업 공간의 실제 소스. 기존 설계 문서는 배경 참고용이며 아래 동작 설명은 구현을 기준으로 합니다.
 
-대상: Python 파일 10개 · 클래스 79개 · 함수/메서드 13개(중첩 함수와 비공개 보조 함수 포함).
+대상: Python 파일 10개 · 클래스 80개 · 함수/메서드 13개(중첩 함수와 비공개 보조 함수 포함).
 
 [역할](#role) · [파일 구성](#files) · [처리 흐름](#flow) · [클래스](#classes) · [함수](#functions) · [모듈 연계](#interactions) · [오류·검증](#verification)
 
@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | [schemas/__init__.py](../../backend/analysis/schemas/__init__.py) | 업무별 주요 모델 공개 재노출과 __all__ 구성 | 정의 없음 |
 | [schemas/backtest.py](../../backend/analysis/schemas/backtest.py) | 기간·자본·구성 사양·체크포인트·성과 모델 | [클래스 15 · 함수 3](#file-schemas-backtest-py) |
-| [schemas/dialog.py](../../backend/analysis/schemas/dialog.py) | 질문·답·수정 초안·저장 대화·API 상태 모델 | [클래스 11 · 함수 0](#schemas-dialog-py-QuestionOption-18) |
+| [schemas/dialog.py](../../backend/analysis/schemas/dialog.py) | 질문·답·수정 초안·저장 대화·API 상태 모델·해석 진행 단계 | [클래스 12 · 함수 0](#schemas-dialog-py-QuestionOption-18) |
 | [schemas/intent.py](../../backend/analysis/schemas/intent.py) | 테마·정량 선정·위험·의견·검증·서술 선호 모델 | [클래스 11 · 함수 2](#file-schemas-intent-py) |
 | [schemas/portfolio.py](../../backend/analysis/schemas/portfolio.py) | 시장모형·기준/BL 비중·의견·타겟 모델 | [클래스 8 · 함수 2](#file-schemas-portfolio-py) |
 | [schemas/report.py](../../backend/analysis/schemas/report.py) | 근거·지원 블록·섹션·문서 참조 계약 | [클래스 3 · 함수 2](#file-schemas-report-py) |
@@ -550,6 +550,24 @@ LLM이 제안하고 코드가 검사한 변경 한 건입니다. 새 값·원래
 | `base_run_id` | `str \| None` | `None` | 원안 실행 ID |
 
 
+<a id="schemas-dialog-py-ProgressStep-100"></a>
+### `ProgressStep`
+
+<!-- source-symbol: schemas/dialog.py:100:ProgressStep -->
+[dialog.py](../../backend/analysis/schemas/dialog.py#L100)
+
+새 요청 첫 해석의 한 단계입니다(2026-11-09). [m1_request/progress.py](m1_request_구현보고서.md#file-m1_request-progress-py)가 6단계를 만들고 고치며, 요청 문서와 API 응답의 `progress`로 나갑니다.
+
+기반: `BaseModel`.
+
+| 필드 | 자료형 | 기본값 또는 생성 방식 | 선언된 제약·설명 |
+| --- | --- | --- | --- |
+| `key` | `str` | `필수 입력` | conditions·intent·retrieve·classify·screen·question |
+| `label_ko` | `str` | `필수 입력` | 화면에 보이는 단계 이름 (예: 후보 분류) |
+| `status` | `ProgressStatus` | `'waiting'` | waiting·running·done·skipped |
+| `detail_ko` | `str \| None` | `None` | 그 단계의 실제 결과 (예: 후보 74개, 1/2 묶음, 가격 자료 읽는 중) |
+
+
 <a id="schemas-dialog-py-AnalysisRequestDoc-98"></a>
 ### `AnalysisRequestDoc`
 
@@ -579,7 +597,7 @@ LLM이 제안하고 코드가 검사한 변경 한 건입니다. 새 값·원래
 | `intent` | `dict[str, Any] \| None` | `None` | 검증·보정한 투자 해석 명세 |
 | `hard_errors` | `list[FieldError]` | `[]` | 즉시 수정해야 하는 필드 오류 |
 | `status` | `Literal['draft', 'confirmed', 'cancelled']` | `'draft'` | 소속 객체의 처리 상태 |
-| `dialog_state` | `DialogStatus` | `'asking'` | — |
+| `dialog_state` | `DialogStatus` | `'asking'` | interpreting(새 요청을 저장하고 응답 뒤 첫 턴 중)·asking·ready·blocked·confirmed·cancelled·failed(첫 턴 실패) |
 | `turn` | `int` | `0` | 현재까지 생성한 질문 수 |
 | `max_questions` | `int` | `5` | 질문 횟수 상한 |
 | `blocked_reason_ko` | `str \| None` | `None` | 차단/상한 안내; 현재는 ready에서도 기본값 유지 이유로 사용 |
@@ -591,6 +609,9 @@ LLM이 제안하고 코드가 검사한 변경 한 건입니다. 새 값·원래
 | `revision` | `RevisionDraft \| None` | `None` | 원안 대비 수정 초안 |
 | `warnings` | `list[str]` | `[]` | 문맥별 전체 경고 또는 문장 검사 메모 |
 | `precheck` | `dict[str, Any] \| None` | `None` | 현재·과거 후보 수와 가능 기간의 사전 점검 |
+| `error_ko` | `str \| None` | `None` | 첫 턴이 실패했을 때(failed) 화면에 보여 줄 이유 (2026-11-09) |
+| `progress` | `list[ProgressStep]` | `[]` | 새 요청 첫 해석이 어느 단계까지 했는지 (2026-11-09) |
+| `progress_updated_at` | `str \| None` | `None` | 마지막으로 단계가 바뀐 시각, 해석 중 멈춤 판정 기준 (2026-11-09) |
 
 
 <a id="schemas-dialog-py-DialogSummary-134"></a>
@@ -627,7 +648,7 @@ API에 공개하는 대화 응답입니다. 현재 질문, 전체 질문 기록,
 | `mode` | `RequestMode` | `필수 입력` | 실행·구성·평가 방식 |
 | `base_report_id` | `str \| None` | `None` | 수정/재분석의 기준 리포트 |
 | `status` | `Literal['draft', 'confirmed', 'cancelled']` | `필수 입력` | 소속 객체의 처리 상태 |
-| `state` | `DialogStatus` | `필수 입력` | 대화의 화면 상태 |
+| `state` | `DialogStatus` | `필수 입력` | 대화의 화면 상태. 해석 중으로 마지막 진행 뒤 15분 넘게 멈춘 요청은 저장값과 달리 failed로 보낸다 |
 | `turn` | `int` | `필수 입력` | 현재까지 생성한 질문 수 |
 | `max_questions` | `int` | `필수 입력` | 질문 횟수 상한 |
 | `idea` | `str` | `필수 입력` | 사용자 투자 아이디어 본문 |
@@ -644,6 +665,8 @@ API에 공개하는 대화 응답입니다. 현재 질문, 전체 질문 기록,
 | `overrides` | `dict[str, Any]` | `{}` | 이번 요청의 필드 경로별 덮어쓰기 |
 | `blocked_reason_ko` | `str \| None` | `None` | 차단/상한 안내; 현재는 ready에서도 기본값 유지 이유로 사용 |
 | `precheck` | `dict[str, Any] \| None` | `None` | 현재·과거 후보 수와 가능 기간의 사전 점검 |
+| `error_ko` | `str \| None` | `None` | state=failed 의 이유 (첫 턴 실패·서버 재시작으로 끊김, 2026-11-09) |
+| `progress` | `list[ProgressStep]` | `[]` | 새 요청 첫 해석의 단계별 진행·결과 (해석 중·실패 화면, 2026-11-09) |
 
 
 <a id="schemas-intent-py-Theme-23"></a>
@@ -2072,4 +2095,4 @@ dict로 선언된 metrics·header·blocks 내부는 전용 구조 모델만큼 �
 
 ### 문서 검증
 
-구문 분석 정의 목록과 대조하여 이 보고서의 클래스 79개와 함수/메서드 13개를 모두 설명했습니다. 상대경로 링크와 내부 앵커를 별도로 확인합니다.
+구문 분석 정의 목록과 대조하여 이 보고서의 클래스 80개와 함수/메서드 13개를 모두 설명했습니다. 상대경로 링크와 내부 앵커를 별도로 확인합니다.

@@ -39,7 +39,7 @@ export function ConfirmScreen({ requestId }: { requestId: string }) {
   if (res.status === "loading" && !st) return <Loading label="확정 조건을 불러오는 중…" />
   if (!st) return <ErrorState message={res.error ?? ""} retry={res.reload} />
   if (st.status === "cancelled") return <EmptyState title="취소된 요청입니다" description="이 요청은 취소되어 분석을 시작할 수 없습니다. 같은 아이디어와 조건으로 새 요청을 시작할 수 있습니다." action={<div className="flex gap-2"><Button onClick={() => startNewWith(st.idea, st.overrides)}>같은 조건으로 새 요청</Button><Button variant="ghost" onClick={() => navigate({ page: "home" })}>홈으로</Button></div>} />
-  if (st.state === "asking" || st.state === "blocked") { navigate({ page: "clarify", requestId }); return null }
+  if (st.state === "asking" || st.state === "blocked" || st.state === "interpreting" || st.state === "failed") { navigate({ page: "clarify", requestId }); return null }  // 해석 중·실패도 질문 화면이 보여 준다
   if (st.status === "confirmed" && st.run_id) {
     return <Alert title="이미 분석이 시작된 요청입니다" tone="info"><Button variant="secondary" onClick={() => navigate({ page: "run", runId: st.run_id! })}>실행 상태 보기</Button></Alert>
   }

@@ -122,6 +122,16 @@ def wait_for_run(api: Api, run_id: str, timeout_s: float, poll_s: float = 3.0) -
     return run
 
 
+def wait_for_first_turn(api: Api, rid: str, state: dict[str, Any], timeout_s: float = 900.0, poll_s: float = 2.0) -> dict[str, Any]:
+    """새 요청은 '해석 중'(interpreting) 으로 번호만 먼저 오고 해석·첫 질문은 서버 뒤에서 한다. 끝날 때까지 다시 읽는다.
+    실패(failed)·시간 초과면 그 상태 그대로 돌려줘 not_confirmed 로 기록된다 (화면과 같은 2초 간격, 서버의 멈춤 판정과 같은 15분)."""
+    t0 = time.time()
+    while state.get("state") == "interpreting" and time.time() - t0 < timeout_s:
+        time.sleep(poll_s)
+        state = api.ok("GET", f"/requests/{rid}")
+    return state
+
+
 def collect(name: str, api: Api, prev: dict[str, Any]) -> dict[str, Any]:
     """저장된 시나리오 JSON 의 run_id 로 지금 상태·리포트를 다시 읽어 요약을 채운다."""
     run_id = prev.get("run_id")
@@ -283,11 +293,13 @@ def run_scenario(name: str, api: Api, env: dict[str, str], policy: str, wait_s: 
     t0, t0_dt = time.time(), dt.datetime.now()
     state = api.ok("POST", "/requests", {"idea": req["natural_language"]["idea"], "overrides": overrides})
     rid = state["request_id"]
+    state = wait_for_first_turn(api, rid, state)
     qa: list[dict[str, Any]] = []
     state = answer_questions(api, rid, state, policy, qa)
     if state.get("state") != "ready":
         return {"name": name, "title_ko": sc["title_ko"], "scenario_file": str(sc["file"]), "normalized": normalized, "overrides": overrides, "request_id": rid,
                 "dialog_state": state.get("state"), "qa": qa, "blocked_reason_ko": state.get("blocked_reason_ko"), "hard_errors": state.get("hard_errors"), "status": "not_confirmed",
+                "error_ko": state.get("error_ko"),
                 "dialog_cost_usd": (dc := dialog_cost(t0_dt, dt.datetime.now())), "cost_total_usd": dc}  # fmt: skip
     bt = ((state.get("summary") or {}).get("derived") or {}).get("backtest_start")
     if bt and dt.date.fromisoformat(str(bt)[:10]) < SKIP_BACKTEST_BEFORE:  # 대화 답으로 기간이 바뀐 경우 (확정하지 않음)
