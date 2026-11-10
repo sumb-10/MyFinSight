@@ -83,6 +83,12 @@
 - **필요한 계산:** 0원 백테스트(첫 적립일부터 매수), 수익률 기준(넣은 원금 대비 / 시간가중) 정의, 모의투자 0원 시작 처리, 리포트의 「투자 기준금액」 표시 규칙.
 - **목업:** `MockService.options`, 프로필 변형 `mocks/data/profile.ts` 의 `ZERO_CAPITAL_VERSION`. **프런트 수정:** `api/proposed.ts`(`proposedRulesOf` 위치). 화면 `ProfileScreen.tsx`(검사·예상 투자 일정)는 규칙 값만 본다.
 - **주의:** 홈·질문·확인 화면의 「상세 조건」 창도 같은 플래그를 본다 (`features/home/DetailConditions.tsx` 의 `validate(f, { allowZero })`, 2026-11 화면 편의성 개선). 예상 투자 일정은 원금만 계산하며 수익을 예측하지 않는다.
+- **✅ 실제 서버 구현 (2026-11-10):** `GET /meta/options` 에 `proposed_rules: {"allow_zero_initial_amount": true}`. 검증은 `initial_amount ≥ 0`, 0이면 `monthly_contribution > 0`
+  (요청·`PUT /profile`·저장 스키마·모의투자 `POST /paper` 모두. 오류 필드는 `capital.monthly_contribution`). 정책은 사용자 결정:
+  **첫 적립일에 처음 매수**하고 그 전 평가액은 0. 시간가중 수익률 지수는 첫 적립일까지 100 으로 두고 그날부터 계산(비교지수도 같은 적립이라 같은 날 출발),
+  넣은 원금 대비 손익·연 IRR 은 그대로. 리포트의 배분 금액·예상 매수 주문은 **첫 적립금 기준** — `summary.allocation.initial_amount_usd` 에 첫 적립금, 새 필드
+  `amount_basis_ko: "첫 적립금"` (원금이 있으면 null). 모의투자는 단위 가격 1.0 에서 출발해 첫 적립일에 처음 사고, 비교지수 수익률도 그날 가격부터 (`benchmark_start_px` 가 그때 정해짐),
+  미리보기 배분은 첫 적립금 기준(`allocation_basis_ko`).
 
 ### 2-5. 투자성향 기반 전략 추천 — 4단계
 
@@ -92,6 +98,10 @@
 - **예시:** `{"tendency":"위험중립형","recommended":{"template":"quality","baseline_weighting":"equal_weight","use_news_tilt":true},"reasons_ko":["수익과 위험을 함께 보는 성향이라 …"],"alternatives":[{"template":"low_volatility","baseline_weighting":"inverse_volatility","use_news_tilt":false,"diff_ko":"변동이 작은 기업 위주라 …"}],"note_ko":"…"}`
 - **정책:** 추천 규칙(성향 → 전략) 확정 필요. 근거 문구는 규칙에서 생성. **목업 표는 예시이며 규칙이 아니다** (`mocks/data/strategy.ts`).
 - **프런트 수정:** `api/service.ts`. 화면 `features/profile/StrategyRecommend.tsx`, `StrategyFields.tsx`(선택 prop `recommended`).
+- **✅ 실제 서버 구현 (2026-11-10):** `GET /strategy/recommendation?tendency=위험중립형` → `ProposedStrategyRecommendation` (성향이 없거나 5개 밖이면 422).
+  규칙은 **팀 결정으로 일단 고정 규칙** — 목업 표(`mocks/data/strategy.ts`)의 조합·이유·차이 문장을 그대로 서버로 옮겼다(`backend/analysis/m1_request/strategy_recommendation.py`).
+  시장 상황·과거 성과는 보지 않고, `note_ko` 가 그렇게 안내한다. 두 표가 같은지는 서버 테스트 `test_strategy_recommendation.py` 가 본다.
+  `tendency` 는 서버의 3단계 `risk_tolerance` 가 아니라 프런트 진단의 5단계 값(`diagnosis.final_tendency`). 프런트는 `HttpService.recommendStrategy`.
 
 ### 2-6. 투자조건 변경 이력 비교 — 4단계
 
@@ -212,6 +222,13 @@
 - **자세한 명세·정책:** [backend-requests-profile-chat.md](./backend-requests-profile-chat.md)
 - **목업:** `MockService.startProfileChat/answerProfileChat/rewindProfileChat`, `mocks/data/profileChat.ts`. **프런트 수정:** `api/service.ts`. 화면 `features/profile/chat/*`, 진입 `app/App.tsx`·`features/home/HomeScreen.tsx`.
 - **지금 일반 모드:** 대화 메서드가 없으므로 처음 사용자는 지금처럼 4단계 폼(`#/profile/setup`)으로 간다.
+- **✅ 실제 서버 구현 (2026-11-10):** `POST /profile/chat`, `POST /profile/chat/{chat_id}/answers`, `POST /profile/chat/{chat_id}/rewind` → `ProposedProfileChat`.
+  목업 대화(`mocks/data/profileChat.ts`)를 그대로 서버로 옮겼다(`backend/analysis/m1_request/profile_chat.py`): 고정 11문항, 보기·숫자만(LLM 없음), 말풍선 id·문구·초안이 목업과 같다.
+  기본값·성향 진단 문항은 서버가 프런트(`defaults.ts`·`diagnosis.ts`)와 같은 표를 갖고, 「종목을 고르는 기준」의 추천은 서버 규칙 `recommend()`(2-5).
+  맞지 않는 답은 200 + 봇의 다시 묻는 말풍선, 차례가 아닌 질문은 409, 없는 대화 404, 되감기의 없는 질문 id 는 422.
+  요약(`review`)으로 넘어가기 전에 `PUT /profile` 과 같은 검사를 하고, 통과하지 못하면 마지막 답을 받지 않고 다시 묻는다. 처음 투자금 0원(B-3)은 금액 질문의 보기 「0원 · 매월 적립으로 시작」으로만 고른다(직접 입력은 10만원부터). 0원이면 월 적립 질문은 「추가 투자 없음」을 숨기고 0원을 받지 않으며, 요약에서 금액을 0원으로 고치면 「추가 투자 없음」이던 월 적립만 지워 다시 묻는다 (목업 엔진도 같은 규칙).
+  대화는 서버 로컬 저장소(기본 `data/analysis_store`)의 `profile_chats/<chat_id>.json` 에 답만 저장하고, 새 대화를 시작할 때 마지막으로 답한 지 7일이 지난 대화를 지운다.
+  저장은 그대로 `PUT /profile` (투자조건이 있는 사용자도 대화를 쓸 수 있고, 저장하면 새 버전). 프런트는 `HttpService` 세 메서드 → 일반 모드에서도 처음 사용자는 대화형으로 간다.
 
 ## 3. 일반 모드에 반영한 세 가지 (서버 추가 없이 기존 데이터만 사용)
 

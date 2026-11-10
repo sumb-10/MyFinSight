@@ -173,8 +173,8 @@ const targetRangeError = (f: Form) => `목표 종목 수는 최소 ${f.num_min} 
 
 export function validate(f: Form, { allowZero = false }: { allowZero?: boolean } = {}): FormError[] {
   const e: FormError[] = []
-  // allowZero: 제안 규칙 — 초기 투자금 0원 + 매월 추가 투자 (목업에서만, 지금 서버는 0보다 커야 함). 내 투자조건 폼(validateProfile)과 같은 규칙
-  if (allowZero && f.initial_amount === 0) { if (!(f.monthly_contribution > 0)) e.push({ id: "initial_amount", message: "처음 투자금을 0원으로 하려면 매월 추가 투자금을 정해 주세요 (목업 규칙)", tab: "money" }) }
+  // allowZero: 제안 규칙 — 초기 투자금 0원 + 매월 추가 투자 (실제 서버도 같은 규칙: 첫 적립일에 처음 매수, 이슈 #14 의 3번). 내 투자조건 폼(validateProfile)과 같은 규칙
+  if (allowZero && f.initial_amount === 0) { if (!(f.monthly_contribution > 0)) e.push({ id: "initial_amount", message: "처음 투자금을 0원으로 하려면 매월 추가 투자금을 정해 주세요", tab: "money" }) }
   else if (!(f.initial_amount > 0)) e.push({ id: "initial_amount", message: "투자금은 0보다 커야 합니다", tab: "money" })
   if (f.bt_mode === "range" && !(f.bt_start_year <= f.bt_end_year)) e.push({ id: "bt_start_year", message: "백테스트 시작 연도가 끝 연도보다 늦습니다", tab: "money" })
   if (f.bt_mode === "range" && f.bt_end_year - f.bt_start_year + 1 > 20) e.push({ id: "bt_start_year", message: "백테스트는 최대 20년입니다", tab: "money" })

@@ -300,11 +300,13 @@ def st_forward(ctx: RunContext) -> str:
                            ctx.cancel_check, name="construct_current")  # fmt: skip  (뉴스 조회·최적화 중에도 취소)
     if res.evidence:
         ctx.add_news_window("10f_current", res.evidence.to_dict())
-    init, fx = ctx.request["derived"]["initial_amount_usd"], ctx.request["derived"]["fx_rate"]
+    d = ctx.request["derived"]
+    init, fx = d["initial_amount_usd"], d["fx_rate"]
+    amt = init or d.get("monthly_contribution_usd") or 0.0  # 0원 시작(이슈 #14 의 3번)이면 배분 금액은 첫 적립금 기준 (report_blocks.basis_amount 와 같은 규칙)
     ports = [dict(p) for p in res.applied_bl]  # 최적화 실패 세트(= 기준 비중)는 '현재 구성 BL' 로 보이지 않게 뺀다
     templates = [dict(p) for p in res.baselines["portfolios"]]
     for p in [*templates, *ports]:
-        p["allocation"] = [{"ticker": t, "weight": w_, "usd": round(init * w_, 2), "krw": round(init * w_ * fx)}
+        p["allocation"] = [{"ticker": t, "weight": w_, "usd": round(amt * w_, 2), "krw": round(amt * w_ * fx)}
                            for t, w_ in sorted(p["weights"].items(), key=lambda x: -x[1])]  # fmt: skip
     ev = res.evidence
     out = {"request_id": ctx.request_id, "stage": "10f_forward_portfolios", "as_of": str(as_of), "news_window": ev.summary() if ev else None,

@@ -48,7 +48,7 @@ class PaperIn(BaseModel):
     report_id: str
     strategy_id: str | None = None
     start_date: dt.date | None = None
-    initial_amount: float | None = Field(default=None, gt=0)
+    initial_amount: float | None = Field(default=None, ge=0)  # 0 이면 매월 적립금이 있어야 한다 (PaperService._plan)
     currency: Literal["KRW", "USD"] | None = None
     monthly_contribution: float | None = Field(default=None, ge=0)
     name: NameIn | None = None  # 등록 때만 쓴다 (없으면 linked, 미리보기는 무시)

@@ -39,6 +39,8 @@ describe("목업 모드 분리", () => {
       "searchStocks",
       "getStocks",
       // B 투자조건 규칙
+      "recommendStrategy",
+      "startProfileChat", "answerProfileChat", "rewindProfileChat",
       // C 질문 화면
       // D 분석 진행
       "getRunWarnings",
@@ -100,6 +102,19 @@ describe("목업 모드 분리", () => {
     expect(f).not.toHaveBeenCalled()
     expect(window.sessionStorage.getItem(MOCK_STORE_KEY)).toContain("내 반도체 리포트")
     expect(window.localStorage.getItem("myfinsight.ui.v1")).toBeNull()  // 일반 모드의 화면 상태 키는 건드리지 않는다
+  })
+  it("성향 기반 추천은 서버 주소로 요청한다 (한글 성향은 인코딩)", async () => {
+    const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("{}", { status: 200 }))
+    await new HttpService().recommendStrategy("위험중립형")
+    expect(f.mock.calls.map(([u, i]) => [String(u).replace(/^.*\/api\/v1/, ""), i?.method])).toEqual([[`/strategy/recommendation?tendency=${encodeURIComponent("위험중립형")}`, "GET"]])
+  })
+  it("대화형 초기 투자조건은 서버 주소로 요청한다 (시작 / 답 / 되감기)", async () => {
+    const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("{}", { status: 200 }))
+    const http = new HttpService()
+    await http.startProfileChat(); await http.answerProfileChat("chat_1", { question_id: "amount", number: 5_000_000 }); await http.rewindProfileChat("chat_1", "amount")
+    const calls = f.mock.calls.map(([u, i]) => [String(u).replace(/^.*\/api\/v1/, ""), i?.method, i?.body])
+    expect(calls).toEqual([["/profile/chat", "POST", undefined], ["/profile/chat/chat_1/answers", "POST", JSON.stringify({ question_id: "amount", number: 5_000_000 })],
+      ["/profile/chat/chat_1/rewind", "POST", JSON.stringify({ question_id: "amount" })]])
   })
 })
 

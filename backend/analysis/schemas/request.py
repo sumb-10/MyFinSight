@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 RebalanceUnit = Literal["2w", "1m", "1q", "6m", "1y"]
 Template = Literal["low_per", "quality", "momentum", "low_volatility", "high_dividend"]
@@ -35,11 +35,18 @@ class Profile(BaseModel):
 
 
 class Capital(BaseModel):
-    initial_amount: float = Field(gt=0)
+    initial_amount: float = Field(ge=0)  # 0 = 매월 적립으로만 시작 (첫 적립일에 처음 매수, 이슈 #14 의 3번)
     currency: Literal["KRW", "USD"]
     trading_currency: Literal["USD"] = "USD"
     monthly_contribution: float = Field(ge=0, default=0)
     contribution_day: int = Field(ge=1, le=28, default=25)
+
+    @field_validator("monthly_contribution")
+    @classmethod
+    def _zero_start_needs_monthly(cls, v: float, info: ValidationInfo) -> float:
+        if info.data.get("initial_amount") == 0 and v <= 0:
+            raise ValueError("monthly_contribution must be > 0 when initial_amount is 0")
+        return v
 
 
 class Horizon(BaseModel):

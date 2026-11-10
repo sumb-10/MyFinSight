@@ -98,7 +98,7 @@ export class MockService implements AnalysisService {
     return this.wait(() => profileView(this.versions()))
   }
   getProfileVersion(version: number): Promise<ProfileVersion> { return this.wait(() => { const v = this.versions().find((x) => x.version === version); if (!v) throw notFound("투자조건 버전"); return v }) }
-  recommendStrategy(tendency: Tendency): Promise<ProposedStrategyRecommendation> { return this.wait(() => recommendation(tendency)) }  // 추천 규칙은 아직 없다 — 성향별 예시
+  recommendStrategy(tendency: Tendency): Promise<ProposedStrategyRecommendation> { return this.wait(() => recommendation(tendency)) }  // 실제 서버와 같은 고정 규칙 표 (data/strategy.ts)
 
   /* 대화형 초기 투자조건: 정해진 질문 순서와 보기로만 묻는다 (data/profileChat.ts). 저장은 saveProfile 그대로.
      봇이 답을 준비하는 「…」가 보이도록 대화 응답만 평소 지연의 5배 (기본 0.6초, 테스트 latencyMs 0 이면 0). */

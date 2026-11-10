@@ -133,13 +133,15 @@ def extract_raw(b, res, first_date) -> dict:
     flows = cut(flows).copy()
     flows.iloc[0] += initial
     values = cut(b.strategy.values.astype(float))
-    r = (values - flows) / values.shift(1) - 1.0
+    prev = values.shift(1)
+    r = ((values - flows) / prev.where(prev > 0) - 1.0).fillna(0.0)
     r.iloc[0] = 0.0  # 첫날 흐름은 초기 투자금 (기준점 100)
+    # 초기 투자금 0원(이슈 #14 의 3번): 첫 적립일까지 평가액이 0 → 그날까지 수익 0 (지수 100 유지), 첫 적립일이 첫날과 같은 기준점이다
     idx = (100.0 * (1.0 + r).cumprod()).rename(b.name)
     tx = res.get_transactions()
     tx = tx.reset_index() if tx is not None and len(tx) else pd.DataFrame(columns=["Date", "Security", "price", "quantity"])
     return {"id": b.name, "index": idx, "values": values, "flows": flows,
-            "security_weights": cut(b.security_weights.astype(float)), "positions": cut(b.positions.astype(float)),
+            "security_weights": cut(b.security_weights.astype(float)).fillna(0.0), "positions": cut(b.positions.astype(float)),  # 평가액 0(0원 시작)인 날은 보유 0
             "turnover": cut(b.turnover.astype(float)), "transactions": tx}  # fmt: skip
 
 

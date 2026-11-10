@@ -8,7 +8,7 @@ import { MockTag } from "../report/proposedView"
 import { Part } from "./parts"
 import { templateLabel, weightingLabel } from "./strategyInfo"
 
-// 투자성향 기반 추천 전략 (제안 기능): 서비스에 recommendStrategy 가 있을 때만 보인다 — 지금은 목업의 미리 정한 결과뿐이고, 실제 추천 규칙이 아니다.
+// 투자성향 기반 추천 전략 (제안 기능): 서비스에 recommendStrategy 가 있을 때만 보인다. 실제 서버(GET /strategy/recommendation)와 목업 모두 성향마다 정해 둔 고정 규칙 표다.
 
 type Rec = ProposedStrategyRecommendation["recommended"]
 export const asPref = (r: Rec): Partial<StrategyPreference> => ({ template: r.template as Template, baseline_weighting: r.baseline_weighting as Weighting, use_news_tilt: r.use_news_tilt })

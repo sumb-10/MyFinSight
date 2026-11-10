@@ -1,6 +1,8 @@
 // 대화형 초기 투자조건 (목업). 서버가 대화를 이끄는 제안 계약(ProposedProfileChat)을 정해진 규칙으로만 흉내 낸다.
 // 질문 순서·보기·답 반영·다시 묻기가 모두 여기 한 곳에 있다. 자유 문장은 해석하지 않는다 (서버 연동 때 LLM 이 맡을 부분).
 // 상태는 질문별 답만 저장하고, 말풍선·초안(draft)·다음 질문은 매번 답에서 다시 만든다 → 「고치기」는 그 답(과 그 답에 기대는 답)만 지우면 끝.
+// 실제 서버(backend/analysis/m1_request/profile_chat.py, POST /profile/chat …)가 이 규칙을 그대로 옮겨 쓴다 — 바꾸면 둘 다 바꾼다
+// (서버 test_profile_chat 이 질문 순서·이름·고정 보기·입력 범위·정해진 말풍선이 같은지 본다).
 import type { ProposedChatAnswer, ProposedChatKind, ProposedChatMessage, ProposedChatQuestion, ProposedProfileChat } from "../../api/proposed"
 import type { ProfileFields, Template, Tendency } from "../../api/types"
 import { DEFAULT_FORM } from "../../features/profile/defaults"
@@ -25,9 +27,17 @@ interface Q {
   allowSkip?: boolean
   apply: (d: ProfileFields, v: unknown) => void
   say: (v: unknown, d: ProfileFields) => string            // 사용자 답 말풍선
+  check?: (v: unknown, d: ProfileFields) => string | null  // 보기·범위 밖의 규칙 (맞지 않으면 다시 묻는 말). 앞 답을 고쳐 이 답이 맞지 않게 되면 이 답을 지우고 다시 묻는다
 }
 
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T
+
+/* 처음 투자금 0원 (서버 profile_chat.py 와 같은 문장 — 서버 테스트가 확인한다) */
+const ZERO_START_LABEL = "0원 · 매월 적립으로 시작"
+const ZERO_START_HELP = "처음 투자금 없이 첫 적립일에 처음 사요. 다음 질문에서 매월 투자금을 꼭 정해 주세요."
+const ZERO_START_SAY = "0원으로, 매월 적립으로만 시작할게요"
+const ZERO_MONTHLY_ASK = "처음 투자금 없이 시작하니 매월 추가 투자금이 꼭 있어야 해요."
+const ZERO_NEEDS_MONTHLY = "처음 투자금이 0원이라 매월 추가 투자금이 꼭 있어야 해요. 0원보다 큰 금액을 골라 주세요."
 const won = (v: number) => money(v, "KRW")
 
 /** 종목 수에 맞춰 범위(±20%)와 종목당 상한을 같이 정한다: 상한 × 최소 종목 수 ≥ 100% 여야 비중을 다 채울 수 있다 (validateProfile 규칙). */
@@ -78,15 +88,17 @@ export const CHAT_QUESTIONS: Q[] = [
   {
     id: "amount", label: "처음 투자할 금액", kind: "money", fields: ["capital.initial_amount"],
     ask: () => "처음에 얼마로 시작할까요? 원화 기준으로 알려 주세요.",
-    options: () => [5_000_000, 10_000_000, 30_000_000, 50_000_000].map((v) => ({ value: v, label_ko: won(v) })),
+    // 0원 = 처음 투자금 없이 매월 적립으로 시작 (첫 적립일에 처음 매수, 서버 proposed_rules 와 같은 규칙). 보기로만 고르고 직접 입력은 10만원부터
+    options: () => [5_000_000, 10_000_000, 30_000_000, 50_000_000, 0].map((v) => (v ? { value: v, label_ko: won(v) } : { value: v, label_ko: ZERO_START_LABEL, help_ko: ZERO_START_HELP })),
     input: { min: 100_000, max: 10_000_000_000, step: 100_000, unit_ko: "원" },
     apply: (d, v) => { d.capital.initial_amount = v as number; d.capital.currency = "KRW" },
-    say: (v) => won(v as number),
+    say: (v) => ((v as number) ? won(v as number) : ZERO_START_SAY),
   },
   {
     id: "monthly", label: "매월 추가 투자금", kind: "money", fields: ["capital.monthly"],
-    ask: (d) => `매월 추가로 투자할 금액이 있나요? 있다면 매월 ${d.capital.contribution_day}일에 넣는 것으로 계산해요.`,
-    options: () => [0, 300_000, 500_000, 1_000_000].map((v) => ({ value: v, label_ko: v ? `매월 ${won(v)}` : "추가 투자 없음" })),
+    ask: (d) => (d.capital.initial_amount === 0 ? `${ZERO_MONTHLY_ASK} 매월 ${d.capital.contribution_day}일에 얼마씩 넣을까요?` : `매월 추가로 투자할 금액이 있나요? 있다면 매월 ${d.capital.contribution_day}일에 넣는 것으로 계산해요.`),
+    options: (d) => [0, 300_000, 500_000, 1_000_000].filter((v) => v > 0 || d.capital.initial_amount > 0).map((v) => ({ value: v, label_ko: v ? `매월 ${won(v)}` : "추가 투자 없음" })),
+    check: (v, d) => (d.capital.initial_amount === 0 && !((v as number) > 0) ? ZERO_NEEDS_MONTHLY : null),
     input: { min: 0, max: 100_000_000, step: 10_000, unit_ko: "원" },
     apply: (d, v) => { d.capital.monthly_contribution = v as number },
     say: (v) => ((v as number) ? `매월 ${won(v as number)}` : "추가 투자는 없어요"),
@@ -190,13 +202,19 @@ export function answerChat(st: ProfileChatState, a: ProposedChatAnswer): Profile
   const values = chatView(st).question!.options.map((o) => o.value)  // 그 질문 시점의 보기 (앞 답으로 정해진다)
   if (q.kind === "choice" && !values.includes(v)) return retry("아래 보기 중에서 골라 주세요.")
   if (q.kind === "multi" && !(Array.isArray(v) && v.length > 0 && v.every((x) => values.includes(x)))) return retry("하나 이상 골라 주세요.")
-  if ((q.kind === "money" || q.kind === "number") && q.input) {
+  if ((q.kind === "money" || q.kind === "number") && q.input && !values.includes(v)) {  // 보기로 고른 값은 범위 검사 없이 (금액의 0원 보기)
     const { min, max, unit_ko } = q.input
     const fmt = (n: number) => (unit_ko === "원" ? won(n) : `${n}${unit_ko}`)
     if (typeof v !== "number" || !Number.isFinite(v) || v < min || v > max) return retry(`${fmt(min)} 이상 ${fmt(max)} 이하로 알려 주세요.`)
     if (unit_ko !== "원" && !Number.isInteger(v)) return retry("정수로 알려 주세요.")
   }
-  return { ...next, answers: { ...next.answers, [q.id]: { v } }, error: null }
+  const bad = q.check?.(v, chatView(st).draft)
+  if (bad) return retry(bad)
+  const out: ProfileChatState = { ...next, answers: { ...next.answers, [q.id]: { v } }, error: null }
+  // 고친 답 때문에 뒤에 이미 답한 값이 규칙에 맞지 않게 되면(금액을 0원으로 고쳤는데 월 적립이 0원) 그 답만 지워 다시 묻는다
+  const draft = chatView(out).draft
+  for (const q2 of CHAT_QUESTIONS) { const a2 = out.answers[q2.id]; if (q2.check && a2 && !("skip" in a2) && q2.check(a2.v, draft)) delete out.answers[q2.id] }
+  return out
 }
 
 /** 고친 답에 기대는 질문: 성향 진단 답이 바뀌면 진단 결과가 바뀌므로 「성향 확인」도 다시 묻는다.

@@ -77,7 +77,8 @@ def estimate_orders(doc: dict[str, Any], prices_usd: dict[str, float]) -> dict[s
         "share_basis": overall, "commission_bps": bps, "fx": {"rate": round(fx, 2), "date": str(as_of), "source_ko": "분석 기준일 환율"},
         "capital": {"amount": round(float(capital), 2), "currency": "USD", "usd": round(float(capital), 2)}, "items": rows,
         "totals": {"invested_usd": invested, "fee_usd": fees, "cash_left_usd": left, "cash_left_krw": round(left * fx), "cash_target_usd": cash_target, "cash_target_krw": round(cash_target * fx)},
-        "note_ko": BASIS_NOTE_KO[overall] + NOTE_TAIL_KO,
+        # 0원 시작(이슈 #14 의 3번)이면 배분 금액이 첫 적립금 (report_blocks.basis_amount)
+        "note_ko": (f"처음 투자금이 0원이라 {alloc['amount_basis_ko']}(매월 적립금) 기준입니다. " if alloc.get("amount_basis_ko") else "") + BASIS_NOTE_KO[overall] + NOTE_TAIL_KO,
     }  # fmt: skip
 
 

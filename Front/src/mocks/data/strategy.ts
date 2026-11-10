@@ -1,4 +1,5 @@
-// 투자성향별 추천 전략 (목업). 실제 추천 규칙은 아직 정해지지 않아 성향마다 미리 정한 예시 결과를 쓴다 — 일반 모드에는 쓰지 않는다.
+// 투자성향별 추천 전략 (목업). 실제 서버 backend/analysis/m1_request/strategy_recommendation.py 와 같은 고정 규칙 표다 —
+// 조합·이유·차이 문장을 바꾸면 서버 표도 같이 바꾼다 (서버 테스트 test_strategy_recommendation 이 두 표가 같은지 본다). 안내 문장(note_ko)만 목업용.
 import type { ProposedStrategyRecommendation } from "../../api/proposed"
 import type { Tendency } from "../../api/types"
 
@@ -35,5 +36,5 @@ const TABLE: Record<Tendency, { rec: Pick3; reasons: string[]; alts: (Pick3 & { 
 
 export function recommendation(tendency: Tendency): ProposedStrategyRecommendation {
   const t = TABLE[tendency]
-  return { tendency, recommended: t.rec, reasons_ko: t.reasons, alternatives: t.alts, note_ko: "목업 추천입니다. 성향마다 미리 정한 예시이며, 실제 서비스의 추천 규칙이 아닙니다." }
+  return { tendency, recommended: t.rec, reasons_ko: t.reasons, alternatives: t.alts, note_ko: "목업 추천입니다. 실제 서버와 같은 고정 규칙(투자성향마다 정해 둔 표)입니다." }
 }

@@ -5,7 +5,7 @@ import { MockTag } from "../report/proposedView"
 import { NEWS_INFO, TEMPLATE_INFO, TEMPLATE_ORDER, WEIGHTING_INFO, WEIGHTING_ORDER } from "./strategyInfo"
 
 /** 투자 전략 설정: ① 어떤 기업을 고를지 → ② 투자금을 어떻게 나눌지 → ③ 뉴스·공시로 비중을 조정할지. 값은 enum 그대로 onChange 로 넘긴다. */
-/** recommended: 투자성향 기반 추천(제안 기능, 목업에서만 온다). 주면 해당 카드에 「추천」 표시만 붙인다. */
+/** recommended: 투자성향 기반 추천(제안 기능, recommendStrategy 결과). 주면 해당 카드에 「추천」 표시만 붙인다. */
 export function StrategyFields({ value, onChange, templates, weightings, recommended }: { value: StrategyPreference; onChange: (patch: Partial<StrategyPreference>) => void; templates?: Template[]; weightings?: Weighting[]; recommended?: Partial<StrategyPreference> | null }) {
   return (
     <div className="space-y-8">

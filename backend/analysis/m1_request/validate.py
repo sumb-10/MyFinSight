@@ -18,6 +18,7 @@ _MSG = [
     ("more must_include_tickers", "필수 포함 종목 수가 최대 종목 수를 넘습니다"),
     ("included and excluded", "같은 종목이 필수 포함과 제외에 함께 있습니다"),
     ("not supported", "레버리지·공매도는 지원하지 않습니다"),
+    ("when initial_amount is 0", "처음 투자금이 0원이면 매월 추가 투자금이 있어야 합니다"),
     ("Input should be greater than 0", "0 보다 커야 합니다"),
     ("Input should be", "허용되지 않는 값입니다"),
     ("Field required", "필수 항목입니다"),

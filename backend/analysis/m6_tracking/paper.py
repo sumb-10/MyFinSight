@@ -314,9 +314,11 @@ class PaperService:
         cap = req["capital"]
         cur = (currency or cap["currency"]).upper()
         amount = float(initial_amount if initial_amount is not None else cap["initial_amount"])
-        if amount <= 0:
-            raise RequestInvalid("가상 초기자본은 0보다 커야 합니다", details={"fields": {"initial_amount": "0보다 커야 합니다"}})
+        if amount < 0:
+            raise RequestInvalid("가상 초기자본은 0 이상이어야 합니다", details={"fields": {"initial_amount": "0 이상"}})
         monthly = float(monthly_contribution if monthly_contribution is not None else cap.get("monthly_contribution", 0) or 0)
+        if amount == 0 and monthly <= 0:  # 0원 시작(이슈 #14 의 3번)은 첫 적립일에 처음 매수한다
+            raise RequestInvalid("가상 초기자본이 0원이면 매월 적립금이 있어야 합니다", details={"fields": {"monthly_contribution": "0보다 커야 합니다"}})
         view = self.md.view(start)
         fx = view.fx_on_or_before(start)
         rate = float(fx.rate) if cur == "KRW" else 1.0
@@ -333,7 +335,8 @@ class PaperService:
         diff = [{"ticker": t, "report": round(rep_w.get(t, 0.0), 4), "start": round(w.get(t, 0.0), 4), "delta": round(w.get(t, 0.0) - rep_w.get(t, 0.0), 4)}
                 for t in sorted(set(rep_w) | set(w), key=lambda t: -(w.get(t, 0.0)))]  # fmt: skip
         prices = view.panel(list(w), start, start, required=[*w, bench], benchmarks=[bench])[0].iloc[-1]
-        alloc = [{"ticker": t, "weight": x, "usd": round(usd * x, 2), "krw": round(usd * x * float(fx.rate)), "price_usd": round(float(prices[t]), 4)} for t, x in sorted(w.items(), key=lambda kv: -kv[1])]
+        amt = usd if usd > 0 else round(monthly / rate, 2)  # 0원 시작이면 배분 미리보기는 첫 적립금 기준 (리포트 report_blocks.basis_amount 와 같은 규칙)
+        alloc = [{"ticker": t, "weight": x, "usd": round(amt * x, 2), "krw": round(amt * x * float(fx.rate)), "price_usd": round(float(prices[t]), 4)} for t, x in sorted(w.items(), key=lambda kv: -kv[1])]
         rb = req["derived"]["rebalance_rule"]
         return {"report_id": report_id, "run_id": row.get("run_id") or report_id, "report_as_of": str(report_as_of), "strategy": strategy.to_dict(),
                 "strategy_options": strategy_options(results), "start_date": str(start), "data_ceiling": str(ceiling), "reconstructed_at_start": reconstructed,
@@ -341,6 +344,7 @@ class PaperService:
                 "contribution": {"enabled": monthly > 0, "monthly_amount": monthly, "currency": cur, "day": int(cap.get("contribution_day") or 25)},
                 "rebalance_rule": {"count": int(rb["count"]), "unit": rb["unit"]}, "benchmark": bench, "tickers": [t for t in tickers if t in w] or list(w),
                 "weights": w, "cash_weight": round(cash_w, 6), "report_weights": rep_w, "weight_diff": diff, "allocation": alloc,
+                "allocation_basis_ko": None if usd > 0 else "첫 적립금",
                 "construct_info": info, "warnings": warnings, "_results": results, "_req": req, "_intent": intent, "_prices": {t: float(prices[t]) for t in [*w, bench]}}  # fmt: skip
 
     def preview(self, report_id: str, **kw: Any) -> dict[str, Any]:
@@ -356,6 +360,8 @@ class PaperService:
         holdings, cash, trades, fees, turnover = trade_to_target({}, usd, prices, plan["weights"], plan["cash_weight"], self.s.backtest.commission_bps)
         weights, hv, total = weights_of(holdings, cash, prices)
         bench_px = plan["_prices"][plan["benchmark"]]
+        # 0원 시작: 시작일에는 보유·현금이 없다. 단위 가격 1.0 에서 출발하고, 비교지수 출발 가격은 첫 적립일에 정한다 (_advance)
+        unit0 = total / usd if usd > 0 else 1.0
         pid = new_paper_id()
         now = _now()
         doc = {"schema_version": 1, "paper_id": pid, "report_id": plan["report_id"], "run_id": plan["run_id"], "strategy_id": plan["strategy"]["id"], "strategy": plan["strategy"],
@@ -363,9 +369,9 @@ class PaperService:
                "initial_capital": plan["initial_capital"], "contribution": plan["contribution"], "rebalance_rule": plan["rebalance_rule"],
                "constraints_snapshot": {"request": {k: req[k] for k in ("request_id", "profile", "capital", "horizon", "risk", "constraints", "strategy_preference", "natural_language", "derived")},
                                         "intent": intent, "commission_bps": self.s.backtest.commission_bps},
-               "benchmark": plan["benchmark"], "benchmark_start_px": bench_px, "tickers": list(plan["weights"]), "start_weights": plan["weights"],
+               "benchmark": plan["benchmark"], "benchmark_start_px": bench_px if usd > 0 else None, "tickers": list(plan["weights"]), "start_weights": plan["weights"],
                "state": {"holdings": {t: round(s, 8) for t, s in holdings.items()}, "cash_usd": round(cash, 4), "last_snapshot_date": plan["start_date"], "last_rebalance_date": plan["start_date"],
-                         "n_rebalances": 0, "units": usd, "unit_price_peak": total / usd, "benchmark_units": usd / bench_px, "contributions_total_usd": 0.0,
+                         "n_rebalances": 0, "units": usd, "unit_price_peak": unit0, "benchmark_units": usd / bench_px, "contributions_total_usd": 0.0,
                          "target_weights": plan["weights"], "cash_weight": plan["cash_weight"], "update_status": "ok", "delayed_reason_ko": None, "last_refresh_at": now},
                "status": "active", "created_at": now, "stopped_at": None, "resumed_at": None,
                "history": [{"at": now, "event": "started", "note": f"{plan['start_date']} 시작, {plan['strategy']['name_ko']}"}], "warnings": plan["warnings"]}  # fmt: skip
@@ -373,9 +379,10 @@ class PaperService:
         self.papers.append_rebalance(pid, {"date": plan["start_date"], "seq": 0, "kind": "initial", "before_weights": {}, "target_weights": plan["weights"], "applied_weights": weights,
                                            "trades": trades, "commission_usd": fees, "turnover": turnover, "views": plan["construct_info"]["views"],
                                            "evidence_window": plan["construct_info"]["evidence_window"], "fallback": bool(plan["construct_info"]["fallback"]), "skipped": False,
-                                           "max_tilt": None, "warnings": list(plan["construct_info"]["warnings"]), "note_ko": "최초 매수"})  # fmt: skip
+                                           "max_tilt": None, "warnings": list(plan["construct_info"]["warnings"]),
+                                           "note_ko": "최초 매수" if usd > 0 else "처음 투자금 0원 — 첫 적립일에 처음 매수합니다"})  # fmt: skip
         self.papers.append_snapshot(pid, {"date": plan["start_date"], "value_usd": total, "cash_usd": round(cash, 2), "holdings_value_usd": hv, "weights": weights,
-                                          "drawdown": round(total / usd - 1, 6) if total < usd else 0.0, "return_since_start": round(total / usd - 1, 6), "unit_price": round(total / usd, 8),
+                                          "drawdown": round(unit0 - 1, 6) if unit0 < 1 else 0.0, "return_since_start": round(unit0 - 1, 6), "unit_price": round(unit0, 8),
                                           "contribution_usd": 0.0, "contributions_total_usd": 0.0, "benchmark_value_usd": usd, "benchmark_return_since_start": 0.0,
                                           "fx_rate": plan["initial_capital"]["fx_rate"], "status": "ok", "warnings": []})  # fmt: skip
         return self.detail(pid)
@@ -432,6 +439,8 @@ class PaperService:
             if pd.Timestamp(d) in c_dates and contrib.get("enabled"):
                 rate = float(fx.get(pd.Timestamp(d), fx.iloc[-1])) if contrib.get("currency") == "KRW" else 1.0
                 contribution_usd = round(float(contrib["monthly_amount"]) / rate, 2)
+                if units <= 0 and doc.get("benchmark_start_px") is None:  # 0원 시작의 첫 적립: 비교지수 수익률도 이날부터
+                    doc["benchmark_start_px"] = bench_px
                 unit_price_pre = value_pre / units if units > 0 else 1.0
                 units += contribution_usd / unit_price_pre
                 cash += contribution_usd
@@ -466,7 +475,7 @@ class PaperService:
             bench_value = round(float(bench_units) * bench_px, 2) if bench_units is not None else None
             # 비교지수 운용 수익률 = 시작일 가격 대비 (적립은 수익이 아니므로 단위가격과 같은 뜻)
             bench_px0 = doc.get("benchmark_start_px")
-            bench_ret = round(bench_px / float(bench_px0) - 1, 6) if bench_px0 else None
+            bench_ret = round(bench_px / float(bench_px0) - 1, 6) if bench_px0 else (0.0 if units <= 0 else None)  # 0원 시작은 첫 적립 전까지 둘 다 0
             st.update({"holdings": {t: round(s, 8) for t, s in holdings.items()}, "cash_usd": round(cash, 4), "units": units, "unit_price_peak": peak, "last_snapshot_date": str(d),
                        "update_status": "ok", "delayed_reason_ko": None})  # fmt: skip
             self.papers.save(doc)

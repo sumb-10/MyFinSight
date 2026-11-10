@@ -81,7 +81,7 @@ export function StartPaperDialog({ reportId, close }: { reportId: string; close:
               </Field>
               <Field label="가상 초기자본">
                 <div className="flex gap-2">
-                  <input className={inputClass} type="number" min={1} value={form.initial_amount ?? ""} onChange={(e) => set("initial_amount", Number(e.target.value))} />
+                  <input className={inputClass} type="number" min={0} value={form.initial_amount ?? ""} onChange={(e) => set("initial_amount", Number(e.target.value))} />
                   <select className={`${inputClass} w-28`} value={form.currency ?? "KRW"} onChange={(e) => switchCurrency(e.target.value as "KRW" | "USD")}><option value="KRW">KRW</option><option value="USD">USD</option></select>
                 </div>
               </Field>
@@ -118,7 +118,7 @@ export function StartPaperDialog({ reportId, close }: { reportId: string; close:
                 </tbody>
               </table>
             </div>
-            <p className="text-xs text-slate-500">시작일 종가(USD 환산)로 소수 주식까지 사며, 거래대금의 0.05%를 수수료로 뺍니다. 여기 보이는 비중이 그대로 적용됩니다.</p>
+            <p className="text-xs text-slate-500">시작일 종가(USD 환산)로 소수 주식까지 사며, 거래대금의 0.05%를 수수료로 뺍니다. 여기 보이는 비중이 그대로 적용됩니다.{preview.allocation_basis_ko && " 초기자본이 0원이라 금액은 첫 적립금 기준이며, 첫 적립일에 처음 매수합니다."}</p>
             <div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setStage("form")}>조건 바꾸기</Button><Button onClick={create} disabled={busy !== ""}>{busy === "create" ? "등록하는 중…" : "이 조건으로 시작"}</Button></div>
           </>
         )}

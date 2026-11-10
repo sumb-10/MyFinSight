@@ -1,4 +1,4 @@
-"""GET /health, GET /meta/options."""
+"""GET /health, GET /meta/options, GET /strategy/recommendation."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from backend.analysis.api.routers import services
 from backend.analysis.common.dbconn import describe
 from backend.analysis.errors import public_message
 from backend.analysis.executor.queue import pid_alive
+from backend.analysis.m1_request.strategy_recommendation import Tendency, recommend
 from backend.analysis.schemas import request as R
 
 router = APIRouter(tags=["meta"])
@@ -55,6 +56,8 @@ def options(request: Request) -> dict[str, Any]:
         "labels_ko": {"universes": {"SP500": "S&P 500", "NASDAQ100": "NASDAQ-100", "KOSPI200": "KOSPI 200"},
                       "templates": {"low_per": "저PER", "quality": "퀄리티(ROE)", "momentum": "모멘텀", "low_volatility": "저변동성", "high_dividend": "고배당"},
                       "weightings": {"equal_weight": "동일비중", "market_cap": "시가총액비중", "inverse_volatility": "역변동성", "min_variance": "최소분산"}},
+        # 입력 규칙 (프런트 제안 계약 proposed_rules): 초기 투자금 0원 + 매월 적립 허용 — 첫 적립일에 처음 매수 (이슈 #14 의 3번)
+        "proposed_rules": {"allow_zero_initial_amount": True},
     }  # fmt: skip
     try:
         md = sv.market_data()
@@ -64,3 +67,9 @@ def options(request: Request) -> dict[str, Any]:
         opts["data_range"] = None
         opts["data_error"] = f"{type(e).__name__}: {public_message(e)}"[:200]
     return opts
+
+
+@router.get("/strategy/recommendation")
+def strategy_recommendation(tendency: Tendency) -> dict[str, Any]:
+    """투자성향(안정형~공격투자형)에 맞춘 추천 전략·이유·다른 전략 2개. 성향마다 정해 둔 고정 규칙 (m1_request/strategy_recommendation.py)."""
+    return recommend(tendency)

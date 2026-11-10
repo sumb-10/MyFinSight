@@ -63,6 +63,31 @@ describe("대화형 초기 투자조건 · 목업 규칙", () => {
     expect(ok.draft.capital.initial_amount).toBe(2_500_000)
     expect(ok.messages.some((m) => m.id.endsWith(":retry"))).toBe(false)
   })
+  it("처음 투자금 0원은 보기로 고르고, 그러면 월 적립 0원은 받지 않는다 (서버 규칙과 같음). 요약 초안은 0원 규칙으로 검사를 통과한다", async () => {
+    const s = mock()
+    const c0 = await answerAll(s, await s.startProfileChat(), "amount")
+    expect(c0.question?.options.at(-1)).toMatchObject({ value: 0, label_ko: "0원 · 매월 적립으로 시작" })
+    const z = await s.answerProfileChat(c0.chat_id, { question_id: "amount", option_value: 0 })
+    expect(z.question?.id).toBe("monthly")
+    expect(z.question?.options.map((o) => o.value)).not.toContain(0)
+    expect(z.messages.at(-1)?.text_ko).toMatch(/^처음 투자금 없이 시작하니 매월 추가 투자금이 꼭 있어야 해요/)
+    const bad = await s.answerProfileChat(c0.chat_id, { question_id: "monthly", number: 0 })
+    expect(bad.question?.id).toBe("monthly")
+    expect(bad.messages.at(-1)?.text_ko).toMatch(/0원이라 매월 추가 투자금이 꼭 있어야/)
+    const c = await answerAll(s, bad)
+    expect(c.state).toBe("review")
+    expect(c.draft.capital).toMatchObject({ initial_amount: 0, monthly_contribution: 300_000 })
+    expect(validateProfile(c.draft, { allowZero: true })).toEqual({})
+  })
+  it("요약에서 금액을 0원으로 고치면 「추가 투자 없음」이던 월 적립만 다시 묻는다", async () => {
+    const s = mock()
+    let c = await s.startProfileChat()
+    while (c.question) c = await s.answerProfileChat(c.chat_id, { question_id: c.question.id, ...(c.question.id === "monthly" ? { option_value: 0 } : PATH[c.question.id]) })
+    await s.rewindProfileChat(c.chat_id, "amount")
+    const r = await s.answerProfileChat(c.chat_id, { question_id: "amount", option_value: 0 })
+    expect(r.question?.id).toBe("monthly")
+    expect(r.progress.done).toBe(CHAT_QUESTIONS.length - 1)
+  })
   it("지금 질문이 아닌 답은 거절하고, 꼭 답해야 하는 질문은 건너뛸 수 없다", async () => {
     const s = mock()
     const c = await s.startProfileChat()
@@ -211,5 +236,36 @@ describe("일반 모드 (대화 메서드 없음)", () => {
   it("주소로 대화형 화면을 열어도 4단계 폼을 보여 준다", async () => {
     render(<Providers service={plain(firstUser())}><ProfileChatScreen /></Providers>)
     expect(await screen.findByRole("heading", { level: 1, name: "기본 투자조건을 알려주세요." }, { timeout: 5000 })).toBeInTheDocument()
+  })
+})
+
+describe("일반 모드 (실제 서버에 대화 API 가 있음)", () => {
+  /** 실제 서버(POST /profile/chat …)처럼 대화 메서드가 있는 일반 모드 서비스. 응답은 서버와 같은 규칙인 목업 대화로 만든다. */
+  const real = (s: MockService) => {
+    const calls: string[] = []
+    const svc: AnalysisService = Object.assign(Object.create(s), {
+      mode: "api",
+      startProfileChat: async () => { calls.push("start"); return s.startProfileChat() },
+      answerProfileChat: async (id: string, a: ProposedChatAnswer) => { calls.push(`answer:${a.question_id}`); return s.answerProfileChat(id, a) },
+      rewindProfileChat: async (id: string, q: string) => { calls.push(`rewind:${q}`); return s.rewindProfileChat(id, q) },
+    })
+    return { svc, calls }
+  }
+  it("처음 사용자는 앱을 열면 대화형 설정으로 가고, 「목업」 표시 없이 서버 대화를 이어 간다", async () => {
+    const s = firstUser()
+    const { svc, calls } = real(s)
+    window.history.replaceState(null, "", "/#/home")
+    render(<Providers service={svc}><App /></Providers>)
+    expect(await screen.findByRole("heading", { level: 1, name: "대화로 기본 투자조건을 정해요" }, { timeout: 5000 })).toBeInTheDocument()
+    expect(window.location.hash).toBe("#/profile/chat")
+    expect(screen.queryByText("목업")).toBeNull()
+    await pick(/^자산 증식/)
+    const input = await screen.findByRole("textbox", { name: "처음 투자할 금액 직접 입력" }, { timeout: 5000 })
+    fireEvent.change(input, { target: { value: "5,000" } })
+    fireEvent.click(screen.getByRole("button", { name: /보내기/ }))
+    expect(await screen.findByText(/10만원 이상 100억원 이하로 알려 주세요/, {}, { timeout: 5000 })).toBeInTheDocument()  // 서버의 다시 묻는 말풍선
+    fireEvent.click(screen.getByRole("button", { name: "‘자산 증식’ 답 고치기" }))
+    expect(await screen.findByRole("button", { name: /^원금 보존/ }, { timeout: 5000 })).toBeInTheDocument()
+    expect(calls).toEqual(["start", "answer:purpose", "answer:amount", "rewind:purpose"])
   })
 })
