@@ -8,7 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Request
 from pydantic import BaseModel, Field
 
 from backend.analysis.api.routers import services
-from backend.analysis.schemas.dialog import DialogState
+from backend.analysis.schemas.dialog import DialogState, MessageResult
 
 router = APIRouter(tags=["requests"])
 
@@ -81,6 +81,12 @@ def update_overrides(request_id: str, body: OverridesIn, request: Request) -> Di
 def message(request_id: str, body: MessageIn, request: Request) -> DialogState:
     """질문과 상관없이 말로 조건·아이디어를 보탬. 다음 턴에 해석한다."""
     return services(request).dialog().message(request_id, body.text)
+
+
+@router.get("/requests/{request_id}/messages", response_model=list[MessageResult])
+def message_results(request_id: str, request: Request) -> list[MessageResult]:
+    """「말로 보태기」 처리 결과, 보낸 순서 (반영됨·반영 안 됨·확인 필요와 바뀐 것). 이 기능 전에 보낸 말은 기록이 없다."""
+    return services(request).requests.load(request_id).message_results
 
 
 @router.post("/requests/{request_id}/confirm")

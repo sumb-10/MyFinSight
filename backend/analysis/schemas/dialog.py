@@ -73,6 +73,29 @@ class DialogMessage(BaseModel):
     content: str
 
 
+class MessageChange(BaseModel):
+    """「말로 보태기」 전후로 달라진 표시값 하나 (조건 행, 또는 field='intent.themes' 인 해석한 테마)."""
+
+    field: str
+    label_ko: str
+    before_ko: str
+    after_ko: str
+
+
+class MessageResult(BaseModel):
+    """「말로 보태기」 한 번의 처리 결과 (제안 계약 ProposedMessageResult). 서버가 그 턴 전후를 비교해 남긴다.
+    말은 조건 값을 직접 바꾸지 않는다 — 아이디어 보충으로 붙어 테마 해석을 바꾸거나, 값을 바꿔야 하면 확인 질문으로 이어진다.
+    applied = 테마·조건 표시값이 바뀜 / needs_confirmation = 확인 질문이 생김 / not_applied = 둘 다 아님."""
+
+    text: str
+    at: str
+    outcome: Literal["applied", "not_applied", "needs_confirmation"]
+    changes: list[MessageChange] = []
+    note_ko: str = ""
+    question_seq: int | None = None  # 이 말 때문에 생긴 확인 질문
+    closed_seq: int | None = None  # 이 말을 보내며 답하지 않은 채 닫힌(건너뜀) 질문
+
+
 class RevisionChange(BaseModel):
     """수정 요청에서 LLM 이 제안하고 코드가 검증한 변경 하나."""
 
@@ -143,6 +166,7 @@ class AnalysisRequestDoc(BaseModel):
     error_ko: str | None = None  # 첫 해석이 실패했을 때(dialog_state=failed) 화면에 보여 줄 이유
     progress: list[ProgressStep] = []  # 새 요청 첫 해석이 어느 단계까지 했는지 (해석 중 화면이 2초마다 읽음)
     progress_updated_at: str | None = None  # 마지막으로 단계가 바뀐 시각 (해석 중 멈춤 판정 기준)
+    message_results: list[MessageResult] = []  # 「말로 보태기」 처리 결과, 보낸 순서 (GET /requests/{id}/messages · 리포트 request_log)
 
 
 class DialogSummary(BaseModel):

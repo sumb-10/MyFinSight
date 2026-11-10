@@ -110,6 +110,11 @@
 - **예시:** `{"text":"테슬라도 꼭 넣어 주세요","outcome":"applied","changes":[{"field":"constraints.must_include_tickers","label_ko":"꼭 넣을 종목","before_ko":"엔비디아 (NVDA), 마이크론 테크놀로지 (MU)","after_ko":"엔비디아 (NVDA), 마이크론 테크놀로지 (MU), 테슬라 (TSLA)"}],"note_ko":"말씀하신 종목을 꼭 넣을 종목에 더했습니다."}`
 - **정책:** 반영되지 않으면 기존 조건 유지와 이유, 확인 필요면 무엇을 확인해야 하는지. **실제 자연어 해석·반영은 서버 문제**(목업은 회사명·티커 + 넣다/빼다만 알아듣는다).
 - **목업:** `MockService.sendMessage/getMessageResults`, 해석 `dialog.ts` 의 `interpretMessage`. **프런트 수정:** `api/service.ts`. 화면 `features/analysis/MessageOutcome.tsx`·`ClarifyScreen.tsx`·`ConfirmScreen.tsx`.
+- **✅ 실제 서버 구현 (2026-11-10, 결과 기록만):** `GET /requests/{id}/messages` → 보낸 순서대로 `ProposedMessageResult[]` (+ `question_seq`·`closed_seq`). 요청 문서의 `message_results` 에 쌓는다.
+  **말로 보태기 동작은 그대로다** — 말은 아이디어 끝에 `[추가 요청] …` 으로 붙어 의도 해석(LLM)을 다시 돌릴 뿐 조건 값을 직접 바꾸지 않는다 (값은 질문의 답·「조건 바꾸기」로만 바뀐다).
+  그래서 결과는 문장을 따로 해석하지 않고 **그 턴 전후로 실제 달라진 것**으로 정한다: 이 턴에 확인 질문이 생김 → `needs_confirmation` / 해석한 테마(`field: "intent.themes"`)나 조건 표시값이 달라짐 → `applied` /
+  둘 다 아님 → `not_applied` (보탠 말은 아이디어 보충으로 남아 리포트 요약에 들어간다는 것과 「조건 바꾸기」 안내, 질문 상한에 닿았으면 그 사실). 말을 보내며 답하지 않은 채 닫힌 질문이 있으면 `note_ko` 에 알린다.
+  따라서 실제 서버의 `applied` 는 대개 「테마 해석이 바뀜」이다 — 결과 카드·리포트 배지 제목을 「조건에 반영됨」 → 「반영됨」 으로 바꿨다. 이 기능 전에 보낸 말은 기록이 없다(빈 목록). 프런트는 `HttpService.getMessageResults`.
 
 ### 2-9. 분석 취소 결과 (즉시 취소) — 5단계
 

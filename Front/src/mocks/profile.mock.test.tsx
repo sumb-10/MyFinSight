@@ -156,7 +156,7 @@ describe("새 분석 · 조건 확인 화면 (목업)", () => {
     const box = await screen.findByRole("textbox", { name: "말로 조건 보태기" }, { timeout: 5000 })
     const send = () => fireEvent.click(screen.getByRole("button", { name: "말로 보태기" }))
     fireEvent.change(box, { target: { value: "테슬라도 꼭 넣어 주세요" } }); send()
-    expect(await screen.findByText("조건에 반영됨")).toBeInTheDocument()
+    expect(await screen.findByText("반영됨")).toBeInTheDocument()
     expect(screen.getByText(/뺄 종목: 테슬라 \(TSLA\) →/)).toBeInTheDocument()
     fireEvent.change(box, { target: { value: "담배 회사는 빼 주세요" } }); send()
     expect(await screen.findByText("추가 확인 필요")).toBeInTheDocument()

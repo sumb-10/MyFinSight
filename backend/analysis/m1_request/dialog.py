@@ -32,8 +32,9 @@ from backend.analysis.m2_data import descriptor as D
 from backend.analysis.m2_data.metrics import METRIC_SHORT_KO
 from backend.analysis.m2_data.market_data import MarketData
 from backend.analysis.m3_selection.intent import build_messages, interpret
+from backend.analysis.m1_request import message_result as msg_result
 from backend.analysis.m1_request import revision
-from backend.analysis.schemas.dialog import AnalysisRequestDoc, DialogMessage, DialogState, DialogSummary, Question, QuestionProposal, RevisionDraft
+from backend.analysis.schemas.dialog import AnalysisRequestDoc, ConditionRow, DialogMessage, DialogState, DialogSummary, Question, QuestionProposal, RevisionDraft
 from backend.analysis.common.capacity import cap_cause_ko, cap_limits
 from backend.analysis.schemas.request import UNIVERSE_MARKET
 from backend.analysis.settings import AnalysisSettings
@@ -287,7 +288,8 @@ class DialogService:
         return self.state(doc)
 
     def message(self, request_id: str, text: str) -> DialogState:
-        """질문과 상관없이 말로 조건·아이디어를 보탬. 아이디어 보충으로 붙여 다음 턴에 해석한다 (필드 값은 코드가 질문/답으로만 바꾼다)."""
+        """질문과 상관없이 말로 조건·아이디어를 보탬. 아이디어 보충으로 붙여 다음 턴에 해석한다 (필드 값은 코드가 질문/답으로만 바꾼다).
+        그 턴 전후를 비교한 결과(반영됨·반영 안 됨·확인 필요)를 message_results 에 남긴다 (GET /requests/{id}/messages, 리포트 request_log)."""
         text = (text or "").strip()
         if not text:
             raise RequestInvalid("내용을 적어 주세요", details={"fields": {"text": "비어 있음"}})
@@ -295,10 +297,16 @@ class DialogService:
             doc = self.requests.load(request_id)
             if doc.status != "draft":
                 raise Conflict(f"요청이 이미 {doc.status} 상태입니다")
+            before, n_asked = msg_result.snapshot(self._rows(doc), doc.intent), len(doc.questions)
+            closed = next((q for q in doc.questions if not q.answered_at), None)
             self._settle_pending(doc, "(말로 조건을 보태 건너뜀)")
             doc.idea_clarifications.append(f"[추가 요청] {text}")
             doc.messages.append(DialogMessage(role="user", content=f"사용자의 추가 요청: {text}\n아이디어 보충으로 반영해 의도 명세를 다시 출력하세요. 필드 값을 바꿔야 하면 그 필드를 conflict/preference 질문으로 제안하세요."))
             doc = self._turn(doc)
+            asked = doc.questions[-1] if len(doc.questions) > n_asked and doc.dialog_state == "asking" else None
+            capped = asked is None and bool(doc.blocked_reason_ko) and len(doc.questions) >= doc.max_questions  # _turn 이 턴마다 사유를 다시 정한다
+            doc.message_results.append(msg_result.judge(text, now_iso(), before, msg_result.snapshot(self._rows(doc), doc.intent),
+                                                        asked=asked, closed=closed, capped=capped))  # fmt: skip
             self.requests.save(doc)
         return self.state(doc)
 
@@ -789,6 +797,19 @@ class DialogService:
         body = {k: req[k] for k in ("capital", "horizon", "risk", "constraints", "strategy_preference", "natural_language")}
         return (f"Q{q.seq} ({q.field}) 답: {q.answer}\n코드가 반영한 갱신된 요청:\n```json\n{json.dumps(body, ensure_ascii=False, indent=1, default=str)}\n```\n"
                 "이 답을 반영해 의도 명세를 다시 출력하세요. 같은 항목은 다시 묻지 않습니다.")  # fmt: skip
+
+    def _rows(self, doc: AnalysisRequestDoc) -> list[ConditionRow]:
+        """「말로 보태기」 전후 비교용 조건 표 (기본 투자조건과 비교, state() 의 질문 중 표와 같은 방법). 만들지 못하면 빈 표 (보조 정보).
+        state() 의 표 코드와 합치지 않았다 — 종목 이름 묶음(PR 16)이 그 줄을 고쳐 PR 끼리 충돌하지 않게. 둘 다 들어간 뒤 합친다."""
+        if not doc.draft_request:
+            return []
+        try:
+            prof = self.profiles.version(doc.profile_version)
+            base_req = assemble.build(prof, doc.idea, request_id=doc.request_id, created_at=doc.created_at)
+            answered = {q.field: q.seq for q in doc.questions if q.applied}
+            return condition_rows(doc.draft_request, base_req, answered_fields=answered, derived=doc.derived)
+        except Exception:  # noqa: BLE001 — 표는 보조 정보
+            return []
 
     def _unresolved(self, doc: AnalysisRequestDoc) -> list[dict[str, Any]]:
         out = []

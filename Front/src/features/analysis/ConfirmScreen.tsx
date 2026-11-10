@@ -30,7 +30,7 @@ export function ConfirmScreen({ requestId }: { requestId: string }) {
   const [note, setNote] = useState(() => pendingNote(requestId))  // 질문 화면에서 적고 보내지 않은 문장을 이어받는다
   const [noteHint, setNoteHint] = useState("")
   const [askUnsent, setAskUnsent] = useState(false)  // 보내지 않은 추가 요청이 있는데 「분석 시작」을 눌렀을 때
-  const [msgs, setMsgs] = useState<ProposedMessageResult[] | null>(null)  // 제안 기능: 말로 보태기 처리 결과 (목업에서만)
+  const [msgs, setMsgs] = useState<ProposedMessageResult[] | null>(null)  // 제안 기능: 말로 보태기 처리 결과 (getMessageResults 가 있을 때)
   useEffect(() => { keepPendingNote(requestId, note) }, [requestId, note])
   useStickyInMain()  // 「분석 시작」 줄
   const noteRef = useRef<HTMLDivElement>(null)

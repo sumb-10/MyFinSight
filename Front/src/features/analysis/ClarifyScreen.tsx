@@ -41,7 +41,7 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
   const [editing, setEditing] = useState(false)
   const batchMode = !!(svc.getQuestionBatch && svc.answerBatch)  // 제안 기능: 여러 질문 한 번에 (목업에서만)
   const [batchDone, setBatchDone] = useState<{ sent: Submitted[]; changes: RowChange[] } | null>(null)
-  const [msgs, setMsgs] = useState<ProposedMessageResult[] | null>(null)  // 제안 기능: 말로 보태기 처리 결과 (목업에서만)
+  const [msgs, setMsgs] = useState<ProposedMessageResult[] | null>(null)  // 제안 기능: 말로 보태기 처리 결과 (getMessageResults 가 있을 때)
   const leave = useLeaveRequest(requestId, st)  // 취소·아이디어 고쳐 다시 시작: 요청을 닫고 아이디어·조건을 홈에 채워 둔다
   const notice = useFlowNotice(requestId)        // 확인 화면에서 바꾼 것 때문에 돌아왔으면 그 이유
   useEffect(() => { if (res.data) setSt(res.data) }, [res.data])
