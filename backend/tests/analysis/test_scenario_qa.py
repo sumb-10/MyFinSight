@@ -2113,3 +2113,21 @@ def test_feasibility_question_is_asked_again_when_its_numbers_change(monkeypatch
     st = svc.answer(st.request_id, q1.seq, option_value=q1.options[0].value)
     q2 = st.question
     assert q2 is not None and q2.field == "constraints.num_holdings" and "15개로" in q2.question_ko  # 숫자가 바뀌어 다시 묻는다
+
+
+def test_scenario_runner_waits_for_first_turn():
+    """새 요청은 '해석 중'으로 번호만 먼저 온다 — 시나리오 실행기는 해석이 끝날 때까지 GET 으로 다시 읽는다 (실패면 그 상태 그대로)."""
+    from backend.analysis.eval import run_scenarios as RS
+
+    calls, answers = [], iter([{"state": "interpreting"}, {"state": "asking", "question": None}])
+
+    class Api:
+        def ok(self, method, path, body=None):
+            calls.append((method, path))
+            return next(answers)
+
+    st = RS.wait_for_first_turn(Api(), "r1", {"state": "interpreting"}, poll_s=0)
+    assert st["state"] == "asking" and calls == [("GET", "/requests/r1"), ("GET", "/requests/r1")]
+    assert RS.wait_for_first_turn(Api(), "r2", {"state": "ready"}, poll_s=0) == {"state": "ready"} and len(calls) == 2  # 이미 끝났으면 다시 읽지 않음
+    failed = RS.wait_for_first_turn(type("A", (), {"ok": lambda self, m, p, b=None: {"state": "failed", "error_ko": "x"}})(), "r3", {"state": "interpreting"}, poll_s=0)
+    assert failed["state"] == "failed"

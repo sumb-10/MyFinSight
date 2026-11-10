@@ -205,3 +205,49 @@ describe("목업 모드 화면", () => {
     expect(screen.queryByText(/목업 데이터 화면입니다/)).toBeNull()
   })
 })
+
+// 새 요청: 실제 서버처럼 번호를 먼저 주고(interpreting) 지연 ×50 동안 해석 중(지난 만큼 6단계가 나아감), 지나면 질문. 목업 상태가 sessionStorage 에 있어 새로고침해도 이어진다.
+describe("목업 새 요청: 번호를 먼저 주고 뒤에서 해석", () => {
+  const IDEA = "미국 대형 기술주에 나눠 투자하고 싶어요"
+  it("정한 시각까지는 해석 중(질문·조건 없음), 지나면 질문 중 대화가 된다", async () => {
+    const c = { now: 1_000_000 }
+    const s = new MockService({ latencyMs: 1, persist: false, clock: () => c.now })  // 해석 중 = 50ms (시계로만 판정)
+    const st = await s.createRequest({ idea: IDEA })
+    expect(st).toMatchObject({ state: "interpreting", question: null, questions: [], conditions: [] })
+    expect(st.progress?.map((p) => p.status)).toEqual(["running", "waiting", "waiting", "waiting", "waiting", "waiting"])
+    c.now += 25  // 절반: 3단계가 끝나고 후보 분류가 진행 중
+    const mid = await s.getRequest(st.request_id)
+    expect(mid.state).toBe("interpreting")
+    expect(mid.progress?.map((p) => p.status)).toEqual(["done", "done", "done", "running", "waiting", "waiting"])
+    expect(mid.progress?.[1].detail_ko).toMatch(/^테마 /)
+    expect(mid.progress?.[3]).toMatchObject({ key: "classify", detail_ko: "1/2 묶음" })
+    c.now += 25
+    const after = await s.getRequest(st.request_id)
+    expect(after.state).toBe("asking")
+    expect(after.question).not.toBeNull()
+  })
+  it("지연 0(테스트)이면 바로 질문 중이다 (기존 동작)", async () => {
+    expect((await mock().createRequest({ idea: IDEA })).state).toBe("asking")
+  })
+  it("해석 중에 새로고침해도(목업 상태를 다시 읽어도) 이어진다", async () => {
+    const c = { now: 1_000_000 }
+    const st = await new MockService({ latencyMs: 1, clock: () => c.now }).createRequest({ idea: IDEA })  // persist 기본값: sessionStorage
+    const reloaded = new MockService({ latencyMs: 1, clock: () => c.now })
+    expect((await reloaded.getRequest(st.request_id)).state).toBe("interpreting")
+    c.now += 50
+    expect((await reloaded.getRequest(st.request_id)).state).toBe("asking")
+  })
+  it("재분석·수정 요청은 실제 서버처럼 해석까지 끝낸 뒤 돌려준다", async () => {
+    const s = new MockService({ latencyMs: 1, persist: false })
+    expect((await s.rerun(REPORTS[0].id)).state).toBe("asking")
+    expect((await s.createRevision(REPORTS[0].id, "엔비디아는 빼 주세요")).state).toBe("asking")
+  })
+  it("패널의 고정 요청: 계속 해석 중 / 해석 실패(이유 포함)", async () => {
+    const s = mock()
+    expect((await s.getRequest("mock_req_interpreting")).state).toBe("interpreting")
+    const f = await s.getRequest("mock_req_failed")
+    expect(f.state).toBe("failed")
+    expect(f.error_ko).toMatch(/응답 형식이 맞지 않습니다/)
+    expect(f.progress?.slice(0, 3).map((p) => p.status)).toEqual(["done", "running", "waiting"])  // 아이디어 해석에서 멈춤
+  })
+})

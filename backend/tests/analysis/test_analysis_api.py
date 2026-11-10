@@ -10,8 +10,10 @@ from fastapi.testclient import TestClient
 
 from backend.analysis.api.app import API_PREFIX, create_analysis_app
 from backend.analysis.common.llm import StubLlm
-from backend.analysis.common.store import JsonStore
+from backend.analysis.common.store import JsonStore, RequestStore
 from backend.analysis.executor import worker
+from backend.analysis.m1_request.dialog import FIRST_TURN_FAILED_KO, STALE_INTERPRETING_KO
+from backend.analysis.schemas.dialog import AnalysisRequestDoc
 from backend.analysis.settings import AnalysisSettings, replace_settings
 from backend.db import open_repository
 from backend.tests.analysis.conftest import seed_repository
@@ -66,8 +68,9 @@ def test_dialog_flow_run_and_report_endpoints(api):
     client, repo, store, s = api
     r = client.post(f"{P}/requests", json={"idea": "미국과 한국의 반도체·메모리 기업에 분산 투자하고 싶다"})
     assert r.status_code == 200, r.text
-    st = r.json()
-    rid = st["request_id"]
+    rid = r.json()["request_id"]
+    assert r.json()["state"] == "interpreting" and r.json()["question"] is None  # 번호를 먼저 돌려주고 해석·첫 질문은 응답 뒤에
+    st = client.get(f"{P}/requests/{rid}").json()  # TestClient 는 응답을 돌려주기 전에 백그라운드 작업을 끝낸다
     assert st["state"] == "asking" and st["question"]["field"] == "strategy_preference.template" and st["turn"] == 1
     r = client.post(f"{P}/requests/{rid}/confirm")
     assert r.status_code == 409 and r.json()["error"]["code"] == "DIALOG_NOT_READY"
@@ -149,3 +152,71 @@ def test_report_v2_endpoints(api):
     assert set(se["series"]) == {doc["header"]["chosen_portfolio_id"], "net_invested"} and len(se["dates"]) == len(se["series"]["net_invested"]["values"])
     assert client.get(f"{P}/reports/{run_id}/series", params={"dataset": "nope"}).status_code == 404
     assert client.get(f"{P}/reports/run_nope/evidence").status_code == 404
+
+
+def test_new_request_failure_and_stale(api, tmp_path):
+    """해석이 응답 뒤에 실패하면 failed + error_ko. 해석 중으로 15분 넘게 멈춘 요청(서버 재시작으로 끊김)은 failed 로 보인다."""
+    _client, repo, _store, s = api
+
+    def boom(_messages):
+        raise RuntimeError("LLM 연결 끊김")
+
+    app = create_analysis_app(lambda: repo, store_dir=tmp_path / "store", settings=s, llm=lambda: StubLlm({"02_intent": boom}))
+    client = TestClient(app, raise_server_exceptions=False)
+    assert client.put(f"{P}/profile", json=PROFILE_FIELDS).status_code == 200
+    r = client.post(f"{P}/requests", json={"idea": "미국 대형 기술주에 나눠 투자하고 싶다"})
+    assert r.status_code == 200 and r.json()["state"] == "interpreting"
+    st = client.get(f"{P}/requests/{r.json()['request_id']}").json()
+    assert st["state"] == "failed" and st["error_ko"] == FIRST_TURN_FAILED_KO and st["status"] == "draft" and st["question"] is None
+    # 서버가 해석 도중 다시 시작된 요청: 파일은 해석 중 그대로지만 15분이 지나면 실패로 보여 준다 (저장은 하지 않음)
+    reqs = RequestStore(JsonStore(tmp_path / "store"))
+    now = dt.datetime.now().astimezone()
+    old = AnalysisRequestDoc(request_id="req_20261109_100000_abcd", created_at=(now - dt.timedelta(minutes=16)).isoformat(timespec="seconds"),
+                             profile_version=1, idea="해석 중에 끊긴 요청", dialog_state="interpreting")  # fmt: skip
+    reqs.save(old)
+    st = client.get(f"{P}/requests/{old.request_id}").json()
+    assert st["state"] == "failed" and st["error_ko"] == STALE_INTERPRETING_KO
+    assert reqs.load(old.request_id).dialog_state == "interpreting"
+    fresh = old.model_copy(update={"request_id": "req_20261109_100001_abcd", "created_at": now.isoformat(timespec="seconds")})
+    reqs.save(fresh)
+    assert client.get(f"{P}/requests/{fresh.request_id}").json()["state"] == "interpreting"
+    # 멈춤 판정은 마지막 진행 시각 기준: 16분 전에 만들었어도 1분 전에 단계가 바뀌었으면 아직 해석 중
+    busy = old.model_copy(update={"request_id": "req_20261109_100002_abcd", "progress_updated_at": (now - dt.timedelta(minutes=1)).isoformat(timespec="seconds")})
+    reqs.save(busy)
+    assert client.get(f"{P}/requests/{busy.request_id}").json()["state"] == "interpreting"
+
+
+def test_new_request_progress(api, tmp_path):
+    """새 요청은 6단계가 모두 대기로 시작하고, 해석하는 동안 단계와 결과가 요청 문서에 쌓인다. 실패하면 멈춘 단계가 남는다."""
+    _client, repo, _store, s = api
+    reqs = RequestStore(JsonStore(tmp_path / "store"))
+    seen: list[dict[str, str]] = []
+
+    def intent_reading_progress(_messages):  # LLM 이 해석하는 동안 화면이 읽는 문서
+        (doc,) = reqs.list()
+        seen.append({p.key: p.status for p in doc.progress})
+        return _intent([Q_TEMPLATE])
+
+    app = create_analysis_app(lambda: repo, store_dir=tmp_path / "store", settings=s, llm=lambda: StubLlm({"02_intent": intent_reading_progress}))
+    client = TestClient(app, raise_server_exceptions=False)
+    assert client.put(f"{P}/profile", json=PROFILE_FIELDS).status_code == 200
+    r = client.post(f"{P}/requests", json={"idea": "미국과 한국의 반도체·메모리 기업에 분산 투자하고 싶다"})
+    keys = ["conditions", "intent", "retrieve", "classify", "screen", "question"]
+    assert [p["key"] for p in r.json()["progress"]] == keys and {p["status"] for p in r.json()["progress"]} == {"waiting"}
+    assert seen == [{"conditions": "done", "intent": "running", "retrieve": "waiting", "classify": "waiting", "screen": "waiting", "question": "waiting"}]
+    st = client.get(f"{P}/requests/{r.json()['request_id']}").json()
+    prog = {p["key"]: p for p in st["progress"]}
+    assert st["state"] == "asking" and all(p["status"] in ("done", "skipped") for p in prog.values())
+    assert prog["conditions"]["detail_ko"].startswith("기준일 2025-12-31") and prog["intent"]["detail_ko"].startswith("테마 ")
+    assert prog["retrieve"]["detail_ko"].startswith("후보 ") and prog["question"]["detail_ko"].startswith("「선정 기준") and prog["question"]["detail_ko"].endswith("」 묻기")
+    assert reqs.load(st["request_id"]).progress_updated_at
+    # 해석이 실패하면 멈춘 단계(아이디어 해석)가 진행 중으로 남아 화면이 어디서 멈췄는지 보여 준다
+    def boom(_messages):
+        raise RuntimeError("LLM 연결 끊김")
+
+    app2 = create_analysis_app(lambda: repo, store_dir=tmp_path / "store2", settings=s, llm=lambda: StubLlm({"02_intent": boom}))
+    c2 = TestClient(app2, raise_server_exceptions=False)
+    assert c2.put(f"{P}/profile", json=PROFILE_FIELDS).status_code == 200
+    rid = c2.post(f"{P}/requests", json={"idea": "미국 대형 기술주에 나눠 투자하고 싶다"}).json()["request_id"]
+    st = c2.get(f"{P}/requests/{rid}").json()
+    assert st["state"] == "failed" and [(p["key"], p["status"]) for p in st["progress"][:3]] == [("conditions", "done"), ("intent", "running"), ("retrieve", "waiting")]

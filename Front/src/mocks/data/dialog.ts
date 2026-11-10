@@ -1,6 +1,6 @@
 // 목업 요청(대화) 상태. 리포트 시나리오마다 확정된 요청이 있고, 질문 중인 요청 하나(여러 질문 한 번에 답하기 확인용)를 더 둔다.
 import { stockLabel } from "../../api/proposed"
-import type { ConditionRow, DialogState, ProfileFields, Question, RequestRow, UserRequest } from "../../api/types"
+import type { ConditionRow, DialogState, ProfileFields, ProgressStep, Question, RequestRow, UserRequest } from "../../api/types"
 import type { ReportScenario } from "../scenarios"
 import { MOCK_AS_OF, MOCK_FX_NOW, REPORTS } from "../scenarios"
 import { PROFILE_VERSIONS } from "./profile"
@@ -158,6 +158,23 @@ export function askingDialog(base: ProfileFields = PROFILE_VERSIONS[3], request_
     summary: { interpretation_summary_ko: `[목업] ${sc.themes.map((t) => t.label).join("·")} 기업에 투자하려는 요청으로 이해했습니다.`, themes: sc.themes.map((t, i) => ({ id: `t${i + 1}`, label_ko: t.label, description_ko: t.desc })), derived: req.derived, changed_fields: [] },
     revision: null, run_id: null, warnings: [], conditions: rows, overrides: {},
   }
+}
+
+/** 새 요청 첫 해석의 단계 (실제 서버 m1_request/progress.py 와 같은 6단계). done = 끝난 단계 수 (0~6), 그다음 단계가 진행 중.
+ *  결과 문구는 목업 질문(반도체 테마 · 고를 수 있는 종목 MOCK_CANDIDATES 개)에 맞춘 값. */
+export const MOCK_PROGRESS_STEPS = 6
+export function mockProgress(d: DialogState, done: number): ProgressStep[] {
+  const years = d.conditions?.find((r) => r.field === "horizon.backtest_years")?.value_ko ?? "3년"
+  const steps: [string, string, string, string?][] = [
+    ["conditions", "조건 정리", `기준일 ${MOCK_AS_OF} · 백테스트 ${years}`],
+    ["intent", "아이디어 해석", `테마 ${d.summary.themes.map((t) => t.label_ko).join(", ")}`],
+    ["retrieve", "후보 종목 찾기", "후보 42개"],
+    ["classify", "후보 분류", "테마에 맞는 종목 21개", "1/2 묶음"],
+    ["screen", "고를 수 있는 종목 확인", `기준일 ${MOCK_AS_OF} ${MOCK_CANDIDATES}개`],
+    ["question", "질문 고르기", `질문 ${d.questions.length}개`],
+  ]
+  return steps.map(([key, label_ko, result, running], i) =>
+    i < done ? { key, label_ko, status: "done", detail_ko: result } : i === done ? { key, label_ko, status: "running", detail_ko: running ?? null } : { key, label_ko, status: "waiting", detail_ko: null })
 }
 
 /** 질문에 모두 답해 확인만 남은 요청 (조건 확인 화면 확인용). */
