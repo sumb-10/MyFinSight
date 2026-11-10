@@ -260,3 +260,24 @@ def test_wait_cancellable_for_long_blocking_calls():
         wait_cancellable(lambda: (_ for _ in ()).throw(ValueError("db")), lambda: False)
     with pytest.raises(CancelRequested):  # 이미 취소면 시작하지 않는다
         wait_cancellable(lambda: "never", lambda: True)
+
+
+def test_portfolio_construct_stage_stops_soon_after_cancel(monkeypatch):
+    """10f·10·10w 의 construct(뉴스 조회 DB·LLM 뷰·최적화)를 기다리는 중에도 취소면 바로 멈춘다."""
+    from backend.analysis.executor import stages as S
+
+    finished = threading.Event()
+
+    def slow_construct(*_a, **_k):
+        time.sleep(1.5)  # 뉴스 조회 쿼리·최적화처럼 오래 막히는 일
+        finished.set()
+
+    monkeypatch.setattr(S, "construct", slow_construct)
+    flag = threading.Event()
+    ctx = SimpleNamespace(out=lambda k: {"selected": [{"ticker": "MU"}]} if k == "05_selection" else {}, request={"derived": {"as_of": "2026-11-06"}},
+                          md=SimpleNamespace(view=lambda d: None), settings=None, llm=None, desc=None, cancel_check=flag.is_set)  # fmt: skip
+    threading.Timer(0.2, flag.set).start()
+    t0 = time.monotonic()
+    with pytest.raises(CancelRequested):
+        S.st_forward(ctx)  # type: ignore[arg-type]
+    assert time.monotonic() - t0 < 0.8 and not finished.is_set()

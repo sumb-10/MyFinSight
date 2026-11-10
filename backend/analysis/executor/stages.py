@@ -179,8 +179,9 @@ def st_targets(ctx: RunContext) -> str:
     """백테스트 시작일 구성: 시장모형 + 템플릿 4 + 뉴스 뷰 BL (construct mode=start)."""
     spec = ctx.out("07_backtest_spec")
     as_of = dt.date.fromisoformat(str(spec["period"]["as_of"]))
-    res = construct(ctx.md.view(as_of), list(spec["selection"]["tickers"]), ctx.request, ctx.out("02_intent"), ctx.settings, ctx.llm, ctx.desc,
-                    mode="start", stage_tag=f"09_views_news_{as_of}_start")  # fmt: skip  (10w 첫날과 단계명이 겹치면 프롬프트·응답 기록이 서로 덮어쓴다)
+    # construct 는 ctx 를 건드리지 않는 순수 함수 → 뉴스 조회(DB)·최적화 중에도 취소를 보며 기다린다 (취소면 뒤에서 끝나고 버려짐)
+    res = wait_cancellable(lambda: construct(ctx.md.view(as_of), list(spec["selection"]["tickers"]), ctx.request, ctx.out("02_intent"), ctx.settings, ctx.llm, ctx.desc,
+                                             mode="start", stage_tag=f"09_views_news_{as_of}_start"), ctx.cancel_check, name="construct_start")  # fmt: skip  (10w 첫날과 단계명이 겹치면 프롬프트·응답 기록이 서로 덮어쓴다)
     ctx.outputs["08_market_model"] = res.market_model
     ctx.outputs["08_baseline_portfolios"] = res.baselines
     views = Views(request_id=ctx.request_id, as_of=as_of, window=res.evidence.summary() if res.evidence else None,
@@ -225,8 +226,9 @@ def st_walkforward(ctx: RunContext) -> str:
     models, news_summary, warnings, fallback_reasons = {}, {}, [], {}
 
     def per_date(d: dt.date):  # 순수 함수: 날짜 하나의 구성 (공유 상태를 건드리지 않음 → 병렬 가능)
-        return construct(ctx.md.view(d), tickers, ctx.request, intent, ctx.settings, ctx.llm, ctx.desc, mode="rebalance", stage_tag=f"09_views_news_{d}_wf",
-                         id_prefix=f"wf_bl_{d}", name_prefix="뉴스 뷰 BL")  # fmt: skip
+        return wait_cancellable(lambda: construct(ctx.md.view(d), tickers, ctx.request, intent, ctx.settings, ctx.llm, ctx.desc, mode="rebalance",
+                                                  stage_tag=f"09_views_news_{d}_wf", id_prefix=f"wf_bl_{d}", name_prefix="뉴스 뷰 BL"),
+                                ctx.cancel_check, name=f"construct_{d}")  # fmt: skip  (날짜 하나 안의 뉴스 조회·최적화 중에도 취소)
 
     workers = ctx.settings.executor.walkforward_workers or ctx.settings.llm.max_concurrency
     results = run_ordered(ctx, "10w_paths", dates, per_date, max_workers=workers)  # 날짜 순서대로 돌아온다 (라운드 4 S2)
@@ -293,8 +295,9 @@ def st_forward(ctx: RunContext) -> str:
     sel = ctx.out("05_selection")
     as_of = _as_of(ctx)
     tickers = [s["ticker"] for s in sel["selected"]]
-    res = construct(ctx.md.view(as_of), tickers, ctx.request, ctx.out("02_intent"), ctx.settings, ctx.llm, ctx.desc, mode="current",
-                    stage_tag=f"09_views_news_{as_of}_current", id_prefix="fwd_bl", name_prefix="현재 구성 BL")  # fmt: skip
+    res = wait_cancellable(lambda: construct(ctx.md.view(as_of), tickers, ctx.request, ctx.out("02_intent"), ctx.settings, ctx.llm, ctx.desc, mode="current",
+                                             stage_tag=f"09_views_news_{as_of}_current", id_prefix="fwd_bl", name_prefix="현재 구성 BL"),
+                           ctx.cancel_check, name="construct_current")  # fmt: skip  (뉴스 조회·최적화 중에도 취소)
     if res.evidence:
         ctx.add_news_window("10f_current", res.evidence.to_dict())
     init, fx = ctx.request["derived"]["initial_amount_usd"], ctx.request["derived"]["fx_rate"]
