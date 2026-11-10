@@ -29,11 +29,16 @@ describe("목업 모드 분리", () => {
     setUrl("/?mock=0#/home")
     expect(isMockMode()).toBe(false)
   })
-  it("서버가 아직 주지 않는 제안 계약 메서드는 실제 서버 서비스에 없고, 서버가 구현한 리포트 이름·삭제만 연결된다", () => {
+  it("서버가 아직 주지 않는 제안 계약 메서드는 실제 서버 서비스에 없고, 서버가 구현한 것(리포트 이름·삭제, 투자조건 버전)만 연결된다", () => {
     const http: AnalysisService = new HttpService()
     expect(http.searchStocks).toBeUndefined(); expect(http.getPaperKrw).toBeUndefined(); expect(http.setPaperName).toBeUndefined()
-    expect(typeof http.renameReport).toBe("function"); expect(typeof http.deleteReport).toBe("function"); expect(typeof http.getReportName).toBe("function")
+    for (const m of ["renameReport", "deleteReport", "getReportName", "getProfileVersion"] as const) expect(typeof http[m]).toBe("function")
     expect(typeof mock().searchStocks).toBe("function")
+  })
+  it("투자조건 버전은 서버 주소로 요청한다", async () => {
+    const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("{}", { status: 200 }))
+    await new HttpService().getProfileVersion(2)
+    expect(f.mock.calls.map(([u, i]) => [String(u).replace(/^.*\/api\/v1/, ""), i?.method])).toEqual([["/profile/versions/2", "GET"]])
   })
   it("리포트 이름·삭제는 서버 주소로 요청한다", async () => {
     const f = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ report_id: "r1", deleted: true }), { status: 200 }))

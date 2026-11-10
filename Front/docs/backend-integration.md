@@ -2,7 +2,7 @@
 
 이 문서는 프런트엔드가 목업 모드(`?mock=1`, 개발 환경 전용)에서 먼저 만든 기능을 실제 서버와 연결할 때 필요한 데이터와 API를 정리한다.
 **여기 적힌 API·필드는 모두 「제안 계약」이며 서버와 합의되지 않았다.** 이름·경로·위치는 바뀔 수 있다.
-지금 실제 서버(`HttpService`)는 이 필드·메서드를 주지 않으며, 그 경우 화면은 기존 그대로 동작한다 (일반 모드 회귀 테스트로 확인).
+실제 서버(`HttpService`)가 주지 않는 필드·메서드는 화면이 기존 그대로 동작한다 (일반 모드 회귀 테스트로 확인). 실제 서버에 들어간 항목은 각 절에 「✅ 실제 서버 구현」으로 적는다.
 
 - 목업 구조·실행 방법·시나리오: [`mock-mode.md`](./mock-mode.md)
 - 타입 정의(제안 계약 원본): `src/api/proposed.ts`
@@ -91,6 +91,8 @@
 - **API (제안):** `GET /profile/versions/{version}` → `ProfileVersion`(기존 타입 그대로, 그 버전 값 전체)
 - **정책:** 비교는 프런트가 같은 표시 함수로 계산(`features/profile/compare.tsx` 의 `profileRows/diffProfiles`). 서버가 바뀐 필드 목록을 주면 더 정확(제안: `changed_fields: string[]`).
 - **목업:** `MockService.getProfileVersion`, 버전 1~4(+0원 버전) `mocks/data/profile.ts`. **프런트 수정:** `api/service.ts`. 화면 `features/profile/history.tsx`·`compare.tsx`.
+- **✅ 실제 서버 구현 (2026-11-10):** `GET /profile/versions/{version}` → 그 버전 값 전체(`GET /profile` 의 `profile` 과 같은 모양, `note` 포함). 프로필이나 그 버전이 없으면 404, 숫자가 아니면 422.
+  `changed_fields` 는 넣지 않았다 (비교는 지금처럼 프런트 `diffProfiles`). 프런트는 `HttpService.getProfileVersion`.
 
 ### 2-7. 여러 질문 한 번에 답하기 — 4단계
 

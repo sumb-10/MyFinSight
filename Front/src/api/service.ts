@@ -2,11 +2,11 @@
 // 개발용 목업 모드(?mock=1, src/mocks)는 같은 계약을 목업 자료로 구현한다 — main.tsx 가 처음에 하나를 골라 꽂는다.
 import { api, ApiError, LLM_TIMEOUT_MS } from "./client"
 import type { ProposedApi, ProposedReportName } from "./proposed"
-import type { CheckpointDetail, ComparisonDoc, DialogState, EvidenceDetail, EvidencePage, EvidenceQuery, Health, Options, PaperDetail, PaperIn, PaperPreview, PaperSummary, ProfileFields, ProfileView, ReportDoc, ReportRow, RequestRow, RunPartial, RunRow, RunStatus, SeriesResponse } from "./types"
+import type { CheckpointDetail, ComparisonDoc, DialogState, EvidenceDetail, EvidencePage, EvidenceQuery, Health, Options, PaperDetail, PaperIn, PaperPreview, PaperSummary, ProfileFields, ProfileVersion, ProfileView, ReportDoc, ReportRow, RequestRow, RunPartial, RunRow, RunStatus, SeriesResponse } from "./types"
 
 const LLM = { timeoutMs: LLM_TIMEOUT_MS }
 
-/** 제안 계약 메서드(ProposedApi)는 모두 선택이다. 실제 서버 서비스에는 없고 목업 서비스만 가진다 → 화면은 메서드가 있을 때만 그 기능을 연다. */
+/** 제안 계약 메서드(ProposedApi)는 모두 선택이다. 목업 서비스는 모두 가지고, 실제 서버 서비스는 서버가 구현한 것만 가진다 → 화면은 메서드가 있을 때만 그 기능을 연다. */
 export interface AnalysisService extends Partial<ProposedApi> {
   readonly mode: "api" | "mock"
   health(): Promise<Health>
@@ -73,6 +73,7 @@ export class HttpService implements AnalysisService {
     }
   }
   saveProfile(fields: ProfileFields) { return api.put<ProfileView>("/profile", fields) }
+  getProfileVersion(version: number) { return api.get<ProfileVersion>(`/profile/versions/${version}`) }
   createRequest(input: { idea: string; overrides?: Record<string, unknown>; mode?: "new" | "rerun" | "revision"; base_report_id?: string | null }) {
     return api.post<DialogState>("/requests", { idea: input.idea, overrides: input.overrides ?? {}, mode: input.mode ?? "new", base_report_id: input.base_report_id ?? null }, LLM)
   }

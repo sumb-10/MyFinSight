@@ -164,7 +164,7 @@ export interface ProposedPaperKrw {
 }
 export interface ProposedPaperName { name_ko: string; mode: "linked" | "custom"; report_name_ko: string }
 
-/* ───────── 서비스 확장 (모두 선택). 실제 서버 서비스(HttpService)에는 없다 → 화면은 메서드가 있을 때만 기능을 연다. ───────── */
+/* ───────── 서비스 확장 (모두 선택). 실제 서버 서비스(HttpService)는 서버가 구현한 것만 가진다 (리포트 이름·삭제, 투자조건 버전) → 화면은 메서드가 있을 때만 기능을 연다. ───────── */
 export interface ProposedApi {
   getReportName(reportId: string): Promise<ProposedReportName>
   renameReport(reportId: string, name: string | null): Promise<ProposedReportName>   // null = 자동 이름으로 되돌리기
