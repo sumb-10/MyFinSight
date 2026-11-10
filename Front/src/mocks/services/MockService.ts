@@ -24,6 +24,13 @@ const INTERPRET_X = 50  // 새 요청이 '해석 중'인 시간 = 평소 지연 
 
 export interface MockOptions { latencyMs?: number; persist?: boolean; clock?: () => number }  // clock: 진행 시퀀스·취소 시간을 테스트에서 바꿔 끼운다
 
+/** 목업도 실제 서버처럼: 같은 요청의 가장 최근 실행이 취소된 것이면 「멈춘 곳부터 이어서 실행」 할 수 있다 (그때만 투자 아이디어). */
+const withResumable = (requests: Record<string, { idea?: string }>) => (rows: RunRow[]): RunRow[] => {
+  const latest = new Map<string, RunRow>()
+  for (const r of rows) { const l = latest.get(r.request_id); if (!l || r.queued_at > l.queued_at) latest.set(r.request_id, r) }
+  return rows.map((r) => { const resumable = r.status === "cancelled" && latest.get(r.request_id) === r; return { ...r, resumable, idea: resumable ? requests[r.request_id]?.idea ?? null : null } })
+}
+
 export class MockService implements AnalysisService {
   readonly mode = "mock" as const
   private s: MockState
@@ -283,7 +290,7 @@ export class MockService implements AnalysisService {
     return { ...r, status: "cancelled", finished_at: iso(c.cancel_at + CANCEL_MS), steps: st, buckets: buckets(st), cancel: cancelInfo(r.steps, iso(c.cancel_at), iso(c.cancel_at + CANCEL_MS)) } as RunStatus
   }
   listRuns(): Promise<RunRow[]> {
-    return this.wait(() => [...Object.keys(this.s.live).map((id) => this.runOf(id)), ...runRows().map((r) => this.runOf(r.run_id))].map((r) => ({ run_id: r.run_id, request_id: r.request_id, status: r.status, queued_at: r.queued_at, started_at: r.started_at ?? null, finished_at: r.finished_at ?? null, report_id: r.report_id ?? null, error_message: r.error?.message_ko ?? null })))
+    return this.wait(() => [...Object.keys(this.s.live).map((id) => this.runOf(id)), ...runRows().map((r) => this.runOf(r.run_id))].map((r) => ({ run_id: r.run_id, request_id: r.request_id, status: r.status, queued_at: r.queued_at, started_at: r.started_at ?? null, finished_at: r.finished_at ?? null, report_id: r.report_id ?? null, error_message: r.error?.message_ko ?? null }))).then(withResumable(this.s.requests))
   }
   getRun(id: string): Promise<RunStatus> { return this.wait(() => this.runOf(id)) }
   /** 목업 즉시 취소: 누른 시각에 진행을 멈추고 CANCEL_MS 동안 「취소 처리 중」, 그 뒤 「취소됨」. 이미 끝난 분석은 취소할 수 없다. */

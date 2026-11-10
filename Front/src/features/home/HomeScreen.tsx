@@ -34,6 +34,15 @@ export function HomeScreen() {
   const ex = useExample()  // 최근 리포트 맨 위의 「예시」 리포트
   const example = ex.visible
   const [ui, setUi] = useState(() => loadUi())
+  // 취소한 분석: 서버 실행 목록 기준이라 다른 브라우저에서도 보인다. 「지우기」 한 것은 이 브라우저에서만 숨김
+  const runs = useResource(() => svc.listRuns(), [svc]).data
+  const resume = runs?.find((r) => r.resumable && !(ui.dismissedResumeIds ?? []).includes(r.run_id)) ?? null
+  const [resumeBusy, setResumeBusy] = useState(false)
+  const [resumeErr, setResumeErr] = useState<string | null>(null)
+  const resumeRun = async (runId: string) => {
+    setResumeBusy(true); setResumeErr(null)
+    try { const st = await svc.retryRun(runId); saveUi({ activeRunId: st.run_id }); navigate({ page: "run", runId: st.run_id }) } catch (e) { setResumeErr(errorMessage(e)) } finally { setResumeBusy(false) }
+  }
   useEffect(() => { saveUi({ draftIdea: idea }) }, [idea])
   useEffect(() => { saveUi({ draftOverrides: overrides }) }, [overrides])
   useEffect(() => { const u = loadUi(); if (u.prefillIdea || u.prefillOverrides || u.prefillNote) setUi(saveUi({ prefillIdea: null, prefillOverrides: null, prefillNote: null })) }, [])  // 미리 채운 값(새 요청)은 한 번만 쓴다
@@ -85,11 +94,22 @@ export function HomeScreen() {
         </div>
       </div>
       {detail && <DetailConditionsDialog profile={profile.profile} initial={overrides} onApply={setOverrides} close={() => setDetail(false)} />}
-      {(ui.activeRequestId || ui.activeRunId) && (
+      {resume && (
+        <Alert title="취소한 분석이 있습니다" tone="info">
+          <p className="mb-3 text-sm leading-6">{resume.idea && <><b className="font-semibold">‘{resume.idea.split("\n")[0]}’</b> · </>}멈춘 곳부터 이어서 실행하면 같은 조건으로 다시 돌리되, 취소 전에 끝난 단계는 저장된 결과를 다시 써서 빠르게 지나갑니다.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => void resumeRun(resume.run_id)} disabled={resumeBusy}>{resumeBusy ? "다시 등록 중…" : "멈춘 곳부터 이어서 실행"}</Button>
+            <Button variant="secondary" onClick={() => navigate({ page: "run", runId: resume.run_id })}>취소한 분석 보기</Button>
+            <Button variant="ghost" onClick={() => setUi(saveUi({ dismissedResumeIds: [...(ui.dismissedResumeIds ?? []), resume.run_id], ...(ui.activeRunId === resume.run_id ? { activeRunId: null } : {}) }))}>지우기</Button>
+          </div>
+          {resumeErr && <div className="mt-3"><ActionError title="이어서 실행하지 못했습니다" message={resumeErr} retry={() => void resumeRun(resume.run_id)} /></div>}
+        </Alert>
+      )}
+      {(ui.activeRequestId || (ui.activeRunId && ui.activeRunId !== resume?.run_id)) && (
         <Alert title="진행 중이던 분석이 있습니다" tone="info">
           <div className="flex gap-2">
             {ui.activeRequestId && <Button variant="secondary" onClick={() => navigate({ page: "clarify", requestId: ui.activeRequestId! })}>조건 확인 이어서</Button>}
-            {ui.activeRunId && <Button variant="secondary" onClick={() => navigate({ page: "run", runId: ui.activeRunId! })}>실행 상태 보기</Button>}
+            {ui.activeRunId && ui.activeRunId !== resume?.run_id && <Button variant="secondary" onClick={() => navigate({ page: "run", runId: ui.activeRunId! })}>실행 상태 보기</Button>}
             <Button variant="ghost" onClick={() => setUi(saveUi({ activeRequestId: null, activeRunId: null }))}>지우기</Button>
           </div>
         </Alert>

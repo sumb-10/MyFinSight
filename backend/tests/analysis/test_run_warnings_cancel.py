@@ -281,3 +281,61 @@ def test_portfolio_construct_stage_stops_soon_after_cancel(monkeypatch):
     with pytest.raises(CancelRequested):
         S.st_forward(ctx)  # type: ignore[arg-type]
     assert time.monotonic() - t0 < 0.8 and not finished.is_set()
+
+
+# ───────────────────────── 멈춘 곳부터 이어서 실행 (같은 확정 요청으로 새 실행 + LLM 캐시) ─────────────────────────
+class _LateClient:
+    """seconds 뒤에 정상 응답을 주는 가짜 OpenAI 클라이언트."""
+
+    def __init__(self, seconds: float) -> None:
+        self.seconds = seconds
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+
+    def _create(self, **kw):
+        time.sleep(self.seconds)
+        usage = SimpleNamespace(prompt_tokens=10, completion_tokens=5, prompt_tokens_details=None, completion_tokens_details=None)
+        msg = SimpleNamespace(content='{"answer": 42}')
+        return SimpleNamespace(model=kw["model"], usage=usage, choices=[SimpleNamespace(message=msg, finish_reason="stop")])
+
+
+def test_late_answer_after_cancel_is_cached_for_resume(tmp_path):
+    s = AnalysisSettings().llm
+    llm = OpenAiLlm(replace_settings(s, cache=True, retries=0), client=_LateClient(0.6), cache_dir=tmp_path / "cache")
+    flag = threading.Event()
+    llm.cancel_check = flag.is_set
+    threading.Timer(0.2, flag.set).start()
+    msgs = [{"role": "user", "content": "x"}]
+    with pytest.raises(CancelRequested):
+        llm.complete_json("06_explain", msgs)
+    cpath = tmp_path / "cache" / f"{llm.cache_key('06_explain', msgs)}.json"
+    for _ in range(40):  # 버린 호출의 응답이 도착하면 캐시에 남는다
+        if cpath.exists():
+            break
+        time.sleep(0.05)
+    assert json.loads(cpath.read_text(encoding="utf-8")) == {"answer": 42}
+    again = OpenAiLlm(replace_settings(s, cache=True), client=_SlowClient(5.0), cache_dir=tmp_path / "cache")  # 이어서 실행: 같은 질문은 다시 사지 않는다
+    t0 = time.monotonic()
+    assert again.complete_json("06_explain", msgs) == {"answer": 42} and time.monotonic() - t0 < 0.5
+
+
+def test_runs_list_marks_resumable_cancelled_run(tmp_path, monkeypatch):
+    from backend.analysis.common.store import RequestStore
+    from backend.analysis.schemas.dialog import AnalysisRequestDoc
+
+    monkeypatch.setenv("ANALYSIS_OUTPUT_DIR", str(tmp_path / "out"))
+    store = JsonStore(tmp_path / "store")
+    q = Queue(store)
+    reqs = RequestStore(store)
+    for rid, run_id in (("req_a", "run_a"), ("req_b", "run_b")):
+        reqs.save(AnalysisRequestDoc(request_id=rid, created_at="2026-11-10T09:00:00+09:00", profile_version=1, idea=f"반도체 {rid}\n둘째 줄",
+                                     status="confirmed", effective_request={"request_id": rid}, run_id=run_id))  # fmt: skip
+        q.enqueue(run_id, rid)
+    q.request_cancel("run_a")  # 대기 중 취소 → 바로 cancelled
+    repo = SimpleNamespace(get_steps=lambda run_id: [])  # 아직 단계 기록 없음 (실행 상태 응답용)
+    c = TestClient(create_analysis_app(lambda: repo, store_dir=store.root, settings=AnalysisSettings(), llm=lambda: StubLlm()))
+    rows = {r["run_id"]: r for r in c.get(f"{P}/runs").json()}
+    assert rows["run_a"]["resumable"] is True and rows["run_a"]["idea"] == "반도체 req_a\n둘째 줄"
+    assert rows["run_b"]["resumable"] is False and rows["run_b"]["idea"] is None  # 대기 중(취소 아님)
+    new = c.post(f"{P}/runs/run_a/retry").json()["run_id"]  # 멈춘 곳부터 이어서 실행 = 같은 확정 요청으로 새 실행
+    rows = {r["run_id"]: r for r in c.get(f"{P}/runs").json()}
+    assert rows["run_a"]["resumable"] is False and rows[new]["status"] == "queued"  # 이미 이어서 실행했으면 다시 띄우지 않는다

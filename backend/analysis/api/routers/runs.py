@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 
 from backend.analysis.api.routers import services
-from backend.analysis.errors import redact
+from backend.analysis.errors import NotFound, redact
 from backend.analysis.executor import step_warnings
 from backend.analysis.executor.stages import STAGES
 from backend.analysis.m5_backtest_report.persist import bucket_status, steps_for_api
@@ -66,7 +66,28 @@ def run_status(sv, run_id: str) -> RunStatus:
 
 @router.get("/runs", response_model=list[dict[str, Any]])
 def list_runs(request: Request, limit: int = 50) -> list[dict[str, Any]]:
-    return [{**d, "error_message": redact(d.get("error_message"))} for d in (e.model_dump(mode="json") for e in services(request).queue.list(limit))]
+    """실행 목록 (최근 순). resumable = 「멈춘 곳부터 이어서 실행」 할 수 있는 취소된 실행 (홈의 「취소한 분석」 카드), 그때만 idea 를 채운다."""
+    sv = services(request)
+    entries = sv.queue.list(limit)
+    resume = resumable(sv, entries)
+    return [{**e.model_dump(mode="json"), "error_message": redact(e.error_message), "resumable": e.run_id in resume, "idea": resume.get(e.run_id)}
+            for e in entries]  # fmt: skip
+
+
+def resumable(sv: Any, entries: list[Any]) -> dict[str, str]:
+    """취소된 실행 중 이어서 실행할 수 있는 것 → 투자 아이디어. 그 요청의 마지막 실행이 아직 이것이고(다시 실행하지 않음) 요청이 확정 상태.
+    이어서 실행 = 같은 확정 요청으로 새 실행 (POST /runs/{id}/retry). 끝난 단계는 LLM 캐시로 빨리 지나간다."""
+    out: dict[str, str] = {}
+    for e in entries:
+        if e.status != "cancelled":
+            continue
+        try:
+            doc = sv.requests.load(e.request_id)
+        except NotFound:
+            continue
+        if doc.status == "confirmed" and doc.effective_request and doc.run_id == e.run_id:
+            out[e.run_id] = doc.idea
+    return out
 
 
 @router.get("/runs/{run_id}", response_model=RunStatus)

@@ -143,7 +143,7 @@ function RunView({ runId }: { runId: string }) {
   const title = r.status === "queued" ? `대기 중 (순번 ${r.queue_position ?? "-"})` : r.status === "running" ? "분석을 실행하고 있습니다" : r.status === "cancelling" ? "분석 취소를 요청했습니다" : r.status === "success" ? "분석이 끝났습니다" : r.status === "partial" ? "분석이 끝났습니다 (확인할 점 있음)" : r.status === "failed" ? "분석이 실패했습니다" : "분석이 취소되었습니다"
   const retryBtns = (
     <div className="flex flex-wrap gap-2">
-      <Button variant="secondary" onClick={() => void retry()} disabled={busy !== ""}>{busy === "retry" ? "다시 등록 중…" : "같은 조건으로 다시 실행"}</Button>
+      <Button variant="secondary" onClick={() => void retry()} disabled={busy !== ""}>{busy === "retry" ? "다시 등록 중…" : r.status === "cancelled" ? "멈춘 곳부터 이어서 실행" : "같은 조건으로 다시 실행"}</Button>
       <Button variant="secondary" onClick={() => void newRequest()} disabled={busy !== ""}>{busy === "new" ? "불러오는 중…" : "조건 고쳐 새 요청"}</Button>
       <Button variant="ghost" onClick={() => navigate({ page: "home" })}>홈으로</Button>
     </div>
@@ -202,7 +202,7 @@ function RunView({ runId }: { runId: string }) {
                 {retryBtns}
               </>
             )}
-            {r.status === "cancelled" && <>{proposedCancelOf(r) && <CancelSummary c={proposedCancelOf(r)!} />}<p className="text-sm text-slate-700">리포트는 만들지 않았습니다. 요청 조건은 보존되어 같은 조건으로 다시 시작할 수 있습니다.</p>{retryBtns}</>}
+            {r.status === "cancelled" && <>{proposedCancelOf(r) && <CancelSummary c={proposedCancelOf(r)!} />}<p className="text-sm text-slate-700">리포트는 만들지 않았습니다. 「멈춘 곳부터 이어서 실행」을 누르면 같은 조건으로 다시 돌리되, 취소 전에 끝난 단계는 저장된 결과를 다시 써서 빠르게 지나갑니다.</p>{retryBtns}</>}
             {actErr && actErr.kind !== "cancel" && <ActionError title={actErr.kind === "retry" ? "다시 실행하지 못했습니다" : "요청 조건을 불러오지 못했습니다"} message={actErr.message} />}
           </Part>
           <SelectionPreview partial={partial} selStep={selStep} tried={partialTried} done={done} live={!TERMINAL.has(r.status)} />

@@ -39,3 +39,5 @@ export function clearLegacy() { try { window.localStorage.removeItem(LEGACY_KEY)
 
 // prefillNote: 요청을 그만두고 홈에 아이디어를 채워 왔을 때 한 번 보여 줄 안내 · draftOverrides: 홈 「상세 조건」 초안 (draftIdea 처럼 화면을 떠나도 남는다)
 export interface UiState { prefillNote?: string | null; draftOverrides?: Record<string, unknown> | null }
+// dismissedResumeIds: 홈 「취소한 분석이 있습니다」 카드에서 「지우기」 한 실행 (이 브라우저에서만 숨김)
+export interface UiState { dismissedResumeIds?: string[] }
