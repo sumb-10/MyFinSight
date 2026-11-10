@@ -52,6 +52,7 @@ def test_profile_validation_and_versions(api):
     client, *_ = api
     r = client.get(f"{P}/profile")
     assert r.status_code == 404 and r.json()["error"]["code"] == "NOT_FOUND"
+    assert client.get(f"{P}/profile/versions/1").status_code == 404  # 프로필이 아직 없음
     bad = {**PROFILE_FIELDS, "constraints": {**PROFILE_FIELDS["constraints"], "max_weight_per_sector": 0.1}}
     r = client.put(f"{P}/profile", json=bad)
     assert r.status_code == 422 and r.json()["error"]["code"] == "PROFILE_INVALID" and "constraints" in str(r.json()["error"]["fields"])
@@ -60,6 +61,13 @@ def test_profile_validation_and_versions(api):
     r = client.put(f"{P}/profile", json=PROFILE_FIELDS)
     assert r.json()["current_version"] == 2 and len(r.json()["versions"]) == 2
     assert client.get(f"{P}/profile").json()["profile"]["capital"]["initial_amount"] == 20_000_000
+    # 과거 버전 값 전체 (변경 이력 비교): GET /profile 의 profile 과 같은 모양
+    v1 = client.get(f"{P}/profile/versions/1").json()
+    assert v1["version"] == 1 and v1["note"] == "첫 등록" and v1["created_at"] and v1["capital"]["initial_amount"] == 20_000_000
+    assert client.get(f"{P}/profile/versions/2").json() == client.get(f"{P}/profile").json()["profile"]
+    r = client.get(f"{P}/profile/versions/3")
+    assert r.status_code == 404 and r.json()["error"]["code"] == "NOT_FOUND"
+    assert client.get(f"{P}/profile/versions/abc").status_code == 422
     r = client.put(f"{P}/profile", json={"capital": {}})
     assert r.status_code == 422 and r.json()["error"]["code"] == "VALIDATION_ERROR"
 

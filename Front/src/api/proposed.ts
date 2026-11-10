@@ -163,6 +163,7 @@ export interface ProposedPaperKrw {
   unavailable_reason_ko: string | null                // 원화 수익률을 계산하지 못한 이유
 }
 export interface ProposedPaperName { name_ko: string; mode: "linked" | "custom"; report_name_ko: string }
+export type ProposedPaperNameIn = { mode: "linked" } | { mode: "custom"; name_ko: string }   // linked = 리포트 이름을 따라감, custom = 직접 정한 이름
 
 /* ───────── 서비스 확장 (모두 선택). 목업 서비스는 모두 가지고, 실제 서버 서비스(HttpService)는 서버가 구현한 것만 가진다
    (어느 것인지는 mocks/mocks.test.tsx 의 CONNECTED) → 화면은 메서드가 있을 때만 기능을 연다. ───────── */
@@ -183,7 +184,7 @@ export interface ProposedApi {
   getRunWarnings(runId: string): Promise<ProposedRunWarning[]>
   getPaperKrw(paperId: string): Promise<ProposedPaperKrw | null>
   getPaperName(paperId: string): Promise<ProposedPaperName>
-  setPaperName(paperId: string, input: { mode: "linked" } | { mode: "custom"; name_ko: string }): Promise<ProposedPaperName>
+  setPaperName(paperId: string, input: ProposedPaperNameIn): Promise<ProposedPaperName>
 }
 
 /** ProposedApi 메서드 이름 전부. 인터페이스에 메서드를 더하고 여기 빠뜨리면 타입 검사가 잡는다 (테스트가 목업·실제 서버 서비스에 무엇이 있는지 볼 때 쓴다). */

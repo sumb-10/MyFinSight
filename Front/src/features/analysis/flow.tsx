@@ -19,12 +19,17 @@ const isTickerField = (f: string) => /_tickers$/.test(f)
 // 값과 변경 여부는 서버가 만든 ConditionRow(value_ko·profile_value_ko·changed) 를 그대로 쓰고, 화면에서 새로 계산하지 않는다.
 
 /** 제목 + 짧은 설명 + 오른쪽 버튼. 좁은 화면에서는 버튼을 제목 아래로 내린다 (내 투자조건 저장 화면과 같은 머리). */
-export function FlowHeader({ eyebrow, title, desc, action }: { eyebrow: string; title: string; desc?: React.ReactNode; action?: React.ReactNode }) {
+/** titleAction = 제목 바로 옆에 붙는 작은 버튼 (예: 이름 바꾸기 연필, 리포트 상세 제목과 같은 모양). */
+export function FlowHeader({ eyebrow, title, titleAction, desc, action }: { eyebrow: string; title: string; titleAction?: React.ReactNode; desc?: React.ReactNode; action?: React.ReactNode }) {
   return (
     <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
       <div className="min-w-0 max-w-3xl">
         <p className="mb-2 text-xs font-bold tracking-widest text-blue-700">{eyebrow}</p>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-950">{title}</h1>
+        {titleAction ? (
+          <div className="flex items-start gap-1"><h1 className="break-words text-3xl font-bold tracking-tight text-slate-950">{title}</h1>{titleAction}</div>
+        ) : (
+          <h1 className="text-3xl font-bold tracking-tight text-slate-950">{title}</h1>
+        )}
         {desc && <p className="mt-2 text-sm leading-6 text-slate-600">{desc}</p>}
       </div>
       {action && <div className="flex shrink-0 gap-2">{action}</div>}

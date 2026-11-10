@@ -10,6 +10,7 @@ from backend.analysis.api.app import create_analysis_app
 from backend.analysis.common.llm import StubLlm
 from backend.analysis.m5_backtest_report.execution_orders import estimate_orders, with_execution
 from backend.analysis.m5_backtest_report.report_meta import ReportMetaStore, auto_name, name_view
+from backend.analysis.m6_tracking.paper_meta import PaperMetaStore
 from backend.tests.analysis.test_paper import RID, paper_run  # noqa: F401  # 합성 DB 리포트 fixture
 
 
@@ -82,6 +83,7 @@ def client(paper_run):  # noqa: F811
     repo, store, s, _ = paper_run
     yield TestClient(create_analysis_app(lambda: repo, store_dir=store.root, settings=s, llm=lambda: StubLlm())), store
     store.write(ReportMetaStore.REL, {})  # 모듈 공유 저장소를 원래대로
+    store.write(PaperMetaStore.REL, {})
 
 
 def test_new_report_stores_execution_and_matches_card(paper_run):  # noqa: F811
@@ -154,3 +156,36 @@ def test_delete_hides_keeps_data_and_can_restore(client, paper_run):  # noqa: F8
     ReportMetaStore(store).restore(RID)
     assert c.get(f"{P}/reports/{RID}").status_code == 200 and any(x["report_id"] == RID for x in c.get(f"{P}/reports").json())
     assert store.read(ReportMetaStore.REL, {}) == {}  # 복구하면 흔적이 남지 않는다
+
+
+def test_paper_name_custom_and_relink(client):
+    c, store = client
+    body = {"report_id": RID, "start_date": "2025-10-31", "strategy_id": "equal_weight", "initial_amount": 3000, "currency": "USD"}
+    auto = c.get(f"{P}/reports/{RID}/name").json()["auto_ko"]
+    n0 = len(c.get(f"{P}/paper").json())
+    bad = c.post(f"{P}/paper", json={**body, "name": {"mode": "custom", "name_ko": "  "}})
+    assert bad.status_code == 422 and bad.json()["error"]["code"] == "REQUEST_INVALID" and len(c.get(f"{P}/paper").json()) == n0  # 이름이 틀리면 만들지 않는다
+
+    d = c.post(f"{P}/paper", json={**body, "name": {"mode": "custom", "name_ko": " 시가총액  비교용 "}}).json()
+    pid = d["portfolio"]["paper_id"]
+    assert d["portfolio"]["name_ko"] == d["summary"]["name_ko"] == "시가총액 비교용"
+    assert c.get(f"{P}/paper/{pid}/name").json() == {"name_ko": "시가총액 비교용", "mode": "custom", "report_name_ko": auto}
+
+    c.put(f"{P}/reports/{RID}/name", json={"name": "바뀐 이름"})  # 직접 정한 이름은 리포트 이름을 따라가지 않는다
+    assert next(x for x in c.get(f"{P}/paper").json() if x["paper_id"] == pid)["name_ko"] == "시가총액 비교용"
+    assert c.get(f"{P}/paper/{pid}/name").json()["report_name_ko"] == "바뀐 이름"
+
+    assert c.put(f"{P}/paper/{pid}/name", json={"mode": "linked"}).json() == {"name_ko": "바뀐 이름", "mode": "linked", "report_name_ko": "바뀐 이름"}
+    assert c.get(f"{P}/paper/{pid}").json()["summary"]["name_ko"] == "바뀐 이름" and pid not in PaperMetaStore(store).all()
+
+    assert c.put(f"{P}/paper/{pid}/name", json={"mode": "custom", "name_ko": "다시 직접"}).json()["mode"] == "custom"
+    assert c.post(f"{P}/paper/{pid}/stop").json()["portfolio"]["name_ko"] == "다시 직접"
+    for b in ({"mode": "custom"}, {"mode": "custom", "name_ko": "가" * 41}):
+        r = c.put(f"{P}/paper/{pid}/name", json=b)
+        assert r.status_code == 422 and r.json()["error"]["code"] == "REQUEST_INVALID"
+    assert c.get(f"{P}/paper/{pid}/name").json()["name_ko"] == "다시 직접"  # 틀린 입력은 저장하지 않음
+    assert c.put(f"{P}/paper/{pid}/name", json={"mode": "other"}).json()["error"]["code"] == "VALIDATION_ERROR"
+    assert c.get(f"{P}/paper/nope/name").status_code == 404 and c.put(f"{P}/paper/nope/name", json={"mode": "linked"}).status_code == 404
+
+    d2 = c.post(f"{P}/paper", json={**body, "name": {"mode": "linked"}}).json()
+    assert d2["summary"]["name_ko"] == "바뀐 이름" and d2["portfolio"]["paper_id"] not in PaperMetaStore(store).all()
