@@ -235,3 +235,28 @@ def test_cancel_poller_reads_index_at_most_every_interval_and_sticks():
     assert check() is True and len(reads) == 2
     time.sleep(0.25)
     assert check() is True and len(reads) == 2  # 한 번 취소면 다시 읽지 않고 계속 True
+
+
+def test_wait_cancellable_for_long_blocking_calls():
+    """01 단계의 가격 대량 적재처럼 한 번에 오래 막히는 호출도 취소를 기다리지 않는다 (호출은 뒤에서 끝남)."""
+    from backend.analysis.executor.parallel import wait_cancellable
+
+    finished = threading.Event()
+
+    def slow():
+        time.sleep(1.5)
+        finished.set()
+        return "loaded"
+
+    flag = threading.Event()
+    threading.Timer(0.2, flag.set).start()
+    t0 = time.monotonic()
+    with pytest.raises(CancelRequested):
+        wait_cancellable(slow, flag.is_set, name="prefetch")
+    assert time.monotonic() - t0 < 0.8 and not finished.is_set()
+    assert finished.wait(3)  # 버린 호출은 뒤에서 끝까지 (가격 적재면 캐시에 남는다)
+    assert wait_cancellable(lambda: "ok", lambda: False) == "ok" and wait_cancellable(lambda: "direct", None) == "direct"
+    with pytest.raises(ValueError, match="db"):
+        wait_cancellable(lambda: (_ for _ in ()).throw(ValueError("db")), lambda: False)
+    with pytest.raises(CancelRequested):  # 이미 취소면 시작하지 않는다
+        wait_cancellable(lambda: "never", lambda: True)

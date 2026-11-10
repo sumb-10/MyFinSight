@@ -13,7 +13,7 @@ from typing import Any
 import pandas as pd
 
 from backend.analysis.executor.context import RunContext
-from backend.analysis.executor.parallel import run_ordered
+from backend.analysis.executor.parallel import run_ordered, wait_cancellable
 from backend.analysis.m1_request.derive import derive
 from backend.analysis.m2_data import descriptor as D
 from backend.analysis.m3_selection.classify import classify, is_broad_theme
@@ -55,7 +55,8 @@ def st_request(ctx: RunContext) -> str:
     ctx.warn_all("01_request", [*warns, *d.get("warnings", [])])
     # 가격·환율 선적재: 유니버스 전체 + 비교지수, 백테스트 시작 − 추정 창 ~ 기준일
     start = dt.date.fromisoformat(str(d["backtest_start"])) - dt.timedelta(days=int(ctx.settings.portfolio.lookback_days * 1.6) + 60)
-    ctx.md.prefetch(D.tickers(ctx.desc), start, dt.date.fromisoformat(str(d["as_of"])))
+    # 서버를 켠 뒤 첫 실행이면 DB 한 번에 수십 초 걸린다 — 기다리는 동안에도 취소를 본다 (취소해도 적재는 뒤에서 끝나 캐시에 남음)
+    wait_cancellable(lambda: ctx.md.prefetch(D.tickers(ctx.desc), start, dt.date.fromisoformat(str(d["as_of"]))), ctx.cancel_check, name="prefetch")
     ctx.outputs["01_request"] = req
     return f"기준일 {d['as_of']}, 유니버스 {ctx.desc_info['n_stocks']}종목, 백테스트 {d['backtest_start']}~{d['backtest_end']}"
 
