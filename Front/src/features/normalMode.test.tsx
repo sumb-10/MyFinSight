@@ -2,6 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen, within } from "@testing-library/react"
 import { Providers } from "../app/providers"
 import type { AnalysisService } from "../api/service"
+import { PROPOSED_METHODS } from "../api/proposed"
 import type { ProfileView } from "../api/types"
 import { reportName } from "../lib/reportName"
 import { HomeScreen } from "./home/HomeScreen"
@@ -15,10 +16,9 @@ import { REPORTS } from "../mocks/scenarios"
 beforeAll(() => { globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver; Element.prototype.scrollIntoView = vi.fn() })
 afterEach(() => window.history.replaceState(null, "", "/"))
 
-const PROPOSED = ["getReportName", "renameReport", "deleteReport", "searchStocks", "getStocks", "getProfileVersion", "recommendStrategy", "startProfileChat", "answerProfileChat", "rewindProfileChat", "getQuestionBatch", "answerBatch", "getMessageResults", "getRunWarnings", "getPaperKrw", "getPaperName", "setPaperName"]
 const normal = (over: Partial<Record<keyof AnalysisService, unknown>> = {}): AnalysisService => {
   const s = new MockService({ latencyMs: 0, persist: false })
-  return Object.assign(Object.create(s), { mode: "api", ...Object.fromEntries(PROPOSED.map((k) => [k, undefined])),
+  return Object.assign(Object.create(s), { mode: "api", ...Object.fromEntries(PROPOSED_METHODS.map((k) => [k, undefined])),
     listReports: async () => (await s.listReports()).map(({ proposed_name: _n, ...r }) => r), ...over })
 }
 const show = (svc: AnalysisService, ui: React.ReactNode) => render(<Providers service={svc}>{ui}</Providers>)
