@@ -66,6 +66,11 @@
 - **종목 표기:** 「회사명 (티커)」(`stockLabel`). 조건 행 `value_ko`·질문 보기 이름도 같은 규칙으로 만들거나, 구조 필드(`tickers: {ticker, name_ko}[]`)를 함께 주기를 제안.
 - **목업:** `MockService.searchStocks/getStocks`, 자료 `mocks/data/stocks.ts`. **프런트 수정:** `api/service.ts`. 화면 `features/profile/stocks.tsx`(검색 칸·`useStockNames`).
 - **주의:** 한국 종목코드(005930 / 005930.KS) 정규화 규칙 합의 필요. 지금 일반 모드는 티커 직접 입력(TagInput) 그대로다.
+- **✅ 실제 서버 구현 (2026-11-10):** `GET /stocks/search?q=&limit=`(기본 8, 1~20, 범위 밖 422) → `ProposedStock[]`, `GET /stocks?tickers=MU,005930.KS`(최대 100개) → `ProposedStock[]`.
+  원본은 지원 유니버스(S&P 500·NASDAQ-100·KOSPI 200)의 최신 구성종목 스냅샷(약 719개, 하루 한 번 다시 읽음). **미국 종목은 한국어 이름 자료가 없어 `name_ko` 에도 영문 이름**이 오고
+  (`name_en` 과 같음, 화면은 한 번만 보여 줌), 한국 종목은 `name_en: null`. 검색은 글자·숫자만 비교(공백·쉼표·점·하이픈 무시: `brk.b` = `BRK-B`), 한국 6자리 코드도 찾음.
+  `GET /stocks` 의 `ticker` 는 요청한 표기 그대로 돌려준다(`005930` 으로 물으면 `005930`). 조건 표(`value_ko`·`profile_value_ko`)의 제외·필수 포함 종목도 같은 목록으로 「회사명 (티커)」.
+  질문 보기 이름은 LLM 문장이라 바꾸지 않았다. 프런트는 `HttpService.searchStocks/getStocks`.
 
 ### 2-4. 초기 투자금 0원 시작 — 4단계
 

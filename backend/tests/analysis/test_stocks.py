@@ -82,3 +82,36 @@ def test_api_and_daily_cache(repo, tmp_path):
         assert r.status_code == 422 and r.json()["error"]["code"] == "VALIDATION_ERROR"
     assert len(calls) == 3  # 유니버스 셋을 처음 한 번만 읽고, 같은 날 다시 묻지 않는다
 
+
+def test_condition_rows_show_company_names(stocks):
+    """조건 표(이번 분석에서 달라진 조건·전체 투자 조건)의 제외·필수 포함 종목을 「회사명 (티커)」로 (이슈 #14 의 8번)."""
+    from backend.analysis.m1_request.assemble import build
+    from backend.analysis.m1_request.conditions import condition_rows
+    from backend.tests.analysis.test_dialog import PROFILE_FIELDS
+
+    def with_tickers(must, exc):
+        prof = {**PROFILE_FIELDS, "constraints": {**PROFILE_FIELDS["constraints"], "must_include_tickers": must, "exclude_tickers": exc}}
+        return build(prof, "반도체 기업에 나눠 투자하고 싶다", request_id="req_x", created_at="2026-11-10T00:00:00+09:00")
+
+    base, req = with_tickers(["MU"], []), with_tickers(["MU", "005930.KS", "ZZZ"], ["TSLA"])
+    label = lambda t: f"{h[0]['name_ko']} ({t})" if (h := lookup(stocks, [t])) else t  # noqa: E731
+    rows = {r.field: r for r in condition_rows(req, base, stock_label=label)}
+    must = rows["constraints.must_include_tickers"]
+    assert must.value_ko == "Micron Technology (MU), 삼성전자 (005930.KS), ZZZ" and must.profile_value_ko == "Micron Technology (MU)"  # 목록에 없는 티커는 그대로
+    assert rows["constraints.exclude_tickers"].value_ko == "TSLA" and rows["constraints.exclude_tickers"].profile_value_ko == "없음"
+    assert {r.field: r for r in condition_rows(req, base)}["constraints.must_include_tickers"].value_ko == "MU, 005930.KS, ZZZ"  # 이름 함수가 없으면 지금처럼
+
+
+def test_services_stock_label_falls_back_to_ticker(repo, tmp_path):
+    from backend.analysis.api.services import Services
+    from backend.analysis.common.store import JsonStore
+
+    sv = Services(repo_factory=lambda: repo, store=JsonStore(tmp_path), settings=AnalysisSettings())
+    assert sv.stock_label("MU") == "Micron Technology (MU)" and sv.stock_label("005930") == "삼성전자 (005930)" and sv.stock_label("NOPE") == "NOPE"
+
+    class NoConstituents:
+        def constituents_at(self, *_a):
+            raise RuntimeError("db down")
+
+    broken = Services(repo_factory=lambda: NoConstituents(), store=JsonStore(tmp_path), settings=AnalysisSettings())
+    assert broken.stock_label("MU") == "MU"  # 목록을 못 읽어도 조건 표는 티커로 보인다

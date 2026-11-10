@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -14,11 +15,13 @@ from backend.analysis.executor.queue import Queue
 from backend.analysis.m1_request.dialog import DialogService
 from backend.analysis.m2_data.market_data import MarketData
 from backend.analysis.m2_data.price_cache import PriceBarCache
-from backend.analysis.m2_data.stocks import load_stocks
+from backend.analysis.m2_data.stocks import load_stocks, lookup
 from backend.analysis.m5_backtest_report.execution_orders import compute_execution, with_execution
 from backend.analysis.m6_tracking.paper import PaperService
 from backend.analysis.paths import output_root
 from backend.analysis.settings import AnalysisSettings
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -77,8 +80,17 @@ class Services:
                 self._stocks = (today, load_stocks(self.repo, today))
             return self._stocks[1]
 
+    def stock_label(self, ticker: str) -> str:
+        """티커 → 「회사명 (티커)」 (조건 표). 종목 목록을 못 읽었거나 목록에 없는 티커면 티커 그대로 (이름은 보조 정보)."""
+        try:
+            hit = lookup(self.stocks(), [ticker])
+        except Exception:  # noqa: BLE001
+            log.warning("stock names unavailable", exc_info=True)
+            return ticker
+        return f"{hit[0]['name_ko']} ({ticker})" if hit else ticker
+
     def dialog(self) -> DialogService:
-        return DialogService(self.store, self.repo, self.market_data(), self.llm(), self.settings)
+        return DialogService(self.store, self.repo, self.market_data(), self.llm(), self.settings, stock_label=self.stock_label)
 
     def paper(self) -> PaperService:
         return PaperService(self.store, self.repo, self.market_data(), self.llm(), self.settings)
