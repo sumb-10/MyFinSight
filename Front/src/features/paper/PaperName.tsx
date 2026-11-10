@@ -6,7 +6,7 @@ import { Alert, Button, Dialog, inputClass } from "../../ui"
 import { MockTag } from "../report/proposedView"
 import { NAME_MAX } from "../report/ReportName"
 
-// 모의투자 이름 (제안 기능): 리포트 이름과 연동하거나 직접 입력한다. 서비스에 setPaperName 이 있을 때만 쓰인다 — 지금은 목업뿐.
+// 모의투자 이름 (제안 기능): 리포트 이름과 연동하거나 직접 입력한다. 서비스에 setPaperName 이 있을 때만 쓰인다 (실제 서버: GET/PUT /paper/{id}/name).
 // 연동(linked)은 리포트 이름을 바꾸면 함께 바뀌고, 직접 입력(custom)은 그대로다.
 
 export type NameMode = "linked" | "custom"
@@ -41,7 +41,7 @@ export function PaperNameDialog({ paperId, name, close, saved }: { paperId: stri
       <form className="space-y-4 p-4 text-sm text-slate-700 sm:p-6" onSubmit={(e) => { e.preventDefault(); void save() }}>
         <PaperNameChoice reportName={name.report_name_ko} mode={mode} setMode={setMode} value={value} setValue={setValue} error={error} setError={setError} />
         {error && mode === "linked" && <Alert tone="error" title="저장하지 못했습니다">{error}</Alert>}
-        <p className="text-xs text-slate-500">이름만 바뀌고 모의투자 기록·설정은 그대로입니다. 목업 화면에서만 바뀌고 실제 서버에는 저장하지 않습니다.</p>
+        <p className="text-xs text-slate-500">이름만 바뀌고 모의투자 기록·설정은 그대로입니다.{svc.mode === "mock" && " 목업 화면에서만 바뀌고 실제 서버에는 저장하지 않습니다."}</p>
         <div className="flex justify-end gap-2"><Button variant="ghost" onClick={close}>취소</Button><Button type="submit" disabled={busy}>{busy ? "저장하는 중…" : "저장"}</Button></div>
       </form>
     </Dialog>
