@@ -2,7 +2,7 @@
 
 이 문서는 프런트엔드가 목업 모드(`?mock=1`, 개발 환경 전용)에서 먼저 만든 기능을 실제 서버와 연결할 때 필요한 데이터와 API를 정리한다.
 **여기 적힌 API·필드는 모두 「제안 계약」이며 서버와 합의되지 않았다.** 이름·경로·위치는 바뀔 수 있다.
-지금 실제 서버(`HttpService`)는 이 필드·메서드를 주지 않으며, 그 경우 화면은 기존 그대로 동작한다 (일반 모드 회귀 테스트로 확인).
+실제 서버(`HttpService`)가 주지 않는 필드·메서드는 화면이 기존 그대로 동작한다 (일반 모드 회귀 테스트로 확인). 실제 서버에 들어간 항목은 각 절에 「✅ 실제 서버 구현」으로 적는다.
 
 - 목업 구조·실행 방법·시나리오: [`mock-mode.md`](./mock-mode.md)
 - 타입 정의(제안 계약 원본): `src/api/proposed.ts`
@@ -54,7 +54,10 @@
 - **예시:** `{"name_ko":"시가총액 비중 비교용","mode":"custom","report_name_ko":"미국 반도체 장비·메모리 분산 투자"}`
 - **정책:** `linked` 는 리포트 `display_ko` 를 따라가고(리포트 이름 변경 시 즉시 반영), `custom` 은 고정. 새 모의투자 기본값 `linked`. 목록·상세의 `name_ko` 도 같은 규칙으로 계산해 줘야 한다.
 - **목업:** `MockService.getPaperName/setPaperName/paperName`. **프런트 수정:** `api/service.ts`; 화면 `features/paper/PaperName.tsx`·`StartPaperDialog.tsx`·`PaperScreen.tsx` 는 그대로.
-- **주의:** 지금 프런트는 생성 후 `setPaperName` 을 한 번 더 부른다. 서버가 생성 입력으로 받으면 `StartPaperDialog.create` 를 한 번 호출로 바꾼다.
+- **✅ 실제 서버 구현 (2026-11-10):** `GET /paper/{paper_id}/name` → `ProposedPaperName`, **`PUT`**(제안의 PATCH 대신, 리포트 이름 `PUT` 과 맞춤) `/paper/{paper_id}/name` body `{ "mode": "linked" } | { "mode": "custom", "name_ko": string }`,
+  `POST /paper` body 의 `name`(같은 모양, 없으면 linked). `custom` 은 연속 공백을 하나로 줄인 뒤 1~40자, 아니면 422 `REQUEST_INVALID` (등록 때 틀리면 모의투자를 만들지 않음), 없는 모의투자는 404.
+  목록·상세·갱신·중지·재개 응답의 `name_ko` 도 같은 규칙(직접 정한 이름 → 원본 리포트의 지금 이름 → 저장된 전략 이름). 저장은 `store/data/paper_meta.json`(스키마 변경 없음, `report_meta.json` 과 같은 방식).
+  프런트는 `HttpService.getPaperName/setPaperName`, `StartPaperDialog` 는 등록과 이름을 한 번에 보낸다.
 
 ### 2-3. 종목 검색·회사명 조회 — 4단계
 
@@ -101,6 +104,8 @@
 - **API (제안):** `GET /profile/versions/{version}` → `ProfileVersion`(기존 타입 그대로, 그 버전 값 전체)
 - **정책:** 비교는 프런트가 같은 표시 함수로 계산(`features/profile/compare.tsx` 의 `profileRows/diffProfiles`). 서버가 바뀐 필드 목록을 주면 더 정확(제안: `changed_fields: string[]`).
 - **목업:** `MockService.getProfileVersion`, 버전 1~4(+0원 버전) `mocks/data/profile.ts`. **프런트 수정:** `api/service.ts`. 화면 `features/profile/history.tsx`·`compare.tsx`.
+- **✅ 실제 서버 구현 (2026-11-10):** `GET /profile/versions/{version}` → 그 버전 값 전체(`GET /profile` 의 `profile` 과 같은 모양, `note` 포함). 프로필이나 그 버전이 없으면 404, 숫자가 아니면 422.
+  `changed_fields` 는 넣지 않았다 (비교는 지금처럼 프런트 `diffProfiles`). 프런트는 `HttpService.getProfileVersion`.
 
 ### 2-7. 여러 질문 한 번에 답하기 — 4단계
 

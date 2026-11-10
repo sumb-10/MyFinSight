@@ -52,11 +52,6 @@ def display_names(sv: Any) -> dict[str, str]:
     return out
 
 
-def with_report_name(names: dict[str, str], summary: dict[str, Any]) -> dict[str, Any]:
-    """모의투자 요약의 이름을 원본 리포트의 지금 이름으로 (저장된 모의투자는 그대로). 리포트를 못 찾으면 저장된 이름."""
-    return {**summary, "name_ko": names.get(summary["report_id"], summary["name_ko"])}
-
-
 @router.get("/reports/{report_id}/name")
 def get_name(report_id: str, request: Request) -> dict[str, Any]:
     sv = services(request)

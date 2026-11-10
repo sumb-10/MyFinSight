@@ -1,4 +1,4 @@
-"""GET/PUT /profile (M1-01). 저장 = 새 버전 추가. 검증은 요청 HARD 규칙과 같다 (아이디어 자리에는 임시 문구)."""
+"""GET/PUT /profile, GET /profile/versions/{version} (M1-01). 저장 = 새 버전 추가. 검증은 요청 HARD 규칙과 같다 (아이디어 자리에는 임시 문구)."""
 
 from __future__ import annotations
 
@@ -49,6 +49,12 @@ def get_profile(request: Request) -> dict[str, Any]:
     if not doc:
         raise NotFound("프로필이 없습니다. 먼저 등록해 주세요")
     return _view(doc)
+
+
+@router.get("/profile/versions/{version}")
+def get_profile_version(version: int, request: Request) -> dict[str, Any]:
+    """과거 버전의 값 전체 (변경 이력 비교). GET /profile 의 profile 과 같은 모양. 프로필이나 그 버전이 없으면 404."""
+    return services(request).profiles.version(version)
 
 
 @router.put("/profile")
