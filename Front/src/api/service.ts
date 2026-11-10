@@ -6,7 +6,7 @@ import type { CheckpointDetail, ComparisonDoc, DialogState, EvidenceDetail, Evid
 
 const LLM = { timeoutMs: LLM_TIMEOUT_MS }
 
-/** 제안 계약 메서드(ProposedApi)는 모두 선택이다. 실제 서버 서비스에는 없고 목업 서비스만 가진다 → 화면은 메서드가 있을 때만 그 기능을 연다. */
+/** 제안 계약 메서드(ProposedApi)는 모두 선택이다. 목업 서비스는 모두 가지고, 실제 서버 서비스는 서버가 구현한 것만 가진다 → 화면은 메서드가 있을 때만 그 기능을 연다. */
 export interface AnalysisService extends Partial<ProposedApi> {
   readonly mode: "api" | "mock"
   health(): Promise<Health>
