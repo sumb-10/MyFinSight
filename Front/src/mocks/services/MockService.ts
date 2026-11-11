@@ -12,7 +12,7 @@ import { SECTOR_TRENDS } from "../data/sectorTrends"
 import { answerChat, chatView, currentQuestion, newChat, rewindChat } from "../data/profileChat"
 import { buildPaper, paperPreview, paperStartIndex, type MockPaper } from "../data/paper"
 import { PROFILE_VERSIONS, profileView, ZERO_CAPITAL_VERSION } from "../data/profile"
-import { buildReport, checkpointDetail, type MockReportDoc } from "../data/report"
+import { buildReport, checkpointDetail, mockTitleOf, type MockReportDoc } from "../data/report"
 import { CANCEL_MS, RUN_WARNINGS, STEPS, buckets, cancelInfo, liveStatus, runPartial, runRows, runStatus } from "../data/runs"
 import { STOCKS } from "../data/stocks"
 import { localIso } from "../data/util"
@@ -335,7 +335,7 @@ export class MockService implements AnalysisService {
   /* ───────── 리포트 ───────── */
   listReports(): Promise<(ReportRow & ProposedReportRowExt)[]> {
     // 실제 서버처럼 최근에 만든 리포트부터 (같은 날이면 시나리오 순서)
-    return this.wait(() => [...REPORTS].sort((x, y) => y.created_at.localeCompare(x.created_at)).filter((sc) => !this.s.deletedReports.includes(sc.id)).map((sc) => { const b = this.backtestOf(sc); return { report_id: sc.id, run_id: sc.run_id, request_id: sc.request_id, status: "success" as const, has_report: true, strategy_name: b.chosen.def.label_ko, request_summary: sc.idea, as_of: MOCK_AS_OF, created_at: sc.created_at, idea: sc.idea, mode: sc.base_report_id ? "revision" : "new", proposed_name: this.nameOf(sc.id) } }))
+    return this.wait(() => [...REPORTS].sort((x, y) => y.created_at.localeCompare(x.created_at)).filter((sc) => !this.s.deletedReports.includes(sc.id)).map((sc) => { const b = this.backtestOf(sc); return { report_id: sc.id, run_id: sc.run_id, request_id: sc.request_id, status: "success" as const, has_report: true, strategy_name: b.chosen.def.label_ko, request_summary: sc.idea, as_of: MOCK_AS_OF, created_at: sc.created_at, idea: sc.idea, mode: sc.base_report_id ? "revision" : "new", title_ko: mockTitleOf(sc), proposed_name: this.nameOf(sc.id) } }))
   }
   getReport(id: string): Promise<ReportDoc> { return this.wait(() => { const sc = this.sc(id); if (this.s.deletedReports.includes(sc.id)) throw notFound("리포트"); return this.docOf(sc) }) }
   /** 리포트 삭제: 목업 상태에서만 빠진다 (이 리포트로 만든 모의투자는 그대로 둔다). */

@@ -20,7 +20,7 @@ DEFAULT_RESULTS_DB = "sqlite:///data/analysis_results.db"
 # 결과 저장소로 보내는 메서드. 나머지는 모두 시장 자료 저장소로.
 RESULT_METHODS = frozenset({
     "save_step", "get_steps", "save_run_artifact", "get_run_artifact",
-    "save_report", "get_report", "list_reports", "job_lock",
+    "save_report", "get_report", "list_reports", "report_titles", "job_lock",
 })
 
 

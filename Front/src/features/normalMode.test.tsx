@@ -10,6 +10,7 @@ import { PaperScreen } from "./paper/PaperScreen"
 import { StartPaperDialog } from "./paper/StartPaperDialog"
 import { MockService } from "../mocks/services/MockService"
 import { REPORTS } from "../mocks/scenarios"
+import { mockTitleOf } from "../mocks/data/report"
 
 // 6단계: 일반 모드에 반영한 세 가지 기능. 제안 메서드가 없는 서비스(실제 서버와 같은 모양)로 확인한다. 자료는 목업 시나리오를 빌려 쓴다.
 
@@ -40,8 +41,9 @@ describe("10-1 홈 요약 카드의 필수 포함 종목", () => {
 })
 
 describe("10-3 리포트 이름 표시 기준", () => {
-  it("투자 아이디어(첫 줄) → 요청 요약 → 선택 전략 → 실행 ID 순서, 목업 제안 이름이 있으면 그것", () => {
+  it("짧은 제목 → 투자 아이디어(첫 줄) → 요청 요약 → 선택 전략 → 실행 ID 순서, 서버가 정한 이름이 있으면 그것", () => {
     const row = { run_id: "run_1", idea: "  반도체에\n투자 ", request_summary: "요약", strategy_name: "동일비중" }
+    expect(reportName({ ...row, title_ko: "미국 반도체 모멘텀 투자", idea: "반도체 기업 중 최근 주가 흐름이 좋은 곳에 3년 정도 나눠 투자하고 싶어요. 한 종목에 몰리지 않게 해 주세요." })).toBe("미국 반도체 모멘텀 투자")  // 긴 아이디어 원문 대신 짧은 제목
     expect(reportName(row)).toBe("반도체에")
     expect(reportName({ ...row, idea: "" })).toBe("요약")
     expect(reportName({ ...row, idea: "", request_summary: null })).toBe("동일비중")
@@ -51,7 +53,7 @@ describe("10-3 리포트 이름 표시 기준", () => {
   it("홈 「최근 분석 리포트」도 같은 이름", async () => {
     show(normal(), <HomeScreen />)
     const card = (await screen.findByRole("heading", { name: "최근 분석 리포트" }, { timeout: 5000 })).parentElement!.parentElement!
-    expect((await within(card).findAllByText(REPORTS[0].idea)).length).toBeGreaterThan(0)  // 같은 아이디어의 수정안 리포트도 같은 이름으로 함께 보일 수 있다
+    expect((await within(card).findAllByText(mockTitleOf(REPORTS[0]))).length).toBeGreaterThan(0)  // 서버가 싣는 짧은 제목 (같은 테마·전략의 수정안 리포트도 같은 이름으로 함께 보일 수 있다)
   })
 })
 
@@ -60,7 +62,7 @@ describe("10-2 같은 리포트로 만든 여러 모의투자 구분", () => {
     show(normal(), <PaperScreen />)
     const row = (await screen.findByRole("cell", { name: "2026-06-01" }, { timeout: 5000 })).closest("tr")!
     expect(within(row).getByText("동일비중")).toBeInTheDocument()
-    expect(within(row).getByText(`원본 리포트: ${REPORTS[0].idea}`)).toBeInTheDocument()
+    expect(within(row).getByText(`원본 리포트: ${mockTitleOf(REPORTS[0])}`)).toBeInTheDocument()
     expect(within(row).getByRole("cell", { name: "10,000,000원" })).toBeInTheDocument()
     const table = row.closest("table")!
     expect(table).not.toHaveTextContent(/시작 · 초기|같은 리포트 모의투자|mock_paper_/)
@@ -71,7 +73,7 @@ describe("10-2 같은 리포트로 만든 여러 모의투자 구분", () => {
     const more = await screen.findByRole("button", { name: "더보기" }, { timeout: 5000 })
     expect(screen.queryByText(/같은 리포트로 시작한 다른 모의투자/)).toBeNull()
     expect(screen.queryByRole("button", { name: "원본 리포트" })).toBeNull()
-    expect(screen.queryByRole("button", { name: REPORTS[0].idea })).toBeNull()
+    expect(screen.queryByRole("button", { name: mockTitleOf(REPORTS[0]) })).toBeNull()
     expect(within(more.closest("header")!).getByRole("button", { name: "최신 자료로 갱신" })).toBeInTheDocument()
     fireEvent.click(more)
     expect(screen.queryByRole("menuitem", { name: "이름 바꾸기" })).toBeNull()

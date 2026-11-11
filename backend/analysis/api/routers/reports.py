@@ -22,6 +22,7 @@ router = APIRouter(tags=["reports"])
 def list_reports(request: Request, limit: int = 100) -> list[dict[str, Any]]:
     sv = services(request)
     rows = {r["report_id"]: r for r in sv.repo.list_reports(limit)}
+    titles = sv.report_titles(rows)
     names = ReportMetaStore(sv.store).all()
     out = []
     reqs = {d.request_id: d for d in sv.requests.list()}
@@ -33,9 +34,9 @@ def list_reports(request: Request, limit: int = 100) -> list[dict[str, Any]]:
         row = {"report_id": e.report_id, "run_id": e.run_id, "request_id": e.request_id, "status": e.status, "has_report": bool(meta),
                "strategy_name": (meta or {}).get("strategy_name"), "request_summary": (meta or {}).get("request_summary") or (d.idea if d else None),
                "as_of": str((meta or {}).get("as_of") or ((d.derived or {}).get("as_of") if d else None) or ""), "created_at": e.finished_at,
-               "idea": d.idea if d else None, "mode": d.mode if d else None}  # fmt: skip
+               "idea": d.idea if d else None, "mode": d.mode if d else None, "title_ko": titles.get(e.report_id or "") if meta else None}  # fmt: skip
         if e.report_id and meta:
-            auto = auto_name(idea=row["idea"], request_summary=row["request_summary"], strategy_name=row["strategy_name"], run_id=e.run_id)
+            auto = auto_name(title=row["title_ko"], idea=row["idea"], request_summary=row["request_summary"], strategy_name=row["strategy_name"], run_id=e.run_id)
             row["proposed_name"] = name_view(e.report_id, auto, names.get(e.report_id))
         out.append(row)
         if len(out) >= limit:

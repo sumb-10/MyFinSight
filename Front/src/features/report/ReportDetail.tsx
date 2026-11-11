@@ -192,7 +192,7 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
                   <p className="mb-2 text-xs font-bold tracking-widest text-blue-700">분석 리포트</p>
-                  {/* 제목 = 리포트의 짧은 제목(header.title_ko, 바꾼 이름이 있으면 그것), 회색 글 = 요청과 처리 이유 요약(summary_ko, 없는 옛 리포트는 요청 해석 subtitle_ko) */}
+                  {/* 제목 = 리포트 이름(바꾼 이름, 아니면 서버 자동 이름 = 리포트의 짧은 제목 header.title_ko), 회색 글 = 요청과 처리 이유 요약(summary_ko, 없는 옛 리포트는 요청 해석 subtitle_ko) */}
                   <div className="flex items-start gap-1">
                     <h1 className="break-words text-3xl font-bold tracking-tight text-slate-950">{title || (row && proposedNameOf(row)) || name?.custom_ko || h.title_ko}</h1>
                     {name && svc.renameReport && <button type="button" aria-label="리포트 이름 바꾸기" title="리포트 이름 바꾸기" onClick={() => setRename(true)} className="mt-1 shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"><Pencil className="size-5" /></button>}

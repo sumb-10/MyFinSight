@@ -7,7 +7,10 @@ from fastapi.testclient import TestClient
 
 from backend.analysis.api.app import API_PREFIX as P
 from backend.analysis.api.app import create_analysis_app
+from backend.analysis.api.routers.report_names import display_names
 from backend.analysis.common.llm import StubLlm
+from backend.analysis.common.store import RequestStore
+from backend.analysis.executor.queue import Queue
 from backend.analysis.m5_backtest_report.execution_orders import estimate_orders, with_execution
 from backend.analysis.m5_backtest_report.report_meta import ReportMetaStore, auto_name, name_view
 from backend.analysis.m6_tracking.paper_meta import PaperMetaStore
@@ -71,9 +74,11 @@ def test_with_execution_copies_and_keeps_other_proposed_fields():
 
 
 def test_name_rules():
-    assert auto_name(idea=" 반도체에\n투자 ", request_summary="요약", strategy_name="전략", run_id="r") == "반도체에"
-    assert auto_name(idea="", request_summary=None, strategy_name="전략", run_id="r") == "전략"
-    assert auto_name(idea=None, request_summary=None, strategy_name=None, run_id="r") == "r"
+    long_idea = "AI 반도체와 데이터센터 관련 미국 기업 중 재무가 탄탄하고 이익률이 높은 회사 위주로 7년 정도 투자하고 싶어요. 목돈을 키우고 싶어요."
+    assert auto_name(title=" 미국 AI·데이터센터\n우량주 투자", idea=long_idea, request_summary="요약", strategy_name="전략", run_id="r") == "미국 AI·데이터센터"  # 짧은 제목이 먼저
+    assert auto_name(title=None, idea=" 반도체에\n투자 ", request_summary="요약", strategy_name="전략", run_id="r") == "반도체에"
+    assert auto_name(title="", idea="", request_summary=None, strategy_name="전략", run_id="r") == "전략"
+    assert auto_name(title=None, idea=None, request_summary=None, strategy_name=None, run_id="r") == "r"
     assert name_view("r", "자동", {"custom_name": "내 이름", "renamed_at": "t"}) == {"report_id": "r", "auto_ko": "자동", "custom_ko": "내 이름", "display_ko": "내 이름", "updated_at": "t"}
     assert name_view("r", "자동", None)["display_ko"] == "자동"
 
@@ -111,6 +116,21 @@ def test_old_report_gets_execution_on_read_without_changing_saved_doc(paper_run)
     r = c.get(f"{P}/reports/{RID}")
     assert r.status_code == 200 and r.json()["proposed"]["execution"]["totals"] == stored["proposed"]["execution"]["totals"]
     assert "proposed" not in old
+
+
+def test_auto_name_is_the_report_short_title(client, paper_run):  # noqa: F811
+    """자동 이름 = 리포트 머리말의 짧은 제목 (아이디어 원문이 아니다). 목록 행·이름 조회·모의투자 이름이 모두 같은 값."""
+    c, _ = client
+    repo, store, *_ = paper_run
+    title = repo.get_report(RID)["doc"]["header"]["title_ko"]
+    idea = RequestStore(store).load(Queue(store).get(RID).request_id).idea
+    assert title and idea and title != idea
+    assert repo.report_titles([RID, "nope"]) == {RID: title}  # 없는 리포트는 빠진다
+    row = next(x for x in c.get(f"{P}/reports").json() if x["report_id"] == RID)
+    assert row["title_ko"] == title and row["idea"] == idea
+    assert row["proposed_name"]["auto_ko"] == title and row["proposed_name"]["display_ko"] == title
+    assert c.get(f"{P}/reports/{RID}/name").json()["auto_ko"] == title
+    assert display_names(c.app.state.services)[RID] == title
 
 
 def test_rename_roundtrip_and_validation(client):

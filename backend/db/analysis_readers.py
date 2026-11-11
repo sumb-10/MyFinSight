@@ -478,6 +478,20 @@ class AnalysisReadersMixin:
         q = select(*(rp.c[c] for c in cols)).order_by(rp.c.created_at.desc()).limit(limit)
         return self._read("리포트 목록", lambda c: [dict(r._mapping) for r in c.execute(q)])  # type: ignore[attr-defined]
 
+    def report_titles(self, report_ids: Sequence[str]) -> dict[str, str | None]:
+        """report_id → 문서 머리말의 짧은 제목(header.title_ko). 없는 리포트는 빠진다.
+        문서(평균 0.4MB)를 파이썬으로 읽지 않고 DB 가 그 값만 꺼낸다 (SQLite json_extract, PostgreSQL #>>)."""
+        rp = T.report
+        title = rp.c.doc_json[("header", "title_ko")].as_string()
+
+        def run(conn: Any) -> dict[str, str | None]:
+            out: dict[str, str | None] = {}
+            for part in _chunks(sorted(set(report_ids))):
+                out.update({r[0]: r[1] for r in conn.execute(select(rp.c.report_id, title).where(rp.c.report_id.in_(part)))})
+            return out
+
+        return self._read("리포트 제목", run)  # type: ignore[attr-defined]
+
     def asset_map(self, symbols: Sequence[str] | None = None) -> dict[str, dict[str, Any]]:
         """yfinance 표기 → {asset_id, market, currency, asset_type, name}. symbols=None 이면 전부."""
         a = T.assets

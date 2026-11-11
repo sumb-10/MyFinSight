@@ -33,13 +33,15 @@ def _auto(sv: Any, report_id: str) -> str:
         idea = sv.requests.load(sv.queue.get(report_id).request_id).idea
     except NotFound:
         pass  # 실행 기록이 없는 리포트는 저장된 요약·전략 이름으로
-    return auto_name(idea=idea, request_summary=row.get("request_summary"), strategy_name=row.get("strategy_name"), run_id=report_id)
+    title = ((row.get("doc") or {}).get("header") or {}).get("title_ko")
+    return auto_name(title=title, idea=idea, request_summary=row.get("request_summary"), strategy_name=row.get("strategy_name"), run_id=report_id)
 
 
 def display_names(sv: Any) -> dict[str, str]:
     """리포트 ID → 지금 표시 이름 (삭제해 숨긴 리포트 포함: 그 리포트로 만든 모의투자는 계속 이름이 필요하다)."""
     meta = ReportMetaStore(sv.store).all()
     rows = {r["report_id"]: r for r in sv.repo.list_reports(1000)}
+    titles = sv.report_titles(rows)
     reqs = {d.request_id: d for d in sv.requests.list()}
     out = {}
     for e in sv.queue.list():
@@ -47,7 +49,8 @@ def display_names(sv: Any) -> dict[str, str]:
         if not row:
             continue
         d = reqs.get(e.request_id)
-        auto = auto_name(idea=d.idea if d else None, request_summary=row.get("request_summary"), strategy_name=row.get("strategy_name"), run_id=e.run_id)
+        auto = auto_name(title=titles.get(e.report_id or ""), idea=d.idea if d else None, request_summary=row.get("request_summary"),
+                         strategy_name=row.get("strategy_name"), run_id=e.run_id)  # fmt: skip
         out[e.report_id] = name_view(e.report_id, auto, meta.get(e.report_id))["display_ko"]
     return out
 

@@ -102,6 +102,9 @@ function monthly(run: Run, dates: string[]) {
 }
 
 /* ───────── 문서 ───────── */
+/** 목업 리포트 머리말의 짧은 제목 (실제 서버의 header.title_ko 자리). 목록 행의 title_ko 도 같은 값. */
+export const mockTitleOf = (sc: ReportScenario) => `[목업] ${sc.themes.map((t) => t.label).join(" · ")} · ${ko(sc.template)} 전략`
+
 export function buildReport(sc: ReportScenario): MockReportDoc {
   const bt = backtest(sc)
   const { sim, short, chosen, bench, qqq } = bt
@@ -246,7 +249,7 @@ export function buildReport(sc: ReportScenario): MockReportDoc {
 
   const doc: ReportDoc = {
     request_id: sc.request_id, run_id: sc.run_id, stage: "14_report", generated_at: `${sc.created_at}T09:00:00`, source: "mock",
-    header: { title_ko: `[목업] ${sc.themes.map((t) => t.label).join(" · ")} · ${ko(sc.template)} 전략`, subtitle_ko: `[목업] ${sc.idea}`, created_at: sc.created_at, selection_as_of: MOCK_AS_OF, backtest_period: { start, end, as_of: start, trading_days: n + 1 }, data_as_of: MOCK_AS_OF, chosen_portfolio_id: chosen.def.id, chosen_label_ko: chosen.def.label_ko, chosen_note_ko: vs === "insufficient" ? "추천 조건을 만족하는 구성이 없습니다." : "후보 중 순위 1위로 추천된 구성입니다.", disclaimer_ko: "목업 데이터 화면입니다. 실제 투자 분석 결과가 아니며, 투자 권유가 아닙니다.", run_id: sc.run_id },
+    header: { title_ko: mockTitleOf(sc), subtitle_ko: `[목업] ${sc.idea}`, created_at: sc.created_at, selection_as_of: MOCK_AS_OF, backtest_period: { start, end, as_of: start, trading_days: n + 1 }, data_as_of: MOCK_AS_OF, chosen_portfolio_id: chosen.def.id, chosen_label_ko: chosen.def.label_ko, chosen_note_ko: vs === "insufficient" ? "추천 조건을 만족하는 구성이 없습니다." : "후보 중 순위 1위로 추천된 구성입니다.", disclaimer_ko: "목업 데이터 화면입니다. 실제 투자 분석 결과가 아니며, 투자 권유가 아닙니다.", run_id: sc.run_id },
     kpis, nav: sections.map((s) => ({ id: s.id, title_ko: s.title_ko })), sections,
     datasets: { dates, series }, assessment: { intent_fit: 0.8, logic_consistency: 0.85, comments_ko: [] },
     evidence: ev, execution: [{ step: "01_request", summary: "[목업] 요청 확정" }, { step: "14_report", summary: "[목업] 리포트 작성" }], tracking: { eligible: vs !== "insufficient", reason_ko: vs === "insufficient" ? "추천 구성이 없어 모의투자를 시작할 수 없습니다 (목업)." : null },

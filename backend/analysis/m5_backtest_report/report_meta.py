@@ -22,9 +22,12 @@ def one_line(text: str | None) -> str:
     return " ".join((text or "").split("\n")[0].split())
 
 
-def auto_name(*, idea: str | None, request_summary: str | None, strategy_name: str | None, run_id: str) -> str:
-    """자동 이름: 투자 아이디어 → 요청 요약 → 선택 전략 → 실행 ID (프런트 lib/reportName 과 같은 순서)."""
-    return one_line(idea) or one_line(request_summary) or one_line(strategy_name) or run_id
+def auto_name(*, title: str | None, idea: str | None, request_summary: str | None, strategy_name: str | None, run_id: str) -> str:
+    """자동 이름: 리포트의 짧은 제목 → 투자 아이디어 → 요청 요약 → 선택 전략 → 실행 ID (프런트 lib/reportName 과 같은 순서).
+
+    짧은 제목은 리포트 머리말의 header.title_ko 다. LLM(14d)이 아이디어·확인 답·조건을 6~20자 명사구로 줄인 것이고,
+    14d 전 옛 리포트는 코드가 만든 '테마 · 전략' 제목이다. 예전에는 아이디어 원문을 그대로 써서 긴 아이디어는 제목이 몇 줄이 됐다 (2026-11-11)."""
+    return one_line(title) or one_line(idea) or one_line(request_summary) or one_line(strategy_name) or run_id
 
 
 def name_view(report_id: str, auto: str, meta: dict[str, Any] | None) -> dict[str, Any]:

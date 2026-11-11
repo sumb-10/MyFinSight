@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -36,6 +36,7 @@ class Services:
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _results_cache: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)  # report_id → 13_results (불변; 최근 8개)
     _orders_cache: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)  # report_id → 예상 매수 주문 (기준일 값이라 불변; 최근 32개)
+    _titles: dict[str, str | None] = field(default_factory=dict, repr=False)  # report_id → 리포트의 짧은 제목 (불변; 목록·모의투자 이름용)
     _stocks: tuple[dt.date, list[dict[str, Any]]] | None = field(default=None, repr=False)  # (읽은 날, 종목 찾기 목록) — 하루 한 번 다시 읽음
     _trends: SectorTrendsJob | None = field(default=None, repr=False)  # 홈 '요즘엔 뭐가 좋아요?' 섹터 성과 (새 거래일마다 한 번 계산)
 
@@ -136,3 +137,16 @@ class Services:
                 self._results_cache.pop(next(iter(self._results_cache)))
             self._results_cache[report_id] = res
         return res
+
+    def report_titles(self, report_ids: Iterable[str]) -> dict[str, str | None]:
+        """리포트 ID → 문서 머리말의 짧은 제목(header.title_ko, LLM 이 요청을 줄여 만든 이름 · 옛 리포트는 코드가 만든 제목).
+        리포트는 불변이라 한 번 읽은 제목은 기억한다 (목록·모의투자 이름을 만들 때마다 DB 가 문서를 다시 읽지 않게). 아직 없는 리포트는 기억하지 않는다."""
+        ids = list(dict.fromkeys(i for i in report_ids if i))
+        with self._lock:
+            need = [i for i in ids if i not in self._titles]
+        if need:
+            got = self.repo.report_titles(need)
+            with self._lock:
+                self._titles.update(got)
+        with self._lock:
+            return {i: self._titles.get(i) for i in ids}
