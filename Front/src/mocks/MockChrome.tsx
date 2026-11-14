@@ -21,12 +21,12 @@ export default function MockChrome() {
   const head = "px-2.5 pt-3 text-[11px] font-bold tracking-wide text-amber-800"
   return (
     <>
-      <div role="status" className="flex min-w-[1180px] items-center justify-center gap-3 border-b border-amber-300 bg-amber-100 px-4 py-1.5 text-xs font-semibold text-amber-950">
+      <div role="status" data-mock-ui className="flex min-w-[1180px] items-center justify-center gap-3 border-b border-amber-300 bg-amber-100 px-4 py-1.5 text-xs font-semibold text-amber-950">
         <FlaskConical className="size-3.5" aria-hidden />
         <span>목업 데이터 화면입니다 · 실제 투자 분석 결과가 아닙니다.</span>
         <a href={exitMockHref()} className="font-normal underline underline-offset-2 hover:text-amber-800">일반 모드로 돌아가기</a>
       </div>
-      <div className="fixed bottom-4 right-4 z-[60] flex flex-col items-end gap-2">
+      <div data-mock-ui className="fixed bottom-4 right-4 z-[60] flex flex-col items-end gap-2">
         {open && (
           <div role="dialog" aria-label="목업 패널" className="max-h-[70vh] w-72 overflow-y-auto rounded-2xl border border-amber-300 bg-white p-2 shadow-xl">
             <div className="flex items-center justify-between px-2.5 pt-1">

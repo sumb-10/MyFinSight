@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from "react"
-import { ChevronRight, Compass, FileText, Loader2, SlidersHorizontal, X } from "lucide-react"
+import { ChevronRight, Compass, FileText, Sparkles, Loader2, SlidersHorizontal, X } from "lucide-react"
 import { useProfile, useService } from "../../app/providers"
 import { navigate } from "../../app/router"
 import { errorMessage } from "../../api/client"
@@ -19,6 +19,7 @@ import { MockTag } from "../report/proposedView"
 import { useRenameTick } from "../report/ReportName"
 import { Coachmark } from "../tutorial/Coachmark"
 import { HOME_TOUR_STEPS } from "../tutorial/homeSteps"
+import { clearHomeTourFlag, hasHomeTourFlag } from "../tutorial/IntroScroll"
 import { SectorTrendsBox } from "./SectorTrendsBox"
 import { SplashScreen } from "./SplashScreen"
 import { scopeOf, useSectorTrends } from "./sectorTrends"
@@ -42,7 +43,8 @@ export function HomeScreen() {
   const [overrides, setOverrides] = useState<Overrides>(() => { const u = loadUi(); return (u.prefillOverrides ?? u.draftOverrides ?? {}) as Overrides })
   const [leftNote, setLeftNote] = useState(() => loadUi().prefillNote ?? "")  // 요청을 그만두고 돌아왔을 때: 왜 채워져 있는지
   const [detail, setDetail] = useState(false)
-  const [tour, setTour] = useState<number | null>(null)  // 홈 둘러보기 단계
+  const [tour, setTour] = useState<number | null>(() => (hasHomeTourFlag() ? 0 : null))  // 홈 둘러보기 단계 (소개에서 「화면 둘러보기」를 고르면 바로 시작)
+  useEffect(() => { clearHomeTourFlag() }, [])
   const renamed = useRenameTick()
   const reports = useResource(() => svc.listReports(), [svc, renamed])
   const [ui, setUi] = useState(() => loadUi())
@@ -84,6 +86,7 @@ export function HomeScreen() {
         <h1 className="mt-5 text-4xl font-extrabold tracking-tight text-slate-950">투자 아이디어를 포트폴리오로 확인해보세요.</h1>
         <p className="mt-3 text-base text-slate-600">내 투자조건을 반영해 종목을 고르고, 과거 데이터로 성과와 위험을 검증합니다. 투자하고 싶은 내용을 아래 채팅창에 입력하세요.</p>
         <div className="mt-4 flex justify-center gap-2">
+          <Button variant="secondary" onClick={() => navigate({ page: "intro" })}><Sparkles className="size-4" />MyFinSight 소개</Button>
           <Button variant="secondary" onClick={() => setTour(0)}><Compass className="size-4" />처음이신가요? MyFinSight 둘러보기</Button>
           <Button variant="secondary" onClick={() => navigate({ page: "tutorial" })}><FileText className="size-4" />리포트 보는 법 둘러보기</Button>
         </div>

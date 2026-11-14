@@ -20,6 +20,7 @@ import { isMockMode } from "../mocks/mode"
 import { reportKey, useNewReports, useRebalanceAlerts } from "../features/attention"
 import { EXAMPLE_REPORT_ID } from "../features/tutorial/exampleReport"
 import { guideDestination, useGuideGate } from "../features/tutorial/GuidePrompt"
+import { IntroScroll, introSeen } from "../features/tutorial/IntroScroll"
 
 
 // 차트(recharts)를 쓰는 화면은 따로 묶어 처음 화면이 가볍게 뜨게 한다 (F8 코드 분할).
@@ -96,6 +97,7 @@ function Screen({ route }: { route: Route }) {
     case "paper": return <Suspense fallback={<Loading />}><PaperScreen paperId={route.paperId} /></Suspense>
     case "comparison": return <Suspense fallback={<Loading />}><ComparisonScreen comparisonId={route.comparisonId} /></Suspense>
     case "tutorial": return <Suspense fallback={<Loading label="둘러보기를 여는 중…" />}><TutorialScreen key="tutorial" after={guideDestination(route)} /></Suspense>
+    case "intro": return null  // App 이 사이드바 없이 따로 그린다
     case "not-found": return <EmptyState title="페이지를 찾을 수 없습니다" description={`주소 ${route.path} 에 해당하는 화면이 없습니다.`} action={<Button onClick={() => navigate({ page: "home" })}>홈으로</Button>} />
   }
   if (status === "loading") return null
@@ -117,6 +119,9 @@ export default function App() {
   const route = useHashRoute()
   const { profile, status } = useProfile()
   const svc = useService()
+  // 처음 온 사람은 홈 대신 스크롤형 소개부터 (한 번 열면 다시 띄우지 않는다)
+  if (route.page === "home" && !introSeen()) { navigate({ page: "intro" }); return null }
+  if (route.page === "intro") return <IntroScroll />
   // 프로필이 없으면 처음 설정으로 안내 (프로필 화면·리포트 열람은 허용). 대화형 설정(제안 기능)이 있으면 대화로, 없으면 4단계 폼으로.
   if (status === "ready" && !profile && !["profile", "reports", "report", "tutorial", "not-found"].includes(route.page)) {
     navigate({ page: "profile", mode: svc.startProfileChat ? "chat" : "setup" })
