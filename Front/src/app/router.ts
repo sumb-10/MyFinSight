@@ -3,6 +3,7 @@ import { saveUi } from "../state/uiStorage"
 
 export type Route =
   | { page: "home" }
+  | { page: "home-example"; n: number; layout?: "b"; color?: "all"; prev?: true; bare?: true }  // [홈 시안] 홈 화면 시안 n번 (예시 페이지, features/homeExamples). layout·color: 시안 안의 조합, prev: 이전 버전, bare: 전환 막대 숨김
   | { page: "profile"; mode?: "setup" | "edit" | "chat" }  // chat = 대화형 초기 설정 (제안 기능, 서비스에 대화 메서드가 있을 때만)
   | { page: "clarify"; requestId: string }
   | { page: "confirm"; requestId: string }
@@ -17,6 +18,15 @@ export type Route =
 export const routePath = (r: Route): string => {
   switch (r.page) {
     case "home": return "#/home"
+    case "home-example": {  // [홈 시안]
+      const q = new URLSearchParams()
+      if (r.layout) q.set("layout", r.layout)
+      if (r.color) q.set("color", r.color)
+      if (r.prev) q.set("prev", "1")
+      if (r.bare) q.set("bare", "1")
+      const qs = q.toString()
+      return `#/home/${r.n}${qs ? `?${qs}` : ""}`
+    }
     case "profile": return r.mode ? `#/profile/${r.mode}` : "#/profile"
     case "clarify": return `#/analysis/${r.requestId}`
     case "confirm": return `#/analysis/${r.requestId}/confirm`
@@ -42,6 +52,15 @@ export const parseRoute = (hash: string = window.location.hash): Route => {
   const [pathname, query = ""] = path.split("?")
   const parts = pathname.split("/").filter(Boolean)
   const [a, b, c] = parts
+  if (a === "home" && b && /^\d{1,2}$/.test(b)) {  // [홈 시안] #/home/0, #/home/1 … (기존 홈 #/home 은 그대로)
+    const q = new URLSearchParams(query)
+    const r: Route = { page: "home-example", n: Number(b) }
+    if (q.get("layout") === "b") r.layout = "b"
+    if (q.get("color") === "all") r.color = "all"
+    if (q.get("prev") === "1") r.prev = true
+    if (q.get("bare") === "1") r.bare = true
+    return r
+  }
   if (!a || a === "home") return { page: "home" }
   if (a === "profile") return { page: "profile", mode: b === "setup" || b === "edit" || b === "chat" ? b : undefined }
   if (a === "analysis" && b && c === "confirm") return { page: "confirm", requestId: b }

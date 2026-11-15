@@ -29,6 +29,7 @@ const ComparisonScreen = lazy(() => import("../features/report/ComparisonScreen"
 const MockChrome = import.meta.env.DEV || import.meta.env.VITE_ENABLE_MOCK === "1" ? lazy(() => import("../mocks/MockChrome")) : null
 const TutorialScreen = lazy(() => import("../features/tutorial/TutorialScreen").then((m) => ({ default: m.TutorialScreen })))  // 리포트 보는 법 둘러보기 (예시 리포트, 운영 빌드에서도 동작)
 const PaperScreen = lazy(() => import("../features/paper/PaperScreen").then((m) => ({ default: m.PaperScreen })))
+const HomeExample = lazy(() => import("../features/homeExamples").then((m) => ({ default: m.HomeExample })))  // [홈 시안] 홈 화면 시안 (예시 페이지 #/home/1 …): 폰트·아이콘·전용 스타일을 그 주소에서만 불러온다
 
 export function Sidebar({ route }: { route: Route }) {
   const svc = useService()
@@ -41,7 +42,7 @@ export function Sidebar({ route }: { route: Route }) {
   const alerts = useRebalanceAlerts(papers.data)
   const gate = useGuideGate()  // 「분석 리포트」를 처음 누르면 리포트 가이드를 볼지 묻는다
   const items = [
-    { label: "홈 · 새 분석", icon: Home, to: { page: "home" } as Route, active: ["home", "clarify", "confirm", "run"].includes(route.page), badge: 0, badgeText: "" },
+    { label: "홈 · 새 분석", icon: Home, to: { page: "home" } as Route, active: ["home", "home-example", "clarify", "confirm", "run"].includes(route.page), badge: 0, badgeText: "" },
     { label: "분석 리포트", icon: FileText, to: { page: "reports" } as Route, active: ["reports", "report"].includes(route.page), badge: fresh.size, badgeText: `새로 완료된 리포트 ${fresh.size}개` },
     { label: "모의투자", icon: Activity, to: { page: "paper" } as Route, active: route.page === "paper", badge: alerts.size, badgeText: `리밸런싱 확인 ${alerts.size}건` },
     { label: "내 투자조건", icon: SlidersHorizontal, to: { page: "profile" } as Route, active: route.page === "profile", badge: 0, badgeText: "" },
@@ -86,6 +87,7 @@ function Screen({ route }: { route: Route }) {
   const { profile, status } = useProfile()
   switch (route.page) {
     case "home": return <HomeScreen />
+    case "home-example": return <Suspense fallback={<Loading />}><HomeExample route={route} /></Suspense>  // [홈 시안]
     case "profile": return route.mode === "chat" ? <ProfileChatScreen /> : <ProfileScreen mode={route.mode ?? (profile ? "view" : "setup")} />
     case "clarify": return <ClarifyScreen requestId={route.requestId} />
     case "confirm": return <ConfirmScreen requestId={route.requestId} />

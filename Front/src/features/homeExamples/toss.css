@@ -1,0 +1,56 @@
+/* 홈 시안의 톤 (배경 #F2F5F7 · 흰 카드 · 제목 #34383F · 본문 #646B77 · 포인트 #4880EE). 글꼴은 기존 화면과 같은 Noto Sans KR.
+   시안 화면이 켜져 있는 동안만 <html data-home-example="toss"> 가 붙는다 (shared.tsx ExampleFrame) → 다른 화면의 색·폰트는 바뀌지 않는다.
+   사이드바처럼 함께 쓰는 부품은 Tailwind 색 변수(--color-*)를 이 범위 안에서만 바꿔 같은 톤으로 맞춘다. */
+:root[data-home-example="toss"] {
+  --p-bg: #f2f5f7;
+  --p-title: #34383f;
+  --p-body: #646b77;
+  --p-tint: #eef3fe;
+  --p-line: #e5e8eb;
+
+  /* 색 조합 1 (기본): 강조는 #4880EE, 흰 글씨 버튼과 작은 강조 글씨는 기존 진한 파랑 (흰 바탕 대비 6.7:1) */
+  --p-btn: #1d4ed8;
+  --p-btn-hover: #1e40af;
+  --p-accent-text: #1d4ed8;
+
+  --color-slate-50: var(--p-bg);
+  --color-slate-100: var(--p-bg);
+  --color-slate-200: var(--p-line);
+  --color-slate-400: var(--p-body);
+  --color-slate-500: var(--p-body);
+  --color-slate-600: var(--p-body);
+  --color-slate-700: var(--p-title);
+  --color-slate-800: var(--p-title);
+  --color-slate-900: var(--p-title);
+  --color-slate-950: var(--p-title);
+  --color-blue-50: var(--p-tint);
+}
+
+/* 색 조합 2 (주소에 color=all): 버튼과 작은 글씨까지 전부 #4880EE (흰 글씨 대비 약 3.8:1) */
+:root[data-home-example="toss"][data-home-example-color="all"] {
+  --p-btn: #4880ee;
+  --p-btn-hover: #3a6fdb;
+  --p-accent-text: #4880ee;
+  --color-blue-700: #4880ee;
+  --color-blue-800: #3a6fdb;
+}
+
+:root[data-home-example="toss"] body {
+  background: var(--p-bg);
+}
+
+/* 사이드바: 흰 판과 회색 배경의 면 차이(1.09:1)로 나뉘므로 오른쪽 선을 지운다 */
+:root[data-home-example="toss"] aside.border-r {
+  border-right-color: transparent;
+}
+
+.hp-btn {
+  background: var(--p-btn);
+  color: #fff;
+}
+.hp-btn:hover:not(:disabled) {
+  background: var(--p-btn-hover);
+}
+.hp-accent-text {
+  color: var(--p-accent-text);
+}

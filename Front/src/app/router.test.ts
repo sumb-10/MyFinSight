@@ -6,6 +6,7 @@ const ROUTES: Route[] = [
   { page: "clarify", requestId: "req_1" }, { page: "confirm", requestId: "req_1" }, { page: "run", runId: "run_1" },
   { page: "reports" }, { page: "report", reportId: "run_1" }, { page: "paper" }, { page: "paper", paperId: "paper_20261024_abcd" },
   { page: "comparison", comparisonId: "cmp_run_1" },
+  { page: "home-example", n: 0 }, { page: "home-example", n: 1 }, { page: "home-example", n: 1, layout: "b", color: "all" }, { page: "home-example", n: 3, bare: true }, { page: "home-example", n: 1, layout: "b", prev: true },  // [홈 시안]
 ]
 
 describe("router", () => {

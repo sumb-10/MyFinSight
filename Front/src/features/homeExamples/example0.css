@@ -1,0 +1,40 @@
+/* 홈 시안 0: 기존 홈 화면을 그대로 그리고 모양만 맞춘다. 색은 toss.css 가 맡고, 여기서는 카드 모양만 바꾼다 (글꼴·굵기는 기존 그대로).
+   기존 홈(HomeScreen.tsx)의 클래스가 쓰는 Tailwind 변수를 이 범위 안에서만 바꾸므로 HomeScreen 코드는 건드리지 않는다. */
+.home-example-0 {
+  --color-slate-200: #ffffff; /* 카드·입력창 테두리를 없앤다 (흰 카드 위의 흰 선) */
+  /* 배지·보조 버튼·안내 상자의 테두리도 없앤다: 이것들은 이미 옅은 색 면(blue-50 등)이나 글자색으로 구분된다 */
+  --color-blue-200: transparent;
+  --color-red-200: transparent;
+  --color-amber-200: transparent;
+  --color-amber-300: transparent;
+  --color-emerald-200: transparent;
+  --radius-2xl: 1.5rem; /* 카드 모서리 24px */
+  --radius-xl: 0.875rem; /* 버튼·작은 상자 모서리 14px */
+}
+
+.home-example-0 .shadow-sm {
+  --tw-shadow: 0 0 #0000;
+  box-shadow: none;
+}
+
+/* 흰 카드 안의 보조 버튼(상세 조건 등): 테두리가 없어지면 흰 면 위의 흰 버튼이라 글자만 남는다 → 회색 면으로 채워 버튼으로 보이게 한다.
+   회색 배경 위의 보조 버튼(둘러보기)은 흰 면 그대로 둔다 (흰 면과 회색 배경이 이미 구분된다). */
+.home-example-0 .bg-white button.bg-white {
+  background-color: #f2f5f7;
+}
+.home-example-0 .bg-white button.bg-white:hover:not(:disabled) {
+  background-color: #e7ebef;
+}
+
+/* 입력 카드: 테두리가 없어도 지금 적고 있는 곳이 보이게, 입력할 때 카드 둘레를 강조한다 */
+.home-example-0 [data-tour="home-idea"]:focus-within {
+  box-shadow: 0 0 0 2px #4880ee;
+}
+
+/* 맨 위 「개인화 투자전략」 알약을 숨기고, 제목을 그 자리로 올린다 */
+.home-example-0 .max-w-4xl > span:first-child {
+  display: none;
+}
+.home-example-0 .max-w-4xl > h1 {
+  margin-top: 0;
+}

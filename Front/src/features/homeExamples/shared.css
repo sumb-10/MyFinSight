@@ -1,0 +1,22 @@
+/* 시안 화면(.home-example) 안에서만: 버튼·입력창에 적은 글자 크기·굵기 클래스가 보이게 한다.
+   src/index.css 의 `button, input, textarea, select { font: inherit }` 는 레이어 밖 규칙이라 Tailwind 클래스(레이어 안)를 이긴다
+   → 앱 전체에서 버튼의 text-sm · font-semibold 가 먹지 않고 16px · 보통 굵기로 보인다 (기존 화면은 그대로 둔다).
+   revert-layer 는 이 규칙을 레이어 안 값(Tailwind 클래스, 없으면 preflight 의 inherit)으로 되돌린다. */
+.home-example button,
+.home-example textarea {
+  font-size: revert-layer;
+  font-weight: revert-layer;
+  line-height: revert-layer;
+}
+
+/* 입력창: 둘러싼 상자(또는 입력창 자신)가 포커스 둘레를 그리므로, src/index.css 의 전역 :focus-visible 외곽선(레이어 밖이라 outline-none 을 이김)을 끈다.
+   그대로 두면 둥근 상자 안에 네모난 파란 선이 하나 더 생긴다. */
+.home-example textarea:focus-visible {
+  outline: none;
+}
+
+/* 한국어는 단어(어절) 단위로 줄을 바꾼다: 「집중하 / 고」처럼 낱말 가운데서 끊기지 않게 */
+.home-example {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
