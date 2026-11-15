@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { ArrowDown, ChevronRight, Compass, FileText, MessageCircle, Play, Sparkles, TrendingUp } from "lucide-react"
 import { navigate } from "../../app/router"
+import { FEATURES, FeatureSlides } from "./FeatureSlides"
 
 // 처음 온 사람에게 전체 흐름을 보여 주는 스크롤형 소개 페이지 (#/intro).
 // 오른쪽 화면 틀은 고정(sticky)되어 있고, 왼쪽 설명을 스크롤로 한 장씩 넘기면 화면 속 내용이 다음 단계로 바뀐다.
@@ -31,7 +32,7 @@ const STEPS: Step[] = [
   { no: 1, kicker: "아이디어 입력", title: "투자하고 싶은 내용을\n평소 말로 적어 보세요", body: "관심 있는 산업, 종목, 기간을 한 줄로 적으면 됩니다.\n적지 않은 조건은 미리 저장해 둔 내 투자조건을 씁니다." },
   { no: 2, kicker: "보충 질문", title: "모자란 조건은\nMyFinSight가 물어봐요", body: "분석에 꼭 필요한데 빠진 조건이 있으면 한 번에 하나씩 묻습니다.\n보기 중에서 고르기만 하면 됩니다." },
   { no: 3, kicker: "조건 확인", title: "최종 조건을 확인하고\n분석을 시작해요", body: "이번 분석에서 달라진 조건을 한눈에 보여 줍니다.\n확인하고 「분석 시작」을 눌러야 분석이 실행됩니다." },
-  { no: 4, kicker: "분석·검증", title: "종목을 고르고,\n과거 데이터로 검증해요", body: "조건에 맞는 종목을 고르고 비중을 정한 뒤, 과거에 이 구성을 따랐다면 어땠을지 계산합니다. 보통 5~10분 걸리니 다른 일을 하다 오셔도 됩니다." },
+  { no: 4, kicker: "분석·검증", title: "종목을 고르고,\n과거 데이터로 검증해요", body: "조건에 맞는 종목을 고르고, LLM의 투자 의견을 반영해 비중을 계산합니다.\n과거에 이 구성을 따랐다면 어땠을지 계산합니다." },
   { no: 5, kicker: "리포트·모의투자", title: "리포트로 확인하고,\n모의투자로 지켜봐요", body: "추천 구성, 과거 성과와 위험, 내 조건을 지켰는지가 리포트에 정리됩니다. 마음에 들면 실제 돈 없이 모의투자로 따라가 볼 수 있습니다." },
 ]
 
@@ -59,7 +60,8 @@ function animateScrollTo(top: number) {
   scrollAnim = window.requestAnimationFrame(step)
 }
 
-function usePager(count: number) {
+/** intercept: 지금 장 안에서 먼저 처리할 넘김(가로 슬라이드 등). 처리했으면 true 를 돌려주고, 그러면 세로로 넘어가지 않는다. */
+function usePager(count: number, intercept?: (page: number, dir: 1 | -1) => boolean) {
   const pages = useRef<(HTMLElement | null)[]>([])
   const [page, setPage] = useState(0)
   const pageRef = useRef(0)
@@ -70,6 +72,8 @@ function usePager(count: number) {
   }
   const goRef = useRef(goTo)
   goRef.current = goTo
+  const interceptRef = useRef(intercept)
+  interceptRef.current = intercept
   useEffect(() => {
     let raf = 0
     const read = () => {
@@ -85,17 +89,24 @@ function usePager(count: number) {
       e.preventDefault()
       const now = Date.now()
       if (now < lockUntil) return
-      const from = target >= 0 && now < lockUntil + 200 ? target : pageRef.current
-      const next = Math.max(0, Math.min(count - 1, from + (e.deltaY > 0 ? 1 : -1)))
+      const dir = e.deltaY > 0 ? 1 : -1
+      const pending = target >= 0 && now < lockUntil + 200
       lockUntil = now + PAGE_MS + 150
+      if (!pending && interceptRef.current?.(pageRef.current, dir)) { target = -1; return }
+      const from = pending ? target : pageRef.current
+      const next = Math.max(0, Math.min(count - 1, from + dir))
       target = next
       goRef.current(next)
     }
     const onKey = (e: KeyboardEvent) => {
       const down = ["ArrowDown", "PageDown", " "].includes(e.key), up = ["ArrowUp", "PageUp"].includes(e.key)
+      const side = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0
+      if (side) { if (interceptRef.current?.(pageRef.current, side)) e.preventDefault(); return }  // 좌우 화살표는 슬라이드만 넘긴다
       if (!down && !up) return
       e.preventDefault()
-      goRef.current(pageRef.current + (down ? 1 : -1))
+      const dir = down ? 1 : -1
+      if (interceptRef.current?.(pageRef.current, dir)) return
+      goRef.current(pageRef.current + dir)
     }
     read()
     window.addEventListener("scroll", onScroll, { passive: true })
@@ -233,7 +244,7 @@ function SceneAnalyze() {
           <path d={STRAT} fill="none" stroke="#2563eb" strokeWidth="2.5" pathLength={1} className="intro-draw" />
         </svg>
       </div>
-      <p className="text-center text-xs font-semibold text-slate-500">{done ? "분석이 끝났습니다. 리포트가 준비됐어요." : "보통 5~10분 걸립니다"}</p>
+      <p className={`text-center text-xs font-semibold text-slate-500 transition-opacity duration-500 ${done ? "opacity-100" : "opacity-0"}`}>분석이 끝났습니다. 리포트가 준비됐어요.</p>
     </div>
   )
 }
@@ -284,9 +295,22 @@ function DeviceFrame({ step, visit }: { step: number; visit: number }) {
 }
 
 export function IntroScroll() {
-  const PAGES = STEPS.length + 2  // 첫 화면 + 5장 + 마지막 화면
-  const { page, pages, goTo } = usePager(PAGES)
-  const step = page - 1  // 지금 보이는 장 (0~4, 첫·마지막 화면이면 범위 밖)
+  const FEAT_PAGE = 1  // 첫 화면 다음: 특징 가로 슬라이드
+  const PAGES = STEPS.length + 3  // 첫 화면 + 특징 + 5장 + 마지막 화면
+  const [slide, setSlideRaw] = useState(0)
+  const slideRef = useRef(0)
+  slideRef.current = slide
+  const setSlide = (i: number) => setSlideRaw(Math.max(0, Math.min(FEATURES.length - 1, i)))
+  // 특징 장에서는 휠·키를 먼저 가로 슬라이드에 쓴다. 양 끝을 넘어서면 세로로 넘어간다.
+  const intercept = (p: number, dir: 1 | -1) => {
+    if (p !== FEAT_PAGE) return false
+    const next = slideRef.current + dir
+    if (next < 0 || next >= FEATURES.length) return false
+    setSlideRaw(next)
+    return true
+  }
+  const { page, pages, goTo } = usePager(PAGES, intercept)
+  const step = page - 2  // 지금 보이는 장 (0~4, 첫·특징·마지막 화면이면 범위 밖)
   const [visits, setVisits] = useState<number[]>(() => STEPS.map(() => 0))
   useEffect(() => { if (step >= 0 && step < STEPS.length) setVisits((v) => v.map((n, i) => (i === step ? n + 1 : n))) }, [step])
   useEffect(() => { recordIntro(); window.scrollTo({ top: 0 }) }, [])  // 한 번 열면 「본 것」: 첫 방문 자동 열기를 다시 하지 않는다
@@ -317,12 +341,17 @@ export function IntroScroll() {
         <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700"><Sparkles className="size-3.5" />처음 오셨나요?</span>
         <h1 className="mt-6 text-5xl font-extrabold leading-tight tracking-tight text-slate-950">투자 아이디어 한 줄이<br />검증된 포트폴리오가 되기까지</h1>
         <p className="mt-5 max-w-xl text-lg leading-8 text-slate-600">MyFinSight가 어떤 순서로 분석하는지 보여 드릴게요.</p>
-        <button onClick={() => goTo(1)} className="intro-bob mt-14 flex flex-col items-center gap-2 text-sm font-semibold text-slate-400 hover:text-slate-600">아래로 스크롤<ArrowDown className="size-5" /></button>
+        <button onClick={() => goTo(FEAT_PAGE)} className="intro-bob mt-14 flex flex-col items-center gap-2 text-sm font-semibold text-slate-400 hover:text-slate-600">아래로 스크롤<ArrowDown className="size-5" /></button>
+      </section>
+
+      {/* 특징: 가로로 넘기는 슬라이드 */}
+      <section ref={(el) => { pages.current[FEAT_PAGE] = el }} className="flex h-screen items-center bg-gradient-to-b from-white to-violet-50/40">
+        <FeatureSlides active={page === FEAT_PAGE} slide={slide} setSlide={setSlide} onNext={() => goTo(FEAT_PAGE + 1)} />
       </section>
 
       {/* 단계: 장마다 설명과 화면 틀이 따로 있고, 휠 한 번에 한 장씩 아래로 넘어간다 */}
       {STEPS.map((st, i) => (
-        <section key={st.no} ref={(el) => { pages.current[i + 1] = el }} className={`flex h-screen items-center ${i % 2 ? "bg-slate-50/70" : "bg-white"}`}>
+        <section key={st.no} ref={(el) => { pages.current[i + 2] = el }} className={`flex h-screen items-center ${i % 2 ? "bg-slate-50/70" : "bg-white"}`}>
           <div className="mx-auto grid w-full max-w-[1180px] grid-cols-[minmax(0,1fr)_520px] items-center gap-16 px-10 pt-12">
             <div className={`transition-all duration-700 ease-out ${step === i ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0"}`}>
               <p className="flex items-center gap-2 text-sm font-bold text-blue-700"><span className="flex size-7 items-center justify-center rounded-full bg-blue-700 text-xs text-white">{st.no}</span>{st.kicker}</p>
@@ -337,12 +366,12 @@ export function IntroScroll() {
       {/* 진행 표시: 오른쪽 점. 누르면 그 장으로 */}
       <nav aria-label="소개 단계" className={`fixed right-6 top-1/2 z-20 flex -translate-y-1/2 flex-col gap-3 transition-opacity ${step >= 0 && step < STEPS.length ? "opacity-100" : "pointer-events-none opacity-0"}`}>
         {STEPS.map((st, i) => (
-          <button key={st.no} onClick={() => goTo(i + 1)} aria-label={`${st.no}단계 ${st.kicker}`} aria-current={step === i ? "step" : undefined} className={`w-2.5 rounded-full transition-all duration-300 ${step === i ? "h-6 bg-blue-700" : "h-2.5 bg-slate-300 hover:bg-slate-400"}`} />
+          <button key={st.no} onClick={() => goTo(i + 2)} aria-label={`${st.no}단계 ${st.kicker}`} aria-current={step === i ? "step" : undefined} className={`w-2.5 rounded-full transition-all duration-300 ${step === i ? "h-6 bg-blue-700" : "h-2.5 bg-slate-300 hover:bg-slate-400"}`} />
         ))}
       </nav>
 
       {/* 마지막: 선택지 */}
-      <section ref={(el) => { pages.current[STEPS.length + 1] = el }} className="flex h-screen flex-col items-center justify-center bg-slate-50 px-10 text-center">
+      <section ref={(el) => { pages.current[STEPS.length + 2] = el }} className="flex h-screen flex-col items-center justify-center bg-slate-50 px-10 text-center">
         <h2 className="text-4xl font-extrabold tracking-tight text-slate-950">이제 직접 해 볼까요?</h2>
         <p className="mt-4 text-lg text-slate-600">처음이라면 예시 리포트를 먼저 보는 것도 좋아요.</p>
         <div className="mt-10 grid w-full max-w-4xl grid-cols-3 gap-4">
