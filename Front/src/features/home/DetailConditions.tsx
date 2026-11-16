@@ -7,7 +7,10 @@ import { useResource } from "../../state/useResource"
 import { Button, inputClass } from "../../ui"
 import { ko } from "../../lib/format"
 import { benchName, listText, money, pctText, rebalanceText, usdFloor, yearsText } from "../profile/format"
-import { NumberInput } from "../profile/inputs"
+import { NumberInput, PercentSlider, SectorPicker, TagInput } from "../profile/inputs"
+import { HOLDINGS, LABEL, PCT, THEME_FIELD, TICKER_PLACEHOLDER } from "../profile/fields"
+import { TickerListField } from "../profile/stocks"
+import { checkConditions, type RulePath } from "../profile/rules"
 import { NEWS_INFO, TEMPLATE_INFO, templateLabel, WEIGHTING_INFO, weightingLabel } from "../profile/strategyInfo"
 import { DetailDialogShell } from "./DetailDialogShell"
 
@@ -18,8 +21,8 @@ export type Form = {
   initial_amount: number; currency: "KRW" | "USD"; monthly_contribution: number; contribution_day: number; target_years: number
   bt_mode: "recent" | "range"; backtest_years: number; bt_start_year: number; bt_end_year: number
   risk_tolerance: "conservative" | "moderate" | "aggressive"; max_drawdown_pct: number; target_return_pct: number; benchmark: string
-  universe: Universe[]; num_target: number; num_min: number; num_max: number; max_stock_pct: number; max_sector_pct: number; template: Template; weighting: Weighting; use_news_tilt: boolean; exclude: string
-  exclude_themes: string; exclude_sectors: string; min_market_cap_b: number; min_adv_m: number; min_cash_pct: number; rebalance_count: number; rebalance_unit: string
+  universe: Universe[]; num_target: number; num_min: number; num_max: number; max_stock_pct: number; max_sector_pct: number; template: Template; weighting: Weighting; use_news_tilt: boolean; exclude: string[]; must_include: string[]
+  exclude_themes: string[]; exclude_sectors: string[]; min_market_cap_b: number; min_adv_m: number; min_cash_pct: number; rebalance_count: number; rebalance_unit: string
 }
 
 const thisYear = new Date().getFullYear()
@@ -39,8 +42,9 @@ export function fromProfile(p: ProfileVersion, ov: Overrides): Form {
     universe: (g("constraints.universe", p.constraints.universe) as Universe[]).slice(), ...holdingsFrom(p, ov),
     max_stock_pct: Math.round(Number(g("constraints.max_weight_per_stock", p.constraints.max_weight_per_stock)) * 100), max_sector_pct: Math.round(Number(g("constraints.max_weight_per_sector", p.constraints.max_weight_per_sector)) * 100),
     template: g("strategy_preference.template", p.strategy_preference.template) as Template, weighting: g("strategy_preference.baseline_weighting", p.strategy_preference.baseline_weighting) as Weighting,
-    use_news_tilt: Boolean(g("strategy_preference.use_news_tilt", p.strategy_preference.use_news_tilt)), exclude: (g("constraints.exclude_tickers", p.constraints.exclude_tickers) as string[]).join(", "),
-    exclude_themes: (g("constraints.exclude_themes", p.constraints.exclude_themes ?? []) as string[]).join(", "), exclude_sectors: (g("constraints.exclude_sectors", p.constraints.exclude_sectors ?? []) as string[]).join(", "),
+    use_news_tilt: Boolean(g("strategy_preference.use_news_tilt", p.strategy_preference.use_news_tilt)), exclude: (g("constraints.exclude_tickers", p.constraints.exclude_tickers) as string[]).slice(),
+    must_include: (g("constraints.must_include_tickers", p.constraints.must_include_tickers ?? []) as string[]).slice(),
+    exclude_themes: (g("constraints.exclude_themes", p.constraints.exclude_themes ?? []) as string[]).slice(), exclude_sectors: (g("constraints.exclude_sectors", p.constraints.exclude_sectors ?? []) as string[]).slice(),
     min_market_cap_b: Number(g("constraints.min_market_cap_usd", p.constraints.min_market_cap_usd ?? 0)) / 1e9, min_adv_m: Number(g("constraints.min_avg_daily_volume_usd", p.constraints.min_avg_daily_volume_usd ?? 0)) / 1e6,
     min_cash_pct: Math.round(Number(g("constraints.min_cash_ratio", p.constraints.min_cash_ratio ?? 0)) * 100),
     rebalance_count: Number((g("constraints.rebalance", p.constraints.rebalance) as { count: number }).count), rebalance_unit: String((g("constraints.rebalance", p.constraints.rebalance) as { unit: string }).unit),
@@ -89,11 +93,10 @@ function rawOverrides(f: Form, p: ProfileVersion): Overrides {
   put("strategy_preference.template", f.template, p.strategy_preference.template)
   put("strategy_preference.baseline_weighting", f.weighting, p.strategy_preference.baseline_weighting)
   put("strategy_preference.use_news_tilt", f.use_news_tilt, p.strategy_preference.use_news_tilt)
-  const ex = f.exclude.split(/[,\s]+/).map((x) => x.trim().toUpperCase()).filter(Boolean)
-  put("constraints.exclude_tickers", ex, p.constraints.exclude_tickers)
-  const split = (t: string) => t.split(/[,\s]+/).map((x) => x.trim().toLowerCase()).filter(Boolean)
-  put("constraints.exclude_themes", split(f.exclude_themes), p.constraints.exclude_themes ?? [])
-  put("constraints.exclude_sectors", f.exclude_sectors.split(",").map((x) => x.trim()).filter(Boolean), p.constraints.exclude_sectors ?? [])
+  put("constraints.exclude_tickers", f.exclude, p.constraints.exclude_tickers)
+  put("constraints.must_include_tickers", f.must_include, p.constraints.must_include_tickers ?? [])
+  put("constraints.exclude_themes", f.exclude_themes, p.constraints.exclude_themes ?? [])
+  put("constraints.exclude_sectors", f.exclude_sectors, p.constraints.exclude_sectors ?? [])
   put("constraints.min_market_cap_usd", Math.round(f.min_market_cap_b * 1e9), p.constraints.min_market_cap_usd ?? 0)
   put("constraints.min_avg_daily_volume_usd", Math.round(f.min_adv_m * 1e6), p.constraints.min_avg_daily_volume_usd ?? 0)
   put("constraints.min_cash_ratio", f.min_cash_pct / 100, p.constraints.min_cash_ratio ?? 0)
@@ -125,7 +128,7 @@ const PLACE: Record<string, { label: string; tab: TabId; adv?: AdvId }> = {
   "risk.risk_tolerance": { label: "투자성향", tab: "goal" }, "risk.max_drawdown_tolerance": { label: "손실 감내 수준", tab: "goal" }, "risk.target_annual_return": { label: "목표 연수익률", tab: "goal" }, "risk.benchmark": { label: "비교지수", tab: "goal" },
   "constraints.universe": { label: "투자 대상 지수", tab: "stocks" }, "constraints.num_holdings.target": { label: "목표 종목 수", tab: "stocks" }, "constraints.num_holdings": { label: "종목 수", tab: "stocks", adv: "range" },
   "constraints.max_weight_per_stock": { label: "종목당 최대 비중", tab: "stocks" }, "constraints.max_weight_per_sector": { label: "섹터당 최대 비중", tab: "stocks" },
-  "constraints.exclude_tickers": { label: "제외 종목", tab: "stocks", adv: "exclude" }, "constraints.exclude_themes": { label: "제외 테마", tab: "stocks", adv: "exclude" }, "constraints.exclude_sectors": { label: "제외 섹터", tab: "stocks", adv: "exclude" },
+  "constraints.exclude_tickers": { label: "제외 종목", tab: "stocks", adv: "exclude" }, "constraints.must_include_tickers": { label: "반드시 포함할 종목", tab: "stocks", adv: "exclude" }, "constraints.exclude_themes": { label: "제외 테마", tab: "stocks", adv: "exclude" }, "constraints.exclude_sectors": { label: "제외 섹터", tab: "stocks", adv: "exclude" },
   "constraints.min_market_cap_usd": { label: "최소 시가총액", tab: "stocks", adv: "floor" }, "constraints.min_avg_daily_volume_usd": { label: "최소 일평균 거래대금", tab: "stocks", adv: "floor" },
   "constraints.min_cash_ratio": { label: "최소 현금 비율", tab: "stocks", adv: "cash" }, "constraints.rebalance": { label: "리밸런싱", tab: "stocks", adv: "cash" },
   "strategy_preference.template": { label: "투자할 기업", tab: "strategy" }, "strategy_preference.baseline_weighting": { label: "투자금 나누는 방식", tab: "strategy" }, "strategy_preference.use_news_tilt": { label: "뉴스·공시 반영", tab: "strategy" },
@@ -150,7 +153,7 @@ function changeText(k: string, v: unknown, cur: "KRW" | "USD"): string {
     case "constraints.universe": return (v as string[]).map(ko).join(", ") || "없음"
     case "constraints.num_holdings.target": return `${v}개`
     case "constraints.num_holdings": { const n = v as NumHoldings; return `목표 ${n.target}개 (최소 ${n.min} ~ 최대 ${n.max})` }
-    case "constraints.exclude_tickers": case "constraints.exclude_themes": case "constraints.exclude_sectors": return listText(v as string[])
+    case "constraints.exclude_tickers": case "constraints.must_include_tickers": case "constraints.exclude_themes": case "constraints.exclude_sectors": return listText(v as string[])
     case "constraints.min_market_cap_usd": case "constraints.min_avg_daily_volume_usd": return usdFloor(Number(v))
     case "constraints.rebalance": return rebalanceText(v as Rebalance)
     case "strategy_preference.template": return templateLabel(String(v))
@@ -167,24 +170,29 @@ export function changeRows(ov: Overrides, f: Form, p: ProfileVersion): ChangeRow
 }
 
 export interface FormError { id: string; message: string; tab: TabId; adv?: AdvId }
-/** 기존 검사 규칙 그대로. 입력칸 가까이 보여 주고, 첫 오류의 탭·영역으로 이동할 수 있게 위치를 함께 준다. */
-/** 목표 종목 수가 최소~최대를 벗어났을 때 (최소·최대는 저절로 바꾸지 않는다 — 서버 HARD: 최소 ≤ 목표 ≤ 최대). */
+/** 목표 종목 수가 최소~최대를 벗어났을 때 (최소·최대는 저절로 바꾸지 않는다 — 서버 HARD: 최소 ≤ 목표 ≤ 최대). 이 창에서는 「종목 수 범위」로 가는 길을 덧붙인다. */
 const targetRangeError = (f: Form) => `목표 종목 수는 최소 ${f.num_min} ~ 최대 ${f.num_max}개 사이여야 합니다. 목표를 바꾸거나 아래 「종목 수 범위」에서 최소·최대를 바꿔 주세요`
 
+/** 규칙의 오류 위치(서버 필드 경로) → 이 창의 입력 칸·탭·접이식 영역 */
+const RULE_PLACE: Record<RulePath, { id: string; tab: TabId; adv?: AdvId }> = {
+  "capital.initial_amount": { id: "initial_amount", tab: "money" }, "horizon.target_years": { id: "target_years", tab: "money" }, "horizon.backtest_years": { id: "backtest_years", tab: "money" },
+  "constraints.universe": { id: "universe", tab: "stocks" }, "constraints.max_weight_per_sector": { id: "max_sector_pct", tab: "stocks" }, "constraints.max_weight_per_stock": { id: "max_stock_pct", tab: "stocks" },
+  "constraints.num_holdings.min": { id: "num_min", tab: "stocks", adv: "range" }, "constraints.num_holdings.target": { id: "num_target", tab: "stocks" },
+  "constraints.exclude_tickers": { id: "exclude", tab: "stocks", adv: "exclude" }, "constraints.must_include_tickers": { id: "must_include", tab: "stocks", adv: "exclude" },
+}
+
+/** 검사 규칙은 내 투자조건 화면과 같이 쓰는 rules.ts. 이 창에만 있는 「특정 기간」 백테스트 검사만 여기서 한다. 입력칸 가까이 보여 주고, 첫 오류의 탭·영역으로 이동할 수 있게 위치를 함께 준다. */
 export function validate(f: Form, { allowZero = false }: { allowZero?: boolean } = {}): FormError[] {
-  const e: FormError[] = []
-  // allowZero: 제안 규칙 — 초기 투자금 0원 + 매월 추가 투자 (실제 서버도 같은 규칙: 첫 적립일에 처음 매수, 이슈 #14 의 3번). 내 투자조건 폼(validateProfile)과 같은 규칙
-  if (allowZero && f.initial_amount === 0) { if (!(f.monthly_contribution > 0)) e.push({ id: "initial_amount", message: "처음 투자금을 0원으로 하려면 매월 추가 투자금을 정해 주세요", tab: "money" }) }
-  else if (!(f.initial_amount > 0)) e.push({ id: "initial_amount", message: "투자금은 0보다 커야 합니다", tab: "money" })
-  if (f.bt_mode === "range" && !(f.bt_start_year <= f.bt_end_year)) e.push({ id: "bt_start_year", message: "백테스트 시작 연도가 끝 연도보다 늦습니다", tab: "money" })
-  if (f.bt_mode === "range" && f.bt_end_year - f.bt_start_year + 1 > 20) e.push({ id: "bt_start_year", message: "백테스트는 최대 20년입니다", tab: "money" })
-  if (f.bt_mode === "recent" && !(f.backtest_years > 0 && f.backtest_years <= 20)) e.push({ id: "backtest_years", message: "백테스트 기간은 0보다 크고 20년 이하입니다", tab: "money" })
-  if (!f.universe.length) e.push({ id: "universe", message: "유니버스를 하나 이상 고르세요", tab: "stocks" })
-  if (f.max_sector_pct < f.max_stock_pct) e.push({ id: "max_sector_pct", message: "섹터당 상한은 종목당 상한 이상이어야 합니다", tab: "stocks" })
-  if (f.num_min > f.num_max) e.push({ id: "num_min", message: "최소 종목 수가 최대 종목 수보다 큽니다", tab: "stocks", adv: "range" })
-  else if (f.num_target < f.num_min || f.num_target > f.num_max) e.push({ id: "num_target", message: targetRangeError(f), tab: "stocks" })
-  if (f.max_stock_pct * f.num_min < 100 - f.min_cash_pct) e.push({ id: "max_stock_pct", message: `종목당 상한 × 최소 종목 수가 투자 비율보다 작아 돈을 다 배분할 수 없습니다 (상한을 ${Math.ceil((100 - f.min_cash_pct) / f.num_min)}% 이상으로 올리거나 최소 종목 수를 늘려 주세요)`, tab: "stocks" })
-  return e
+  const rules = checkConditions({
+    initial_amount: f.initial_amount, monthly_contribution: f.monthly_contribution, target_years: f.target_years, backtest_years: f.bt_mode === "recent" ? f.backtest_years : null,
+    num: { min: f.num_min, target: f.num_target, max: f.num_max }, max_stock: f.max_stock_pct / 100, max_sector: f.max_sector_pct / 100, min_cash: f.min_cash_pct / 100,
+    universe: f.universe, exclude: f.exclude, must_include: f.must_include,
+  }, { allowZero }).map(({ path, message }) => ({ ...RULE_PLACE[path], message: path === "constraints.num_holdings.target" ? targetRangeError(f) : message }))
+  const range: FormError[] = []
+  if (f.bt_mode === "range" && !(f.bt_start_year <= f.bt_end_year)) range.push({ id: "bt_start_year", message: "백테스트 시작 연도가 끝 연도보다 늦습니다", tab: "money" })
+  if (f.bt_mode === "range" && f.bt_end_year - f.bt_start_year + 1 > 20) range.push({ id: "bt_start_year", message: "백테스트는 최대 20년입니다", tab: "money" })
+  const money = rules.filter((r) => r.tab === "money")
+  return [...money, ...range, ...rules.filter((r) => r.tab !== "money")]  // 탭 순서대로 (첫 오류로 이동)
 }
 
 const dom = (id: string) => `dc-${id}`
@@ -288,8 +296,7 @@ export function DetailConditionsDialog({ profile, initial, onApply, close, title
   }
   const nh = profile.constraints.num_holdings
   const thisTemplate = TEMPLATE_INFO[f.template], thisWeighting = WEIGHTING_INFO[f.weighting]
-  const excludeN = (t: string) => t.split(/[,\s]+/).filter(Boolean).length
-  const excludeSummary = [excludeN(f.exclude) && `종목 ${excludeN(f.exclude)}개`, excludeN(f.exclude_themes) && `테마 ${excludeN(f.exclude_themes)}개`, f.exclude_sectors.split(",").filter((x) => x.trim()).length && `섹터 ${f.exclude_sectors.split(",").filter((x) => x.trim()).length}개`].filter(Boolean).join(" · ") || "제외 조건 없음"
+  const excludeSummary = [f.exclude.length && `제외 종목 ${f.exclude.length}개`, f.must_include.length && `필수 포함 ${f.must_include.length}개`, f.exclude_sectors.length && `섹터 ${f.exclude_sectors.length}개`, f.exclude_themes.length && `테마 ${f.exclude_themes.length}개`].filter(Boolean).join(" · ") || "설정 없음"
 
   const header = (
     <>
@@ -337,14 +344,14 @@ export function DetailConditionsDialog({ profile, initial, onApply, close, title
           <>
             <SectionCard title="투자금">
               <div className={twoCols}>
-                <Item id={dom("initial_amount")} label="투자금" changed={has("capital.initial_amount")} error={errOf("initial_amount")} help={money(f.initial_amount, f.currency)}><input {...field("initial_amount")} className={inputClass} inputMode="numeric" value={f.initial_amount.toLocaleString("ko-KR")} onChange={(e) => set("initial_amount", Number(e.target.value.replace(/\D/g, "")))} /></Item>
+                <Item id={dom("initial_amount")} label={LABEL.initial_amount} changed={has("capital.initial_amount")} error={errOf("initial_amount")} help={money(f.initial_amount, f.currency)}><input {...field("initial_amount")} className={inputClass} inputMode="numeric" value={f.initial_amount.toLocaleString("ko-KR")} onChange={(e) => set("initial_amount", Number(e.target.value.replace(/\D/g, "")))} /></Item>
                 <Item id={dom("currency")} label="통화" changed={has("capital.currency")}><select id={dom("currency")} className={inputClass} value={f.currency} onChange={(e) => set("currency", e.target.value as "KRW" | "USD")}><option value="KRW">원 (KRW)</option><option value="USD">달러 (USD)</option></select></Item>
                 <Item id={dom("monthly")} label="매월 추가 투자금 (0이면 없음)" changed={has("capital.monthly_contribution")} help={f.monthly_contribution ? `매월 ${money(f.monthly_contribution, f.currency)}` : undefined}><input id={dom("monthly")} className={inputClass} inputMode="numeric" value={f.monthly_contribution.toLocaleString("ko-KR")} onChange={(e) => set("monthly_contribution", Number(e.target.value.replace(/\D/g, "")))} /></Item>
                 <Item id={dom("day")} label="추가 투자일 (매월)" changed={has("capital.contribution_day")}><NumberInput id={dom("day")} min={1} max={28} value={f.contribution_day} onChange={(v) => set("contribution_day", v)} /></Item>
               </div>
             </SectionCard>
             <SectionCard title="기간" desc="앞으로 투자할 기간은 미래의 투자 계획이고, 과거 성과를 확인할 기간은 지난 자료로 전략을 검증하는 기간입니다.">
-              <div className="sm:w-1/2"><Item id={dom("target_years")} label="앞으로 투자할 기간 (년)" changed={has("horizon.target_years")}><NumberInput id={dom("target_years")} min={1} max={10} step={0.5} value={f.target_years} onChange={(v) => set("target_years", v)} /></Item></div>
+              <div className="sm:w-1/2"><Item id={dom("target_years")} label="앞으로 투자할 기간 (년)" changed={has("horizon.target_years")} error={errOf("target_years")}><NumberInput {...field("target_years")} min={1} max={10} step={0.5} value={f.target_years} onChange={(v) => set("target_years", v)} /></Item></div>
               <Item label="과거 성과를 확인할 기간" changed={has("horizon.backtest_years", "horizon.start_date")}>
                 <div role="radiogroup" aria-label="과거 성과를 확인할 기간" className={twoCols}>
                   {([["recent", "최근 N년", "기준일에서 거슬러 올라가며 검증합니다."], ["range", "특정 기간", "연도를 골라 그 기간을 검증합니다."]] as const).map(([m, name, desc]) => (
@@ -373,8 +380,8 @@ export function DetailConditionsDialog({ profile, initial, onApply, close, title
             <div className={twoCols}>
               <Item id={dom("risk")} label="투자성향" changed={has("risk.risk_tolerance")}><select id={dom("risk")} className={inputClass} value={f.risk_tolerance} onChange={(e) => set("risk_tolerance", e.target.value as Form["risk_tolerance"])}>{(opt?.risk_tolerance ?? ["conservative", "moderate", "aggressive"]).map((x) => <option key={x} value={x}>{ko(x)}</option>)}</select></Item>
               <Item id={dom("benchmark")} label="비교지수" changed={has("risk.benchmark")}><select id={dom("benchmark")} className={inputClass} value={f.benchmark} onChange={(e) => set("benchmark", e.target.value)}>{(opt?.benchmarks ?? ["SPY", "QQQ", "069500.KS"]).map((b) => <option key={b} value={b}>{benchName(b)}</option>)}</select></Item>
-              <Item id={dom("drawdown")} label="손실 감내 수준 (%)" changed={has("risk.max_drawdown_tolerance")}><NumberInput id={dom("drawdown")} min={5} max={90} value={f.max_drawdown_pct} onChange={(v) => set("max_drawdown_pct", v)} /></Item>
-              <Item id={dom("target_return")} label="목표 연수익률 (%)" changed={has("risk.target_annual_return")}><NumberInput id={dom("target_return")} min={0} max={100} value={f.target_return_pct} onChange={(v) => set("target_return_pct", v)} /></Item>
+              <PercentSlider {...PCT["risk.max_drawdown_tolerance"]} id={dom("drawdown")} value={f.max_drawdown_pct / 100} onChange={(v) => set("max_drawdown_pct", Math.round(v * 100))} error={errOf("drawdown")} aside={<ChangedMark on={has("risk.max_drawdown_tolerance")} />} />
+              <PercentSlider {...PCT["risk.target_annual_return"]} id={dom("target_return")} value={f.target_return_pct / 100} onChange={(v) => set("target_return_pct", Math.round(v * 100))} error={errOf("target_return")} aside={<ChangedMark on={has("risk.target_annual_return")} />} />
             </div>
           </SectionCard>
         ) : tab === "stocks" ? (
@@ -385,24 +392,27 @@ export function DetailConditionsDialog({ profile, initial, onApply, close, title
                   <label key={u} className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 focus-within:ring-2 focus-within:ring-blue-500 ${f.universe.includes(u) ? "border-blue-400 bg-blue-50 text-blue-900" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}><input id={i === 0 ? dom("universe") : undefined} type="checkbox" className="accent-blue-700" checked={f.universe.includes(u)} onChange={(e) => set("universe", e.target.checked ? [...f.universe, u] : f.universe.filter((x) => x !== u))} />{ko(u)}</label>
                 ))}</div>
               </Item>
-              <div className="sm:w-1/2"><Item id={dom("num_target")} label="목표 종목 수" changed={has("constraints.num_holdings.target") || (has("constraints.num_holdings") && f.num_target !== nh.target)} error={targetErr} help={`최소 ${f.num_min} ~ 최대 ${f.num_max}개 사이로 정합니다`}><NumberInput id={dom("num_target")} aria-invalid={targetErr ? true : undefined} aria-describedby={targetErr ? `${dom("num_target")}-error` : undefined} min={2} max={50} value={f.num_target} onChange={(v) => set("num_target", v)} /></Item></div>
+              <div className="sm:w-1/2"><Item id={dom("num_target")} label="목표 종목 수" changed={has("constraints.num_holdings.target") || (has("constraints.num_holdings") && f.num_target !== nh.target)} error={targetErr} help={`최소 ${f.num_min} ~ 최대 ${f.num_max}개 사이로 정합니다`}><NumberInput id={dom("num_target")} aria-invalid={targetErr ? true : undefined} aria-describedby={targetErr ? `${dom("num_target")}-error` : undefined} min={HOLDINGS.min} max={HOLDINGS.max} value={f.num_target} onChange={(v) => set("num_target", v)} /></Item></div>
             </SectionCard>
             <SectionCard title="비중 상한">
               <div className={twoCols}>
-                <Item id={dom("max_stock_pct")} label="종목당 상한 (%)" changed={has("constraints.max_weight_per_stock")} error={errOf("max_stock_pct")}><NumberInput {...field("max_stock_pct")} min={1} max={100} value={f.max_stock_pct} onChange={(v) => set("max_stock_pct", v)} /></Item>
-                <Item id={dom("max_sector_pct")} label="섹터당 상한 (%)" changed={has("constraints.max_weight_per_sector")} error={errOf("max_sector_pct")}><NumberInput {...field("max_sector_pct")} min={1} max={100} value={f.max_sector_pct} onChange={(v) => set("max_sector_pct", v)} /></Item>
+                <PercentSlider {...PCT["constraints.max_weight_per_stock"]} id={dom("max_stock_pct")} value={f.max_stock_pct / 100} onChange={(v) => set("max_stock_pct", Math.round(v * 100))} error={errOf("max_stock_pct")} aside={<ChangedMark on={has("constraints.max_weight_per_stock")} />} />
+                <PercentSlider {...PCT["constraints.max_weight_per_sector"]} id={dom("max_sector_pct")} value={f.max_sector_pct / 100} onChange={(v) => set("max_sector_pct", Math.round(v * 100))} error={errOf("max_sector_pct")} aside={<ChangedMark on={has("constraints.max_weight_per_sector")} />} />
               </div>
             </SectionCard>
             <AdvCard title="종목 수 범위" summary={`최소 ${f.num_min} ~ 최대 ${f.num_max}`} count={countAdv("range")} open={isOpen("range")} onToggle={() => toggle("range")}>
               <div className={twoCols}>
-                <Item id={dom("num_min")} label="최소 종목 수" changed={has("constraints.num_holdings") && f.num_min !== nh.min} error={errOf("num_min")}><NumberInput {...field("num_min")} min={2} max={50} value={f.num_min} onChange={(v) => set("num_min", v)} /></Item>
-                <Item id={dom("num_max")} label="최대 종목 수" changed={has("constraints.num_holdings") && f.num_max !== nh.max}><NumberInput id={dom("num_max")} min={2} max={50} value={f.num_max} onChange={(v) => set("num_max", v)} /></Item>
+                <Item id={dom("num_min")} label="최소 종목 수" changed={has("constraints.num_holdings") && f.num_min !== nh.min} error={errOf("num_min")}><NumberInput {...field("num_min")} min={HOLDINGS.min} max={HOLDINGS.max} value={f.num_min} onChange={(v) => set("num_min", v)} /></Item>
+                <Item id={dom("num_max")} label="최대 종목 수" changed={has("constraints.num_holdings") && f.num_max !== nh.max}><NumberInput id={dom("num_max")} min={HOLDINGS.min} max={HOLDINGS.max} value={f.num_max} onChange={(v) => set("num_max", v)} /></Item>
               </div>
             </AdvCard>
-            <AdvCard title="제외 조건" summary={excludeSummary} count={countAdv("exclude")} open={isOpen("exclude")} onToggle={() => toggle("exclude")}>
-              <Item id={dom("exclude")} label="제외 종목 (티커, 쉼표로 구분)" changed={has("constraints.exclude_tickers")} help="예: TSLA, 005930.KS"><input id={dom("exclude")} className={inputClass} value={f.exclude} onChange={(e) => set("exclude", e.target.value)} /></Item>
-              <Item id={dom("exclude_themes")} label="제외 테마 (영문, 쉼표로 구분)" changed={has("constraints.exclude_themes")} help="예: tobacco, gambling, weapons. 비우면 제외 없음"><input id={dom("exclude_themes")} className={inputClass} value={f.exclude_themes} onChange={(e) => set("exclude_themes", e.target.value)} /></Item>
-              <Item id={dom("exclude_sectors")} label="제외 섹터 (쉼표로 구분)" changed={has("constraints.exclude_sectors")} help="예: 금융, 에너지"><input id={dom("exclude_sectors")} className={inputClass} value={f.exclude_sectors} onChange={(e) => set("exclude_sectors", e.target.value)} /></Item>
+            <AdvCard title="빼거나 꼭 넣을 종목·분야" summary={excludeSummary} count={countAdv("exclude")} open={isOpen("exclude")} onToggle={() => toggle("exclude")}>
+              <div className={twoCols}>
+                <TickerListField id={dom("exclude")} label={LABEL.exclude_tickers} values={f.exclude} placeholder={TICKER_PLACEHOLDER.exclude} error={errOf("exclude")} other={{ label: LABEL.must_include_tickers, values: f.must_include }} onChange={(v) => set("exclude", v)} aside={<ChangedMark on={has("constraints.exclude_tickers")} />} />
+                <TickerListField id={dom("must_include")} label={LABEL.must_include_tickers} values={f.must_include} placeholder={TICKER_PLACEHOLDER.include} error={errOf("must_include")} other={{ label: LABEL.exclude_tickers, values: f.exclude }} onChange={(v) => set("must_include", v)} aside={<ChangedMark on={has("constraints.must_include_tickers")} />} />
+              </div>
+              <SectorPicker id={dom("exclude_sectors")} values={f.exclude_sectors} onChange={(v) => set("exclude_sectors", v)} aside={<ChangedMark on={has("constraints.exclude_sectors")} />} />
+              <TagInput {...THEME_FIELD} id={dom("exclude_themes")} values={f.exclude_themes} onChange={(v) => set("exclude_themes", v)} aside={<ChangedMark on={has("constraints.exclude_themes")} />} />
             </AdvCard>
             <AdvCard title="종목 규모 하한" summary={`시가총액 ${usdFloor(Math.round(f.min_market_cap_b * 1e9))} · 거래대금 ${usdFloor(Math.round(f.min_adv_m * 1e6))}`} count={countAdv("floor")} open={isOpen("floor")} onToggle={() => toggle("floor")}>
               <div className={twoCols}>
@@ -412,7 +422,7 @@ export function DetailConditionsDialog({ profile, initial, onApply, close, title
             </AdvCard>
             <AdvCard title="현금·리밸런싱" summary={`현금 ${f.min_cash_pct}% · ${rebalanceText({ count: f.rebalance_count, unit: f.rebalance_unit as Rebalance["unit"] })}`} count={countAdv("cash")} open={isOpen("cash")} onToggle={() => toggle("cash")}>
               <div className={twoCols}>
-                <Item id={dom("cash")} label="최소 현금 비율 (%)" changed={has("constraints.min_cash_ratio")}><NumberInput id={dom("cash")} min={0} max={90} value={f.min_cash_pct} onChange={(v) => set("min_cash_pct", v)} /></Item>
+                <PercentSlider {...PCT["constraints.min_cash_ratio"]} id={dom("cash")} value={f.min_cash_pct / 100} onChange={(v) => set("min_cash_pct", Math.round(v * 100))} error={errOf("cash")} aside={<ChangedMark on={has("constraints.min_cash_ratio")} />} />
                 <Item label="리밸런싱 (0 = 매수 후 보유)" changed={has("constraints.rebalance")}>
                   <div className="grid grid-cols-2 gap-2"><NumberInput aria-label="리밸런싱 간격" min={0} value={f.rebalance_count} onChange={(v) => set("rebalance_count", v)} /><select aria-label="리밸런싱 단위" className={inputClass} value={f.rebalance_unit} onChange={(e) => set("rebalance_unit", e.target.value)}>{(opt?.rebalance_units ?? ["2w", "1m", "1q", "6m", "1y"]).map((u) => <option key={u} value={u}>{ko(u)}</option>)}</select></div>
                 </Item>
@@ -422,8 +432,8 @@ export function DetailConditionsDialog({ profile, initial, onApply, close, title
         ) : (
           <SectionCard title="투자 전략">
             <div className={twoCols}>
-              <Item id={dom("template")} label="어떤 기업에 투자할까요?" changed={has("strategy_preference.template")} help={thisTemplate?.desc}><select id={dom("template")} className={inputClass} value={f.template} onChange={(e) => set("template", e.target.value as Template)}>{(opt?.templates ?? ["momentum", "low_per", "quality", "low_volatility", "high_dividend"]).map((x) => <option key={x} value={x}>{TEMPLATE_INFO[x] ? templateLabel(x) : ko(x)}</option>)}</select></Item>
-              <Item id={dom("weighting")} label="투자금을 어떻게 나눌까요?" changed={has("strategy_preference.baseline_weighting")} help={thisWeighting?.desc}><select id={dom("weighting")} className={inputClass} value={f.weighting} onChange={(e) => set("weighting", e.target.value as Weighting)}>{(opt?.weightings ?? ["equal_weight", "market_cap", "inverse_volatility", "min_variance"]).map((x) => <option key={x} value={x}>{WEIGHTING_INFO[x] ? weightingLabel(x) : ko(x)}</option>)}</select></Item>
+              <Item id={dom("template")} label={LABEL.template} changed={has("strategy_preference.template")} help={thisTemplate?.desc}><select id={dom("template")} className={inputClass} value={f.template} onChange={(e) => set("template", e.target.value as Template)}>{(opt?.templates ?? ["momentum", "low_per", "quality", "low_volatility", "high_dividend"]).map((x) => <option key={x} value={x}>{TEMPLATE_INFO[x] ? templateLabel(x) : ko(x)}</option>)}</select></Item>
+              <Item id={dom("weighting")} label={LABEL.weighting} changed={has("strategy_preference.baseline_weighting")} help={thisWeighting?.desc}><select id={dom("weighting")} className={inputClass} value={f.weighting} onChange={(e) => set("weighting", e.target.value as Weighting)}>{(opt?.weightings ?? ["equal_weight", "market_cap", "inverse_volatility", "min_variance"]).map((x) => <option key={x} value={x}>{WEIGHTING_INFO[x] ? weightingLabel(x) : ko(x)}</option>)}</select></Item>
             </div>
             <Item label="뉴스·공시 반영" changed={has("strategy_preference.use_news_tilt")} help={NEWS_INFO.caution}><label className="flex cursor-pointer items-start gap-2"><input type="checkbox" className="mt-1 accent-blue-700" checked={f.use_news_tilt} onChange={(e) => set("use_news_tilt", e.target.checked)} /><span>{NEWS_INFO.title}</span></label></Item>
           </SectionCard>
