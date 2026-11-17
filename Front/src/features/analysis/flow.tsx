@@ -48,31 +48,6 @@ export function useStickyInMain() {
   }, [])
 }
 
-const FLOW = ["추가 질문 답하기", "조건 최종 확인", "분석 시작"]
-
-/** 지금 어느 단계인지 (내 투자조건의 단계 카드와 같은 모양, 누르는 기능은 없다). */
-export function FlowSteps({ current }: { current: 0 | 1 }) {
-  return (
-    <nav aria-label="분석 준비 단계">
-      <ol className="grid grid-cols-3 gap-2 sm:gap-3">
-        {FLOW.map((label, i) => {
-          const now = i === current, done = i < current
-          return (
-            <li key={label} aria-current={now ? "step" : undefined} className={`rounded-xl border p-3 ${now ? "border-blue-400 bg-blue-50 ring-1 ring-blue-200" : done ? "border-slate-200 bg-white" : "border-dashed border-slate-200 bg-white"}`}>
-              <span className="flex items-center justify-between">
-                <span className={`text-xs font-bold ${now ? "text-blue-700" : "text-slate-400"}`}>0{i + 1}</span>
-                {done && <Check className="size-4 text-emerald-600" aria-hidden="true" />}
-              </span>
-              <span className={`mt-1 block text-sm font-semibold ${now || done ? "text-slate-800" : "text-slate-500"}`}>{label}</span>
-              <span className={`mt-0.5 block text-[11px] ${now ? "text-blue-700" : "text-slate-400"}`}>{now ? "현재 단계" : done ? "완료" : "다음 단계"}</span>
-            </li>
-          )
-        })}
-      </ol>
-    </nav>
-  )
-}
-
 /** 요청 처리 중 표시. 실제 요청이 끝날 때까지만 보인다 (진행률은 알 수 없어 경과 시간만). */
 export function Pending({ title, detail, children }: { title: string; detail?: string; children?: React.ReactNode }) {
   const [sec, setSec] = useState(0)
@@ -93,12 +68,12 @@ export function Pending({ title, detail, children }: { title: string; detail?: s
  *  실제 결과(후보 수·분류 묶음 등)를, 주지 않으면(예전 서버) 하는 일만 보여 준다. 가짜 진행률은 쓰지 않는다. */
 export function IdeaPending({ steps }: { steps?: ProgressStep[] }) {
   if (steps?.length) return (
-    <Pending title="아이디어를 해석하고 있습니다" detail="서버가 지금 하는 단계와 그 결과입니다. 끝나면 질문 화면으로 넘어갑니다.">
+    <Pending title="아이디어를 해석하고 있습니다" detail="서버가 지금 하는 단계와 그 결과입니다. 해석이 끝나면 바로 질문이 이어집니다.">
       <ProgressList steps={steps} />
     </Pending>
   )
   return (
-    <Pending title="아이디어를 해석하고 있습니다" detail="분석 모델이 아이디어를 이해하고, 기본 투자조건과 맞춰 본 뒤 꼭 필요한 질문만 고릅니다. 끝나면 질문 화면으로 넘어갑니다.">
+    <Pending title="아이디어를 해석하고 있습니다" detail="분석 모델이 아이디어를 이해하고, 기본 투자조건과 맞춰 본 뒤 꼭 필요한 질문만 고릅니다. 해석이 끝나면 바로 질문이 이어집니다.">
       <ol className="mt-2 space-y-0.5 text-xs text-slate-600">
         {["아이디어 이해 (투자 테마·종목 찾기)", "기본 투자조건과 맞춰 보기", "꼭 필요한 질문 고르기"].map((t, i) => <li key={t} className="flex gap-2"><span className="grid size-4 shrink-0 place-items-center rounded-full bg-blue-100 text-[10px] font-bold text-blue-800">{i + 1}</span>{t}</li>)}
       </ol>

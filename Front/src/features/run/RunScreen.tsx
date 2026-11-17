@@ -1,3 +1,4 @@
+import { FlowStepper } from "../analysis/FlowStepper"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { AlertCircle, AlertTriangle, Check, ChevronDown, Circle, Loader2, X } from "lucide-react"
 import { useHealth, useService } from "../../app/providers"
@@ -153,6 +154,7 @@ function RunView({ runId }: { runId: string }) {
     <div className="mx-auto max-w-6xl space-y-8">
       <p className="sr-only" role="status" aria-live="polite">{live}</p>
       <FlowHeader eyebrow="분석 진행" title={title} desc={`등록 ${datetime(r.queued_at)}${r.started_at ? ` · 시작 ${datetime(r.started_at)}` : ""}${r.finished_at ? ` · 종료 ${datetime(r.finished_at)}` : since ? ` · 경과 ${since}` : ""}${TERMINAL.has(r.status) ? "" : " · 브라우저를 닫아도 서버 실행은 계속됩니다. 보통 2~5분 걸립니다."}`} />  {/* 끝난 실행에는 「계속됩니다·2~5분」 안내를 붙이지 않는다 */}
+      <FlowStepper current={done ? 5 : 4} />
       {failures > 0 && <Alert title="연결 재시도 중" tone="warning">서버 응답이 없어 마지막으로 받은 상태를 보여 줍니다 ({failures}회 실패). {error}</Alert>}
       {active && workerDown && <Alert title="분석 일꾼이 꺼져 있어 시작되지 않습니다" tone="error">요청은 대기열에 남아 있습니다. 서버 관리자에게 분석 일꾼을 켜 달라고 하세요. 켜지면 자동으로 시작합니다.</Alert>}
       <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[1.15fr_0.85fr]">

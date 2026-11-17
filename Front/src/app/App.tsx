@@ -7,7 +7,7 @@ import { Badge, Button, EmptyState, Loading } from "../ui"
 import { HomeScreen } from "../features/home/HomeScreen"
 import { ProfileScreen } from "../features/profile/ProfileScreen"
 import { ProfileChatScreen } from "../features/profile/chat/ProfileChatScreen"
-import { ClarifyScreen } from "../features/analysis/ClarifyScreen"
+import { ClarifyRoute } from "../features/analysis/ClarifyRoute"
 import { ConfirmScreen } from "../features/analysis/ConfirmScreen"
 import { RunScreen } from "../features/run/RunScreen"
 import { ReportList } from "../features/report/ReportList"
@@ -87,7 +87,7 @@ function Screen({ route }: { route: Route }) {
   switch (route.page) {
     case "home": return <HomeScreen />
     case "profile": return route.mode === "chat" ? <ProfileChatScreen /> : <ProfileScreen mode={route.mode ?? (profile ? "view" : "setup")} />
-    case "clarify": return <ClarifyScreen requestId={route.requestId} />
+    case "clarify": return <ClarifyRoute key={route.requestId} requestId={route.requestId} />  // 새 분석은 홈 대화창, 재분석·수정 요청은 질문 화면
     case "confirm": return <ConfirmScreen requestId={route.requestId} />
     case "run": return <RunScreen runId={route.runId} />
     case "reports": return <ReportList />
@@ -127,7 +127,8 @@ export default function App() {
     <div className="flex min-h-screen min-w-[1180px] bg-slate-50">
       <Sidebar route={route} />
       <main className="min-w-0 flex-1 overflow-x-auto">
-        <div className="mx-auto w-full max-w-[1180px] px-10 py-9"><ModeBanner /><Screen route={route} /></div>
+        {/* 홈·질문 대화(clarify)는 넓게: 오른쪽 「내게 맞는 정보」 패널을 고정 폭으로 두고 남는 폭을 대화창에 (2026-11-18 회의). 나머지 화면은 1180px */}
+        <div className={`mx-auto w-full py-9 ${route.page === "home" || route.page === "clarify" ? "max-w-[1600px] px-8" : "max-w-[1180px] px-10"}`}><ModeBanner /><Screen route={route} /></div>
       </main>
     </div>
     </>

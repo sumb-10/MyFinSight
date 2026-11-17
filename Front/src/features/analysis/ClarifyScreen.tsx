@@ -1,3 +1,4 @@
+import { FlowStepper } from "./FlowStepper"
 import { useEffect, useState } from "react"
 import { MessageSquareText, SlidersHorizontal } from "lucide-react"
 import { useProfile, useService } from "../../app/providers"
@@ -10,7 +11,7 @@ import { ko } from "../../lib/format"
 import { RevisionCard } from "./RevisionCard"
 import { DetailConditionsDialog, OVERRIDE_LABELS, overrideText } from "../home/DetailConditions"
 import { Part } from "../profile/parts"
-import { ActionError, AllConditions, AnsweredList, BackToQuestions, CancelRequestButton, CancelRequestConfirm, ChangedConditions, FlowHeader, FlowSteps, IdeaPart, KIND_HELP, LLM_DETAIL, NOTE_BUTTON, NOTE_DESC, NOTE_UNSENT, Pending, ResultNote, diffRows, keepPendingNote, pendingNote, carryNoteResult, startNewWith, useFlowNotice, useLeaveRequest, type RowChange } from "./flow"
+import { ActionError, AllConditions, AnsweredList, BackToQuestions, CancelRequestButton, CancelRequestConfirm, ChangedConditions, FlowHeader, IdeaPart, KIND_HELP, LLM_DETAIL, NOTE_BUTTON, NOTE_DESC, NOTE_UNSENT, Pending, ResultNote, diffRows, keepPendingNote, pendingNote, carryNoteResult, startNewWith, useFlowNotice, useLeaveRequest, type RowChange } from "./flow"
 import type { ProposedMessageResult } from "../../api/proposed"
 import { BatchQuestions, BatchResult, type Submitted } from "./BatchQuestions"
 import { MessageOutcome } from "./MessageOutcome"
@@ -111,7 +112,7 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
       <FlowHeader eyebrow={`${ko(st.mode)} · 조건 확인`} title="부족한 조건을 함께 정합니다" desc={`분석 모델이 아이디어를 해석하고, 결과가 달라질 항목만 ${batchCapable ? "골라 묻습니다. 서로 영향이 없는 질문은 한 번에 묻고, 종목 선정을 바꾸는 질문은 하나씩" : "하나씩"} 묻습니다. 답하지 않은 조건은 기본 투자조건을 그대로 씁니다.`}
         action={<CancelRequestButton c={leave} disabled={busy !== ""} />} />
       <CancelRequestConfirm c={leave} keepLabel="계속 답하기" disabled={busy !== ""} />
-      <FlowSteps current={0} />
+      <FlowStepper current={2} />
       {notice && st.state !== "ready" && <BackToQuestions n={notice} hardErrors={st.hard_errors.length > 0} />}
       <IdeaPart st={st} />
       {st.revision && <RevisionCard rev={st.revision} />}
