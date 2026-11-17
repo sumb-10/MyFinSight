@@ -27,7 +27,7 @@ const ReportDetail = lazy(() => import("../features/report/ReportDetail").then((
 const ComparisonScreen = lazy(() => import("../features/report/ComparisonScreen").then((m) => ({ default: m.ComparisonScreen })))
 // 목업 모드 표시·개발용 패널: 개발 환경 + ?mock=1 일 때만 불러온다. 환경 조건을 그대로 써야 운영 빌드에서 import 가 빠진다 (mocks/mode.ts 참고).
 const MockChrome = import.meta.env.DEV || import.meta.env.VITE_ENABLE_MOCK === "1" ? lazy(() => import("../mocks/MockChrome")) : null
-const TutorialScreen = lazy(() => import("../features/tutorial/TutorialScreen").then((m) => ({ default: m.TutorialScreen })))  // 리포트 보는 법 둘러보기 (예시 리포트, 운영 빌드에서도 동작)
+const TutorialScreen = lazy(() => import("../features/tutorial/TutorialScreen").then((m) => ({ default: m.TutorialScreen })))  // 예시 리포트 둘러보기 (예시 리포트, 운영 빌드에서도 동작)
 const PaperScreen = lazy(() => import("../features/paper/PaperScreen").then((m) => ({ default: m.PaperScreen })))
 
 export function Sidebar({ route }: { route: Route }) {

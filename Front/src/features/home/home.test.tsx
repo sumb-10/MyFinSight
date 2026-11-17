@@ -124,12 +124,24 @@ describe("입력창·문구·기본 투자조건", () => {
     await waitFor(() => expect(create).toHaveBeenCalledWith({ idea: EXAMPLE_IDEAS[1], mode: "new", overrides: {} }))
   })
 
-  it("새 분석 카드: 안내 제목·문장, 둘러보기·리포트 보는 법 버튼", async () => {
+  it("새 분석 카드: 안내 제목·문장, 「사용 안내」 메뉴 (서비스 소개 · 홈 화면 둘러보기 · 예시 리포트 둘러보기, 2026-11-18)", async () => {
     show(mock())
     expect(await screen.findByRole("heading", { name: "투자 아이디어를 적어 주세요" }, { timeout: 5000 })).toBeInTheDocument()
     expect(screen.getByText("내 투자조건에 맞는 종목과 비중을 고르고, 과거 성과와 위험을 리포트로 보여드립니다.")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "둘러보기" })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "리포트 보는 법" }))
+    const help = screen.getByRole("button", { name: "사용 안내" })
+    expect(help).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(help)
+    const menu = screen.getByRole("menu", { name: "사용 안내" })
+    expect(within(menu).getAllByRole("menuitem").map((b) => b.textContent)).toEqual(["서비스 소개", "홈 화면 둘러보기", "예시 리포트 둘러보기"])
+    expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0])  // 열면 첫 항목에 초점
+    fireEvent.keyDown(menu, { key: "Escape" })
+    expect(screen.queryByRole("menu")).toBeNull()
+    expect(document.activeElement).toBe(help)  // 닫히면 버튼으로
+    fireEvent.click(help)
+    fireEvent.blur(screen.getAllByRole("menuitem")[2], { relatedTarget: screen.getByRole("textbox") })  // Tab 으로 메뉴 밖에 초점이 나가면 닫힌다
+    expect(screen.queryByRole("menu")).toBeNull()
+    fireEvent.click(help)
+    fireEvent.click(screen.getByRole("menuitem", { name: "예시 리포트 둘러보기" }))
     expect(window.location.hash).toBe("#/tutorial")
   })
 
@@ -181,10 +193,11 @@ describe("예시 리포트는 홈 최근 리포트·사이드바에 보이지 �
 })
 
 describe("홈 둘러보기", () => {
+  const startTour = () => { fireEvent.click(screen.getByRole("button", { name: "사용 안내" })); fireEvent.click(screen.getByRole("menuitem", { name: /홈 화면 둘러보기/ })) }
   it("홈 요소를 차례로 비추고(탭 안의 대상은 그 탭을 열어서), 마치기·Esc 로 닫는다", async () => {
     render(<Providers service={mock()}><Sidebar route={{ page: "home" }} /><HomeScreen /></Providers>)
     await box()
-    fireEvent.click(screen.getByRole("button", { name: "둘러보기" }))
+    startTour()
     const dlg = () => screen.getByRole("dialog")
     expect(dlg()).toHaveTextContent(`1/${HOME_TOUR_STEPS.length}`)
     expect(dlg()).toHaveTextContent("메뉴")
@@ -197,7 +210,7 @@ describe("홈 둘러보기", () => {
     expect(screen.getByRole("tab", { name: "최근 리포트" })).toHaveAttribute("aria-selected", "true")  // 마지막 단계에서 그 탭이 열려 있다
     fireEvent.keyDown(window, { key: "Escape" })
     expect(screen.queryByTestId("coachmark")).toBeNull()
-    fireEvent.click(screen.getByRole("button", { name: "둘러보기" }))
+    startTour()
     expect(within(dlg()).getByRole("heading")).toHaveTextContent("메뉴")
     for (let i = 1; i < HOME_TOUR_STEPS.length; i++) fireEvent.click(screen.getByRole("button", { name: "다음" }))
     expect(screen.getByRole("dialog")).toHaveTextContent(`${HOME_TOUR_STEPS.length}/${HOME_TOUR_STEPS.length}`)

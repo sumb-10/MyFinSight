@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ChevronRight, Compass, FileText, Info, Loader2, SlidersHorizontal, X } from "lucide-react"
+import { ChevronRight, Compass, FileText, Info, Loader2, SlidersHorizontal, Sparkles, X } from "lucide-react"
 import { useProfile, useService } from "../../app/providers"
 import { navigate } from "../../app/router"
 import { errorMessage } from "../../api/client"
@@ -13,6 +13,7 @@ import { useRenameTick } from "../report/ReportName"
 import { Coachmark } from "../tutorial/Coachmark"
 import { HOME_TOUR_STEPS } from "../tutorial/homeSteps"
 import { HomeInfo, TOUR_TAB, type InfoTab } from "./HomeInfo"
+import { HelpMenu } from "./HelpMenu"
 import { RequestChat, useRequestDialog } from "./RequestChat"
 import { FlowStepper } from "../analysis/FlowStepper"
 import type { DialogState } from "../../api/types"
@@ -111,10 +112,14 @@ export function HomeScreen({ request }: { request?: { id: string; res: Resource<
         {request ?<RequestChat requestId={request.id} st={reqSt} setSt={setReqSt} res={request.res} /> : <section aria-labelledby="home-new" className="flex min-w-0 flex-1 flex-col rounded-card bg-surface">
           <div className="flex items-center justify-between border-b border-line px-6 py-3.5">
             <h1 id="home-new" className="t-title">새 분석</h1>
-            <div className="flex gap-0.5">
-              <button type="button" title="처음이라면 화면을 한 단계씩 안내해요" onClick={() => setTour(0)} className={HEAD_BTN}><Compass className="size-4" aria-hidden />둘러보기</button>
-              <button type="button" title="예시 리포트로 읽는 법을 안내해요" onClick={() => navigate({ page: "tutorial" })} className={HEAD_BTN}><FileText className="size-4" aria-hidden />리포트 보는 법</button>
-            </div>
+            {/* 도움 셋을 버튼 하나로 (2026-11-18 사용자 결정: 나란히 두면 소개와 둘러보기의 차이가 안 보임).
+                「서비스 소개」(#/intro, IntroScroll)는 tutorial-improve 브랜치에 있다 → 그 브랜치가 main 에 들어오면 navigate({ page: "intro" }) 로 바꾼다.
+                그 전에는 이 브랜치에서 누르면 「페이지를 찾을 수 없습니다」가 뜬다 (docs/updates/2026-11-18_help_menu_tutorial_merge.md) */}
+            <HelpMenu className={HEAD_BTN} items={[
+              { icon: Sparkles, label: "서비스 소개", onClick: () => { window.location.hash = "#/intro" } },
+              { icon: Compass, label: "홈 화면 둘러보기", onClick: () => setTour(0) },
+              { icon: FileText, label: "예시 리포트 둘러보기", onClick: () => navigate({ page: "tutorial" }) },
+            ]} />
           </div>
           <div className="flex flex-1 flex-col items-center justify-center px-8 py-4 text-center">
             <span className="grid size-14 place-items-center rounded-box bg-sunken"><img src={iconIdea} alt="" className="size-8" /></span>
