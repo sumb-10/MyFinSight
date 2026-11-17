@@ -12,7 +12,7 @@ import { ko } from "../../lib/format"
 import { MockTag } from "../report/proposedView"
 import { DetailConditionsDialog, OVERRIDE_LABELS, overrideText } from "./DetailConditions"
 import { CancelRequestConfirm, KIND_HELP, LEFT_NOTE, NOTE_BUTTON, NOTE_UNSENT, ProgressList, carryNoteResult, diffRows, keepPendingNote, pendingNote, startNewWith, useFlowNotice, useLeaveRequest, type RowChange } from "../analysis/flow"
-import { BotSays, CHAT_MAIN, CHAT_QUIET, ISay, Typing } from "./chatParts"
+import { BotSays, CHAT_MAIN, CHAT_QUIET, Dots, ElapsedNote, ISay, Typing } from "./chatParts"
 
 /**
  * 새 분석 요청 하나의 상태 (홈 대화창용). 서버가 뒤에서 해석하는 동안(interpreting)은 2초마다 다시 읽고,
@@ -32,7 +32,8 @@ export function useRequestDialog(requestId: string | undefined, res: Resource<Di
 }
 
 type Busy = "" | "answer" | "skip" | "message" | "overrides"
-const WAIT: Record<Exclude<Busy, "">, string> = { answer: "답변을 반영하고 다음 질문을 준비하고 있어요", skip: "기본값으로 두고 다음 질문을 준비하고 있어요", message: "보탠 말을 해석해 조건에 반영하고 있어요", overrides: "바꾼 조건으로 다시 해석하고 있어요" }
+// 기다림 문구: ChatGPT·Claude 처럼 두세 단어 (2026-11-18 사용자 요청, 긴 문장은 읽기 부담)
+const WAIT: Record<Exclude<Busy, "">, string> = { answer: "답변 반영 중…", skip: "다음 질문 준비 중…", message: "보탠 말 반영 중…", overrides: "조건 다시 확인 중…" }
 const OUTCOME = { applied: "반영했어요", not_applied: "반영하지 못했어요", needs_confirmation: "확인이 더 필요해요" } as const
 const HEAD_BTN = "inline-flex h-8 items-center gap-1.5 rounded-chip px-2.5 text-13 font-medium text-sub transition enabled:hover:bg-sunken enabled:hover:text-main disabled:opacity-50"
 const optionPatch = (patch: Record<string, unknown> | null | undefined) => Object.entries(patch ?? {}).map(([k, v]) => `${OVERRIDE_LABELS[k] ?? k} → ${overrideText(k, v)}`).join(" · ")
@@ -167,15 +168,16 @@ export function RequestChat({ requestId, st, setSt, res }: { requestId: string; 
       <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
         <ol aria-label="분석 모델과의 대화" aria-live="polite" className="mx-auto flex min-h-full w-full max-w-[760px] flex-col justify-end gap-3">
           {st && <ISay>{st.idea}</ISay>}
-          {!st && res.status !== "error" && <Typing label="요청을 불러오는 중" />}
+          {!st && res.status !== "error" && <Typing label="불러오는 중…" />}
           {!st && res.status === "error" && (
             <BotSays tone="error"><p className="font-semibold">요청을 불러오지 못했어요</p><p className="text-13 text-body">{res.error}</p><button type="button" onClick={res.reload} className={`${CHAT_QUIET} mt-2`}>다시 시도</button></BotSays>
           )}
 
           {st?.state === "interpreting" && (
             <BotSays>
-              <p role="status" className="font-semibold">아이디어를 해석하고 있어요</p>
+              <p className="flex items-center gap-2.5"><Dots /><span role="status" className="font-semibold">아이디어를 해석하고 있어요</span></p>
               <p className="text-13 text-body">해석이 끝나면 바로 질문이 이어집니다. 화면을 닫아도 요청은 이어서 처리돼요.</p>
+              <ElapsedNote doing="해석" />
               {st.progress?.length ? <ProgressList steps={st.progress} /> : null}
             </BotSays>
           )}

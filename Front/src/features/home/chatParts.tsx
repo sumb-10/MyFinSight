@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { AlertCircle, AlertTriangle } from "lucide-react"
 
 // 홈 대화창(RequestChat) 말풍선. 모양은 대화형 투자조건 설정(features/profile/chat/ProfileChatScreen.tsx)의 말풍선·입력 중 점을 본떴고,
@@ -27,16 +27,41 @@ export function ISay({ children, pending = false }: { children: ReactNode; pendi
   )
 }
 
-/** 분석 모델이 답을 만드는 중 (점 세 개). label = 화면 읽기용 설명 */
+/** 화면에 나온 뒤 몇 초 지났는지 (1초마다 다시 그린다) */
+export function useElapsed() {
+  const [sec, setSec] = useState(0)
+  useEffect(() => { const t = window.setInterval(() => setSec((s) => s + 1), 1000); return () => window.clearInterval(t) }, [])
+  return sec
+}
+
+/** 기다림 표시의 점 세 개 (위아래로 튐, index.css .chat-dot). 대화창에서 움직이는 기다림 표시는 이것 하나로 통일 (2026-11-18, 반짝이는 글자와 함께 쓰면 움직임이 두 겹이라 뺌) */
+export function Dots() {
+  return <span aria-hidden className="flex shrink-0 items-center gap-1.5">{[0, 1, 2].map((i) => <span key={i} className="chat-dot size-2 rounded-full bg-hint" style={{ animationDelay: `${i * 0.2}s` }} />)}</span>
+}
+
+/** 분석 모델이 답을 만드는 중: 점 세 개만 든 말풍선 + 말풍선 바깥 아래에 작은 글씨로 지금 하는 일 (2026-11-18 사용자 결정, 메신저의 「읽음」·시간처럼).
+ *  아래 글씨는 반짝임(index.css .chat-shimmer).
+ *  문구는 두세 단어(「답변 반영 중…」). 5초가 넘으면 같은 줄 끝에 「N초」, 20초가 넘으면 「, 조금 더 걸릴 수 있어요」 (가운데 점 · 은 따로 떠 보여서 쓰지 않음).
+ *  화면 읽기에는 label 만 한 번 알린다 (보이는 글자는 aria-hidden 이라 초가 바뀔 때마다 읽지 않는다). */
 export function Typing({ label }: { label: string }) {
+  const sec = useElapsed()
   return (
-    <li className="chat-in flex">
-      <p role="status" className="flex items-center gap-1 rounded-bubble rounded-tl-none bg-bubble px-4 py-3.5">
-        <span className="sr-only">{label}</span>
-        {[0, 1, 2].map((i) => <span key={i} aria-hidden className="chat-dot size-1.5 rounded-full bg-hint" style={{ animationDelay: `${i * 0.15}s` }} />)}
-      </p>
+    <li className="chat-in flex flex-col items-start" role="status">
+      <span className="sr-only">{label}</span>
+      <span aria-hidden className="rounded-bubble rounded-tl-none bg-bubble px-4 py-3.5"><Dots /></span>
+      <span aria-hidden className="chat-shimmer mt-1.5 pl-1 text-12">
+        {label}{sec >= 5 && ` ${sec}초`}{sec >= 20 && ", 조금 더 걸릴 수 있어요"}
+      </span>
     </li>
   )
+}
+
+/** 기다림이 길어질 때만 보이는 경과 시간 (2026-11-18 사용자 결정: 처음엔 문구만, 5초가 넘으면 「N초째 ○○ 중이에요」).
+ *  20초가 넘으면 오래 걸릴 수 있다는 안내를 덧붙인다. doing = 「진행」·「해석」 등 */
+export function ElapsedNote({ doing = "진행" }: { doing?: string }) {
+  const sec = useElapsed()
+  if (sec < 5) return null
+  return <span aria-hidden className="mt-1 block text-12 text-sub">{doing} 중 {sec}초{sec >= 20 ? ", 조금 더 걸릴 수 있어요" : ""}</span>
 }
 
 /** 말풍선 안 버튼: main = 이 줄의 주 동작(파란 면), 나머지는 흰 면 (hover = 연파랑 tint, 보기 버튼과 같음) */
