@@ -1,12 +1,9 @@
 @import url("https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap");
 @import "tailwindcss";
+@import "./styles/tokens.css"; /* 색 · 글자 · 둥글기 토큰과 기존 slate 연결 */
 
 @theme inline {
   --font-sans: "Noto Sans KR", ui-sans-serif, system-ui, sans-serif;
-  --color-brand-50: #eff6ff;
-  --color-brand-600: #2563eb;
-  --color-brand-700: #1d4ed8;
-  --color-brand-800: #1e40af;
 }
 
 * {
@@ -21,8 +18,8 @@ html {
 body {
   margin: 0;
   min-width: 1180px;
-  background: #f8fafc;
-  color: #0f172a;
+  background: var(--color-canvas);
+  color: var(--color-main);
   font-family: "Noto Sans KR", ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
@@ -46,7 +43,7 @@ select {
 }
 
 :focus-visible {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
