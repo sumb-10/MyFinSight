@@ -207,7 +207,7 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
           <p className="mt-2 text-sm leading-6 text-slate-600">금액과 기간, 투자성향, 종목 범위, 투자 전략을 설정합니다. 분석을 요청할 때 아이디어에 맞춰 일부를 바꿀 수 있습니다.</p>
         </div>
         <div className="flex shrink-0 gap-2">
-          {setup && svc.startProfileChat && <Button variant="secondary" onClick={() => navigate({ page: "profile", mode: "chat" })}><MessagesSquare className="size-4" aria-hidden />{resumable ? "대화로 이어서 하기" : "대화로 설정하기"}<MockTag /></Button>}
+          {svc.startProfileChat && <Button variant="secondary" onClick={() => navigate({ page: "profile", mode: "chat" })}><MessagesSquare className="size-4" aria-hidden />{resumable ? "대화로 이어서 하기" : setup ? "대화로 설정하기" : "대화로 다시 설정"}<MockTag /></Button>}
           <Button variant="neutral" onClick={() => navigate(setup ? { page: "reports" } : { page: "profile" })}><LogOut className="size-4" aria-hidden />저장하지 않고 나가기</Button>
         </div>
       </header>

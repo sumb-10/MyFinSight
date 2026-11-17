@@ -225,9 +225,9 @@ describe("대화형 초기 투자조건 화면 (목업)", () => {
     show(s, <ProfileChatScreen />)
     fireEvent.click(await screen.findByRole("button", { name: /^현금흐름\(배당\)/ }, { timeout: 5000 }))
     expect(screen.getByText("현금흐름(배당)", { selector: "p" })).toBeInTheDocument()          // 응답 전에 내 답 말풍선
-    expect(screen.getByText("도우미가 답을 확인하고 있습니다")).toBeInTheDocument()             // 봇 「…」
+    expect(screen.getAllByText("답 확인 중…").length).toBeGreaterThan(0)             // 봇 「…」
     expect(await screen.findByRole("button", { name: /^1,000만원/ }, { timeout: 5000 })).toBeInTheDocument()
-    expect(screen.queryByText("도우미가 답을 확인하고 있습니다")).toBeNull()
+    expect(screen.queryAllByText("답 확인 중…")).toHaveLength(0)
     expect(scrollTo).toHaveBeenCalled()                                                      // 대화 영역 자체를 내린다
     expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled()                          // 페이지까지 움직이는 scrollIntoView 는 쓰지 않는다
   })
@@ -235,6 +235,22 @@ describe("대화형 초기 투자조건 화면 (목업)", () => {
     show(firstUser(), <App />, "#/home")
     expect(await screen.findByRole("heading", { level: 1, name: "내 프로필을 정해봅시다" }, { timeout: 5000 })).toBeInTheDocument()
     expect(window.location.hash).toBe("#/profile/chat")
+  })
+})
+
+describe("투자조건 수정에서 대화로 다시 설정 (2026-11-18)", () => {
+  it("이미 투자조건이 있으면 수정 화면에 「대화로 다시 설정」이 있고, 누르면 대화 화면으로 간다", async () => {
+    render(<Providers service={mock()}><ProfileScreen mode="edit" /></Providers>)
+    fireEvent.click(await screen.findByRole("button", { name: /대화로 다시 설정/ }, { timeout: 5000 }))
+    expect(window.location.hash).toBe("#/profile/chat")
+  })
+  it("대화 화면은 처음부터 다시 묻고 저장 전까지 지금 조건이 그대로라고 알린다 (처음 사용자에게는 안 보임)", async () => {
+    const first = render(<Providers service={mock()}><ProfileChatScreen /></Providers>)
+    expect(await screen.findByText(/처음부터 답해요/, {}, { timeout: 5000 })).toBeInTheDocument()
+    first.unmount()
+    render(<Providers service={firstUser()}><ProfileChatScreen /></Providers>)
+    await screen.findByRole("heading", { level: 1, name: "내 프로필을 정해봅시다" }, { timeout: 5000 })
+    expect(screen.queryByText(/처음부터 답해요/)).toBeNull()
   })
 })
 

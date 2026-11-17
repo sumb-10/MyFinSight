@@ -159,3 +159,16 @@ html.report-wide [role="dialog"][aria-modal="true"] > aside {
   from { background-position: 100% 0; }
   to { background-position: 0% 0; }
 }
+
+/* 투자조건 대화(features/profile/chat, .profile-chat): 홈 대화창과 같은 모양이라, 홈(.home-redesign, home/home.css)처럼
+   위쪽 button·input { font: inherit } 규칙을 이 안에서만 되돌려 버튼·입력창의 글자 크기 클래스(text-12·14)가 먹게 한다. 한국어는 낱말 단위로 줄바꿈. */
+.profile-chat button,
+.profile-chat input {
+  font-size: revert-layer;
+  font-weight: revert-layer;
+  line-height: revert-layer;
+}
+.profile-chat {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
