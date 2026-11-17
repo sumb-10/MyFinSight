@@ -127,3 +127,19 @@ html.report-wide [role="dialog"][aria-modal="true"] > aside {
   40% { opacity: 1; transform: translateY(-3px); }
 }
 .chat-dot { animation: chat-dot 1s ease-in-out infinite; }
+
+/* 진행 단계 표시(features/analysis/FlowStepper): 지금 단계 동그라미 둘레로 연한 파란 물결이 천천히 퍼졌다 사라진다 (2.4초마다).
+   동그라미의 연한 고리(ring = box-shadow)와 겹치지 않게 ::after 에 따로 그린다. 움직임 줄이기 설정이면 위 prefers-reduced-motion 규칙이 멈춘다. */
+.step-now { position: relative; }
+.step-now::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  pointer-events: none;
+  animation: step-pulse 2.4s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+}
+@keyframes step-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 35%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--color-accent) 0%, transparent); }
+}

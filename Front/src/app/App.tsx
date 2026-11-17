@@ -1,9 +1,9 @@
-import { Activity, FileText, Home, SlidersHorizontal, TrendingUp, WifiOff } from "lucide-react"
+import { Activity, AlertCircle, AlertTriangle, FileText, Home, SlidersHorizontal, TrendingUp, WifiOff } from "lucide-react"
 import { useHealth, useProfile, useService } from "./providers"
 import { lazy, Suspense } from "react"
 import { navigate, useHashRoute, type Route } from "./router"
 import { useResource } from "../state/useResource"
-import { Alert, Badge, Button, EmptyState, Loading } from "../ui"
+import { Alert, Button, EmptyState, Loading, NOTICE_BOX, NOTICE_ICON, type NoticeTone } from "../ui"
 import { HomeScreen } from "../features/home/HomeScreen"
 import { ProfileScreen } from "../features/profile/ProfileScreen"
 import { ProfileChatScreen } from "../features/profile/chat/ProfileChatScreen"
@@ -73,12 +73,23 @@ export function Sidebar({ route }: { route: Route }) {
         </div>
       </div>
       <div className="mt-auto space-y-2 px-1 text-[11px] leading-5 text-slate-500">
-        {!reachable && <Badge tone="red"><WifiOff className="size-3" />서버 연결 끊김</Badge>}
-        {health?.llm_mode === "stub" && <Badge tone="amber">연습 모드 (LLM 없음)</Badge>}
-        {health && reachable && !health.worker.alive && <Badge tone="red">분석 일꾼 꺼짐 — 새 분석이 시작되지 않습니다</Badge>}
+        {!reachable && <SideNote tone="error" icon={WifiOff}>서버 연결 끊김</SideNote>}
+        {health?.llm_mode === "stub" && <SideNote tone="warning" icon={AlertTriangle}>연습 모드 (LLM 없음)</SideNote>}
+        {health && reachable && !health.worker.alive && <SideNote tone="error" icon={AlertCircle} detail="실행해 두면 기다렸다가 다시 켜지면 자동으로 시작돼요">분석 실행이 멈춰 있어요</SideNote>}
       </div>
       {gate.dialog}
     </aside>
+  )
+}
+
+/** 사이드바 아래 서버 상태 안내: 알림 상자와 같은 모양(테두리 없음 · 연한 면 · 색은 아이콘에만, 2026-11-18) */
+function SideNote({ tone, icon: Icon, children, detail }: { tone: NoticeTone; icon: React.ElementType; children: React.ReactNode; detail?: string }) {
+  // 제목 한 줄 + 설명 한 줄로 나눠 문장 중간에서 줄이 끊기지 않게 한다 (사이드바 폭 240px)
+  return (
+    <p className={`flex items-start gap-1.5 break-keep rounded-control px-2.5 py-1.5 text-12 leading-5 ${NOTICE_BOX[tone]}`}>
+      <Icon className={`mt-0.5 size-3.5 shrink-0 ${NOTICE_ICON[tone]}`} aria-hidden="true" />
+      <span><b className="block font-semibold text-main">{children}</b>{detail && <span className="block text-body">{detail}</span>}</span>
+    </p>
   )
 }
 

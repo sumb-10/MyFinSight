@@ -16,7 +16,7 @@ export type FlowStep = 1 | 2 | 3 | 4 | 5
 
 /**
  * 지금 분석 순서 5단계 중 어디인지 (홈 1·2 · 조건 확인 3 · 분석 진행 4 · 끝나면 5).
- * 지난 단계는 체크, 지금 단계는 강조(aria-current="step"), 다음 단계는 흐리게. 누르는 기능은 없다.
+ * 지난 단계는 체크, 지금 단계는 강조(aria-current="step") + 둘레에 천천히 퍼지는 물결(index.css .step-now), 다음 단계는 흐리게. 누르는 기능은 없다.
  * 표시 폭이 760px 보다 좁으면(홈 대화창 옆) 지금 단계만 이름을 보이고 나머지는 번호만 (이름은 화면 읽기·마우스 올림으로).
  */
 export function FlowStepper({ current }: { current: FlowStep }) {
@@ -28,7 +28,7 @@ export function FlowStepper({ current }: { current: FlowStep }) {
           return (
             <li key={s.title} title={s.title} aria-current={now ? "step" : undefined} className={`flex min-w-0 items-center gap-3 ${n < PROCESS_STEPS.length ? "flex-1" : ""}`}>
               <span className="flex shrink-0 items-center gap-2">
-                <span aria-hidden className={`grid size-7 place-items-center rounded-full text-13 font-bold ${done || now ? "bg-accent text-on-accent" : "bg-sunken text-hint"} ${now ? "ring-4 ring-tint" : ""}`}>
+                <span aria-hidden className={`grid size-7 place-items-center rounded-full text-13 font-bold ${done || now ? "bg-accent text-on-accent" : "bg-sunken text-hint"} ${now ? "step-now ring-4 ring-tint" : ""}`}>
                   {done ? <Check className="size-4" strokeWidth={3} /> : n}
                 </span>
                 <span className={`whitespace-nowrap text-14 ${now ? "font-bold text-main" : `${done ? "font-medium text-body" : "text-hint"} sr-only @min-[760px]:not-sr-only`}`}>

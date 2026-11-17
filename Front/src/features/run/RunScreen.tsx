@@ -156,12 +156,12 @@ function RunView({ runId }: { runId: string }) {
       <FlowHeader eyebrow="분석 진행" title={title} desc={`등록 ${datetime(r.queued_at)}${r.started_at ? ` · 시작 ${datetime(r.started_at)}` : ""}${r.finished_at ? ` · 종료 ${datetime(r.finished_at)}` : since ? ` · 경과 ${since}` : ""}${TERMINAL.has(r.status) ? "" : " · 브라우저를 닫아도 서버 실행은 계속됩니다. 보통 2~5분 걸립니다."}`} />  {/* 끝난 실행에는 「계속됩니다·2~5분」 안내를 붙이지 않는다 */}
       <FlowStepper current={done ? 5 : 4} />
       {failures > 0 && <Alert title="연결 재시도 중" tone="warning">서버 응답이 없어 마지막으로 받은 상태를 보여 줍니다 ({failures}회 실패). {error}</Alert>}
-      {active && workerDown && <Alert title="분석 일꾼이 꺼져 있어 시작되지 않습니다" tone="error">요청은 대기열에 남아 있습니다. 서버 관리자에게 분석 일꾼을 켜 달라고 하세요. 켜지면 자동으로 시작합니다.</Alert>}
+      {active && workerDown && <Alert title="분석 실행이 멈춰 있어 아직 시작하지 못했어요" tone="error">요청은 대기열에 남아 있어요. 서버 관리자에게 분석 실행 서버(일꾼)를 켜 달라고 하세요. 다시 켜지면 자동으로 시작돼요.</Alert>}
       <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-[1.15fr_0.85fr]">
         {/* 오른쪽: 지금 하는 일·취소·결과·선정 종목 (좁은 화면에서는 위로) */}
         <div className="space-y-8 lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pb-1">
           <Part title={TERMINAL.has(r.status) ? "분석 결과" : "지금 하는 일"}>
-            {r.status === "queued" && <p className="text-sm leading-6 text-slate-700"><b>대기열에서 차례를 기다리고 있습니다 (순번 {r.queue_position ?? "-"}).</b><br />{workerDown ? "분석 일꾼이 켜지면 자동으로 시작합니다." : "앞선 요청이 끝나면 자동으로 시작합니다. 이 화면을 닫아도 됩니다."}</p>}
+            {r.status === "queued" && <p className="text-sm leading-6 text-slate-700"><b>대기열에서 차례를 기다리고 있습니다 (순번 {r.queue_position ?? "-"}).</b><br />{workerDown ? "분석 실행이 다시 켜지면 자동으로 시작합니다." : "앞선 요청이 끝나면 자동으로 시작합니다. 이 화면을 닫아도 됩니다."}</p>}
             {(r.status === "running" || r.status === "cancelling") && current.map((s) => (
               <div key={s.step} className={`rounded-box p-4 ${NOTICE_BOX.info}`}>
                 <p className="flex items-center gap-2 text-14 font-bold text-main"><StepIcon status="STARTED" size="size-4" />{stepTitle(s.step, s.label_ko)}{startedText(s) && <span className="font-normal text-sub">{startedText(s)}</span>}</p>
