@@ -3,7 +3,7 @@ import { Compass, FileText, Home, Pencil, Trash2 } from "lucide-react"
 import { ServiceContext } from "../../app/providers"
 import { navigate } from "../../app/router"
 import type { ReportDoc } from "../../api/types"
-import { Button, ErrorState, Loading } from "../../ui"
+import { Button, ErrorState, Loading, NOTICE_BOX, NOTICE_ICON } from "../../ui"
 import { ReportDetail } from "../report/ReportDetail"
 import { Coachmark } from "./Coachmark"
 import { DeleteExampleDialog, RenameExampleDialog } from "./ExampleReportParts"
@@ -43,17 +43,17 @@ export function TutorialScreen({ load = loadTutorialDoc, startTour = true, after
   if (!doc || !svc) return <Loading label="예시 리포트를 준비하는 중…" />
   return (
     <div className="space-y-5">
-      <div role="note" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950">
-        <p className="flex items-center gap-2 font-semibold"><Compass className="size-4 shrink-0" aria-hidden />{startTour ? "예시 데이터로 보는 화면입니다. 실제 분석 결과가 아니며, 버튼을 눌러도 아무것도 실행되지 않습니다." : "예시 리포트입니다. 실제 분석 결과가 아니며, 모의투자 시작 같은 버튼은 실행되지 않습니다."}</p>
+      <div role="note" className={`flex flex-wrap items-center justify-between gap-3 rounded-box px-4 py-3 text-14 text-main ${NOTICE_BOX.info}`}>
+        <p className="flex items-center gap-2 font-semibold"><Compass className={`size-4 shrink-0 ${NOTICE_ICON.info}`} aria-hidden />{startTour ? "예시 데이터로 보는 화면입니다. 실제 분석 결과가 아니며, 버튼을 눌러도 아무것도 실행되지 않습니다." : "예시 리포트입니다. 실제 분석 결과가 아니며, 모의투자 시작 같은 버튼은 실행되지 않습니다."}</p>
         <div className="flex gap-2">
-          {!touring && <Button variant="secondary" onClick={restart}>{startTour ? "처음부터 다시 보기" : "리포트 보는 법 둘러보기"}</Button>}
+          {!touring && <Button variant="soft" onClick={restart}>{startTour ? "처음부터 다시 보기" : "리포트 보는 법 둘러보기"}</Button>}
           {after
             ? <Button onClick={() => navigate(after)}><FileText className="size-4" />{after.page === "report" ? "내 리포트 보기" : "리포트 목록으로"}</Button>
             : <Button onClick={() => navigate({ page: "home" })}><Home className="size-4" />내 분석 시작하기</Button>}
         </div>
       </div>
       {done && (
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+        <div className="rounded-box bg-sunken px-4 py-3 text-14 text-body">
           둘러보기를 마쳤습니다. 아래 예시 리포트는 자유롭게 펼쳐 볼 수 있습니다. 준비가 되면 「내 분석 시작하기」로 내 투자 아이디어를 분석해 보세요.
         </div>
       )}

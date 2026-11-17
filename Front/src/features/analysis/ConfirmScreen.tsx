@@ -7,7 +7,7 @@ import { errorMessage } from "../../api/client"
 import type { DialogState } from "../../api/types"
 import { useResource } from "../../state/useResource"
 import { saveUi } from "../../state/uiStorage"
-import { Alert, Button, EmptyState, ErrorState, Loading, inputClass } from "../../ui"
+import { Alert, Button, EmptyState, ErrorState, Loading, NOTICE_BOX, inputClass } from "../../ui"
 import { ko } from "../../lib/format"
 import { RevisionCard } from "./RevisionCard"
 import { DetailConditionsDialog } from "../home/DetailConditions"
@@ -44,7 +44,7 @@ export function ConfirmScreen({ requestId }: { requestId: string }) {
   if (st.status === "cancelled") return <EmptyState title="취소된 요청입니다" description="이 요청은 취소되어 분석을 시작할 수 없습니다. 같은 아이디어와 조건으로 새 요청을 시작할 수 있습니다." action={<div className="flex gap-2"><Button onClick={() => startNewWith(st.idea, st.overrides)}>같은 조건으로 새 요청</Button><Button variant="ghost" onClick={() => navigate({ page: "home" })}>홈으로</Button></div>} />
   if (st.state === "asking" || st.state === "blocked" || st.state === "interpreting" || st.state === "failed") { navigate({ page: "clarify", requestId }); return null }  // 해석 중·실패도 질문 화면이 보여 준다
   if (st.status === "confirmed" && st.run_id) {
-    return <Alert title="이미 분석이 시작된 요청입니다" tone="info"><Button variant="secondary" onClick={() => navigate({ page: "run", runId: st.run_id! })}>실행 상태 보기</Button></Alert>
+    return <Alert title="이미 분석이 시작된 요청입니다" tone="info"><Button variant="soft" className="mt-1" onClick={() => navigate({ page: "run", runId: st.run_id! })}>실행 상태 보기</Button></Alert>
   }
   if (!st.confirmation) return <ErrorState title="확정 조건을 만들지 못했습니다" message="조건을 바꾸거나 새 요청으로 다시 시작해 주세요." retry={res.reload} />
   const rows = st.confirmation.rows
@@ -140,13 +140,13 @@ export function ConfirmScreen({ requestId }: { requestId: string }) {
           시작을 눌렀을 때의 확인·등록 중·오류도 이 줄 안에 보여 준다 (화면 위쪽에서 눌러도 바로 보이게). */}
       <div className="sticky bottom-4 z-20 space-y-3 rounded-2xl border border-slate-300 bg-white px-5 py-4 shadow-lg sm:px-6">
         {askUnsent && (
-          <div role="alertdialog" aria-label="반영하지 않은 추가 요청" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-            <p className="font-semibold">입력한 추가 요청이 아직 반영되지 않았습니다. 먼저 반영할까요?</p>
-            <p className="mt-1 break-words text-amber-900">“{unsent}”</p>
+          <div role="alertdialog" aria-label="반영하지 않은 추가 요청" className={`rounded-box p-4 text-14 leading-6 text-body ${NOTICE_BOX.warning}`}>
+            <p className="font-semibold text-main">입력한 추가 요청이 아직 반영되지 않았습니다. 먼저 반영할까요?</p>
+            <p className="mt-1 break-words">“{unsent}”</p>
             <p className="mt-1 text-xs">이대로 시작하면 이 내용은 분석에 들어가지 않습니다. 먼저 반영하면 바뀐 조건을 확인한 뒤 다시 「이 조건으로 분석 실행」을 누르면 됩니다.</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Button onClick={() => { noteRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" }); sendNote() }}>먼저 반영하기</Button>
-              <Button variant="secondary" onClick={() => { setNote(""); void start() }}>입력을 지우고 분석 실행</Button>
+              <Button variant="soft" onClick={() => { setNote(""); void start() }}>입력을 지우고 분석 실행</Button>
               <Button variant="ghost" onClick={() => setAskUnsent(false)}>닫기</Button>
             </div>
           </div>

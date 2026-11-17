@@ -119,7 +119,7 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
       {st.hard_errors.length > 0 && (
         <Alert title="입력 조건에 오류가 있어 먼저 수정이 필요합니다" tone="error">
           <ul className="list-disc pl-5">{st.hard_errors.map((e) => <li key={e.field}>{e.message_ko}</li>)}</ul>
-          <div className="mt-3 flex flex-wrap items-center gap-2">{profile && <Button variant="secondary" onClick={() => setEditing(true)} disabled={locked}>이번 조건 고치기</Button>}<Button variant="ghost" onClick={() => void leave.leave()} disabled={locked}>조건 그대로 새 요청</Button></div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">{profile && <Button variant="soft" onClick={() => setEditing(true)} disabled={locked}>이번 조건 고치기</Button>}<Button variant="ghost" onClick={() => void leave.leave()} disabled={locked}>조건 그대로 새 요청</Button></div>
           <p className="mt-2 text-xs">기본 투자조건(내 투자조건)을 바꿔도 진행 중인 이 요청에는 적용되지 않습니다.</p>
         </Alert>
       )}
@@ -127,7 +127,7 @@ export function ClarifyScreen({ requestId }: { requestId: string }) {
         <Alert title={`보충 질문 ${st.max_questions}개를 모두 썼지만 정해지지 않은 항목이 남았습니다`} tone="warning">
           <ul className="list-disc pl-5">{st.unresolved.map((u) => <li key={u.field}><b>{u.label_ko}</b>: {u.hint_ko}{u.examples_ko.length ? ` (예: ${u.examples_ko.join(", ")})` : ""}</li>)}</ul>
           <p className="mt-2">남은 항목은 「조건 바꾸기」로 직접 정하거나, 아이디어를 수정해 다시 시작해 주세요. 분석은 시작되지 않았습니다.</p>
-          <div className="mt-3 flex gap-2">{profile && <Button variant="secondary" onClick={() => setEditing(true)} disabled={locked}>조건 바꾸기</Button>}<Button variant="ghost" onClick={() => void leave.leave()} disabled={locked}>아이디어 고쳐 다시 시작</Button></div>
+          <div className="mt-3 flex gap-2">{profile && <Button variant="soft" onClick={() => setEditing(true)} disabled={locked}>조건 바꾸기</Button>}<Button variant="ghost" onClick={() => void leave.leave()} disabled={locked}>아이디어 고쳐 다시 시작</Button></div>
         </Alert>
       )}
       {batchDone && <BatchResult requestId={requestId} sent={batchDone.sent} changes={batchDone.changes} more={st.state === "asking"} />}

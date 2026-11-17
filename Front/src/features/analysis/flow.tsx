@@ -53,7 +53,7 @@ export function Pending({ title, detail, children }: { title: string; detail?: s
   const [sec, setSec] = useState(0)
   useEffect(() => { const t = setInterval(() => setSec((s) => s + 1), 1000); return () => clearInterval(t) }, [])
   return (
-    <div role="status" className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+    <div role="status" className="flex gap-3 rounded-box bg-sunken p-4">
       <Loader2 className="mt-0.5 size-5 shrink-0 animate-spin text-blue-700" aria-hidden="true" />
       <div className="min-w-0 text-sm">
         <p className="font-semibold text-slate-900">{title}</p>
@@ -155,14 +155,14 @@ export function CancelRequestButton({ c, disabled }: { c: Leave; disabled?: bool
 export function CancelRequestConfirm({ c, keepLabel, disabled }: { c: Leave; keepLabel: string; disabled?: boolean }) {
   if (!c.asking) return c.error ? <ActionError title="요청을 취소하지 못했습니다" message={c.error} retry={() => void c.leave()} /> : null
   return (
-    <div role="alertdialog" aria-label="요청 취소 확인" className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-900">
-      <p className="font-semibold">이 요청을 취소할까요?</p>
+    <div role="alertdialog" aria-label="요청 취소 확인" className="rounded-box bg-danger-tint p-5 text-14 text-body">
+      <p className="font-semibold text-main">이 요청을 취소할까요?</p>
       <p className="mt-1">지금까지 답한 내용은 이 요청과 함께 닫히고, 분석은 시작되지 않습니다. 아이디어와 바꾼 조건은 홈에 그대로 채워 둡니다.</p>
       <div className="mt-3 flex flex-wrap gap-2">
-        <Button variant="danger" onClick={() => void c.leave()} disabled={disabled || c.busy}>{c.busy ? "취소하는 중…" : "요청 취소"}</Button>
+        <Button variant="destructive" onClick={() => void c.leave()} disabled={disabled || c.busy}>{c.busy ? "취소하는 중…" : "요청 취소"}</Button>
         <Button variant="ghost" onClick={c.close} disabled={c.busy}>{keepLabel}</Button>
       </div>
-      {c.error && <p className="mt-2 text-xs font-medium">취소하지 못했습니다: {c.error} 다시 눌러 주세요.</p>}
+      {c.error && <p className="mt-2 text-12 font-medium text-danger">취소하지 못했습니다: {c.error} 다시 눌러 주세요.</p>}
     </div>
   )
 }
@@ -203,14 +203,10 @@ export function BackToQuestions({ n, hardErrors }: { n: FlowNotice; hardErrors: 
 
 export function ActionError({ title, message, retry }: { title: string; message: string; retry?: () => void }) {
   return (
-    <div role="alert" className="flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-950">
-      <AlertCircle className="mt-0.5 size-5 shrink-0" />
-      <div className="min-w-0 text-sm">
-        <p className="font-semibold">{title}</p>
-        <p className="mt-0.5 leading-6 opacity-80">{message} 입력한 내용은 그대로 남아 있습니다.</p>
-        {retry && <Button variant="secondary" className="mt-2" onClick={retry}>다시 시도</Button>}
-      </div>
-    </div>
+    <Alert tone="error" title={title}>
+      <p>{message} 입력한 내용은 그대로 남아 있습니다.</p>
+      {retry && <Button variant="soft" className="mt-2" onClick={retry}>다시 시도</Button>}
+    </Alert>
   )
 }
 
@@ -232,11 +228,10 @@ export function IdeaPart({ st }: { st: DialogState }) {
 /** 조건 바꾸기·말로 보태기가 끝난 뒤: 실제로 바뀐 조건 값 (없으면 그렇다고 알린다). */
 export function ResultNote({ changes, what }: { changes: RowChange[]; what: string }) {
   return (
-    <div role="status" className={`rounded-xl border p-4 text-sm ${changes.length ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-slate-200 bg-slate-50 text-slate-700"}`}>
-      <p className="font-semibold">{changes.length ? `${what}을 반영했습니다. 바뀐 조건 ${changes.length}개` : `${what}을 처리했지만 바뀐 조건 값은 없습니다.`}</p>
-      {changes.length > 0 && <ul className="mt-1.5 space-y-0.5">{changes.map((c) => <li key={c.label}>{c.label}: {c.before} → <b>{c.after}</b></li>)}</ul>}
-      {!changes.length && what === "추가 요청" && <p className="mt-1 text-xs">테마 해석에만 쓰였거나, 확인 질문으로 이어질 수 있습니다. 투자 시장·숫자 조건은 「조건 바꾸기」로 직접 바꿔 주세요.</p>}
-    </div>
+    <Alert tone={changes.length ? "success" : "neutral"} title={changes.length ? `${what}을 반영했습니다. 바뀐 조건 ${changes.length}개` : `${what}을 처리했지만 바뀐 조건 값은 없습니다.`}>
+      {changes.length > 0 && <ul className="space-y-0.5">{changes.map((c) => <li key={c.label}>{c.label}: {c.before} → <b className="text-main">{c.after}</b></li>)}</ul>}
+      {!changes.length && what === "추가 요청" && <p className="text-13">테마 해석에만 쓰였거나, 확인 질문으로 이어질 수 있습니다. 투자 시장·숫자 조건은 「조건 바꾸기」로 직접 바꿔 주세요.</p>}
+    </Alert>
   )
 }
 

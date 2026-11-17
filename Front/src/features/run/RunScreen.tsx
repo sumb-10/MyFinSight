@@ -8,7 +8,7 @@ import type { RunPartial, RunStatus, RunStep, StepStatus } from "../../api/types
 import { usePolling } from "../../state/usePolling"
 import { useResource } from "../../state/useResource"
 import { saveUi } from "../../state/uiStorage"
-import { Alert, Button, EmptyState, Loading } from "../../ui"
+import { Alert, Button, EmptyState, Loading, NOTICE_BOX, NOTICE_ICON } from "../../ui"
 import { datetime, fmt } from "../../lib/format"
 import { ActionError, FlowHeader, Pending, startNewWith, useStickyInMain } from "../analysis/flow"
 import { Part } from "../profile/parts"
@@ -163,9 +163,9 @@ function RunView({ runId }: { runId: string }) {
           <Part title={TERMINAL.has(r.status) ? "분석 결과" : "지금 하는 일"}>
             {r.status === "queued" && <p className="text-sm leading-6 text-slate-700"><b>대기열에서 차례를 기다리고 있습니다 (순번 {r.queue_position ?? "-"}).</b><br />{workerDown ? "분석 일꾼이 켜지면 자동으로 시작합니다." : "앞선 요청이 끝나면 자동으로 시작합니다. 이 화면을 닫아도 됩니다."}</p>}
             {(r.status === "running" || r.status === "cancelling") && current.map((s) => (
-              <div key={s.step} className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-                <p className="flex items-center gap-2 text-sm font-bold text-blue-950"><StepIcon status="STARTED" size="size-4" />{stepTitle(s.step, s.label_ko)}{startedText(s) && <span className="font-normal text-blue-800">{startedText(s)}</span>}</p>
-                {STEP_TEXT[s.step] && <p className="mt-1 text-xs leading-5 text-blue-900/80">{STEP_TEXT[s.step].desc}</p>}
+              <div key={s.step} className={`rounded-box p-4 ${NOTICE_BOX.info}`}>
+                <p className="flex items-center gap-2 text-14 font-bold text-main"><StepIcon status="STARTED" size="size-4" />{stepTitle(s.step, s.label_ko)}{startedText(s) && <span className="font-normal text-sub">{startedText(s)}</span>}</p>
+                {STEP_TEXT[s.step] && <p className="mt-1 text-12 leading-5 text-body">{STEP_TEXT[s.step].desc}</p>}
               </div>
             ))}
             {r.status === "running" && current.length === 0 && <p className="text-sm text-slate-600">다음 단계를 준비하고 있습니다.</p>}
@@ -174,9 +174,9 @@ function RunView({ runId }: { runId: string }) {
               <div className="border-t border-slate-100 pt-4">
                 {!confirmCancel ? <Button variant="danger" onClick={() => setConfirmCancel(true)} disabled={busy !== ""}><X className="size-4" />분석 취소</Button>
                   : (
-                    <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+                    <div className={`rounded-box p-4 text-14 leading-6 text-body ${NOTICE_BOX.error}`}>
                       <p>정말 취소할까요? 지금까지 진행한 단계는 버려지고 리포트는 만들지 않습니다.</p>
-                      <div className="mt-3 flex flex-wrap gap-2"><Button variant="danger" onClick={() => void cancel()} disabled={busy !== ""}>{busy === "cancel" ? "취소 요청을 보내는 중…" : "취소 확정"}</Button><Button variant="ghost" onClick={() => setConfirmCancel(false)} disabled={busy !== ""}>계속 진행</Button></div>
+                      <div className="mt-3 flex flex-wrap gap-2"><Button variant="destructive" onClick={() => void cancel()} disabled={busy !== ""}>{busy === "cancel" ? "취소 요청을 보내는 중…" : "취소 확정"}</Button><Button variant="ghost" onClick={() => setConfirmCancel(false)} disabled={busy !== ""}>계속 진행</Button></div>
                     </div>
                   )}
                 {actErr?.kind === "cancel" && <div className="mt-3"><ActionError title="취소 요청을 보내지 못했습니다" message={actErr.message} retry={() => void cancel()} /></div>}
@@ -196,11 +196,10 @@ function RunView({ runId }: { runId: string }) {
             )}
             {r.status === "failed" && (
               <>
-                <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-950">
-                  <p className="font-semibold">{failedStep ? `「${stepTitle(failedStep.step, failedStep.label_ko)}」 단계에서 실패했습니다` : "분석이 실패했습니다"}</p>
-                  {r.error && <p className="mt-1 opacity-80">{r.error.message_ko}</p>}
-                  {cancelAsked && <p className="mt-1 text-xs">취소 요청이 반영되기 전에 분석이 끝났습니다.</p>}
-                </div>
+                <Alert tone="error" title={failedStep ? `「${stepTitle(failedStep.step, failedStep.label_ko)}」 단계에서 실패했습니다` : "분석이 실패했습니다"}>
+                  {r.error && <p>{r.error.message_ko}</p>}
+                  {cancelAsked && <p className="text-12">취소 요청이 반영되기 전에 분석이 끝났습니다.</p>}
+                </Alert>
                 {retryBtns}
               </>
             )}
@@ -266,8 +265,8 @@ function CancelSummary({ c }: { c: NonNullable<ReturnType<typeof proposedCancelO
   const hms = (s: string) => s.slice(11, 19)
   const sec = c.completed_at ? Math.max(0, Math.round((new Date(c.completed_at).getTime() - new Date(c.requested_at).getTime()) / 1000)) : null
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-      <p className="flex items-center font-semibold text-slate-900">분석 취소 완료<MockTag /></p>
+    <div className="rounded-box bg-sunken p-4 text-14 text-body">
+      <p className="flex items-center font-semibold text-main">분석 취소 완료<MockTag /></p>
       <ol className="mt-2 space-y-1 text-xs">
         <li className="flex gap-2"><span className="w-20 shrink-0 text-slate-500">취소 요청</span><span className="tabular-nums">{hms(c.requested_at)}</span></li>
         {c.completed_at && <li className="flex gap-2"><span className="w-20 shrink-0 text-slate-500">취소 완료</span><span className="tabular-nums">{hms(c.completed_at)}{sec != null && ` (${sec}초 걸림)`}</span></li>}
@@ -280,9 +279,9 @@ function CancelSummary({ c }: { c: NonNullable<ReturnType<typeof proposedCancelO
 /** 완료 영역의 안내 표시. 전체 개수는 같은 문구를 하나로 센 수다. */
 function NoteLink({ total, onGo }: { total: number; onGo: (e: React.MouseEvent) => void }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-      <span className="flex items-center gap-2 font-semibold"><AlertTriangle className="size-4 shrink-0 text-amber-600" aria-hidden="true" />확인할 점 {total}건</span>
-      <button type="button" onClick={onGo} className="rounded-lg px-2 py-1 text-xs font-semibold text-amber-900 underline underline-offset-2 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500">확인할 점 보기</button>
+    <div className={`flex flex-wrap items-center justify-between gap-2 rounded-control px-3 py-2 text-14 text-main ${NOTICE_BOX.warning}`}>
+      <span className="flex items-center gap-2 font-semibold"><AlertTriangle className={`size-4 shrink-0 ${NOTICE_ICON.warning}`} aria-hidden="true" />확인할 점 {total}건</span>
+      <button type="button" onClick={onGo} className="rounded-lg px-2 py-1 text-xs font-semibold text-main underline underline-offset-2 hover:bg-surface">확인할 점 보기</button>
     </div>
   )
 }

@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Info, MinusCirc
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import type { ReportDoc, ReportSummary, SummaryKpi } from "../../api/types"
 import { colorOf, fmt, OTHER_COLOR } from "../../lib/format"
-import { Disclosure } from "../../ui"
+import { Disclosure, NOTICE_BOX } from "../../ui"
 import { money } from "../profile/format"
 import { CitedText } from "./blocks/blocks"
 import { holdingColor } from "./colors"
@@ -15,7 +15,7 @@ import { analysisRisk, parseVolCheck, volObserved, type VolCheck, annualizedFrom
 // 「개요」: 처음 보는 화면 (선택 전략·날짜 → 백테스트 핵심 성과 → 종목 구성 → 종목별 투자 금액). 숫자는 서버 summary 그대로이고, 여기서는 보여 주는 방식만 정한다.
 
 type Tone = "green" | "amber" | "red" | "slate"
-const TONE_BOX: Record<Tone, string> = { green: "border-emerald-200 bg-emerald-50/70 text-emerald-900", amber: "border-amber-200 bg-amber-50/70 text-amber-950", red: "border-red-200 bg-red-50/70 text-red-950", slate: "border-slate-300 bg-slate-50 text-slate-900" }
+const TONE_BOX: Record<Tone, string> = { green: `${NOTICE_BOX.success} text-body`, amber: `${NOTICE_BOX.warning} text-body`, red: `${NOTICE_BOX.error} text-body`, slate: `${NOTICE_BOX.neutral} text-body` }  // 알림 상자: 테두리 없음 (2026-11-18)
 const TONE_PILL: Record<Tone, string> = { green: "border-emerald-200 bg-emerald-50 text-emerald-800", amber: "border-amber-300 bg-amber-50 text-amber-900", red: "border-red-200 bg-red-50 text-red-800", slate: "border-slate-200 bg-slate-50 text-slate-700" }
 const TONE_ICON: Record<Tone, React.ElementType> = { green: CheckCircle2, amber: AlertTriangle, red: XCircle, slate: MinusCircle }
 
@@ -68,7 +68,7 @@ export function AlertList({ items, label = "중요한 주의 사항" }: { items:
   if (!items.length) return null
   return (
     <ul aria-label={label} className="space-y-2">
-      {items.map((a, i) => <li key={i} className={`flex flex-col gap-1.5 rounded-xl border px-3 py-2.5 text-sm leading-6 sm:flex-row sm:items-start sm:gap-3 ${TONE_BOX[a.tone]}`}><StatusPill tone={a.tone}>{a.tag}</StatusPill><span className="min-w-0 break-words"><CitedText text={a.text} /></span></li>)}
+      {items.map((a, i) => <li key={i} className={`flex flex-col gap-1.5 rounded-control px-3 py-2.5 text-sm leading-6 sm:flex-row sm:items-start sm:gap-3 ${TONE_BOX[a.tone]}`}><StatusPill tone={a.tone}>{a.tag}</StatusPill><span className="min-w-0 break-words"><CitedText text={a.text} /></span></li>)}
     </ul>
   )
 }
@@ -543,7 +543,7 @@ function DrawdownBar({ r1, tone }: { r1: NonNullable<ReportSummary["validation"]
 
 /** 뉴스 반영 효과: 뉴스 반영 구성 vs 같은 종목의 기준 비중 (추천이 다른 포트폴리오여도 보여 준다). 나머지 지표는 펼쳐서. */
 export function NewsEffect({ n }: { n: NonNullable<ReportSummary["news_effect"]> }) {
-  if (n.disabled) return <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600"><b className="font-semibold text-slate-800">뉴스 반영 효과: </b>{n.reason_ko ?? "이 분석에서는 표시할 수 없습니다"}</div>
+  if (n.disabled) return <div className="rounded-box bg-sunken px-4 py-3 text-14 text-body"><b className="font-semibold text-main">뉴스 반영 효과: </b>{n.reason_ko ?? "이 분석에서는 표시할 수 없습니다"}</div>
   const retKo = n.annualized_reliable === false ? "연 환산 수익률 (참고)" : "연평균 수익률(CAGR)"
   const rows: [string, string, string][] = [[retKo, fmt(n.bl_cagr, "pct"), fmt(n.base_cagr, "pct")], ["최대 하락폭", fmt(n.bl_mdd, "pct"), fmt(n.base_mdd, "pct")], ["비교지수 대비 (연)", fmt(n.bl_excess_cagr, "pp"), fmt(n.base_excess_cagr, "pp")]]
   return (

@@ -6,7 +6,7 @@ import { ApiError, errorMessage } from "../../api/client"
 import type { Options, ProfileFields, ProfileView, Tendency } from "../../api/types"
 import { useResource } from "../../state/useResource"
 import { clearLegacy, loadLegacyProfile, loadUi, saveUi } from "../../state/uiStorage"
-import { Alert, Badge, Button, Chip, ErrorState, Field, inputClass, Loading } from "../../ui"
+import { Alert, Badge, Button, Chip, ErrorState, Field, inputClass, Loading, NOTICE_BOX } from "../../ui"
 import { ko } from "../../lib/format"
 import { QUESTIONS, TENDENCIES, TENDENCY_HELP, computeTendency, toRiskTolerance } from "./diagnosis"
 import { InfoField, InfoTip, NumberInput, PercentSlider, SectorPicker, TagInput } from "./inputs"
@@ -438,7 +438,7 @@ function ZeroStartSchedule({ capital, years, today = new Date() }: { capital: Pr
   const dates = [0, 1, 2].map((i) => new Date(first.getFullYear(), first.getMonth() + i, day))
   const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
   return (
-    <div role="note" aria-label="예상 투자 일정" className="space-y-3 rounded-xl border border-blue-200 bg-blue-50/60 p-4 text-sm text-slate-700">
+    <div role="note" aria-label="예상 투자 일정" className={`space-y-3 rounded-box p-4 text-14 text-body ${NOTICE_BOX.info}`}>
       <p className="flex items-center font-semibold text-slate-900">예상 투자 일정</p>
       <p className="text-xs leading-5">처음 투자금 없이 시작합니다. 매월 {day}일에 {money(m, cur)}씩 넣어 그때 정해진 비중으로 삽니다. 첫 투자 전까지는 투자한 금액이 없습니다.</p>
       <ol className="grid grid-cols-1 gap-2 sm:grid-cols-3">

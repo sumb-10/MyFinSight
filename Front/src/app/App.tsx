@@ -3,7 +3,7 @@ import { useHealth, useProfile, useService } from "./providers"
 import { lazy, Suspense } from "react"
 import { navigate, useHashRoute, type Route } from "./router"
 import { useResource } from "../state/useResource"
-import { Badge, Button, EmptyState, Loading } from "../ui"
+import { Alert, Badge, Button, EmptyState, Loading } from "../ui"
 import { HomeScreen } from "../features/home/HomeScreen"
 import { ProfileScreen } from "../features/profile/ProfileScreen"
 import { ProfileChatScreen } from "../features/profile/chat/ProfileChatScreen"
@@ -106,10 +106,10 @@ function ModeBanner() {
   const { health, reachable } = useHealth()
   if (!reachable || health?.llm_mode !== "stub") return null
   return (
-    <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-      <b>연습 모드로 켜져 있습니다.</b> 서버가 실제 분석 모델을 부르지 않고 미리 만들어 둔 답을 쓰기 때문에, 아이디어 해석·질문·리포트 문장이 입력과 맞지 않습니다.
+    <Alert tone="warning" className="mb-6" title="연습 모드로 켜져 있습니다.">
+      서버가 실제 분석 모델을 부르지 않고 미리 만들어 둔 답을 쓰기 때문에, 아이디어 해석·질문·리포트 문장이 입력과 맞지 않습니다.
       실제로 쓰려면 서버 관리자가 분석 모델 연결 설정으로 서버를 다시 켜야 합니다.
-    </div>
+    </Alert>
   )
 }
 
