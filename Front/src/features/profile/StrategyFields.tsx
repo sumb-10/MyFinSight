@@ -1,6 +1,7 @@
 import type { StrategyPreference, Template, Weighting } from "../../api/types"
 import { Disclosure } from "../../ui"
 import { Part } from "./parts"
+import { LABEL } from "./fields"
 import { MockTag } from "../report/proposedView"
 import { NEWS_INFO, TEMPLATE_INFO, TEMPLATE_ORDER, WEIGHTING_INFO, WEIGHTING_ORDER } from "./strategyInfo"
 
@@ -27,8 +28,8 @@ const cardClass = (on: boolean) => `rounded-xl border p-3 text-left transition f
 function TemplatePicker({ value, options, onChange, recommended }: { value: Template; options: Template[]; onChange: (t: Template) => void; recommended?: Template }) {
   const cur = TEMPLATE_INFO[value]
   return (
-    <Part title="어떤 기업에 투자하고 싶나요?" info="투자 아이디어에 맞는 후보 기업 가운데, 고른 기준으로 순위를 매겨 투자할 종목을 정합니다.">
-      <div role="radiogroup" aria-label="어떤 기업에 투자하고 싶나요?" className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+    <Part title={LABEL.template} info="투자 아이디어에 맞는 후보 기업 가운데, 고른 기준으로 순위를 매겨 투자할 종목을 정합니다.">
+      <div role="radiogroup" aria-label={LABEL.template} className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {options.map((t) => {
           const i = TEMPLATE_INFO[t]
           const on = value === t
@@ -59,8 +60,8 @@ function TemplatePicker({ value, options, onChange, recommended }: { value: Temp
 function WeightingPicker({ value, options, onChange, recommended }: { value: Weighting; options: Weighting[]; onChange: (w: Weighting) => void; recommended?: Weighting }) {
   const cur = WEIGHTING_INFO[value]
   return (
-    <Part title="선정한 기업에 투자금을 어떻게 나눌까요?" info={<>여기서 정한 비율을 <b>기준 비중</b>이라고 합니다. 선정한 종목에 투자금을 처음 나누는 방식이며, 어떤 방식이든 종목당·섹터당 상한은 지킵니다. 2단계에서 고른 <b>비교지수</b>는 성과를 견주는 기준일 뿐, 투자금을 나누는 방식과는 관계가 없습니다.</>}>
-      <div role="radiogroup" aria-label="선정한 기업에 투자금을 어떻게 나눌까요?" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+    <Part title={LABEL.weighting} info={<>여기서 정한 비율을 <b>기준 비중</b>이라고 합니다. 선정한 종목에 투자금을 처음 나누는 방식이며, 어떤 방식이든 종목당·섹터당 상한은 지킵니다. 2단계에서 고른 <b>비교지수</b>는 성과를 견주는 기준일 뿐, 투자금을 나누는 방식과는 관계가 없습니다.</>}>
+      <div role="radiogroup" aria-label={LABEL.weighting} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {options.map((w) => {
           const i = WEIGHTING_INFO[w]
           const on = value === w

@@ -3,7 +3,7 @@ import { Search, X } from "lucide-react"
 import { useService } from "../../app/providers"
 import { stockLabel, type ProposedStock } from "../../api/proposed"
 import { MockTag } from "../report/proposedView"
-import { InfoTip } from "./inputs"
+import { InfoTip, TagInput } from "./inputs"
 
 // 종목 이름 (제안 기능): 서비스에 종목 검색·조회(searchStocks·getStocks)가 있을 때만 쓴다 (실제 서버: GET /stocks/search·/stocks).
 // 실제 서버는 미국 종목의 한국어 이름 자료가 없어 name_ko 에도 영문 이름이 온다 (name_en 과 같으면 한 번만 보여 준다).
@@ -22,12 +22,27 @@ export function useStockNames(tickers: string[]): ((t: string) => string) | null
   return svc.getStocks ? (t: string) => stockLabel(names[t], t) : null
 }
 
-const looksLikeTicker = (s: string) => /^[A-Za-z]{1,5}$|^\d{6}(\.K[SQ])?$/.test(s.trim())
+const TICKER_INFO = <>회사 이름이 아니라 <b>종목 코드(티커)</b>로 입력합니다. 미국: TSLA(테슬라), AAPL(애플) · 한국: 6자리 종목코드 005930(삼성전자) 또는 005930.KS. 회사 이름으로 찾는 기능은 아직 없습니다.</>
+const upperTicker = (s: string) => s.trim().toUpperCase()
 
-/** 회사 이름·티커로 찾아 고르는 종목 입력. 고른 종목은 칩으로 보이고, 저장은 티커로 된다. */
-export function StockPicker({ label, values, onChange, error, other }: { label: string; values: string[]; onChange: (v: string[]) => void; error?: string; other?: { label: string; values: string[] } }) {
+/**
+ * 종목 목록 입력 (제외할 종목 · 반드시 포함할 종목). 내 투자조건 화면과 홈 상세 조건 창이 같이 쓴다.
+ * 서비스에 종목 검색(searchStocks)이 있으면 회사 이름으로 찾는 StockPicker, 없으면 티커를 칩으로 적는 TagInput.
+ */
+export function TickerListField({ id, label, values, onChange, error, other, placeholder, aside }: { id?: string; label: string; values: string[]; onChange: (v: string[]) => void; error?: string; other?: { label: string; values: string[] }; placeholder: string; aside?: React.ReactNode }) {
   const svc = useService()
-  const id = useId()
+  return svc.searchStocks
+    ? <StockPicker id={id} label={label} values={values} error={error} other={other} onChange={onChange} aside={aside} />
+    : <TagInput id={id} label={label} values={values} normalize={upperTicker} placeholder={placeholder} info={TICKER_INFO} error={error} onChange={onChange} aside={aside} />
+}
+
+const looksLikeTicker =(s: string) => /^[A-Za-z]{1,5}$|^\d{6}(\.K[SQ])?$/.test(s.trim())
+
+/** 회사 이름·티커로 찾아 고르는 종목 입력. 고른 종목은 칩으로 보이고, 저장은 티커로 된다. id·aside: TagInput 과 같다 */
+export function StockPicker({ id: idProp, label, values, onChange, error, other, aside }: { id?: string; label: string; values: string[]; onChange: (v: string[]) => void; error?: string; other?: { label: string; values: string[] }; aside?: React.ReactNode }) {
+  const svc = useService()
+  const autoId = useId()
+  const id = idProp ?? autoId
   const [q, setQ] = useState("")
   const [hits, setHits] = useState<ProposedStock[]>([])
   const [open, setOpen] = useState(false)
@@ -60,7 +75,7 @@ export function StockPicker({ label, values, onChange, error, other }: { label: 
   const listId = `${id}-list`
   return (
     <div ref={box}>
-      <div className="mb-2 flex items-center gap-1"><label htmlFor={id} className="text-sm font-semibold text-slate-700">{label}</label><InfoTip label={label}>{svc.mode === "mock" ? "회사 이름(한글·영문)이나 종목 코드(티커)로 찾아 고릅니다. 저장은 티커로 됩니다. 목업 종목 목록에서만 찾습니다." : "회사 이름이나 종목 코드(티커)로 찾아 고릅니다. 미국 종목은 영문 이름, 한국 종목은 한글 이름으로 찾습니다. S&P 500·NASDAQ-100·KOSPI 200 종목에서 찾고, 저장은 티커로 됩니다."}</InfoTip><MockTag /></div>
+      <div className="mb-2 flex items-center gap-1"><label htmlFor={id} className="text-sm font-semibold text-slate-700">{label}</label><InfoTip label={label}>{svc.mode === "mock" ? "회사 이름(한글·영문)이나 종목 코드(티커)로 찾아 고릅니다. 저장은 티커로 됩니다. 목업 종목 목록에서만 찾습니다." : "회사 이름이나 종목 코드(티커)로 찾아 고릅니다. 미국 종목은 영문 이름, 한국 종목은 한글 이름으로 찾습니다. S&P 500·NASDAQ-100·KOSPI 200 종목에서 찾고, 저장은 티커로 됩니다."}</InfoTip><MockTag />{aside}</div>
       <div className={`flex flex-wrap items-center gap-1.5 rounded-xl border bg-white px-2 py-1.5 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 ${error ? "border-red-300" : "border-slate-200"}`}>
         {values.map((v) => (
           <span key={v} className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800">
@@ -70,7 +85,7 @@ export function StockPicker({ label, values, onChange, error, other }: { label: 
         ))}
         <span className="flex min-w-36 flex-1 items-center gap-1.5 px-1">
           <Search className="size-4 shrink-0 text-slate-400" aria-hidden="true" />
-          <input id={id} role="combobox" aria-expanded={showList} aria-controls={listId} aria-autocomplete="list" aria-activedescendant={showList && hits[active] ? `${id}-${hits[active].ticker}` : undefined}
+          <input id={id} role="combobox" aria-invalid={error ? true : undefined} aria-expanded={showList} aria-controls={listId} aria-autocomplete="list" aria-activedescendant={showList && hits[active] ? `${id}-${hits[active].ticker}` : undefined}
             className="min-w-0 flex-1 bg-transparent py-1 text-sm text-slate-900 outline-none placeholder:text-slate-400" value={q} placeholder={values.length ? "" : svc.mode === "mock" ? "회사 이름이나 티커로 찾기 (예: 마이크론, MU)" : "회사 이름이나 티커로 찾기 (예: Micron, 삼성전자, MU)"}
             onChange={(e) => { setQ(e.target.value); setOpen(true) }} onFocus={() => setOpen(true)} onKeyDown={key} />
         </span>
