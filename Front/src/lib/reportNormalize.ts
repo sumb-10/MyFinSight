@@ -1,8 +1,11 @@
 import type { Block, CheckpointsBlock, DonutBlock, EvidenceBlock, ReportDoc, ReportSummary, TableBlock, TimelineBlock } from "../api/types"
 
-/** 서버 문장 속 괄호 안의 코드 이름(지표 ID)을 지운다: "모멘텀(return_12m_1m)은" → "모멘텀은", "5개 (return_12m_1m)" → "5개".
+/** 서버 문장 속 괄호 안의 코드 이름(지표 ID·근거 ID)을 지운다: "모멘텀(return_12m_1m)은" → "모멘텀은", "5개 (return_12m_1m)" → "5개", "소식(ev1699652)이" → "소식이".
  *  소문자·숫자·밑줄로 된 ID 만 지우고 (ROE)·(SPY)·(최근 1개월 제외) 같은 용어·설명 괄호는 그대로 둔다. */
-export const dropCodeIds = (t: string) => t.replace(/\s?\([a-z][a-z0-9]*(?:_[a-z0-9]+)+\)/g, "")
+export const dropCodeIds = (t: string) => t.replace(/\s?\([a-z][a-z0-9]*(?:_[a-z0-9]+)+\)/g, "").replace(EVIDENCE_ID_PAREN, "")
+/** 괄호 안의 근거 ID: 「…소식(ev1699652)」, 「(ev1, dc2)」. 서버 뷰 설명 문장이 근거 기사 ID 를 괄호로 붙인다 — 화면에서는 뺀다.
+ *  대괄호 인용 「[ev1]」은 그대로 둔다 (번호 링크 [40] 으로 바뀌어 근거를 열 수 있다). */
+const EVIDENCE_ID_PAREN = /\s?\((?:ev|dc)\d+(?:\s*[,·]\s*(?:ev|dc)\d+)*\)/g
 
 /** 리포트 본문(섹션 블록)의 화면 문장에서 코드 이름을 지운다. 바꿀 것이 없으면 같은 객체를 돌려준다.
  *  *_ko 문자열과 문단(items) 문자열만 고치고, ID·숫자 같은 계산용 값은 건드리지 않는다 (백엔드 report.py _metric_note·collect.py 깔때기 이름이 ID 를 함께 적는다). */

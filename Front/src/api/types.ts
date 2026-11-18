@@ -83,12 +83,12 @@ export interface Kpi { id: string; label_ko: string; value: number | null; forma
 export interface Column { key: string; label_ko: string; format?: Format }
 export interface ParagraphsBlock { type: "paragraphs"; items: string[]; tone?: "lead" }
 export interface KpisBlock { type: "kpis"; ids: string[] }
-export interface TableBlock { type: "table"; title_ko?: string; columns: Column[]; rows: Record<string, unknown>[]; note_ko?: string }
+export interface TableBlock { type: "table"; title_ko?: string; columns: Column[]; rows: Record<string, unknown>[]; note_ko?: string; subtitle_ko?: string | null }  // subtitle_ko: 화면에서만 붙이는 제목 아래 설명 (서버는 주지 않는다)
 export interface DonutBlock { type: "donut"; title_ko: string; items: { label: string; value: number }[]; note_ko?: string }
 export interface LineBlock { type: "line"; title_ko: string; dataset: "index" | "value_usd"; series_ids: string[]; default_on: string[]; y_format: Format; note_ko?: string }
 export interface AreaBlock { type: "area"; title_ko: string; dataset: "drawdown"; series_ids: string[]; default_on: string[]; y_format: Format }
 export interface BarBlock { type: "bar"; title_ko: string; items: { label: string; value: number }[]; format: Format; note_ko?: string }
-export interface FunnelBlock { type: "funnel"; items: { label_ko: string; count: number; note_ko?: string }[] }
+export interface FunnelBlock { type: "funnel"; items: { label_ko: string; count: number; note_ko?: string }[]; help_ko?: string | null }  // help_ko: 화면 전용 — 「선정 과정」 ? 도움말 (서버 「선정 지표」 설명을 옮겨 담는다)
 export interface CalloutBlock { type: "callout"; tone: "info" | "caution"; title_ko: string; text_ko: string }
 export interface CardsBlock { type: "cards"; title_ko?: string; items: { title_ko: string; text_ko: string; meta: { label_ko: string; value: string }[] }[] }
 export interface Holding { ticker: string; shares_after: number; price: number; value_usd: number; weight_before: number | null; weight_after: number; period_return: number; period_contribution: number }
@@ -116,8 +116,12 @@ export interface Section { id: string; title_ko: string; blocks: Block[] }
 export interface Series { label_ko: string; kind: string; index?: number[]; value_usd?: number[]; drawdown?: number[] }
 export interface SummaryKpi extends Kpi { benchmark_value?: number | null; benchmark_label_ko?: string | null }
 export interface ReportSummary {
-  verdict: { status: "recommended" | "recommended_warn" | "insufficient" | "none_cash_blend" | "none_baseline"; label_ko: string; headline_ko: string; reason_ko?: string | null; chosen_portfolio_id: string; chosen_label_ko: string; cautions_ko?: string[]; period_note_ko?: string | null; notices_ko?: string[]; n_notices?: number }
-  validation: { n_pass: number; n_warn: number; n_fail: number; n_candidates?: number | null; chosen_status: string; failed_rules_ko: string[]; warned_rules_ko?: string[]; info_notes_ko?: string[]; rules_ko?: { rule: string; name_ko: string; level: string; status: string; message_ko: string }[]; tolerance_note_ko?: string; r1_ko?: string | null; r1?: { mdd: number; tolerance: number; benchmark_mdd: number; excess: number; status: string; match_target?: number | null } | null }
+  verdict: { status: "recommended" | "recommended_warn" | "insufficient" | "none_cash_blend" | "none_baseline"; label_ko: string; headline_ko: string; reason_ko?: string | null; chosen_portfolio_id: string; chosen_label_ko: string; cautions_ko?: string[]; period_note_ko?: string | null; notices_ko?: string[]; n_notices?: number
+    /** 쉬운 문장 (2026-11-16): key = 원래 주의(cautions_ko 항목, 같은 규칙과 겹침 거르기용), text = 화면에 보일 문장. 없으면 cautions_ko 그대로 */
+    cautions_plain?: { key: string; text: string }[]; label_plain_ko?: string | null }
+  validation: { n_pass: number; n_warn: number; n_fail: number; n_candidates?: number | null; chosen_status: string; failed_rules_ko: string[]; warned_rules_ko?: string[]; info_notes_ko?: string[]; rules_ko?: { rule: string; name_ko: string; level: string; status: string; message_ko: string }[]; tolerance_note_ko?: string; r1_ko?: string | null; r1?: { mdd: number; tolerance: number; benchmark_mdd: number; excess: number; status: string; match_target?: number | null } | null
+    /** 쉬운 문장 (2026-11-16): 미충족·주의 규칙별 문장(R1·R2·R3·R7), 「참고」 상자 문장. 없으면 message_ko·info_notes_ko */
+    rules_plain_ko?: Record<string, string>; info_plain_ko?: string[] }
   news_effect?: { disabled: boolean; reason_ko?: string; bl_id?: string; bl_label_ko?: string; base_id?: string | null; base_label_ko?: string | null; bl_cagr?: number | null; base_cagr?: number | null; diff_cagr?: number | null; bl_excess_cagr?: number | null; base_excess_cagr?: number | null; bl_mdd?: number | null; base_mdd?: number | null; hit_365?: number | null; hit_next_rb?: number | null; n_views?: number; n_dates?: number; n_rebalances?: number; n_fallback?: number; annualized_reliable?: boolean } | null
   kpis: SummaryKpi[]
   allocation: { basis: string; basis_ko: string; items: { ticker: string; name: string; sector: string; weight: number; usd: number; krw: number }[]; cash_weight: number; initial_amount_usd: number; amount_basis_ko?: string | null; fx_rate: number; fx_direction?: string } | null  // amount_basis_ko: 0원 시작이면 「첫 적립금」 (initial_amount_usd 가 첫 적립금)

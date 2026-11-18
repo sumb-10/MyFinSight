@@ -52,6 +52,8 @@ describe("hideCodeIds: 화면 문장의 지표 ID 괄호 지우기", () => {
     expect(dropCodeIds("모멘텀(return_12m_1m)은 최근 12개월 주가 수익률에서 가장 최근 1개월을 뺀 값입니다.")).toBe("모멘텀은 최근 12개월 주가 수익률에서 가장 최근 1개월을 뺀 값입니다.")
     expect(dropCodeIds("선정 지표(return_12m_1m) 계산 가능")).toBe("선정 지표 계산 가능")
     expect(dropCodeIds("계산할 수 있었던 종목은 5개 (return_12m_1m)였고, 고배당(dividend_yield_ttm)은")).toBe("계산할 수 있었던 종목은 5개였고, 고배당은")
+    expect(dropCodeIds("전략적 협업을 시작했다는 소식(ev1699652)이 긍정적이다. 보도(ev416625, ev416622)는")).toBe("전략적 협업을 시작했다는 소식이 긍정적이다. 보도는")
+    expect(dropCodeIds("근거 [ev5349760] 와 공시 (dc12)")).toBe("근거 [ev5349760] 와 공시")  // 대괄호 인용은 번호 링크가 되므로 둔다
     const keep = "퀄리티(ROE) · 비교지수(SPY) · 최근 12개월 수익률 (최근 1개월 제외) · (단위: %)"
     expect(dropCodeIds(keep)).toBe(keep)
   })

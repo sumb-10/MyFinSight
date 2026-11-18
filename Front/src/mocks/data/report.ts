@@ -150,6 +150,53 @@ export function buildReport(sc: ReportScenario): MockReportDoc {
 
   const rules_ko = ckChosen.filter((c) => c.level !== "info").map((c) => ({ rule: c.rule, name_ko: c.name_ko, level: c.level, status: c.status, message_ko: c.message_ko }))
   const info_notes = ckChosen.filter((c) => c.status === "info" && !c.ok).map((c) => c.message_ko)
+  // 「조건별 근거 보기」 표 행 (서버 validation_text 와 같은 문장 틀, 2026-11-16)
+  const NAME_PLAIN: Record<string, string> = { R1: "최대낙폭과 허용 한도", R1b: "비교지수와 최대낙폭 비교", R2: "목표 수익률 달성 여부", R3: "비교지수와 수익률 비교", R7: "변동성 기준 충족 여부" }
+  const resultKo = (c: { rule: string; status: string; threshold: number | null }) => c.status === "info" ? (["R2", "R7"].includes(c.rule) && c.threshold != null ? "판정 보류" : "측정 결과") : ({ pass: "충족", warn: "주의", flag: "허용 초과", fail: "미충족" }[c.status] ?? c.status)
+  const retPair = (m: { cagr: number; total_return: number }) => (bt.short ? ["같은 기간 수익률", m.total_return, bt.bench.m.total_return] : ["연평균 수익률(CAGR)", m.cagr, bt.bench.m.cagr]) as [string, number, number]
+  const pp = (x: number) => `${x > 0 ? "+" : x < 0 ? "-" : ""}${(Math.abs(x) * 100).toFixed(1)}%p`
+  const valRows = () => ckChosen.map((c) => {
+    const bm = bt.bench.m, m = chosen.m, v = c.value ?? 0, thr = c.threshold
+    const prefKo = { low: "낮은 변동성 기준", medium: "중간 변동성 기준", high: "높은 변동성 기준" }[sc.vol_pref]
+    const msg = c.rule === "R1" ? `[목업] 기준: 최대낙폭이 허용 한도 ${pct1(thr ?? 0)} 이내. 측정값: 이 전략의 최대낙폭 ${pct1(v)}(같은 날 같은 금액을 SPY에 넣었다면 ${pct1(Math.abs(bm.mdd))}).`
+      : c.rule === "R1b" ? `[목업] 기준: 같은 날 같은 금액을 SPY에 넣었을 때의 최대낙폭 ${pct1(thr ?? 0)}. 측정값: 이 전략 ${pct1(v)}${v > (thr ?? 0) ? `로 ${pct1(v - (thr ?? 0))}p 더 크게 떨어졌습니다.` : "로 더 크게 떨어지지 않았습니다."}`
+      : c.rule === "R2" ? (c.status === "info" ? `[목업] 기준: 연 ${pct1(sc.target_return)} 목표 수익률. 측정값: 이 기간 수익률 ${pct1(m.total_return)}. 평가 기간이 짧아 판정 보류.` : `[목업] 기준: 연평균 수익률(CAGR) 연 ${pct1(sc.target_return)} 이상. 측정값: ${pct1(m.cagr)}.`)
+      : c.rule === "R3" ? (() => { const [label, own, b] = retPair(m); return `[목업] 기준: 같은 날 같은 금액을 SPY에 넣었을 때보다 수익률이 높을 것. 측정값: ${label} ${pct1(own)}, SPY ${pct1(b)}(${pp(own - b)}).` })()
+      : c.rule === "R7" ? (thr == null ? `[목업] 기준: 이번 분석에 적용한 ${prefKo}은 변동성 상한을 두지 않습니다. 측정값: 이 전략의 백테스트 연변동성 ${pct1(v)}(SPY ${pct1(bm.vol)}).`
+        : `[목업] 기준: 이번 분석에 적용한 ${prefKo} — SPY의 연변동성 ${pct1(bm.vol)}${(c.multiplier ?? 1) === 1 ? "를 그대로 쓴" : `에 ${c.multiplier}을 곱한`} ${pct1(thr)} 이하. 측정값: 이 전략의 백테스트 연변동성 ${pct1(v)}.${c.status === "info" ? " 평가 기간이 짧아 판정 보류." : ""}`)
+      : c.message_ko
+    return { rule: c.rule, name: NAME_PLAIN[c.rule] ?? c.name_ko, msg, status: resultKo(c) }
+  })
+  const stratRows = () => bt.runs.map((r) => {
+    const name = r.def.label_ko, st = bt.status[r.def.id], m = r.m
+    const issues = bt.checks[r.def.id].filter((c) => c.status === "warn" || c.status === "flag").map((c) => c.rule === "R1" ? `최대낙폭 ${pct1(c.value ?? 0)}가 허용 한도 ${pct1(c.threshold ?? 0)}보다 컸습니다.`
+      : c.rule === "R3" ? (() => { const [label, own, b] = retPair(m); return `${name} 전략의 ${label}은 ${pct1(own)}로 SPY의 ${pct1(b)}보다 낮았습니다.` })()
+      : c.rule === "R2" ? `연평균 수익률 ${pct1(m.cagr)}가 목표 연 ${pct1(sc.target_return)}보다 낮았습니다.` : c.rule === "R7" ? `연변동성 ${pct1(m.vol)}가 기준 ${pct1(c.threshold ?? 0)}보다 높았습니다.` : c.message_ko)
+    const isChosen = r.def.id === chosen.def.id
+    const reason = isChosen ? `${issues.length ? issues.join(" ") + " 그래도 " : ""}비교한 전략 중 순위가 가장 앞서 최종 선택했습니다.` : st === "pass" ? `모든 점검을 통과했지만, 순위가 ${chosen.def.label_ko}보다 뒤라 선택되지 않았습니다.` : issues.join(" ") || "-"
+    return { name, status: statusKo(st) + (isChosen ? " · 최종 선택" : ""), reason: `[목업] ${reason}` }
+  })
+  // 7. 「중요한 주의 사항」·「참고」 쉬운 문장 (서버 caution_text 와 같은 틀, 2026-11-16) — 목업 숫자로
+  const plainOf = () => {
+    const dk = (x: string) => { const [y, m, d] = x.slice(0, 10).split("-").map(Number); return `${y}년 ${m}월 ${d}일` }
+    const span = `${dk(period.start)}부터 ${dk(period.end)}까지`
+    const ck = Object.fromEntries(ckChosen.map((c) => [c.rule, c]))
+    const bm = bt.bench.m
+    const prefKo = { low: "낮은 변동성 기준", medium: "중간 변동성 기준", high: "높은 변동성 기준" }[sc.vol_pref]
+    const r1 = ck.R1 && !ck.R1.ok ? `[목업] ${span} 백테스트에서 고점 대비 가장 크게 떨어진 폭(최대낙폭)은 ${pct1(ck.R1.value ?? 0)}로, 허용하기로 한 ${pct1(ck.R1.threshold ?? 0)}보다 ${pct1((ck.R1.value ?? 0) - (ck.R1.threshold ?? 0))}p 컸습니다. 같은 기간 같은 날 같은 금액을 SPY에 넣었다면 최대낙폭은 ${pct1(Math.abs(bm.mdd))}였습니다. 비슷한 하락이 다시 오면 감내하기로 한 손실보다 더 크게 떨어질 수 있습니다.` : null
+    const r2 = ck.R2?.status === "warn" ? `[목업] ${span}의 수익률을 1년 기준으로 환산한 값은 ${pct1(ck.R2.value ?? 0)}로, 목표한 연 ${pct1(ck.R2.threshold ?? 0)}보다 ${pct1((ck.R2.threshold ?? 0) - (ck.R2.value ?? 0))}p 낮았습니다. 과거 성과로는 목표 수익률에 못 미쳤다는 뜻입니다.` : null
+    const r3 = ck.R3?.status === "warn" ? `[목업] ${span} 같은 날 같은 금액을 SPY에 넣었다고 가정했을 때보다 연평균 수익률이 ${pct1(Math.abs(ck.R3.value ?? 0))}p 낮았습니다. 같은 기간 시장 대표 지수에 투자하는 것보다 성과가 낮았다는 뜻입니다.` : null
+    const vol = (tail: string, dated = false) => { const c = ck.R7; if (!c || c.threshold == null) return null; const m = c.multiplier ?? 1; const head = `SPY의 변동성을 1년 기준으로 환산한 값은 ${pct1(bm.vol)}였습니다.`
+      return `${head} ${m === 1 ? `이 값을 그대로 이번 분석에 적용한 ${prefKo}으로 썼고` : `여기에 ${m}을 곱한 ${pct1(c.threshold)}가 이번 분석에 적용한 ${prefKo}이었고`}, ${dated ? `${span} ` : ""}백테스트에서 계산한 전략의 변동성은 ${pct1(c.value ?? 0)}${tail}` }
+    const r7 = ck.R7?.status === "warn" ? `[목업] ${vol("로 기준보다 컸습니다.", true)} 변동성이 크면 평가금액이 짧은 기간에도 크게 오르내릴 수 있습니다.` : null
+    const rules: Record<string, string> = Object.fromEntries(([["R1", r1], ["R2", r2], ["R3", r3], ["R7", r7]] as [string, string | null][]).filter(([, t]) => t) as [string, string][])
+    const cautions = bt.verdict.cautions_ko.map((k) => ({ key: k, text: (k.startsWith("허용 낙폭 초과") ? r1 : k === "목표수익 미달" ? r2 : k === "비교지수 하회" ? r3 : null) ?? k }))
+    const info: string[] = []
+    const held = [...(ck.R2?.status === "info" ? [`연 ${pct1(sc.target_return)} 목표 수익률`] : []), ...(ck.R7?.status === "info" && ck.R7.threshold != null ? ["변동성 기준"] : [])]
+    if (held.length) info.push(`[목업] ${span}의 수익률은 ${pct1(bt.chosen.m.total_return)}였습니다. 평가 기간이 짧아 ${held.join("과 ")}의 충족 여부는 판정하지 않았습니다.${held.includes("변동성 기준") ? ` 참고로 ${vol("였습니다.")}` : ""}`)
+    if (ck.R1b && !ck.R1b.ok && ck.R1?.ok) info.push(`[목업] ${span} 같은 날 같은 금액을 SPY에 넣었다면 최대낙폭은 ${pct1(Math.abs(bm.mdd))}였고, 이 전략은 ${pct1(ck.R1b.value ?? 0)}로 더 크게 떨어졌습니다. 시장 전체보다 하락 위험이 컸다는 뜻입니다.`)
+    return { rules, cautions, info }
+  }
   const nCand = bt.runs.length
   const st = Object.values(bt.status)
   const blRuns = bt.runs.filter((r) => r.def.kind === "black_litterman")
@@ -157,11 +204,12 @@ export function buildReport(sc: ReportScenario): MockReportDoc {
   const newsEffect: ReportSummary["news_effect"] = sc.news && blRuns.length ? (() => { const bl = blRuns.find((r) => r.def.id === chosen.def.id) ?? blRuns[0]; return { disabled: false, bl_id: bl.def.id, bl_label_ko: bl.def.label_ko, base_id: baseRun.def.id, base_label_ko: baseRun.def.label_ko, bl_cagr: bl.m.cagr, base_cagr: baseRun.m.cagr, diff_cagr: bl.m.cagr - baseRun.m.cagr, bl_excess_cagr: bl.m.cagr - bench.m.cagr, base_excess_cagr: baseRun.m.cagr - bench.m.cagr, bl_mdd: bl.m.mdd, base_mdd: baseRun.m.mdd, hit_365: 0.58, hit_next_rb: 0.62, n_views: 12, n_dates: 9, n_rebalances: checkpoints(bt).length - 1, n_fallback: 3, annualized_reliable: !short } })() : { disabled: true, reason_ko: "뉴스 반영을 끈 분석입니다 (투자조건 설정)" }
 
   const headline = vs === "insufficient" ? `[목업] 조건을 모두 지키는 구성은 주식 비중이 ${Math.round(sum(Object.values(chosen.def.weights)) * 100)}%에 그쳐 추천하지 않았습니다.` : vs === "recommended_warn" ? `[목업] ${chosen.def.label_ko}이 1위지만 ${bt.verdict.cautions_ko.join(", ")} 주의가 있습니다.` : `[목업] ${chosen.def.label_ko}이 내 조건을 지키면서 비교지수보다 나은 성과를 보였습니다.`
-  const nextActions = [`허용 손실 ${pct1(sc.max_dd)}가 실제로 감당할 수 있는 수준인지 다시 확인해 보세요.`, `종목 ${sc.tickers.length}개가 한 산업에 모여 있어, 분산을 더 원하면 테마를 넓혀 볼 수 있습니다.`, "과거 성과는 미래 수익을 보장하지 않으므로 모의투자로 먼저 지켜보는 방법도 있습니다."]
+  // 7. 「다음 분석에서 바꿔 볼 조건」: 바꿀 조건 + 확인할 결과 (2026-11-16)
+  const nextActions = [`[목업] 다음 분석에서 허용 손실을 ${pct1(sc.max_dd)}에서 바꿔 보면, 그 기준을 지키는 구성의 주식 비중과 최대낙폭이 어떻게 달라지는지 확인할 수 있습니다.`, `[목업] 다음 분석에서 테마를 넓혀 지금 ${sc.tickers.length}개인 종목 수를 늘려 보면, 업종 비중과 최대낙폭이 어떻게 달라지는지 확인할 수 있습니다.`, "[목업] 다음 분석에서 비중을 맞추는 주기를 바꿔 보면, 한 종목의 비중이 상한을 넘은 날 수와 수익률이 어떻게 달라지는지 확인할 수 있습니다."]
   const period = { start, end, as_of: start, trading_days: n + 1, window_days: n, annualized_reliable: !short }
   const summary: ReportSummary = {
-    verdict: { status: vs, label_ko: bt.verdict.label_ko, headline_ko: headline, reason_ko: bt.reason_ko, chosen_portfolio_id: chosen.def.id, chosen_label_ko: chosen.def.label_ko, cautions_ko: bt.verdict.cautions_ko, period_note_ko: null, notices_ko: sc.key === "none" ? ["[목업] 허용 손실 5%를 지키려면 현금 비중이 크게 늘어나 주식 투자 효과가 거의 없습니다."] : [], n_notices: sc.key === "none" ? 1 : 0 },
-    validation: { n_pass: st.filter((s) => s === "pass").length, n_warn: st.filter((s) => s === "warn").length, n_fail: st.filter((s) => s === "fail").length, n_candidates: nCand, chosen_status: bt.status[chosen.def.id], failed_rules_ko: [], warned_rules_ko: [], info_notes_ko: info_notes, rules_ko, tolerance_note_ko: toleranceNote(sc), r1_ko: r1.message_ko,
+    verdict: { status: vs, label_ko: bt.verdict.label_ko, headline_ko: headline, reason_ko: bt.reason_ko, chosen_portfolio_id: chosen.def.id, chosen_label_ko: chosen.def.label_ko, cautions_ko: bt.verdict.cautions_ko, cautions_plain: plainOf().cautions, period_note_ko: null, notices_ko: sc.key === "none" ? ["[목업] 허용 손실 5%를 지키려면 현금 비중이 크게 늘어나 주식 투자 효과가 거의 없습니다."] : [], n_notices: sc.key === "none" ? 1 : 0 },
+    validation: { n_pass: st.filter((s) => s === "pass").length, n_warn: st.filter((s) => s === "warn").length, n_fail: st.filter((s) => s === "fail").length, n_candidates: nCand, chosen_status: bt.status[chosen.def.id], failed_rules_ko: [], warned_rules_ko: [], info_notes_ko: info_notes, info_plain_ko: plainOf().info, rules_plain_ko: plainOf().rules, rules_ko, tolerance_note_ko: toleranceNote(sc), r1_ko: r1.message_ko,
       r1: { mdd: Math.abs(chosen.m.mdd), tolerance: sc.max_dd, benchmark_mdd: Math.abs(bench.m.mdd), excess: Math.max(0, Math.abs(chosen.m.mdd) - sc.max_dd), status: r1.status, match_target: bt.match_target } },
     news_effect: newsEffect, kpis: skpis, allocation, mini_series: { dataset: "index", ids: [chosen.def.id, bench.def.id] }, period: period as ReportSummary["period"], next_actions_ko: nextActions,
   }
@@ -175,7 +223,7 @@ export function buildReport(sc: ReportScenario): MockReportDoc {
   const companies: CompanyItem[] = sc.tickers.map((t, i) => {
     const s = stockOf(t)
     const ids = ev.filter((e) => e.tickers.includes(t) && e.kind === "news").map((e) => e.id)
-    return { ticker: t, name: s.name_en, market: s.market, sector: s.sector_ko, sub_industry: s.sub_industry, summary: s.summary_ko, theme_reason_ko: `[목업] ${s.sub_industry} 기업으로 「${sc.themes[i % sc.themes.length].label}」 테마에 해당합니다.`, theme_confidence: round(0.9 - i * 0.04, 2), weight: chosen.def.weights[t] ?? null, in_selection_now: true, rank_now: i + 1, metric_now: round(0.42 - i * 0.05, 4), in_backtest: true, rank_bt: i + 1, metric_bt: round(0.35 - i * 0.04, 4), fact_id: `fin:${t}:metric`, rationale_ko: [`[목업] ${s.name_ko}는 선정 지표 순위 ${i + 1}위로 뽑혔습니다 [fin:${t}:metric].`, ids[0] ? `[목업] 최근 보도에서 수요 관련 소식이 확인됐습니다 [${ids[0]}].` : "[목업] 최근 관련 보도는 많지 않았습니다."], evidence_ids: ids, n_news: ids.length, n_disclosures: ev.filter((e) => e.kind === "disclosure" && e.tickers.includes(t)).length }
+    return { ticker: t, name: s.name_en, market: s.market, sector: s.sector_ko, sub_industry: s.sub_industry, summary: s.summary_ko, theme_reason_ko: `[목업] ${s.sub_industry} 기업으로 「${sc.themes[i % sc.themes.length].label}」 테마에 해당합니다.`, theme_confidence: round(0.9 - i * 0.04, 2), weight: currentW[t] ?? null, in_selection_now: true, rank_now: i + 1, metric_now: round(0.42 - i * 0.05, 4), in_backtest: true, rank_bt: i + 1, metric_bt: round(0.35 - i * 0.04, 4), fact_id: `fin:${t}:metric`, rationale_ko: [`[목업] ${s.name_ko}는 선정 지표 순위 ${i + 1}위로 뽑혔습니다 [fin:${t}:metric].`, ids[0] ? `[목업] 최근 보도에서 수요 관련 소식이 확인됐습니다 [${ids[0]}].` : "[목업] 최근 관련 보도는 많지 않았습니다."], evidence_ids: ids, n_news: ids.length, n_disclosures: ev.filter((e) => e.kind === "disclosure" && e.tickers.includes(t)).length }
   })
 
   // 비교표 (같은 기간·같은 적립)
@@ -188,9 +236,18 @@ export function buildReport(sc: ReportScenario): MockReportDoc {
   const [metricId, metricKo, metricDesc] = METRIC[sc.template] ?? METRIC.momentum
   const sections: Section[] = [
     { id: "verdict", title_ko: "종합 투자 판단", blocks: [
-      { type: "paragraphs", tone: "lead", src: "14b", items: [`[목업] 결론은 「${bt.verdict.head_ko}」입니다. ${start}부터 ${end}까지 ${short ? `기간 수익률은 ${spct1(chosen.m.total_return)}` : `연평균 수익률은 ${pct1(chosen.m.cagr)}`}, 최대낙폭은 ${pct1(Math.abs(chosen.m.mdd))}였습니다 [calc:cagr].`, `[목업] 같은 기간 SPY를 같은 조건으로 샀다면 ${short ? `기간 수익률 ${spct1(bench.m.total_return)}` : `연평균 ${pct1(bench.m.cagr)}`}였습니다.`] },
+      // 2026-11-16 새 작성 규칙(서버 14a·14b 프롬프트)과 같은 순서: 비교한 포트폴리오 수 → 선택 / 종목을 고른 방법 / 두 날짜의 구성 · 평가 기간 → 판정 여부 / 하락 / 운용 방식
+      { type: "paragraphs", tone: "lead", src: "14b", items: [
+        `[목업] 과거 자료로 ${nCand}개 포트폴리오를 비교한 결과, ${chosen.def.label_ko} 전략을 선택했습니다. 같은 기간 SPY를 같은 조건으로 샀다면 ${short ? `기간 수익률 ${spct1(bench.m.total_return)}` : `연평균 ${pct1(bench.m.cagr)}`}였습니다 [calc:cagr].`,
+        `[목업] 포트폴리오에 담을 주식은 ${metricKo} 순위로 골랐습니다. 종목 선정에 쓰지 않은 기업의 특성은 직접 확인하지 않았습니다.`,
+        `[목업] 분석 기준일인 ${MOCK_AS_OF}의 자료로 다시 계산한 종목과 투자 비중은 백테스트 시작일인 ${start}에 고른 종목과 다를 수 있습니다. 이 글에서는 이를 분석 기준일 구성이라고 부릅니다.`,
+      ] },
       { type: "kpis", ids: kpis.map((k) => k.id) },
-      { type: "paragraphs", src: "14a", items: [`[목업] 허용 손실 ${pct1(sc.max_dd)}에 비해 선택안의 최대낙폭은 ${pct1(Math.abs(chosen.m.mdd))}였습니다 [calc:max_drawdown].`] },
+      { type: "paragraphs", src: "14a", items: [
+        `[목업] ${start}부터 ${end}까지 백테스트를 진행했고, 이 기간의 수익률은 ${spct1(chosen.m.total_return)}였습니다.${short ? " 평가 기간이 짧아 목표 수익률과 변동성 기준을 충족했는지는 판정하지 않았습니다." : ""}`,
+        `[목업] 이 기간 최대낙폭은 ${pct1(Math.abs(chosen.m.mdd))}로 허용 손실 ${pct1(sc.max_dd)}${Math.abs(chosen.m.mdd) <= sc.max_dd + 1e-9 ? " 이내였습니다" : "를 넘었습니다"} [calc:max_drawdown].`,
+        `[목업] 이번에는 비중을 조정할 때마다 백테스트 시작일에 정한 비율로 되돌리는 방식을 선택했습니다.`,
+      ] },
     ] },
     { id: "market", title_ko: "산업과 시장 분석", blocks: [
       { type: "paragraphs", src: "14b", items: [`[목업] 요청은 ${sc.themes.map((t) => t.label).join("·")} 기업에 투자하려는 것으로 이해했습니다.`, `[목업] 투자금은 ${capKo}, 매월 ${monthlyKo}을 더 넣는 조건입니다.`] },
@@ -229,14 +286,15 @@ export function buildReport(sc: ReportScenario): MockReportDoc {
       table("포트폴리오 비교 (같은 기간·같은 적립)", [["name", "포트폴리오"], ["kind", "종류"], ["cagr", "CAGR", "pct"], ["vol", "변동성", "pct"], ["sharpe", "Sharpe", "ratio"], ["mdd", "최대낙폭", "pct"], ["excess", "비교지수 대비", "pp"], ["final", "최종 평가금액", "usd"], ["irr", "적립 기준 연수익(XIRR)", "pct"], ["status", "검증", "text"]], cmpRows, { note_ko: "비교지수 대비는 SPY 기준 연평균 수익률(CAGR) 차이입니다. [목업] 예시 시세로 계산했습니다." }),
       yearly(chosen, bench, dates), monthly(chosen, dates),
       { type: "bar", title_ko: "종목별 수익 기여 (기간 전체)", items: Object.entries(chosen.def.weights).map(([t, w]) => ({ label: t, value: w * (growth(bt, t, 0, n) - 1) })), format: "pp" },
-      { type: "paragraphs", src: "14a", group_ko: "검증 상세", group_open: true, items: [`[목업] 후보 ${nCand}개를 같은 규칙으로 검증했습니다.`] },
-      table(`검증 규칙 (${chosen.def.label_ko})`, [["rule", "규칙"], ["name", "이름"], ["level", "수준"], ["msg", "내용"], ["status", "결과"]], ckChosen.map((c) => ({ rule: c.rule, name: c.name_ko, level: { flag: "표시", soft: "권장", info: "참고", hard: "필수" }[c.level], msg: c.message_ko, status: { pass: "통과", warn: "주의", flag: "허용 초과", info: "참고", fail: "미통과" }[c.status] })), { group_ko: "검증 상세" }),
-      table("전체 포트폴리오 검증 요약", [["name", "포트폴리오"], ["status", "검증"], ["fails", "미통과 항목"], ["warns", "주의·표시 항목"]], bt.runs.map((r) => ({ name: r.def.label_ko, status: statusKo(bt.status[r.def.id]), fails: "-", warns: bt.checks[r.def.id].filter((c) => c.status === "warn" || c.status === "flag").map((c) => c.name_ko).join(", ") || "-" })), { group_ko: "검증 상세" }),
+      { type: "paragraphs", src: "14a", group_ko: "검증 상세", items: [`[목업] 비교한 전략 ${nCand}개 중 순위가 가장 앞선 ${chosen.def.label_ko} 전략을 선택했습니다.`] },
+      // 「조건별 근거 보기」 두 표 (서버 validation_text 와 같은 틀, 2026-11-16)
+      table(`선택 전략의 조건별 결과 (${chosen.def.label_ko})`, [["name", "점검 항목"], ["msg", "기준과 측정값"], ["status", "결과"]], valRows(), { group_ko: "검증 상세", note_ko: "[목업] 판정 보류는 평가 기간이 짧아 기준 충족 여부를 판단하지 않은 항목, 측정 결과는 기준 충족 여부를 따지지 않고 값을 알려 주는 항목입니다." }),
+      table("전략별 점검 결과", [["name", "전략"], ["status", "결과"], ["reason", "이유"]], stratRows(), { group_ko: "검증 상세" }),
     ] },
     { id: "assumptions", title_ko: "판단의 전제와 재검토 조건", blocks: [
-      { type: "paragraphs", src: "14b", items: ["[목업] 백테스트는 과거 자료로 계산한 결과이며, 실제 투자 결과와 다를 수 있습니다.", "[목업] 리밸런싱은 매월 첫 거래일에 목표 비중으로 되돌린다고 가정했습니다."] },
+      { type: "paragraphs", src: "14b", items: ["[목업] 포트폴리오에 담을 종목을 고를 때는 일정 기간 주가가 얼마나 올랐는지를 봤습니다. 각 기업이 이익을 꾸준히 내고 부채를 감당할 수 있는지는 별도로 평가하지 않았습니다.", "[목업] 백테스트는 과거 시작일에 고른 종목으로 계산했고, 지금 추천 구성은 분석 기준일에 다시 고른 종목입니다. 과거 결과는 지금 구성의 결과가 아닙니다. 매월 첫 거래일에 목표 비중으로 되돌린다(리밸런싱)고 가정했습니다."] },
       { type: "cards", title_ko: "다음에 검토할 수 있는 선택지", items: nextActions.map((t, i) => ({ title_ko: `선택지 ${i + 1}`, text_ko: t, meta: [] })) },
-      { type: "cards", title_ko: "확인한 한계", items: ["[목업] 시세는 화면 확인용 예시 값입니다.", "[목업] 거래 비용 외 세금은 반영하지 않았습니다.", "[목업] 휴장일은 반영하지 않았습니다."].map((t, i) => ({ title_ko: `한계 ${i + 1}`, text_ko: t, meta: [] })) },
+      { type: "cards", title_ko: "확인한 한계", items: [["과거 종목 목록", "[목업] 백테스트에서 살펴볼 종목은 화면 확인용 예시 날짜의 지수 구성 목록에서 골랐습니다."], ["기업 규모를 추정한 방법", "[목업] 회사의 주식 수에 그날 장 마감 가격을 곱해 시가총액을 계산했습니다."], ["계산에서 빠진 비용", "[목업] 세금, 환전 수수료, 호가 차이는 계산에 반영하지 않았습니다."]].map(([title_ko, text_ko]) => ({ title_ko, text_ko, meta: [] })) },
     ] },
     { id: "references", title_ko: "참고자료와 분석 조건", blocks: [
       table("자료 출처", [["name", "자료"], ["what", "쓰임"], ["url", "링크", "url"]], [{ name: "목업 시세", what: "가격·수익률 (예시 값)", url: null }, { name: "목업 뉴스·공시", what: "투자 의견 근거 (예시)", url: null }], { group_ko: "자료 출처·계산 조건·실행 기록" }),
@@ -354,12 +412,12 @@ function structuredReasons(sc: ReportScenario, bt: Backtest): ProposedReport["st
   const st = Object.fromEntries(bt.checks[chosen.def.id].map((c) => [c.rule, c.status]))
   const mdd = Math.abs(chosen.m.mdd)
   return [
-    { code: "rank_first", title_ko: "비교한 투자 구성안 중 1위", text_ko: `${bt.runs.length}개 투자 구성안을 정해진 순서대로 비교했을 때 가장 앞선 구성안입니다.`, tone: "neutral", values: { n: bt.runs.length } },
-    st.R2 === "info" ? { code: "target_info", title_ko: "목표 수익률은 참고만", text_ko: "과거 성과 계산 기간이 짧아 목표 수익률 달성 여부는 참고로만 봤습니다.", tone: "neutral", values: { target: sc.target_return } }
+    { code: "rank_first", title_ko: `비교한 ${bt.runs.length}개 포트폴리오 중 가장 앞선 구성`, text_ko: `${bt.runs.length}개 투자 구성안을 정해진 순서대로 비교했을 때 가장 앞선 구성안입니다.`, tone: "neutral", values: { n: bt.runs.length } },
+    st.R2 === "info" ? { code: "target_info", title_ko: "목표 수익률 판정 보류", text_ko: "과거 성과를 살펴본 기간이 짧아, 이번 분석에서는 연간 목표 수익률의 달성 여부를 판정하지 않았습니다.", tone: "neutral", values: { target: sc.target_return } }
       : { code: st.R2 === "pass" ? "target_met" : "target_missed", title_ko: st.R2 === "pass" ? "목표 수익률 충족" : "목표 수익률 미달", text_ko: `과거 연평균 수익률(CAGR) ${pct1(chosen.m.cagr)}, 목표 연 ${pct1(sc.target_return)}.`, tone: st.R2 === "pass" ? "good" : "warn", values: { cagr: chosen.m.cagr, target: sc.target_return } },
     { code: "vs_benchmark", title_ko: chosen.m.cagr > bench.m.cagr ? "SPY보다 높은 연평균 수익률" : "SPY보다 낮은 연평균 수익률", text_ko: `연평균 수익률(CAGR) 차이 ${spct1(chosen.m.cagr - bench.m.cagr)}p.`, tone: chosen.m.cagr > bench.m.cagr ? "good" : "warn", values: { diff: chosen.m.cagr - bench.m.cagr } },
-    { code: mdd <= sc.max_dd ? "drawdown_within" : "drawdown_over", title_ko: mdd <= sc.max_dd ? "허용 손실 범위 안" : "허용 손실 범위 초과", text_ko: `과거 최대 하락폭 ${pct1(mdd)}, 허용 손실 ${pct1(sc.max_dd)}.`, tone: mdd <= sc.max_dd ? "good" : "warn", values: { mdd, tolerance: sc.max_dd } },
-    { code: "sharpe", title_ko: "위험 대비 수익성", text_ko: `Sharpe 비율 ${chosen.m.sharpe.toFixed(2)}.`, tone: "neutral", values: { sharpe: chosen.m.sharpe } },
+    { code: mdd <= sc.max_dd ? "drawdown_within" : "drawdown_over", title_ko: mdd <= sc.max_dd ? "최대낙폭은 허용 범위 이내" : "최대낙폭은 허용 범위 초과", text_ko: `과거 최대 하락폭 ${pct1(mdd)}, 허용 손실 ${pct1(sc.max_dd)}.`, tone: mdd <= sc.max_dd ? "good" : "warn", values: { mdd, tolerance: sc.max_dd } },
+    { code: "sharpe", title_ko: "샤프 비율", text_ko: `Sharpe 비율 ${chosen.m.sharpe.toFixed(2)}.`, tone: "neutral", values: { sharpe: chosen.m.sharpe } },
   ]
 }
 

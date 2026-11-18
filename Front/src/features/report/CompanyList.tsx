@@ -1,11 +1,20 @@
 import { useEffect, useId, useState } from "react"
 import { ChevronDown } from "lucide-react"
-import type { CompaniesBlock, CompanyItem } from "../../api/types"
+import type { CompaniesBlock, CompanyItem, ReportSummary } from "../../api/types"
 import { fmt } from "../../lib/format"
 import { metricName, metricValue } from "./metrics"
 import { CitedText } from "./blocks/blocks"
 import { useReport } from "./context"
 import { MockTag, proposed } from "./proposedView"
+
+/** 종목 카드의 비중이 어느 날짜 기준인지. 서버는 분석 기준일 구성을 만들 수 있으면 그 비중을, 못 만들면 백테스트 시작일 목표 비중을 넣는다
+ *  (2026-10-30 리포트처럼 예전 리포트는 항상 백테스트 시작일 비중). 요약 배분(분석 기준일 구성)과 모든 종목 값이 같으면 분석 기준일 비중이다.
+ *  2026-11-16: 같은 숫자가 「추천안 비중 (백테스트)」·「분석 기준일 구성 비중」 두 줄로 나와 이름이 틀렸다. */
+export function weightBasis(items: Pick<CompanyItem, "ticker" | "weight">[], alloc: ReportSummary["allocation"] | undefined): "now" | "bt" {
+  if (alloc?.basis !== "forward") return "bt"
+  const fw = new Map(alloc.items.map((x) => [x.ticker, x.weight]))
+  return items.every((it) => { const a = it.weight ?? null, f = fw.get(it.ticker) ?? null; return a === null || f === null ? a === f : Math.abs(a - f) < 1e-6 }) ? "now" : "bt"
+}
 
 /** 기업별 투자 근거: 기업 카드 목록 (모두 접힘). 카드에는 선정 상태·비중·지표 순위·테마 관련성만, 누르면 원문·지표·출처 전체. 주소의 ?company= 가 있으면 그 기업을 펼친다. */
 export function CompanyList({ b }: { b: CompaniesBlock }) {
@@ -22,16 +31,18 @@ export function CompanyList({ b }: { b: CompaniesBlock }) {
     setOpen((o) => (next ? [...o, t] : o.filter((x) => x !== t)))
     if (next) rep?.setOpenCompany(t)
   }
+  const basis = weightBasis(b.items, rep?.doc.summary?.allocation)
   const dir = b.direction === "asc" ? "낮을수록" : "높을수록"
   const nNow = b.items.filter((x) => x.in_selection_now).length, nBt = b.items.filter((x) => x.in_backtest).length
   return (
-    <div className="space-y-3">
+    // 「선정 과정」처럼 한 카드 안에: 제목·설명 줄 → 기업 카드 목록 (기업 카드는 그대로)
+    <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-base font-bold text-slate-900">{b.title_ko} <span className="text-sm font-normal text-slate-500">{b.items.length}개</span></h3>
+        <h3 className="text-base font-semibold text-slate-900">{b.title_ko} <span className="text-sm font-normal text-slate-500">{b.items.length}개</span></h3>
         <button type="button" onClick={() => setOpen(open.length === b.items.length ? [] : b.items.map((x) => x.ticker))} className="text-xs font-semibold text-blue-700 hover:underline">{open.length === b.items.length ? "모두 접기" : "모든 기업 펼치기"}</button>
       </div>
       <p className="text-xs leading-5 text-slate-500">선정 지표 {b.metric_ko}{metricName(b.metric) ? ` (${metricName(b.metric)})` : ""} · {dir} 우선 · 분석 기준일 {b.as_of_now} 선정 {nNow}개 / 백테스트 시작일 {b.as_of_bt} 선정 {nBt}개</p>
-      <ul className="space-y-2" aria-label="기업 목록">{b.items.map((it) => <CompanyCard key={it.ticker} it={it} b={b} open={open.includes(it.ticker)} onToggle={() => toggle(it.ticker)} />)}</ul>
+      <ul className="space-y-2" aria-label="기업 목록">{b.items.map((it) => <CompanyCard key={it.ticker} it={it} b={b} basis={basis} open={open.includes(it.ticker)} onToggle={() => toggle(it.ticker)} />)}</ul>
       {b.note_ko && <p className="text-xs text-slate-500">{b.note_ko}</p>}
     </div>
   )
@@ -48,7 +59,7 @@ export function selectionStatus(it: Pick<CompanyItem, "in_selection_now" | "in_b
 /** 종목별 뉴스 투자 의견 생성 여부 (제안 계약 company_views). 기사 수가 아니라 의견이 실제로 만들어졌는지를 보여 준다. */
 const VIEW_TAG: Record<string, [string, string]> = { generated: ["뉴스 투자 의견 반영", "border-blue-200 bg-blue-50 text-blue-800"], insufficient: ["근거 부족 · 투자 의견 없음", "border-slate-200 bg-white text-slate-600"], disabled: ["뉴스 반영 꺼짐", "border-slate-200 bg-white text-slate-500"] }
 
-function CompanyCard({ it, b, open, onToggle }: { it: CompanyItem; b: CompaniesBlock; open: boolean; onToggle: () => void }) {
+function CompanyCard({ it, b, basis, open, onToggle }: { it: CompanyItem; b: CompaniesBlock; basis: "now" | "bt"; open: boolean; onToggle: () => void }) {
   const bodyId = useId()
   const view = proposed(useReport()?.doc)?.company_views?.[it.ticker]
   const st = selectionStatus(it)
@@ -59,13 +70,11 @@ function CompanyCard({ it, b, open, onToggle }: { it: CompanyItem; b: CompaniesB
   return (
     <li id={`acc-${it.ticker}`} className={`scroll-mt-16 rounded-xl border bg-white ${open ? "border-slate-300 shadow-sm" : "border-slate-200"}`}>
       <button type="button" aria-expanded={open} aria-controls={bodyId} onClick={onToggle} className="w-full rounded-xl px-4 py-3 text-left hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 sm:px-5">
-        <span className="flex items-start justify-between gap-3">
-          <span className="min-w-0">
-            <span className="flex flex-wrap items-baseline gap-x-2"><span className="font-bold text-slate-950">{it.ticker}</span><span className="min-w-0 break-words text-sm text-slate-700">{it.name}</span></span>
-            <span className="mt-0.5 block text-xs text-slate-500">{it.sector}{it.sub_industry ? ` · ${it.sub_industry}` : ""}</span>
-          </span>
+        {/* 섹터 줄은 펼친 상세(섹터 · 세부산업)에만: 이름 줄을 오른쪽 비중(두 줄)과 가운데 맞춰 빈 공간이 생기지 않게 */}
+        <span className="flex items-center justify-between gap-3">
+          <span className="flex min-w-0 flex-wrap items-baseline gap-x-2"><span className="font-bold text-slate-950">{it.ticker}</span><span className="min-w-0 break-words text-sm text-slate-700">{it.name}</span></span>
           <span className="flex shrink-0 items-center gap-2 text-right">
-            <span><span className="block text-[11px] text-slate-500">추천안 비중</span><span className={`block text-sm font-bold tabular-nums ${it.weight !== null ? "text-slate-950" : "text-slate-400"}`}>{it.weight !== null ? fmt(it.weight, "pct1") : "추천안 비중 없음"}</span></span>
+            <span><span className="block text-[11px] text-slate-500">{basis === "now" ? "분석 기준일 비중" : "백테스트 시작일 비중"}</span><span className={`block text-sm font-bold tabular-nums ${it.weight !== null ? "text-slate-950" : "text-slate-400"}`}>{it.weight !== null ? fmt(it.weight, "pct1") : "담지 않음"}</span></span>
             <ChevronDown className={`size-4 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
           </span>
         </span>
@@ -79,22 +88,26 @@ function CompanyCard({ it, b, open, onToggle }: { it: CompanyItem; b: CompaniesB
           <span className="mt-1.5 block text-sm leading-6 text-slate-700">{it.theme_reason_ko || "설명이 제공되지 않았습니다"}</span>
         </span>
       </button>
-      <div id={bodyId} hidden={!open} className="border-t border-slate-100 px-4 py-4 sm:px-5">{open ? <CompanyBody it={it} b={b} /> : null}</div>
+      <div id={bodyId} hidden={!open} className="border-t border-slate-100 px-4 py-4 sm:px-5">{open ? <CompanyBody it={it} b={b} basis={basis} /> : null}</div>
     </li>
   )
 }
 
-function CompanyBody({ it, b }: { it: CompanyItem; b: CompaniesBlock }) {
+function CompanyBody({ it, b, basis }: { it: CompanyItem; b: CompaniesBlock; basis: "now" | "bt" }) {
   const rep = useReport()
-  const forward = rep?.doc.summary?.allocation?.basis === "forward" ? rep.doc.summary.allocation.items.find((x) => x.ticker === it.ticker) : undefined
+  const alloc = rep?.doc.summary?.allocation
+  const nowW = (w: number | null | undefined): [string, React.ReactNode] => [`분석 기준일 비중 (${b.as_of_now})`, w != null ? fmt(w, "pct1") : "없음 (분석 기준일 구성에 담지 않음)"]
+  // 두 값이 같으면 한 줄(분석 기준일), 다르면 백테스트 시작일·분석 기준일 두 줄로 날짜를 나눠 적는다
+  const weightRows: [string, React.ReactNode][] = basis === "now" ? [nowW(it.weight)]
+    : [[`백테스트 시작일 비중 (${b.as_of_bt})`, it.weight !== null ? fmt(it.weight, "pct1") : "없음 (백테스트 시작일 구성에 담지 않음)"],
+       ...(alloc?.basis === "forward" ? [nowW(alloc.items.find((x) => x.ticker === it.ticker)?.weight)] : [])]
   const p = proposed(rep?.doc)
   const view = p?.company_views?.[it.ticker]
   const reasons = p?.company_reasons?.[it.ticker]
   const facts: [string, React.ReactNode][] = [
     ["선정 상태", selectionStatus(it) ?? "분석 기준일·백테스트 시작일 모두 선정"],
     ["섹터 · 세부산업", `${it.sector}${it.sub_industry ? ` · ${it.sub_industry}` : ""}${it.market ? ` · ${it.market}` : ""}`],
-    ["추천안 비중 (백테스트)", it.weight !== null ? fmt(it.weight, "pct1") : "없음 (추천안에 포함되지 않음)"],
-    ...(forward ? [["분석 기준일 구성 비중", fmt(forward.weight, "pct1")] as [string, React.ReactNode]] : []),
+    ...weightRows,
     [`${b.metric_ko} (${b.as_of_now})`, it.metric_now !== null ? <>{metricValue(b.metric, it.metric_now)} · 순위 {it.rank_now ?? "–"}{it.fact_id && rep && <button type="button" onClick={() => rep.openEvidence(it.fact_id!)} className="ml-1 align-super text-[11px] font-bold text-blue-700 hover:underline" aria-label={`지표 근거 ${it.fact_id} 보기`}>[{rep.numberOf(it.fact_id)}]</button>}</> : "–"],
     [`${b.metric_ko} (${b.as_of_bt})`, it.metric_bt !== null ? `${metricValue(b.metric, it.metric_bt)} · 순위 ${it.rank_bt ?? "–"}` : "–"],
     ["투자 테마와의 관련성", `${it.theme_reason_ko || "–"}${it.theme_confidence !== null ? ` (신뢰도 ${it.theme_confidence.toFixed(2)})` : ""}`],
@@ -106,7 +119,7 @@ function CompanyBody({ it, b }: { it: CompanyItem; b: CompaniesBlock }) {
       <div className="min-w-0 space-y-3 break-words text-[15px] leading-7 text-slate-700">
         {reasons && reasons.length > 0 && (
           <div className="space-y-2">
-            <h4 className="flex items-center text-sm font-bold text-slate-900">핵심 선정 이유<MockTag /></h4>
+            <h4 className="flex items-center text-sm font-bold text-slate-900">이 종목을 고른 이유<MockTag /></h4>
             <ul className="space-y-2">
               {reasons.map((x, i) => (
                 <li key={i} className="rounded-lg border border-slate-200 px-3 py-2.5">

@@ -139,8 +139,9 @@ def test_invested_gap_note_when_backtest_held_much_more_cash(monkeypatch):
     p = {"id": "market_cap", "target_weights": {t: 0.10 for t in "ABCDEF"}}
     monkeypatch.setattr(B, "find", lambda R, pid: p)
     monkeypatch.setattr(B, "current_composition", lambda R, chosen: ({t: 0.09 for t in "ABCDEFGHIJ"}, 0.10, "시가총액비중"))
-    assert B.invested_gap_note({}, "market_cap") == ("백테스트는 주식 60%·현금 40%로 시작해 최대낙폭·변동성이 그 현금만큼 낮게 나왔습니다. "
-                                                     "지금 구성은 주식 90%라 같은 흐름이면 손실 폭이 백테스트보다 클 수 있습니다")  # fmt: skip
+    # 2026-11-16: 처음 투자하는 사람도 읽을 수 있게 — 무엇을(주식·현금 비율), 언제(분석 기준일 추천 구성), 왜(손실 폭이 클 수 있음)
+    assert B.invested_gap_note({}, "market_cap") == ("백테스트는 투자금의 60%만 주식에 넣고 40%를 현금으로 둔 채 시작해, 최대낙폭과 변동성이 그 현금만큼 낮게 나왔습니다. "
+                                                     "분석 기준일 추천 구성은 투자금의 90%를 주식에 넣어, 같은 흐름이라면 손실 폭이 백테스트보다 클 수 있습니다")  # fmt: skip
     monkeypatch.setattr(B, "current_composition", lambda R, chosen: ({t: 0.065 for t in "ABCDEFGHIJ"}, 0.35, "시가총액비중"))
     assert B.invested_gap_note({}, "market_cap") is None  # 5%p 차이는 말하지 않는다
 

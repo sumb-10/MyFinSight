@@ -7,10 +7,10 @@ export interface NavGroup { id: string; label: string; heading: string; sections
 
 export const NAV_GROUPS: NavGroup[] = [
   { id: "summary", label: "개요", heading: "개요", sections: ["summary"] },
-  { id: "selection", label: "종목 선정", heading: "종목 선정", sections: ["verdict", "construction", "companies"] },
+  { id: "selection", label: "종목 선정", heading: "종목 선정", sections: ["verdict", "companies", "construction"] },
   { id: "performance", label: "과거 성과", heading: "과거 성과", sections: ["performance"] },
   { id: "market", label: "시장·뉴스", heading: "시장·뉴스", sections: ["market"] },
-  { id: "notes", label: "요청·주의·자료", heading: "요청 · 주의 사항 · 자료", sections: ["history", "assumptions", "references"] },
+  { id: "notes", label: "요청·주의사항·자료", heading: "요청 · 주의 사항 · 자료", sections: ["history", "assumptions", "references"] },
 ]
 
 const BY_SECTION = new Map(NAV_GROUPS.flatMap((g) => g.sections.map((s) => [s, g.id] as const)))

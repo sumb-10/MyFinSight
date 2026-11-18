@@ -134,22 +134,22 @@ export function explainReason(text: string, o: { short: boolean }): Reason {
   const ref = o.short ? " (연 환산, 참고용)" : ""
   const t = text.trim().replace(/\.$/, "")
   let m: RegExpExecArray | null
-  if ((m = /^후보 (\d+)개 중 1위$/.exec(t))) return { title: "비교한 투자 구성안 중 1위", desc: `${m[1]}개 투자 구성안을 정해진 순서대로 비교했을 때 가장 앞선 구성안입니다.` }
+  if ((m = /^후보 (\d+)개 중 1위$/.exec(t))) return { title: `비교한 ${m[1]}개 포트폴리오 중 가장 앞선 구성`, desc: `${m[1]}개 투자 구성안을 정해진 순서대로 비교했을 때 가장 앞선 구성안입니다.` }
   if ((m = /^목표수익\(연 ([\d.]+%)\) 충족$/.exec(t))) return { title: "목표 수익률 충족", tone: "good", desc: `과거 연평균 수익률(CAGR)이 목표로 정한 연 ${m[1]}에 도달했습니다.` }
   if ((m = /^목표수익\(연 ([\d.]+%)\) 미달$/.exec(t))) return { title: "목표 수익률 미달", tone: "warn", desc: `과거 연평균 수익률(CAGR)이 목표로 정한 연 ${m[1]}에 미치지 못했습니다.` }
-  if (t === "목표수익은 창이 짧아 참고만") return { title: "목표 수익률은 참고만", desc: "과거 성과 계산 기간이 짧아 목표 수익률 달성 여부는 참고로만 봤습니다.", annual: true }
+  if (t === "목표수익은 창이 짧아 참고만") return { title: "목표 수익률 판정 보류", desc: "과거 성과를 살펴본 기간이 짧아, 이번 분석에서는 연간 목표 수익률의 달성 여부를 판정하지 않았습니다.", annual: true }
   if ((m = /^(\S+) 대비 초과 CAGR ([+\-−]?)([\d.]+%p)$/.exec(t))) {
     const up = m[2] !== "-" && m[2] !== "−"
     return { title: `${m[1]}보다 ${up ? "높은" : "낮은"} 연평균 수익률`, tone: up ? "good" : "warn", desc: `같은 기간 ${m[1]}의 연평균 수익률(CAGR)보다 ${m[2]}${m[3]} ${up ? "높았습니다" : "낮았습니다"}${ref}.`, annual: true }
   }
-  if ((m = /^최대낙폭 ([\d.]+%) vs 허용 ([\d.]+%) \(여유 ([\d.]+%p)\)$/.exec(t))) return { title: "허용 손실 범위 안", tone: "good", desc: `과거 최대 하락폭(최대낙폭)은 ${m[1]}로, 내가 정한 허용 손실 ${m[2]}보다 ${m[3]} 작았습니다.` }
-  if ((m = /^최대낙폭 ([\d.]+%) vs 허용 ([\d.]+%) \(([\d.]+%p) 초과\)$/.exec(t))) return { title: "허용 손실 범위 초과", tone: "warn", desc: `과거 최대 하락폭(최대낙폭)은 ${m[1]}로, 내가 정한 허용 손실 ${m[2]}보다 ${m[3]} 컸습니다.` }
-  if ((m = /^Sharpe (-?[\d.]+)로 가장 높음$/.exec(t))) return { title: "위험 대비 수익성 1위", tone: "good", desc: `위험 대비 수익성을 나타내는 Sharpe 비율이 ${m[1]}로, 비교한 구성안 중 가장 높았습니다.` }
-  if ((m = /^Sharpe (-?[\d.]+) \(음수, 가장 덜 나쁨\)$/.exec(t))) return { title: "위험 대비 수익성", tone: "warn", desc: `Sharpe 비율이 ${m[1]}로 음수였지만, 비교한 구성안 중에서는 가장 덜 나빴습니다.` }
-  if ((m = /^Sharpe (-?[\d.]+)$/.exec(t))) return { title: "위험 대비 수익성", desc: `Sharpe 비율은 ${m[1]}입니다. 이 값이 가장 높은 구성안은 아니었지만, 앞선 기준(목표 수익률·비교지수·허용 손실)에서 앞서 선택됐습니다.` }
-  if ((m = /^(.+)의 주식 비중을 (\d+%)로 줄여 과거 최대낙폭을 목표 ([\d.]+%) 안에 맞춘 구성$/.exec(t))) return { title: "주식·현금 비중 조절", desc: `${m[1]} 구성에서 주식 비중을 ${m[2]}로 줄이고 나머지를 현금으로 두어, 과거 최대 하락폭을 목표 ${m[3]} 안에 맞췄습니다.` }
-  if (t === "손실 시 매도·투자 경험 없음 성향이라 같은 조건이면 낙폭 맞춤안을 우선했습니다") return { title: "투자 성향 반영", desc: `${t}.` }
-  if ((m = /^CAGR ([+\-−]?[\d.]+%), 최종 평가금액 (.+)$/.exec(t))) return { title: "과거 성과 요약", desc: `연평균 수익률(CAGR) ${m[1]}${ref}, 백테스트 기간 끝의 평가금액 ${m[2]}입니다.`, annual: true }
+  if ((m = /^최대낙폭 ([\d.]+%) vs 허용 ([\d.]+%) \(여유 ([\d.]+%p)\)$/.exec(t))) return { title: "최대낙폭은 허용 범위 이내", tone: "good", desc: `과거 최대 하락폭(최대낙폭)은 ${m[1]}로, 내가 정한 허용 손실 ${m[2]}보다 ${m[3]} 작았습니다.` }
+  if ((m = /^최대낙폭 ([\d.]+%) vs 허용 ([\d.]+%) \(([\d.]+%p) 초과\)$/.exec(t))) return { title: "최대낙폭은 허용 범위 초과", tone: "warn", desc: `과거 최대 하락폭(최대낙폭)은 ${m[1]}로, 내가 정한 허용 손실 ${m[2]}보다 ${m[3]} 컸습니다.` }
+  if ((m = /^Sharpe (-?[\d.]+)로 가장 높음$/.exec(t))) return { title: "가장 높은 샤프 비율", tone: "good", desc: `위험 대비 수익성을 나타내는 Sharpe 비율이 ${m[1]}로, 비교한 구성안 중 가장 높았습니다.` }
+  if ((m = /^Sharpe (-?[\d.]+) \(음수, 가장 덜 나쁨\)$/.exec(t))) return { title: "샤프 비율", tone: "warn", desc: `Sharpe 비율이 ${m[1]}로 음수였지만, 비교한 구성안 중에서는 가장 덜 나빴습니다.` }
+  if ((m = /^Sharpe (-?[\d.]+)$/.exec(t))) return { title: "샤프 비율", desc: `Sharpe 비율은 ${m[1]}입니다. 이 값이 가장 높은 구성안은 아니었지만, 앞선 기준(목표 수익률·비교지수·허용 손실)에서 앞서 선택됐습니다.` }
+  if ((m = /^(.+)의 주식 비중을 (\d+%)로 줄여 과거 최대낙폭을 목표 ([\d.]+%) 안에 맞춘 구성$/.exec(t))) return { title: "주식 비중을 줄인 구성", desc: `${m[1]} 구성에서 주식 비중을 ${m[2]}로 줄이고 나머지를 현금으로 두어, 과거 최대 하락폭을 목표 ${m[3]} 안에 맞췄습니다.` }
+  if (t === "손실 시 매도·투자 경험 없음 성향이라 같은 조건이면 낙폭 맞춤안을 우선했습니다") return { title: "낙폭 맞춤안 우선 선택", desc: `${t}.` }
+  if ((m = /^CAGR ([+\-−]?[\d.]+%), 최종 평가금액 (.+)$/.exec(t))) return { title: "수익률과 최종 평가금액", desc: `연평균 수익률(CAGR) ${m[1]}${ref}, 백테스트 기간 끝의 평가금액 ${m[2]}입니다.`, annual: true }
   return { title: null, desc: text }
 }
 
@@ -201,4 +201,27 @@ export function volObserved(c: VolCheck): "above" | "within" | null {
   if (!c.band) return null
   const a = parseFloat(c.vol), b = parseFloat(c.band)
   return a > b ? "above" : a < b ? "within" : null
+}
+
+
+/** 「백테스트 가정」 상자의 서버 문장(report_blocks.assumptions_callout · 체결 규칙)을 ~니다체로 (2026-11-16 사용자 요청: '~한다'·명사로 끝나는 문장이 섞임).
+ *  저장된 리포트의 문장 틀을 하나씩 바꾼다. 틀이 다른 문장은 그대로 둔다(뜻을 바꾸지 않게). */
+export function politeAssumptions(text: string): string {
+  const one = (raw: string): string => {
+    const s = raw.trim().replace(/\.$/, "")
+    let m: RegExpExecArray | null
+    if ((m = /^기간 (\S+) ~ (\S+) \((\d+)거래일\)$/.exec(s))) return `백테스트 기간은 ${m[1]}부터 ${m[2]}까지 ${m[3]}거래일입니다.`
+    if ((m = /^초기 투자금 (.+? USD)( \(첫 적립일에 처음 매수하고, 수익률은 그날부터 계산\))?, (?:매월 (.+? USD) 적립 (\d+)회|적립 없음)$/.exec(s))) {
+      const zero = m[2] ? " 첫 적립일에 처음 매수했고, 수익률은 그날부터 계산했습니다." : ""
+      return m[3] ? `초기 투자금은 ${m[1]}이고, 매월 ${m[3]}씩 ${m[4]}회 적립했습니다.${zero}` : `초기 투자금은 ${m[1]}이고, 적립은 하지 않았습니다.${zero}`
+    }
+    if ((m = /^(.+)에 목표 비중으로 리밸런싱$/.exec(s))) return `${m[1]}에 목표 비중으로 리밸런싱했습니다.`
+    if (/^리밸런싱일 t 의 비중은 t−1 까지의 가격·뉴스로 계산하고 t 종가로 체결한다$/.test(s)) return "리밸런싱하는 날(t)의 비중은 전 거래일(t−1)까지의 가격·뉴스로 계산하고, 그날(t) 종가로 체결합니다."
+    if ((m = /^거래비용 거래대금의 ([\d.]+%), 배당 재투자, 소수 주식 허용(?:, 무위험수익률 연 ([\d.]+%))?$/.exec(s)))
+      return `거래비용은 거래대금의 ${m[1]}로 계산했고, 배당은 재투자했으며, 소수 주식 매수를 허용했습니다.${m[2] ? ` 무위험수익률은 연 ${m[2]}로 가정했습니다.` : ""}`
+    if (s === "한국 종목은 거래일 환율로 USD 환산") return "한국 종목은 거래일 환율로 USD로 환산했습니다."
+    const t = s.replace(/한다$/, "합니다").replace(/된다$/, "됩니다").replace(/이다$/, "입니다")
+    return t ? `${t}.` : ""
+  }
+  return text.split(/(?<=\.)\s+/).map(one).filter(Boolean).join(" ")
 }

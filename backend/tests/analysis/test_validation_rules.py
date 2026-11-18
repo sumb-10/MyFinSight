@@ -48,8 +48,10 @@ def test_user_rules_and_integrity_are_separated(e2e):
     assert v["tolerance_note_ko"].startswith("손실 감내 수준") or "입력" in v["tolerance_note_ko"]
     ex = next(b for s_ in doc["sections"] for b in s_["blocks"] if b["type"] == "table" and b.get("title_ko") == "실행 기록")
     assert any(r["stage"] == "내부 점검" and "통과" in r["what"] for r in ex["rows"])
-    t1 = next(b for s_ in doc["sections"] for b in s_["blocks"] if b["type"] == "table" and str(b.get("title_ko", "")).startswith("검증 규칙"))
-    assert not any(r["rule"] in ("R4", "R5", "R8") for r in t1["rows"]) and "표시 = " in (t1.get("note_ko") or "")
+    # 2026-11-16: 「선택 전략의 조건별 결과」 — 내부 점검(R4·R5·R8)은 통과하면 행이 없고, 규칙 번호·수준 열이 없다
+    t1 = next(b for s_ in doc["sections"] for b in s_["blocks"] if b["type"] == "table" and str(b.get("title_ko", "")).startswith("선택 전략의 조건별 결과"))
+    assert not any(r["rule"] in ("R4", "R5", "R8") for r in t1["rows"]) and "판정 보류는" in (t1.get("note_ko") or "")
+    assert [c["label_ko"] for c in t1["columns"]] == ["점검 항목", "기준과 측정값", "결과"]
 
 
 def test_effective_tolerance_row_appears_only_when_adjusted():
