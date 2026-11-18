@@ -10,7 +10,7 @@ import { clearGuideRecord, guideRecord, recordGuide } from "./guideRecord"
 import { TutorialScreen } from "./TutorialScreen"
 import { loadTutorialDoc } from "./tutorialService"
 
-const TITLE = "리포트 가이드를 보시겠습니까?"
+const TITLE = "예시 리포트를 둘러보시겠습니까?"
 const svc = {
   mode: "api", health: () => Promise.resolve({ ok: true, api_version: "1", llm_mode: "api", db: { ok: true }, worker: { alive: true, running_run_id: null }, queue_length: 0 }),
   options: () => Promise.reject(new Error("쓰지 않음")), getProfile: () => Promise.resolve(null), listRequests: () => Promise.resolve([]), listRuns: () => Promise.resolve([]), listReports: () => Promise.resolve([]), listPaper: () => Promise.resolve([]),

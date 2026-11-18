@@ -41,10 +41,10 @@ export function ExecutionPanel({ doc, close }: { doc: ReportDoc; close: () => vo
         <ol className="space-y-2 text-sm">{doc.execution.map((e) => <li key={e.step} className="rounded-lg bg-slate-50 p-3"><p className="font-mono text-xs text-slate-500">{e.step}</p><p className="mt-1 text-slate-700">{e.summary}</p></li>)}</ol>
       )}
       {doc.assessment.comments_ko.length > 0 && (
-        <div className="mt-5 rounded-xl border border-slate-200 p-4 text-sm text-slate-700"><div className="mb-1 font-semibold text-slate-900">분석 모델의 자체 평가</div><p className="text-xs text-slate-500">의도 일치 {doc.assessment.intent_fit ?? "–"} · 논리 일관성 {doc.assessment.logic_consistency ?? "–"} (0~1)</p><ul className="mt-2 list-disc pl-5 leading-6">{doc.assessment.comments_ko.map((c, i) => <li key={i}>{c}</li>)}</ul></div>
+        <div className="mt-5 rounded-box bg-sunken p-4 text-14 text-body"><div className="mb-1 font-semibold text-main">분석 모델의 자체 평가</div><p className="text-xs text-slate-500">의도 일치 {doc.assessment.intent_fit ?? "–"} · 논리 일관성 {doc.assessment.logic_consistency ?? "–"} (0~1)</p><ul className="mt-2 list-disc pl-5 leading-6">{doc.assessment.comments_ko.map((c, i) => <li key={i}>{c}</li>)}</ul></div>
       )}
       {numberNotes.length > 0 && (
-        <div className="mt-5 rounded-xl border border-slate-200 p-4 text-sm"><div className="mb-1 font-semibold text-slate-900">문장 검증 메모 {numberNotes.length}건 (숫자 대조)</div><p className="text-xs text-slate-500">본문 숫자가 결과값 표에서 그대로 찾아지지 않은 경우입니다. 반올림·단위 차이일 수 있습니다.</p><ul className="mt-2 list-disc pl-5 text-xs leading-5 text-slate-600">{numberNotes.slice(0, 30).map((w, i) => <li key={i}>{w}</li>)}</ul></div>
+        <div className="mt-5 rounded-box bg-sunken p-4 text-14 text-body"><div className="mb-1 font-semibold text-main">문장 검증 메모 {numberNotes.length}건 (숫자 대조)</div><p className="text-xs text-slate-500">본문 숫자가 결과값 표에서 그대로 찾아지지 않은 경우입니다. 반올림·단위 차이일 수 있습니다.</p><ul className="mt-2 list-disc pl-5 text-xs leading-5 text-slate-600">{numberNotes.slice(0, 30).map((w, i) => <li key={i}>{w}</li>)}</ul></div>
       )}
       <Button variant="secondary" className="mt-4" onClick={load}>실행 상태 다시 조회</Button>
     </SidePanel>

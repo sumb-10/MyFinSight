@@ -1,0 +1,22 @@
+/* 홈 화면(.home-redesign) 안에서만 쓰는 규칙. 색·크기 값은 styles/tokens.css 에 있다.
+
+   버튼 글자: src/index.css 의 `button, input, textarea, select { font: inherit }` 는 레이어 밖 규칙이라 Tailwind 클래스(레이어 안)를 이긴다
+   → 앱 전체에서 버튼의 text-14 · font-semibold 가 먹지 않고 16px · 보통 굵기로 보인다. 홈은 시안대로 보이도록 이 안에서만 되돌린다
+   (revert-layer = 레이어 안 값: Tailwind 클래스, 없으면 preflight 의 inherit). 다른 화면은 그대로 둔다. */
+.home-redesign button,
+.home-redesign textarea {
+  font-size: revert-layer;
+  font-weight: revert-layer;
+  line-height: revert-layer;
+}
+
+/* 입력창은 둘러싼 상자가 포커스 둘레를 그리므로 전역 :focus-visible 외곽선(레이어 밖이라 outline-none 을 이김)을 끈다 */
+.home-redesign textarea:focus-visible {
+  outline: none;
+}
+
+/* 한국어는 낱말(어절) 단위로 줄을 바꾼다 */
+.home-redesign {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}

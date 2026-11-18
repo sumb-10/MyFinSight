@@ -11,7 +11,7 @@ import { HOME_TOUR_STEPS } from "../tutorial/homeSteps"
 import { EXAMPLE_IDEAS, HomeScreen } from "./HomeScreen"
 import { readCachedTrends, scopeOf } from "./sectorTrends"
 
-// 홈 화면 개편 (2026-11-11): 섹터 상자·시작 화면·예시 문장·성향 맞춤 섹터·예시 리포트 숨김·홈 둘러보기
+// 홈 화면 (2026-11-17 시안 3 이식): 왼쪽 새 분석 카드 · 오른쪽 「내게 맞는 정보」 탭 · 시작 화면 · 예시 문장 · 성향 맞춤 섹터 · 예시 리포트 숨김 · 홈 둘러보기
 
 beforeAll(() => { globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver; Element.prototype.scrollIntoView = vi.fn() })
 beforeEach(() => { try { window.localStorage.clear() } catch { /* ignore */ } resetExampleMemory(); window.history.replaceState(null, "", "/") })
@@ -19,40 +19,45 @@ afterEach(() => vi.restoreAllMocks())
 
 const mock = () => new MockService({ latencyMs: 0, persist: false })
 const show = (svc: AnalysisService) => render(<Providers service={svc}><HomeScreen /></Providers>)
-const box = async () => (await screen.findByRole("heading", { name: "요즘엔 뭐가 좋아요?" }, { timeout: 5000 })).closest("section")!
+/** 오른쪽 카드에서 탭을 열고 그 내용(tabpanel)을 돌려준다 */
+const openTab = async (name: string) => { fireEvent.click(await screen.findByRole("tab", { name }, { timeout: 5000 })); return screen.getByRole("tabpanel") }
+const box = () => openTab("요즘 강한 섹터")
+const sectors = (b: HTMLElement) => within(b).getByRole("list", { name: "많이 오른 섹터" })
 const ready: ProposedSectorTrends = { status: "ready", progress: 1, data: SECTOR_TRENDS, error: null }
 
-describe("요즘엔 뭐가 좋아요? 상자", () => {
+describe("요즘 강한 섹터 탭", () => {
   it("내 투자 대상 시장(미국)의 좋았던 섹터 3개를 수익률·상승 종목 수와 함께 보여 주고, 한국으로 바꿀 수 있다", async () => {
     show(mock())
     const b = await box()
-    expect(within(b).getByText("최근 한 달 · 기준일 2026-10-30")).toBeInTheDocument()
-    expect(within(b).getAllByRole("listitem").map((li) => li.querySelector("span span")?.textContent)).toEqual(["경기소비재", "필수소비재", "헬스케어"])  // 평균 수익률 순
-    expect(within(b).getByText("+10.60%")).toBeInTheDocument()
-    expect(within(b).getByText("종목 49개 중 41개 상승")).toBeInTheDocument()
+    expect(await within(b).findByText("최근 한 달 · 기준일 2026-10-30")).toBeInTheDocument()
+    expect(within(sectors(b)).getAllByRole("listitem").map((li) => li.querySelector("span span")?.textContent)).toEqual(["경기소비재", "필수소비재", "헬스케어"])  // 평균 수익률 순
+    expect(within(sectors(b)).getByText("+10.60%")).toBeInTheDocument()
+    expect(within(sectors(b)).getByText("49개 중 41개 상승")).toBeInTheDocument()
+    expect(within(b).getByRole("heading", { name: "경기소비재에서 많이 오른 종목" })).toBeInTheDocument()  // 고른 섹터의 종목
     fireEvent.click(within(b).getByRole("button", { name: "한국" }))
-    expect(within(b).getByText("커뮤니케이션 서비스")).toBeInTheDocument()
+    expect(within(sectors(b)).getByText("커뮤니케이션 서비스")).toBeInTheDocument()
     expect(within(b).queryByText("경기소비재")).toBeNull()
     expect(within(b).queryByText("부동산")).toBeNull()  // 종목 1개 섹터는 뺀다
   })
 
-  it("섹터를 고르면 그 섹터의 추천 문장이 나오고, 누르면 그 문장으로 투자조건 확인하기를 누른 것과 같다", async () => {
+  it("섹터를 고르면 그 섹터의 추천 문장이 나오고, 누르면 그 문장으로 「분석 시작하기」를 누른 것과 같다", async () => {
     const svc = mock()
     const create = vi.spyOn(svc, "createRequest")
     show(svc)
     const b = await box()
-    expect(within(b).getByRole("button", { name: "* 요즘 많이 오른 미국 경기소비재 기업에 나눠 투자하고 싶어요." })).toBeInTheDocument()  // 처음에는 1위 섹터
-    fireEvent.click(within(b).getByRole("button", { name: /필수소비재/ }))
-    fireEvent.click(within(b).getByRole("button", { name: "* 요즘 많이 오른 미국 필수소비재 기업에 나눠 투자하고 싶어요." }))
+    expect(await within(b).findByRole("button", { name: "요즘 많이 오른 미국 경기소비재 기업에 나눠 투자하고 싶어요." })).toBeInTheDocument()  // 처음에는 1위 섹터
+    fireEvent.click(within(sectors(b)).getByRole("button", { name: /필수소비재/ }))
+    fireEvent.click(within(b).getByRole("button", { name: "요즘 많이 오른 미국 필수소비재 기업에 나눠 투자하고 싶어요." }))
     await waitFor(() => expect(create).toHaveBeenCalledWith({ idea: "요즘 많이 오른 미국 필수소비재 기업에 나눠 투자하고 싶어요.", mode: "new", overrides: {} }))
     await waitFor(() => expect(window.location.hash).toMatch(/^#\/analysis\//))
   })
 
-  it("서비스에 섹터 기능이 없으면 상자 없이 입력창만 그린다", async () => {
+  it("서비스에 섹터 기능이 없으면 그 탭 없이 그린다", async () => {
     const s = mock()
     show(Object.assign(Object.create(s), { getSectorTrends: undefined }) as AnalysisService)
     expect(await screen.findByRole("textbox", { name: "투자하고 싶은 내용" }, { timeout: 5000 })).toBeInTheDocument()
-    expect(screen.queryByRole("heading", { name: "요즘엔 뭐가 좋아요?" })).toBeNull()
+    expect(await screen.findByRole("tab", { name: "내 투자조건" })).toBeInTheDocument()
+    expect(screen.queryByRole("tab", { name: "요즘 강한 섹터" })).toBeNull()
     expect(screen.queryByTestId("splash")).toBeNull()
   })
 
@@ -109,31 +114,49 @@ describe("처음 불러올 때 시작 화면", () => {
 })
 
 describe("입력창·문구·기본 투자조건", () => {
-  it("예시 문장 3개를 '*' 와 함께 보여 주고, 누르면 그 문장으로 요청을 만든다", async () => {
+  it("예시 문장 3개를 보여 주고, 누르면 그 문장으로 요청을 만든다", async () => {
     const svc = mock()
     const create = vi.spyOn(svc, "createRequest")
     show(svc)
     const list = await screen.findByRole("list", { name: "예시 문장" }, { timeout: 5000 })
-    expect(within(list).getAllByRole("button").map((b) => b.textContent)).toEqual(EXAMPLE_IDEAS.map((t) => `* ${t}`))
-    fireEvent.click(within(list).getByRole("button", { name: `* ${EXAMPLE_IDEAS[1]}` }))
+    expect(within(list).getAllByRole("button").map((b) => b.textContent)).toEqual(EXAMPLE_IDEAS)
+    fireEvent.click(within(list).getByRole("button", { name: EXAMPLE_IDEAS[1] }))
     await waitFor(() => expect(create).toHaveBeenCalledWith({ idea: EXAMPLE_IDEAS[1], mode: "new", overrides: {} }))
   })
 
-  it("바뀐 문구: 안내 문장, 둘러보기 버튼 두 개, 지운 문구", async () => {
+  it("새 분석 카드: 안내 제목·문장, 「사용 안내」 메뉴 (서비스 소개 · 홈 화면 둘러보기 · 예시 리포트 둘러보기, 2026-11-18)", async () => {
     show(mock())
-    expect(await screen.findByText("내 투자조건을 반영해 종목을 고르고, 과거 데이터로 성과와 위험을 검증합니다. 투자하고 싶은 내용을 아래 채팅창에 입력하세요.", {}, { timeout: 5000 })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "리포트 보는 법 둘러보기" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "처음이신가요? MyFinSight 둘러보기" })).toBeInTheDocument()
-    expect(screen.queryByText(/이번 분석에서만 바꿀 수 있습니다/)).toBeNull()
-    expect(screen.queryByText(/분석 시작」을 눌러야 시작됩니다/)).toBeNull()
-    expect(screen.queryByText(/부족한 조건은 분석 모델이/)).toBeNull()
-    fireEvent.click(screen.getByRole("button", { name: "리포트 보는 법 둘러보기" }))
+    expect(await screen.findByRole("heading", { name: "투자 아이디어를 적어 주세요" }, { timeout: 5000 })).toBeInTheDocument()
+    expect(screen.getByText("내 투자조건에 맞는 종목과 비중을 고르고, 과거 성과와 위험을 리포트로 보여드립니다.")).toBeInTheDocument()
+    const help = screen.getByRole("button", { name: "사용 안내" })
+    expect(help).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(help)
+    const menu = screen.getByRole("menu", { name: "사용 안내" })
+    expect(within(menu).getAllByRole("menuitem").map((b) => b.textContent)).toEqual(["서비스 소개", "홈 화면 둘러보기", "예시 리포트 둘러보기"])
+    expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0])  // 열면 첫 항목에 초점
+    fireEvent.keyDown(menu, { key: "Escape" })
+    expect(screen.queryByRole("menu")).toBeNull()
+    expect(document.activeElement).toBe(help)  // 닫히면 버튼으로
+    fireEvent.click(help)
+    fireEvent.blur(screen.getAllByRole("menuitem")[2], { relatedTarget: screen.getByRole("textbox") })  // Tab 으로 메뉴 밖에 초점이 나가면 닫힌다
+    expect(screen.queryByRole("menu")).toBeNull()
+    fireEvent.click(help)
+    fireEvent.click(screen.getByRole("menuitem", { name: "예시 리포트 둘러보기" }))
     expect(window.location.hash).toBe("#/tutorial")
   })
 
-  it("저장된 기본 투자조건은 항목·값 한 줄씩, 맨 아래에 성향에 맞춘 섹터 문장", async () => {
+  it("첫 탭: 리포트가 있으면 「요즘 강한 섹터」, 없으면(처음 쓰는 사람) 「이렇게 진행돼요」", async () => {
+    const first = show(mock())
+    await waitFor(() => expect(screen.getByRole("tab", { name: "요즘 강한 섹터" })).toHaveAttribute("aria-selected", "true"), { timeout: 5000 })
+    first.unmount()
+    show(Object.assign(Object.create(mock()), { listReports: async () => [] }) as AnalysisService)
+    await waitFor(() => expect(screen.getByRole("tab", { name: "이렇게 진행돼요" })).toHaveAttribute("aria-selected", "true"), { timeout: 5000 })
+    expect(within(screen.getByRole("list", { name: "분석 순서" })).getAllByRole("listitem")).toHaveLength(5)
+  })
+
+  it("저장된 기본 투자조건은 항목·값 한 줄씩, 아래에 성향에 맞춘 섹터 문장", async () => {
     show(mock())
-    const card = (await screen.findByRole("heading", { name: "저장된 기본 투자조건" }, { timeout: 5000 })).closest("section")!
+    const card = await openTab("내 투자조건")
     const pairs = Array.from(card.querySelectorAll("dt")).map((dt) => [dt.textContent, dt.nextElementSibling?.textContent])
     expect(pairs).toEqual([["금액", "2,000만원 · 매달 50만원"], ["기간", "5년"], ["성향", "위험중립형 · 손실 감내 30%"], ["투자 대상", "S&P 500 · NASDAQ-100"], ["종목 고르기", "모멘텀 · 시가총액비중 · 종목당 최대 30%"]])
     expect(within(card).getByText("NVDA 필수 포함")).toBeInTheDocument()
@@ -147,7 +170,7 @@ describe("입력창·문구·기본 투자조건", () => {
     const s = mock()
     const v = (await s.getProfile())!
     show(Object.assign(Object.create(s), { getProfile: async () => ({ ...v, profile: { ...v.profile, capital: { ...v.profile.capital, initial_amount: 0, monthly_contribution: 500_000 } } }) }) as AnalysisService)
-    const card = (await screen.findByRole("heading", { name: "저장된 기본 투자조건" }, { timeout: 5000 })).closest("section")!
+    const card = await openTab("내 투자조건")
     expect(card.querySelector("dd")).toHaveTextContent(/^매달 50만원$/)
   })
 })
@@ -155,9 +178,9 @@ describe("입력창·문구·기본 투자조건", () => {
 describe("예시 리포트는 홈 최근 리포트·사이드바에 보이지 않는다", () => {
   // 예시 리포트는 목업 「정상 추천」 리포트와 이름이 같아, 서버 리포트가 없을 때 예시 줄이 생기지 않는지로 본다 (리포트 목록 화면에는 그대로 있다)
   const empty = () => Object.assign(Object.create(mock()), { listReports: async () => [] }) as AnalysisService
-  it("홈 최근 분석 리포트", async () => {
+  it("홈 최근 리포트 탭", async () => {
     show(empty())
-    const card = (await screen.findByRole("heading", { name: "최근 분석 리포트" }, { timeout: 5000 })).closest("section")!
+    const card = await openTab("최근 리포트")
     expect(await within(card).findByText("아직 완료된 분석이 없습니다.")).toBeInTheDocument()
     expect(within(card).queryByText(EXAMPLE_ROW.name)).toBeNull()
   })
@@ -169,21 +192,26 @@ describe("예시 리포트는 홈 최근 리포트·사이드바에 보이지 �
   })
 })
 
-describe("처음이신가요? MyFinSight 둘러보기", () => {
-  it("홈 요소를 차례로 비추고, 마치기·Esc 로 닫는다", async () => {
+describe("홈 둘러보기", () => {
+  const startTour = () => { fireEvent.click(screen.getByRole("button", { name: "사용 안내" })); fireEvent.click(screen.getByRole("menuitem", { name: /홈 화면 둘러보기/ })) }
+  it("홈 요소를 차례로 비추고(탭 안의 대상은 그 탭을 열어서), 마치기·Esc 로 닫는다", async () => {
     render(<Providers service={mock()}><Sidebar route={{ page: "home" }} /><HomeScreen /></Providers>)
     await box()
-    fireEvent.click(screen.getByRole("button", { name: "처음이신가요? MyFinSight 둘러보기" }))
+    startTour()
     const dlg = () => screen.getByRole("dialog")
     expect(dlg()).toHaveTextContent(`1/${HOME_TOUR_STEPS.length}`)
     expect(dlg()).toHaveTextContent("메뉴")
-    for (const t of HOME_TOUR_STEPS.slice(1).map((s) => s.target)) expect(document.querySelector(`[data-tour="${t}"]`), t).not.toBeNull()  // 모든 단계의 대상이 화면에 있다
-    fireEvent.click(within(dlg()).getByRole("button", { name: "다음" }))
-    expect(dlg()).toHaveTextContent(`2/${HOME_TOUR_STEPS.length}`)
-    expect(within(dlg()).getByRole("heading")).toHaveTextContent("요즘엔 뭐가 좋아요?")
+    for (let i = 1; i < HOME_TOUR_STEPS.length; i++) {  // 단계마다 그 대상이 화면에 있다
+      fireEvent.click(within(dlg()).getByRole("button", { name: "다음" }))
+      expect(dlg()).toHaveTextContent(`${i + 1}/${HOME_TOUR_STEPS.length}`)
+      const t = HOME_TOUR_STEPS[i].target
+      await waitFor(() => expect(document.querySelector(`[data-tour="${t}"]`), t).not.toBeNull())
+    }
+    expect(screen.getByRole("tab", { name: "최근 리포트" })).toHaveAttribute("aria-selected", "true")  // 마지막 단계에서 그 탭이 열려 있다
     fireEvent.keyDown(window, { key: "Escape" })
     expect(screen.queryByTestId("coachmark")).toBeNull()
-    fireEvent.click(screen.getByRole("button", { name: "처음이신가요? MyFinSight 둘러보기" }))
+    startTour()
+    expect(within(dlg()).getByRole("heading")).toHaveTextContent("메뉴")
     for (let i = 1; i < HOME_TOUR_STEPS.length; i++) fireEvent.click(screen.getByRole("button", { name: "다음" }))
     expect(screen.getByRole("dialog")).toHaveTextContent(`${HOME_TOUR_STEPS.length}/${HOME_TOUR_STEPS.length}`)
     fireEvent.click(screen.getByRole("button", { name: "마치기" }))
