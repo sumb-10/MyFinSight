@@ -48,37 +48,12 @@ export function useStickyInMain() {
   }, [])
 }
 
-const FLOW = ["추가 질문 답하기", "조건 최종 확인", "분석 시작"]
-
-/** 지금 어느 단계인지 (내 투자조건의 단계 카드와 같은 모양, 누르는 기능은 없다). */
-export function FlowSteps({ current }: { current: 0 | 1 }) {
-  return (
-    <nav aria-label="분석 준비 단계">
-      <ol className="grid grid-cols-3 gap-2 sm:gap-3">
-        {FLOW.map((label, i) => {
-          const now = i === current, done = i < current
-          return (
-            <li key={label} aria-current={now ? "step" : undefined} className={`rounded-xl border p-3 ${now ? "border-blue-400 bg-blue-50 ring-1 ring-blue-200" : done ? "border-slate-200 bg-white" : "border-dashed border-slate-200 bg-white"}`}>
-              <span className="flex items-center justify-between">
-                <span className={`text-xs font-bold ${now ? "text-blue-700" : "text-slate-400"}`}>0{i + 1}</span>
-                {done && <Check className="size-4 text-emerald-600" aria-hidden="true" />}
-              </span>
-              <span className={`mt-1 block text-sm font-semibold ${now || done ? "text-slate-800" : "text-slate-500"}`}>{label}</span>
-              <span className={`mt-0.5 block text-[11px] ${now ? "text-blue-700" : "text-slate-400"}`}>{now ? "현재 단계" : done ? "완료" : "다음 단계"}</span>
-            </li>
-          )
-        })}
-      </ol>
-    </nav>
-  )
-}
-
 /** 요청 처리 중 표시. 실제 요청이 끝날 때까지만 보인다 (진행률은 알 수 없어 경과 시간만). */
 export function Pending({ title, detail, children }: { title: string; detail?: string; children?: React.ReactNode }) {
   const [sec, setSec] = useState(0)
   useEffect(() => { const t = setInterval(() => setSec((s) => s + 1), 1000); return () => clearInterval(t) }, [])
   return (
-    <div role="status" className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+    <div role="status" className="flex gap-3 rounded-box bg-sunken p-4">
       <Loader2 className="mt-0.5 size-5 shrink-0 animate-spin text-blue-700" aria-hidden="true" />
       <div className="min-w-0 text-sm">
         <p className="font-semibold text-slate-900">{title}</p>
@@ -93,12 +68,12 @@ export function Pending({ title, detail, children }: { title: string; detail?: s
  *  실제 결과(후보 수·분류 묶음 등)를, 주지 않으면(예전 서버) 하는 일만 보여 준다. 가짜 진행률은 쓰지 않는다. */
 export function IdeaPending({ steps }: { steps?: ProgressStep[] }) {
   if (steps?.length) return (
-    <Pending title="아이디어를 해석하고 있습니다" detail="서버가 지금 하는 단계와 그 결과입니다. 끝나면 질문 화면으로 넘어갑니다.">
+    <Pending title="아이디어를 해석하고 있습니다" detail="서버가 지금 하는 단계와 그 결과입니다. 해석이 끝나면 바로 질문이 이어집니다.">
       <ProgressList steps={steps} />
     </Pending>
   )
   return (
-    <Pending title="아이디어를 해석하고 있습니다" detail="분석 모델이 아이디어를 이해하고, 기본 투자조건과 맞춰 본 뒤 꼭 필요한 질문만 고릅니다. 끝나면 질문 화면으로 넘어갑니다.">
+    <Pending title="아이디어를 해석하고 있습니다" detail="분석 모델이 아이디어를 이해하고, 기본 투자조건과 맞춰 본 뒤 꼭 필요한 질문만 고릅니다. 해석이 끝나면 바로 질문이 이어집니다.">
       <ol className="mt-2 space-y-0.5 text-xs text-slate-600">
         {["아이디어 이해 (투자 테마·종목 찾기)", "기본 투자조건과 맞춰 보기", "꼭 필요한 질문 고르기"].map((t, i) => <li key={t} className="flex gap-2"><span className="grid size-4 shrink-0 place-items-center rounded-full bg-blue-100 text-[10px] font-bold text-blue-800">{i + 1}</span>{t}</li>)}
       </ol>
@@ -180,14 +155,14 @@ export function CancelRequestButton({ c, disabled }: { c: Leave; disabled?: bool
 export function CancelRequestConfirm({ c, keepLabel, disabled }: { c: Leave; keepLabel: string; disabled?: boolean }) {
   if (!c.asking) return c.error ? <ActionError title="요청을 취소하지 못했습니다" message={c.error} retry={() => void c.leave()} /> : null
   return (
-    <div role="alertdialog" aria-label="요청 취소 확인" className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-900">
-      <p className="font-semibold">이 요청을 취소할까요?</p>
+    <div role="alertdialog" aria-label="요청 취소 확인" className="rounded-box bg-danger-tint p-5 text-14 text-body">
+      <p className="font-semibold text-main">이 요청을 취소할까요?</p>
       <p className="mt-1">지금까지 답한 내용은 이 요청과 함께 닫히고, 분석은 시작되지 않습니다. 아이디어와 바꾼 조건은 홈에 그대로 채워 둡니다.</p>
       <div className="mt-3 flex flex-wrap gap-2">
-        <Button variant="danger" onClick={() => void c.leave()} disabled={disabled || c.busy}>{c.busy ? "취소하는 중…" : "요청 취소"}</Button>
+        <Button variant="destructive" onClick={() => void c.leave()} disabled={disabled || c.busy}>{c.busy ? "취소하는 중…" : "요청 취소"}</Button>
         <Button variant="ghost" onClick={c.close} disabled={c.busy}>{keepLabel}</Button>
       </div>
-      {c.error && <p className="mt-2 text-xs font-medium">취소하지 못했습니다: {c.error} 다시 눌러 주세요.</p>}
+      {c.error && <p className="mt-2 text-12 font-medium text-danger">취소하지 못했습니다: {c.error} 다시 눌러 주세요.</p>}
     </div>
   )
 }
@@ -228,14 +203,10 @@ export function BackToQuestions({ n, hardErrors }: { n: FlowNotice; hardErrors: 
 
 export function ActionError({ title, message, retry }: { title: string; message: string; retry?: () => void }) {
   return (
-    <div role="alert" className="flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-950">
-      <AlertCircle className="mt-0.5 size-5 shrink-0" />
-      <div className="min-w-0 text-sm">
-        <p className="font-semibold">{title}</p>
-        <p className="mt-0.5 leading-6 opacity-80">{message} 입력한 내용은 그대로 남아 있습니다.</p>
-        {retry && <Button variant="secondary" className="mt-2" onClick={retry}>다시 시도</Button>}
-      </div>
-    </div>
+    <Alert tone="error" title={title}>
+      <p>{message} 입력한 내용은 그대로 남아 있습니다.</p>
+      {retry && <Button variant="soft" className="mt-2" onClick={retry}>다시 시도</Button>}
+    </Alert>
   )
 }
 
@@ -257,11 +228,10 @@ export function IdeaPart({ st }: { st: DialogState }) {
 /** 조건 바꾸기·말로 보태기가 끝난 뒤: 실제로 바뀐 조건 값 (없으면 그렇다고 알린다). */
 export function ResultNote({ changes, what }: { changes: RowChange[]; what: string }) {
   return (
-    <div role="status" className={`rounded-xl border p-4 text-sm ${changes.length ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-slate-200 bg-slate-50 text-slate-700"}`}>
-      <p className="font-semibold">{changes.length ? `${what}을 반영했습니다. 바뀐 조건 ${changes.length}개` : `${what}을 처리했지만 바뀐 조건 값은 없습니다.`}</p>
-      {changes.length > 0 && <ul className="mt-1.5 space-y-0.5">{changes.map((c) => <li key={c.label}>{c.label}: {c.before} → <b>{c.after}</b></li>)}</ul>}
-      {!changes.length && what === "추가 요청" && <p className="mt-1 text-xs">테마 해석에만 쓰였거나, 확인 질문으로 이어질 수 있습니다. 투자 시장·숫자 조건은 「조건 바꾸기」로 직접 바꿔 주세요.</p>}
-    </div>
+    <Alert tone={changes.length ? "success" : "neutral"} title={changes.length ? `${what}을 반영했습니다. 바뀐 조건 ${changes.length}개` : `${what}을 처리했지만 바뀐 조건 값은 없습니다.`}>
+      {changes.length > 0 && <ul className="space-y-0.5">{changes.map((c) => <li key={c.label}>{c.label}: {c.before} → <b className="text-main">{c.after}</b></li>)}</ul>}
+      {!changes.length && what === "추가 요청" && <p className="text-13">테마 해석에만 쓰였거나, 확인 질문으로 이어질 수 있습니다. 투자 시장·숫자 조건은 「조건 바꾸기」로 직접 바꿔 주세요.</p>}
+    </Alert>
   )
 }
 

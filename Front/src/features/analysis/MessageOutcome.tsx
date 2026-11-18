@@ -1,6 +1,6 @@
 import { AlertTriangle, CheckCircle2, MinusCircle } from "lucide-react"
 import type { ProposedMessageResult } from "../../api/proposed"
-import { Disclosure } from "../../ui"
+import { Disclosure, NOTICE_BOX, NOTICE_ICON } from "../../ui"
 import { MockTag } from "../report/proposedView"
 
 // 「말로 보태기」 처리 결과 (제안 기능): 서비스에 getMessageResults 가 있을 때만. 실제 서버는 그 턴 전후를 비교해 기록한다
@@ -8,9 +8,9 @@ import { MockTag } from "../report/proposedView"
 // 처리 중 상태는 기존 Pending 이 보여 주고, 끝나면 셋 중 하나를 보여 준다.
 
 const LOOK = {
-  applied: { title: "반영됨", box: "border-emerald-200 bg-emerald-50 text-emerald-950", Icon: CheckCircle2 },
-  not_applied: { title: "반영되지 않음", box: "border-slate-200 bg-slate-50 text-slate-800", Icon: MinusCircle },
-  needs_confirmation: { title: "추가 확인 필요", box: "border-amber-200 bg-amber-50 text-amber-950", Icon: AlertTriangle },
+  applied: { title: "반영됨", tone: "success", Icon: CheckCircle2 },
+  not_applied: { title: "반영되지 않음", tone: "neutral", Icon: MinusCircle },
+  needs_confirmation: { title: "추가 확인 필요", tone: "warning", Icon: AlertTriangle },
 } as const
 
 export function MessageOutcome({ results }: { results: ProposedMessageResult[] }) {
@@ -19,14 +19,14 @@ export function MessageOutcome({ results }: { results: ProposedMessageResult[] }
   const L = LOOK[last.outcome], earlier = results.slice(0, -1).reverse()
   return (
     <div className="space-y-2">
-      <div role="status" className={`flex gap-3 rounded-xl border p-4 text-sm ${L.box}`}>
-        <L.Icon className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
+      <div role="status" className={`flex gap-3 rounded-box p-4 text-14 leading-6 text-body ${NOTICE_BOX[L.tone]}`}>
+        <L.Icon className={`mt-0.5 size-5 shrink-0 ${NOTICE_ICON[L.tone]}`} aria-hidden="true" />
         <div className="min-w-0">
-          <p className="flex flex-wrap items-center font-semibold">{L.title}<MockTag /></p>
-          <p className="mt-0.5 break-words text-xs opacity-80">“{last.text}”</p>
+          <p className="flex flex-wrap items-center font-semibold text-main">{L.title}<MockTag /></p>
+          <p className="mt-0.5 break-words text-12 text-sub">“{last.text}”</p>
           {last.outcome === "applied" && last.changes.length > 0 && <ul className="mt-2 space-y-0.5">{last.changes.map((c) => <li key={c.field}>{c.label_ko}: {c.before_ko} → <b>{c.after_ko}</b></li>)}</ul>}
           {last.outcome !== "applied" && <p className="mt-2">{last.outcome === "not_applied" ? `바뀐 조건이 없습니다.${last.note_ko ? "" : " 기존 조건이 그대로 유지됩니다."}` : "아직 조건을 바꾸지 않았습니다. 확인될 때까지 기존 조건이 그대로 유지됩니다."}</p>}
-          {last.note_ko && <p className="mt-1 text-xs leading-5 opacity-90">{last.note_ko}</p>}
+          {last.note_ko && <p className="mt-1 text-12 leading-5">{last.note_ko}</p>}
         </div>
       </div>
       {earlier.length > 0 && (

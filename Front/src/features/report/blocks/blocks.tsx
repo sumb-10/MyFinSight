@@ -8,7 +8,7 @@ import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart, P
 import type { AreaBlock, BarBlock, Block, CardsBlock, DonutBlock, EvidenceRefBlock, FunnelBlock, Kpi, LineBlock, ReportDoc, TableBlock, WeightsCompareBlock } from "../../../api/types"
 import { CITE_RE } from "../../../lib/citations"
 import { colorOf, fmt, ko, OTHER_COLOR, PALETTE } from "../../../lib/format"
-import { Pagination } from "../../../ui"
+import { NOTICE_BOX, Pagination } from "../../../ui"
 import { ChartFrame } from "../ChartFrame"
 import { useReport } from "../context"
 import { CompanyList } from "../CompanyList"
@@ -360,8 +360,8 @@ export function Funnel({ b }: { b: FunnelBlock }) {
 
 export function Callout({ tone, title, text }: { tone: "info" | "caution"; title: string; text: string }) {
   return (
-    <div className={`rounded-xl border p-4 text-sm leading-6 ${tone === "caution" ? "border-amber-300 bg-amber-50 text-amber-900" : "border-slate-200 bg-slate-50 text-slate-700"}`}>
-      <div className="mb-1 font-semibold">{title}</div><div className="whitespace-pre-line"><CitedText text={title === "백테스트 가정" ? politeAssumptions(text) : text} /></div>
+    <div className={`rounded-box p-4 text-14 leading-6 text-body ${NOTICE_BOX[tone === "caution" ? "warning" : "neutral"]}`}>
+      <div className="mb-1 font-semibold text-main">{title}</div><div className="whitespace-pre-line"><CitedText text={title === "백테스트 가정" ? politeAssumptions(text) : text} /></div>
     </div>
   )
 }

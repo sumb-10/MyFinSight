@@ -65,7 +65,7 @@ export function RequestHistory({ requestId, log }: { requestId: string; log?: Pr
   const res = useResource(() => svc.getRequest(requestId), [svc, requestId])
   if (res.status === "loading" && !res.data) return <Loading label="요청 내역을 불러오는 중…" />
   const st = res.data
-  if (!st) return <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600"><p>요청 내역을 불러오지 못했습니다. {res.error ?? ""}</p><Button variant="secondary" className="mt-2" onClick={res.reload}>다시 시도</Button></div>
+  if (!st) return <div className="rounded-box bg-sunken p-4 text-14 text-body"><p>요청 내역을 불러오지 못했습니다. {res.error ?? ""}</p><Button variant="soft" className="mt-2" onClick={res.reload}>다시 시도</Button></div>
   const answered = st.questions.filter((q) => q.answered_at).sort((a, b) => a.seq - b.seq)
   const changed = (st.confirmation?.rows ?? st.conditions ?? []).filter((r) => r.changed && r.group_ko !== "아이디어")
   // 큰 파트 (2026-11-14 사용자 요청: 다른 섹션과 같은 모양) — 처음 요청 / 요청 대화 기록 / 최종 분석 조건 / 수정 요청

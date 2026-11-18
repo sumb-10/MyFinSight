@@ -1,7 +1,7 @@
 import { BellRing, Check, ChevronRight } from "lucide-react"
 import type { PaperDetail, PaperTrade } from "../../api/types"
 import { fmt } from "../../lib/format"
-import { Button } from "../../ui"
+import { Button, NOTICE_BOX, NOTICE_ICON } from "../../ui"
 import { rebalanceText } from "../profile/format"
 import { Part } from "../profile/parts"
 import { Money, type Cur } from "./money"
@@ -27,15 +27,15 @@ export function RebalanceCard({ d, cur, fx, names, fresh, onAck, onAll }: { d: P
     <Part title="리밸런싱 거래" desc={<>{what ? `${what} · ` : ""}리밸런싱 주기: {rule}</>}
       aside={next ? <p className="shrink-0 text-right text-xs text-slate-500">다음 리밸런싱<span className="mt-0.5 block text-sm font-semibold text-slate-800">{next}</span></p> : p.status === "stopped" && !holdOnly ? <p className="shrink-0 text-xs text-slate-500">중지 중에는 리밸런싱하지 않습니다</p> : undefined}>
       {fresh && r && (
-        <div role="status" className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div role="status" className={`flex flex-col gap-3 rounded-box p-4 sm:flex-row sm:items-center sm:justify-between ${NOTICE_BOX.info}`}>
           <div className="flex min-w-0 items-start gap-3">
-            <BellRing className="mt-0.5 size-5 shrink-0 text-blue-700" aria-hidden />
+            <BellRing className={`mt-0.5 size-5 shrink-0 ${NOTICE_ICON.info}`} aria-hidden />
             <div className="min-w-0">
-              <p className="text-sm font-bold text-blue-950">지금 리밸런싱할 시점입니다</p>
-              <p className="mt-0.5 text-xs leading-5 text-blue-900">{r.date} 정기 리밸런싱에서 비중을 목표대로 되돌리려고 아래 종목을 사고팔았습니다. 확인하면 이 안내와 사이드바 숫자가 사라집니다.</p>
+              <p className="text-14 font-bold text-main">지금 리밸런싱할 시점입니다</p>
+              <p className="mt-0.5 text-12 leading-5 text-body">{r.date} 정기 리밸런싱에서 비중을 목표대로 되돌리려고 아래 종목을 사고팔았습니다. 확인하면 이 안내와 사이드바 숫자가 사라집니다.</p>
             </div>
           </div>
-          <Button variant="secondary" className="shrink-0" onClick={onAck}><Check className="size-4" aria-hidden />확인했어요</Button>
+          <Button variant="soft" className="shrink-0" onClick={onAck}><Check className="size-4" aria-hidden />확인했어요</Button>
         </div>
       )}
       {!r ? <p className="text-sm text-slate-600">아직 거래 기록이 없습니다. {next ? `${next}에 첫 리밸런싱을 합니다.` : ""}</p> : (

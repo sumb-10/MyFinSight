@@ -1,0 +1,142 @@
+/* 디자인 토큰 (홈 시안 3 기준, 2026-11-17).
+   Tailwind v4 는 @theme 에 적은 변수 이름으로 클래스를 만든다: --color-main → text-main · bg-main · border-main, --radius-card → rounded-card, --text-14 → text-14.
+
+   화면 코드에서 고르는 것
+     글씨 스타일  t-display · t-heading · t-title · t-strong · t-body · t-label · t-meta  (크기·굵기·색 묶음, 아래 @utility)
+     글씨 색      text-main(제목·값·이름) · text-body(본문) · text-sub(이름표·날짜) · text-hint(입력 예시·비활성·장식, 정보에는 쓰지 않음)
+     면·선        bg-surface(카드) · bg-sunken(카드 안 회색 상자) · border-line(구분선)
+     강조         text-accent · bg-accent,  상승·하락 text-up · text-down
+     둥글기       rounded-box(안쪽 상자) · rounded-card(카드)
+     글자 크기    text-12 · 13 · 14 · 15 · 18 · 22 · 28  (묶음 스타일에 맞는 것이 없을 때만)
+   부품(ui/index.tsx · 홈 버튼) 안에서만 쓰는 것: canvas · sunken-hover · accent-hover · on-accent · tint · focus · danger/warning/success(+tint) · rounded-chip · rounded-control · shadow-overlay
+
+   글씨 대비 (흰 바탕 / 회색 상자 #f2f5f7): main 11.8 / 10.8 · body 7.6 / 7.0 · sub 5.4 / 4.9 · hint 3.1 (정보가 아닌 글씨만) */
+@theme {
+  /* 글씨 색 */
+  --color-main: #34383f;
+  --color-body: #4e545e;
+  --color-sub: #646b77;
+  --color-hint: #8b95a1;
+
+  /* 면·선 */
+  --color-canvas: #f2f5f7;
+  --color-surface: #ffffff;
+  --color-sunken: #f2f5f7;
+  --color-sunken-hover: #e7ebef;
+  --color-line: #e5e8eb;
+  --color-bubble: #eef1f4;  /* 대화 말풍선(분석 모델 쪽) 면. 흰 카드 대비 1.13:1 — sunken(1.09, 입력창·패널 상자) 보다 살짝 진해 대화와 입력·정보가 구분되고, #e9edf1(1.18) 은 너무 진하다는 의견으로 한 단계 연하게 (2026-11-18) */
+
+  /* 강조 */
+  --color-accent: #1d4ed8;
+  --color-accent-hover: #1e40af;
+  --color-on-accent: #ffffff;
+  --color-tint: #eef3fe;
+  --color-focus: #4880ee;
+
+  /* 의미 색. up·down 은 지금 색(상승 초록 · 하락 빨강) 그대로: 한국식(상승 빨강 · 하락 파랑)으로 바꿀지 정하면 이 두 줄만 고친다 */
+  --color-up: #047857;
+  --color-down: #b91c1c;
+  --color-danger: #b91c1c;
+  --color-danger-tint: #fef2f2;
+  --color-warning: #92400e;
+  --color-warning-tint: #fffbeb;
+  --color-success: #047857;
+  --color-success-tint: #ecfdf5;
+
+  /* 글자 크기 */
+  --text-12: 12px;
+  --text-12--line-height: 1.5;
+  --text-13: 13px;
+  --text-13--line-height: 1.5;
+  --text-14: 14px;
+  --text-14--line-height: 1.6;
+  --text-15: 15px;
+  --text-15--line-height: 1.6;
+  --text-18: 18px;
+  --text-18--line-height: 1.45;
+  --text-22: 22px;
+  --text-22--line-height: 1.35;
+  --text-28: 28px;
+  --text-28--line-height: 1.3;
+
+  /* 둥글기 */
+  --radius-chip: 8px;
+  --radius-control: 12px;
+  --radius-box: 18px;
+  --radius-bubble: 14px;  /* 대화 말풍선 (box 18px 은 한 줄 말풍선이 알약처럼 보여서 한 단계 덜 둥글게) */
+  --radius-card: 24px;
+
+  /* 그림자: 대화상자·팝오버에만 (카드는 그림자 없이 면 색으로 나눈다) */
+  --shadow-overlay: 0 12px 32px rgb(15 23 42 / 0.16);
+}
+
+/* 글씨 스타일: 크기 · 굵기 · 색 묶음 */
+@utility t-display {
+  font-size: var(--text-28);
+  line-height: 1.3;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--color-main);
+}
+@utility t-heading {
+  font-size: var(--text-22);
+  line-height: 1.35;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--color-main);
+}
+@utility t-title {
+  font-size: var(--text-15);
+  line-height: 1.5;
+  font-weight: 700;
+  color: var(--color-main);
+}
+@utility t-strong {
+  font-size: var(--text-14);
+  line-height: 1.5;
+  font-weight: 600;
+  color: var(--color-main);
+}
+@utility t-body {
+  font-size: var(--text-14);
+  line-height: 1.7;
+  font-weight: 400;
+  color: var(--color-body);
+}
+@utility t-label {
+  font-size: var(--text-13);
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--color-sub);
+}
+@utility t-meta {
+  font-size: var(--text-12);
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--color-sub);
+}
+
+/* ── 기존 클래스 연결 (나중에 지울 부분) ──────────────────────────────────────
+   기존 화면은 Tailwind 기본 이름(slate-…, text-xl …)을 쓴다. 그 이름이 위 토큰 값을 가리키게 해서, 화면 코드를 고치지 않고 같은 위계를 따르게 한다.
+   화면을 손볼 때 text-slate-600 → text-body 처럼 바꿔 나가고, 다 바뀌면 이 블록을 지운다. 새 코드는 slate 이름을 쓰지 않는다. */
+@theme {
+  --color-slate-50: var(--color-canvas);
+  --color-slate-100: var(--color-sunken);
+  --color-slate-200: var(--color-line);
+  --color-slate-300: #d1d6db; /* 진한 테두리·아이콘 (해당 토큰 없음) */
+  --color-slate-400: var(--color-sub);
+  --color-slate-500: var(--color-sub);
+  --color-slate-600: var(--color-body);
+  --color-slate-700: var(--color-main);
+  --color-slate-800: var(--color-main);
+  --color-slate-900: var(--color-main);
+  --color-slate-950: var(--color-main);
+  --color-blue-50: var(--color-tint);
+
+  --text-xl: var(--text-18);
+  --text-xl--line-height: 1.45;
+  --text-2xl: var(--text-22);
+  --text-2xl--line-height: 1.35;
+  --text-3xl: var(--text-28);
+  --text-3xl--line-height: 1.3;
+}

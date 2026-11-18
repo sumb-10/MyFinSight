@@ -35,7 +35,7 @@ describe("목록의 예시 리포트", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /리포트 삭제/ }))
     expect(screen.getByRole("dialog", { name: "예시 리포트를 목록에서 지울까요?" })).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "취소" }))
-    fireEvent.click(screen.getByRole("button", { name: "리포트 보는 법 둘러보기" }))
+    fireEvent.click(screen.getByRole("button", { name: "단계별로 둘러보기" }))
     expect(screen.getByRole("dialog", { name: TOUR_STEPS[0].title })).toBeInTheDocument()
   }, 20000)
 })
@@ -46,7 +46,7 @@ const tour = async () => {  // 예시 리포트가 다 그려진 뒤의 첫 단�
   return screen.findByRole("dialog", { name: TOUR_STEPS[0].title })
 }
 
-describe("리포트 보는 법 둘러보기", () => {
+describe("예시 리포트 둘러보기", () => {
   it("주소 #/tutorial", () => {
     expect(parseRoute("#/tutorial")).toEqual({ page: "tutorial" })
     expect(routePath({ page: "tutorial" })).toBe("#/tutorial")
