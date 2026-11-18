@@ -210,9 +210,22 @@ def build_results(
             txt += f" ({M.METRIC_SHORT_KO.get(m_, m_)} {M.display_metric(m_, v)})"
         return f"분석 기준일({sel['summary']['as_of']}) {txt}"
 
+    # 순위 밖으로 빠진 종목의 기준일 순위 (필수 포함을 뺀, 지표 값이 있는 종목 중) — 리포트가 '모멘텀 순위 N위' 처럼 정확히 쓰게 (2026-11-16)
+    _pool = [float(s_["metric_value"]) for s_ in sel["selected"] if s_["ticker"] not in must and s_.get("metric_value") is not None]
+    _pool += [float(r["metric_value"]) for r in sel.get("rejected") or [] if r.get("metric_value") is not None and not str(r["reason"]).startswith("metric_out_of_range")
+              and math.isfinite(float(r["metric_value"]))]  # fmt: skip
+
+    def _rank_now(t: str) -> int | None:
+        r = rej_rows.get(t) or {}
+        if r.get("reason") != "rank_beyond_n" or r.get("metric_value") is None:
+            return None
+        v = float(r["metric_value"])
+        return 1 + sum(1 for x in _pool if (x < v if asc else x > v))
+
     bt_only_ko = [{"ticker": t, "name": (desc.by_ticker(t) or {}).get("name", t),
                    "reason_ko": (_now_reason(t) if t in rej_now else _why_ko(f_now[t]) if t in f_now else
-                                 "분석 기준일 테마 판정을 통과하지 못함" if t not in passed_now else "분석 기준일 목록에 없음")} for t in bt_only]  # fmt: skip
+                                 "분석 기준일 테마 판정을 통과하지 못함" if t not in passed_now else "분석 기준일 목록에 없음"),
+                   **({"rank_now": rk, "n_ranked_now": len(_pool)} if (rk := _rank_now(t)) else {})} for t in bt_only]  # fmt: skip
     by_reason: dict[str, list[str]] = {}
     for f in cand.get("filtered_out") or []:
         key = str(f["reason"]).split("(")[0].split(":")[0]

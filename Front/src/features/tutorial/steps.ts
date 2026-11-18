@@ -4,11 +4,10 @@
 export interface TourStep { target: string; title: string; body: string; placement?: "left"; reveal?: string; also?: string[] }
 
 export const TOUR_STEPS: TourStep[] = [
-  { target: "verdict", title: "선택된 전략", body: "개요 맨 위 줄에 이번 분석이 고른 전략과 분석 기준일, 백테스트 기간이 있습니다. 선택 이유를 누르면 왜 이 전략을 골랐는지 볼 수 있습니다." },
-  { target: "past", title: "백테스트 핵심 성과", body: "왼쪽 그래프는 이 전략을 과거에 따랐다면 수익률이 어떻게 변했을지를 비교지수와 함께 보여 줍니다. 오른쪽에는 연평균 수익률과 최대낙폭이 있습니다." },
+  { target: "verdict", title: "선택된 전략", body: "개요 맨 위 「선택한 전략」에 이번 분석이 고른 전략과 그 설명이 있습니다. 「왜 이 전략인가요?」를 누르면 고른 이유를 볼 수 있습니다." },
+  { target: "past", title: "과거 투자 결과", body: "맨 위 그래프는 이 전략을 과거에 따랐다면 수익률이 어떻게 변했을지를 비교지수와 함께 보여 줍니다. 그 아래에 전체 기간 수익률과 최대낙폭이 나란히 있고, 마지막 「결과 읽기」를 누르면 결과를 짧게 풀어 줍니다." },
   { target: "term-help", reveal: "term-help", also: ["glossary"], title: "용어 설명", body: "용어 옆 ? 를 누르면 지금처럼 짧은 설명이 뜹니다. 위쪽 투자 용어 설명에서는 리포트에 나온 용어를 한곳에서 찾아볼 수 있습니다." },
-  { target: "composition", title: "종목 구성", body: "어떤 종목을 어떤 비중으로 담는지 한눈에 보여 줍니다. 막대 길이가 비중입니다." },
-  { target: "allocation-list", placement: "left", title: "종목별 투자 금액", body: "종목마다 내 투자금에서 얼마를 넣는지(목표 배분액)와 그 금액으로 사는 주식 수입니다." },
-  { target: "details", title: "자세한 분석", body: "선택 이유, 비중이 정해진 과정, 기업별 근거, 과거 성과와 내 조건 점검, 시장·뉴스 분석이 들어 있습니다. 눌러서 펼치고, 위쪽 탭을 눌러도 바로 열립니다." },
+  { target: "allocation-list", placement: "left", title: "종목 구성과 투자 금액", body: "어떤 종목을 어떤 비중으로 담는지(막대 길이가 비중), 내 투자금에서 종목마다 얼마를 넣는지(목표 배분액)와 그 금액으로 사는 주식 수입니다." },
+  { target: "details", title: "자세한 분석", body: "선택 이유, 기업별 근거, 비중이 정해진 과정, 과거 성과와 내 조건 점검, 시장·뉴스 분석이 들어 있습니다. 눌러서 펼치고, 위쪽 탭을 눌러도 바로 열립니다." },
   { target: "paper-start", title: "모의투자로 지켜보기", body: "마음에 드는 리포트라면 모의투자 시작으로 실제 돈 없이 이 구성을 따라가 볼 수 있습니다. 둘러보기에서는 누르지 않아도 됩니다." },
 ]

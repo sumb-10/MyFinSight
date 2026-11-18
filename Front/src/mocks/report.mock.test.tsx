@@ -26,7 +26,7 @@ const section = (name: RegExp) => screen.getAllByRole("button", { name }).find((
 describe("카드 2: 현재 구성과 주식 수", () => {
   it("구성을 고르는 버튼 없이 분석 기준일 「현재 구성」 하나만 보여 주고, 현금 금액과 1주 단위 주식 수가 금액 옆 칸에 보인다", async () => {
     await open("mock_rep_normal")
-    const card = screen.getByRole("heading", { name: "종목별 투자 금액" }).closest("section")!
+    const card = screen.getByRole("heading", { name: /^종목 구성과 투자 금액/ }).closest("section")!
     expect(within(card).queryByRole("radiogroup")).toBeNull()
     expect(within(card).queryByText(/추천 전략 · 기준일 적용|추천 전략 · 백테스트 시작일|어떤 구성의 금액을 볼까요/)).toBeNull()
     expect(within(card).queryByText(/이 배분은 분석 기준일의 「현재 구성」입니다/)).toBeNull()  // 안내 문장 없이 카드 설명의 기준만
@@ -72,7 +72,7 @@ describe("카드 2: 현재 구성과 주식 수", () => {
 })
 
 const volCard = (fit: HTMLElement) => within(fit).getAllByText("변동성 적합").map((x) => x.closest("li")).find(Boolean)!  // 같은 섹션의 서버 검증 표에도 같은 이름이 있다
-const conditions = async () => { await screen.findByRole("heading", { name: "조건별 검증" }); return document.getElementById("perf-validation")! }  // 조건 점검은 과거 성과 섹션 안 (2026-11-11 개요에서 뺐다)
+const conditions = async () => { await screen.findByRole("heading", { name: "투자 조건 충족 여부" }); return document.getElementById("perf-validation")! }  // 조건 점검은 과거 성과 섹션 안 (2026-11-11 개요에서 뺐다)
 
 describe("조건별 검증과 판단 이유: 분석 당시 성향·위험 기준·구조화 검증", () => {
   it("주의 시나리오: 정확한 5단계 성향(자동 진단 → 최종 선택), 기준이 다른 이유, 참고로 바뀐 검사, 추천 순위 기준 전체", async () => {
@@ -95,8 +95,8 @@ describe("조건별 검증과 판단 이유: 분석 당시 성향·위험 기준
   }, 15000)  // 리포트 전체를 그려 부하가 높을 때 5초를 넘길 수 있다
   it("판단 이유는 구조화 값의 제목·설명으로 보인다", async () => {
     await open("mock_rep_normal", "verdict")
-    const why = await screen.findByRole("list", { name: "핵심 판단 이유" })
-    expect(within(why).getByText("비교한 투자 구성안 중 1위")).toBeInTheDocument()
+    const why = await screen.findByRole("list", { name: "이 전략을 고른 이유" })
+    expect(within(why).getByText(/^비교한 \d+개 포트폴리오 중 가장 앞선 구성$/)).toBeInTheDocument()
     expect(within(why).getByText("SPY보다 높은 연평균 수익률")).toBeInTheDocument()
   })
 })
@@ -113,8 +113,8 @@ describe("상세 섹션", () => {
     fireEvent.click(section(/^\d+\. 기업별 근거/))
     expect((await screen.findAllByText(/^뉴스 투자 의견 반영 \d개$/)).length).toBeGreaterThan(0)
     expect(screen.getAllByText("근거 부족 · 투자 의견 없음").length).toBeGreaterThan(0)  // 기사가 있어도 의견이 없으면 그렇게 표시
-    fireEvent.click(screen.getByText("NVDA").closest("button")!)
-    expect(await screen.findByText("핵심 선정 이유")).toBeInTheDocument()
+    fireEvent.click(screen.getAllByText("NVDA").map((x) => x.closest("button")).find(Boolean)!)  // 개요 종목 구성에도 티커가 보여, 기업 카드 단추를 고른다
+    expect(await screen.findByText("이 종목을 고른 이유")).toBeInTheDocument()
     expect(screen.getByText("선정 근거 원문")).toBeInTheDocument()  // 원문은 그대로
   })
   it("뉴스 반영을 끈 분석은 모든 종목이 「뉴스 반영 꺼짐」", async () => {
@@ -123,6 +123,10 @@ describe("상세 섹션", () => {
   })
   it("요청 이력에 말로 보탠 요청과 결과(반영됨/반영 안 됨)와 최종 조건이 보인다", async () => {
     await open("mock_rep_normal", "history")
+    expect(await screen.findByText("최종 분석 조건")).toBeInTheDocument()  // 최종 분석 조건은 늘 보인다
+    const said = await screen.findByRole("button", { name: /말로 보탠 요청/ })
+    expect(said).toHaveAttribute("aria-expanded", "false")  // 말로 보탠 요청은 접힌 채 시작하고 눌러서 연다
+    fireEvent.click(said)
     expect(await screen.findByText("“마이크론은 꼭 넣어 주세요”")).toBeInTheDocument()
     expect(screen.getByText("반영됨")).toBeInTheDocument(); expect(screen.getByText("반영되지 않음")).toBeInTheDocument()
     expect(screen.getByText(/기존 조건이 그대로 유지됩니다/)).toBeInTheDocument()

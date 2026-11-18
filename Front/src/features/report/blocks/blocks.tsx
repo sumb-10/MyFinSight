@@ -1,4 +1,9 @@
-import { createContext, useContext, useMemo, useState } from "react"
+import { parseViewCard, ViewCardBody } from "./ViewCard"
+import { ThemeScope } from "./ThemeScope"
+import { CitationContext } from "./citationContext"
+import { politeAssumptions } from "../wording"
+import { HelpTip } from "../terms"
+import { useContext, useMemo, useState } from "react"
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import type { AreaBlock, BarBlock, Block, CardsBlock, DonutBlock, EvidenceRefBlock, FunnelBlock, Kpi, LineBlock, ReportDoc, TableBlock, WeightsCompareBlock } from "../../../api/types"
 import { CITE_RE } from "../../../lib/citations"
@@ -11,6 +16,7 @@ import { RebalanceTimeline } from "../RebalanceTimeline"
 import { kpiName } from "../wording"
 import { prefTerms } from "../../../lib/tendency"
 import { holdingColor } from "../colors"
+import { strategyInfoOf } from "../proposedView"
 
 const card = "rounded-xl border border-slate-200 bg-white p-5"
 const h3 = "mb-3 text-base font-semibold text-slate-900"
@@ -18,18 +24,39 @@ const PAGE_ROWS = 25
 const DONUT_TOP = 8
 
 /** 인용 ID 클릭 시 출처 패널을 여는 콜백. ReportDetail 이 제공한다. */
-export const CitationContext = createContext<{ onCite: (id: string) => void; label: (id: string) => string } | null>(null)
+export { CitationContext }  // 정의는 citationContext.ts (기존 import 경로 유지)
 
-export function CitedText({ text }: { text: string }) {
+/** tight: 「선택 근거 자세히 보기」 전용 (2026-11-16 사용자 요청: 한 문단 안의 큰 공백).
+ *  전역 CSS `button { font: inherit }` 가 버튼의 text-[11px] 을 덮어 출처 번호가 본문 크기 그대로 위첨자(align-super)가 되어
+ *  출처가 있는 줄만 줄 간격이 벌어졌다 → 크기·굵기는 안쪽 span 에, 위로 올리는 것은 줄 높이에 영향이 없는 relative 로.
+ *  출처 앞 공백·출처 사이 공백도 빼서 「입니다 [3] .」 처럼 떨어지지 않게 한다. 다른 섹션은 예전 모양 그대로. */
+/** 서버의 '(뷰 없음, 재배분)'·'(그날 뷰 없음, 재배분)' 표기를 화면에서는 '다른 종목 조정에 따른 비중 변화' 로 (2026-11-16 사용자 요청). 저장된 글은 그대로 읽는다. */
+export const relabelNoView = (t: string) => t.replace(/\((?:그날 )?뷰 없음, 재배분\)/g, "(다른 종목 조정에 따른 비중 변화)")
+
+/** tight 문단의 공백 정리: 줄 앞뒤의 공백·탭과 연속 공백을 하나로 (같은 문단의 줄이 같은 왼쪽 기준선에 오게). 줄바꿈은 그대로. */
+export const tidySpaces = (t: string) => t.replace(/\t/g, " ").replace(/[ \u00a0\u3000]*\n[ \u00a0\u3000]*/g, "\n").replace(/[ \u00a0\u3000]{2,}/g, " ").trim()
+
+export function CitedText({ text: raw, tight }: { text: string; tight?: boolean }) {
   const ctx = useContext(CitationContext)
+  const text = tight ? tidySpaces(relabelNoView(raw)) : relabelNoView(raw)
   const parts: React.ReactNode[] = []
   let last = 0
   for (const m of text.matchAll(CITE_RE)) {
     const start = m.index ?? 0
-    if (start > last) parts.push(text.slice(last, start))
+    if (start > last) {
+      const seg = text.slice(last, start)
+      const keep = tight ? seg.replace(/[ \t]+$/, "") : seg
+      if (keep) parts.push(keep)
+    }
     const id = m[1]
     parts.push(
-      ctx ? (
+      tight ? (
+        ctx ? (
+          <button key={`${id}-${start}`} type="button" onClick={() => ctx.onCite(id)} aria-label={`근거 ${id} 보기`} className="relative -top-[0.45em] ml-0.5 leading-none text-blue-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><span className="text-[11px] font-bold leading-none">[{ctx.label(id)}]</span></button>
+        ) : (
+          <span key={`${id}-${start}`} className="relative -top-[0.45em] ml-0.5 text-[11px] font-bold leading-none text-slate-500">[{id}]</span>
+        )
+      ) : ctx ? (
         <button key={`${id}-${start}`} type="button" onClick={() => ctx.onCite(id)} aria-label={`근거 ${id} 보기`} className="mx-0.5 align-super text-[11px] font-bold text-blue-700 hover:underline">[{ctx.label(id)}]</button>
       ) : (
         <span key={`${id}-${start}`} className="mx-0.5 align-super text-[11px] font-bold text-slate-500">[{id}]</span>
@@ -41,10 +68,24 @@ export function CitedText({ text }: { text: string }) {
   return <>{parts}</>
 }
 
-export function Paragraphs({ items, tone }: { items: string[]; tone?: "lead" }) {
+/** tight(「선택 근거 자세히 보기」) 문단의 첫 줄이 소제목이면 [소제목, 본문]. 소제목 = 줄바꿈 앞의 40자 이하 줄, 마침표로 끝나지 않음
+ *  (서버가 만든 '2026년 11월 10일 분석 기준일에 빠진 종목\n…' 문단, 2026-11-16). */
+export function splitLeadTitle(t: string): [string, string] | null {
+  const i = t.indexOf("\n")
+  if (i <= 0) return null
+  const head = t.slice(0, i).trim()
+  return head.length <= 40 && !/[.。!?]$/.test(head) && !/\[[^\]]+\]/.test(head) ? [head, t.slice(i + 1)] : null
+}
+
+export function Paragraphs({ items, tone, tight }: { items: string[]; tone?: "lead"; tight?: boolean }) {
   return (
     <div className={tone === "lead" ? "space-y-4 text-[15.5px] leading-7 text-slate-800" : "space-y-3 text-[15px] leading-7 text-slate-700"}>
-      {items.map((t, i) => <p key={i} className="max-w-3xl whitespace-pre-line"><CitedText text={t} /></p>)}
+      {items.map((t, i) => {
+        const lt = tight ? splitLeadTitle(tidySpaces(t)) : null
+        return lt
+          ? <p key={i} className="max-w-3xl whitespace-pre-line"><strong className="block font-semibold text-slate-900">{lt[0]}</strong><CitedText text={lt[1]} tight /></p>
+          : <p key={i} className="max-w-3xl whitespace-pre-line"><CitedText text={t} tight={tight} /></p>
+      })}
     </div>
   )
 }
@@ -65,7 +106,65 @@ export function KpiCards({ kpis, ids }: { kpis: Kpi[]; ids: string[] }) {
 }
 
 /** 표: 25행이 넘으면 페이지로. 셀 값이 인용 ID 면 버튼으로. */
+/** 표 제목·열 이름 표시: 서버 「분석 중 확인한 점 (조건을 바꾸면 달라질 수 있는 것)」은 무엇을 담은 표인지 바로 보이게 바꾸고 설명 한 줄을 단다 (2026-11-14 사용자 요청). 나머지는 그대로. */
+// drop: 따로 두지 않을 열 — 값이 내용 문장에 이미 없으면 그 문장 끝에 괄호로 붙여 정보는 남긴다 (into: 붙일 열)
+const TABLE_VIEW: { test: RegExp; title: string; desc: string; cols: Record<string, string>; drop?: { col: string; into: string } }[] = [
+  { test: /^분석 중 확인한 점/, title: "분석하면서 처리한 일", desc: "종목을 고르고 자료를 모으는 동안 이렇게 처리했습니다. 조건을 바꾸면 달라질 수 있습니다.", cols: {}, drop: { col: "횟수·기간", into: "내용" } },
+]
+/** 열 하나를 빼고, 그 값이 붙일 열의 문장 안에 없으면(「-」 제외) 문장 끝에 「(값)」으로 붙인다. 열을 찾지 못하면 표를 그대로 둔다. */
+function dropColumn(b: TableBlock, col: string, into: string): TableBlock {
+  const drop = b.columns.find((c) => c.label_ko === col), keep = b.columns.find((c) => c.label_ko === into)
+  if (!drop || !keep) return b
+  return { ...b, columns: b.columns.filter((c) => c !== drop), rows: b.rows.map((r) => {
+    const v = String(r[drop.key] ?? "").trim(), text = String(r[keep.key] ?? "")
+    const extra = v && v !== "-" && v !== "–" && !v.split(/\s+/).every((part) => text.includes(part.replace(/~.*/, ""))) ? ` (${v})` : ""
+    return { ...r, [keep.key]: `${text}${extra}` }
+  }) }
+}
+
+/** 날짜·날짜 범위(앞에 「3회」가 붙을 수 있음)는 줄을 바꾸지 않는다: 「2025-11-10」이 「2025-11-」/「10」으로 꺾이지 않게. */
+const DATE_LIKE = /^(\d+회\s*)?\d{4}-\d{2}-\d{2}(\s*~\s*\d{4}-\d{2}-\d{2})?$/
+
+/** 주가 자료 점검 (서버 「가격 자료 품질 판정 (커버리지 0.95, 1거래일 결측만 채움)」): 결론 한 줄 + 쉬운 항목 이름. 점검 규칙은 제목 옆 ? 에.
+ *  값은 서버 그대로이고 단위만 붙인다. 모르는 항목은 서버 이름 그대로 둔다 (2026-11-14 사용자 요청). */
+const QUALITY_LABEL: Record<string, [string, string]> = {
+  "기대 거래일": ["백테스트 기간 거래일 수", "일"], "가격 자료가 충분한 종목 (비교지수 포함)": ["자료가 충분한 종목 (비교지수 포함)", "개"],
+  "제외 종목": ["자료가 부족해 뺀 종목", ""], "직전값으로 채운 종목(일수)": ["하루 빠진 주가를 전날 값으로 채운 종목 (일수)", ""], "가격 보정": ["주가 보정", ""],
+}
+function PriceQuality({ b }: { b: TableBlock }) {
+  const [kc, vc] = b.columns
+  const rows = b.rows.map((r) => ({ k: String(r[kc.key] ?? ""), v: String(r[vc.key] ?? "–") }))
+  const val = (k: string) => rows.find((r) => r.k === k)?.v ?? null
+  const none = (v: string | null) => v === null || v === "없음" || v === "-" || v === "–"
+  const excluded = val("제외 종목"), filled = val("직전값으로 채운 종목(일수)")
+  const nEx = none(excluded) ? 0 : (excluded!.match(/[^,\s:]+:/g) ?? [excluded]).length
+  const ok = !nEx && none(filled)
+  const minDays = Math.ceil(Number(val("기대 거래일")) * 0.95)
+  return (
+    <div className={card}>
+      <h3 className={`${h3} flex items-center gap-1`}>주가 자료 점검
+        <HelpTip label="주가 자료 점검">과거 성과 계산에 쓴 주가 자료가 빠진 날 없이 충분했는지 점검한 결과입니다. 백테스트 기간 거래일의 95% 이상{Number.isFinite(minDays) && minDays > 0 ? `(${minDays}일 이상)` : ""} 주가가 있는 종목만 씁니다. 주가가 하루만 빠진 날은 전날 값으로 채우고, 이틀 이상 빠지면 채우지 않습니다.</HelpTip>
+      </h3>
+      <p className={`mb-3 rounded-lg px-3 py-2 text-sm font-semibold ${ok ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}>
+        {ok ? "✓ 모든 종목의 주가 자료가 충분해, 빼거나 채운 종목 없이 계산했습니다." : `⚠ ${[nEx ? `자료가 부족해 ${nEx}개 종목을 뺐습니다` : null, none(filled) ? null : "하루 빠진 주가를 전날 값으로 채운 종목이 있습니다"].filter(Boolean).join(" · ")}.`}
+      </p>
+      <dl className="divide-y divide-slate-100 text-sm">
+        {rows.map((r) => { const m = QUALITY_LABEL[r.k]; const unit = m?.[1] && /^\d+$/.test(r.v) ? m[1] : ""; return (
+          <div key={r.k} className="flex items-start justify-between gap-4 px-2 py-2"><dt className="text-slate-700">{m?.[0] ?? r.k}</dt><dd className="text-right tabular-nums text-slate-900">{r.v}{unit}</dd></div>
+        ) })}
+      </dl>
+    </div>
+  )
+}
+
+/** 표 하나: 주가 자료 점검 표는 전용 모양으로, 나머지는 일반 표로. */
 export function DataTable({ b }: { b: TableBlock }) {
+  return b.title_ko && /^가격 자료 품질 판정/.test(b.title_ko) && b.columns.length === 2 ? <PriceQuality b={b} /> : <PlainTable b={b} />
+}
+
+function PlainTable({ b: raw }: { b: TableBlock }) {
+  const view = TABLE_VIEW.find((x) => raw.title_ko && x.test.test(raw.title_ko))
+  const b = view?.drop ? dropColumn(raw, view.drop.col, view.drop.into) : raw
   const [page, setPage] = useState(0)
   const ctx = useContext(CitationContext)
   const pages = Math.max(1, Math.ceil(b.rows.length / PAGE_ROWS))
@@ -73,25 +172,32 @@ export function DataTable({ b }: { b: TableBlock }) {
   const isCite = (v: unknown) => typeof v === "string" && /^(ev\d+|dc\d+|fin:\S+|calc:\S+)$/.test(v)
   return (
     <div className={card}>
-      {b.title_ko && <h3 className={h3}>{b.title_ko}</h3>}
+      {b.title_ko && (view
+        ? <h3 className={`${h3} flex items-center gap-1`}>{view.title}<HelpTip label={view.title}>{view.desc}</HelpTip></h3>  // 설명은 제목 옆 ? 안에 (2026-11-14 사용자 요청)
+        : <h3 className={h3}>{b.title_ko}</h3>)}
+      {b.subtitle_ko && <p className="-mt-1 mb-3 text-xs leading-5 text-slate-500">{b.subtitle_ko}</p>}
       <div className="overflow-x-auto">
         <table className={`w-full border-collapse text-sm ${b.columns.length > 4 ? "min-w-[720px]" : ""}`}>
           <thead>
             <tr className="border-b border-slate-200 text-left text-xs font-semibold text-slate-500">
-              {b.columns.map((c) => <th key={c.key} className="px-2 py-2 whitespace-nowrap">{c.label_ko}</th>)}
+              {/* 숫자 열(비율·금액·수)은 값처럼 오른쪽 정렬 — 열 이름이 아래 숫자와 같은 줄에 선다 */}
+              {b.columns.map((c) => <th key={c.key} className={`px-2 py-2 whitespace-nowrap ${c.format && !["text", "url"].includes(c.format) ? "text-right" : ""}`}>{view?.cols[c.label_ko] ?? c.label_ko}</th>)}
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => (
               <tr key={i} className="border-b border-slate-100 align-top">
                 {b.columns.map((c) => {
-                  const v = r[c.key]; const num = typeof v === "number"
+                  const v = r[c.key]; const num = typeof v === "number" || (!!c.format && !["text", "url"].includes(c.format))  // 숫자 열은 값이 비어(–) 있어도 오른쪽 정렬
                   if (c.format === "url") {
                     const href = typeof v === "string" && v ? v : null
                     return <td key={c.key} className="px-2 py-2">{href ? <a href={href} target="_blank" rel="noreferrer" className="text-blue-700 underline underline-offset-2">원문</a> : "–"}</td>
                   }
                   if (ctx && isCite(v)) return <td key={c.key} className="px-2 py-2"><button type="button" onClick={() => ctx.onCite(v as string)} className="font-mono text-xs text-blue-700 hover:underline" aria-label={`근거 ${v} 보기`}>[{ctx.label(v as string)}]</button></td>
-                  return <td key={c.key} className={`px-2 py-2 ${num ? "tabular-nums whitespace-nowrap text-right" : "text-slate-700"}`}>{c.format === "text" || c.format === undefined ? prefTerms(String(v ?? "–")) : fmt(v, c.format)}</td>
+                  // 「추출한 테마」의 「어떤 기업이 해당하는가」: 포함 / 넣지 않음을 나눠서 (2026-11-16 사용자 요청)
+                  if (c.key === "desc" && raw.title_ko === "추출한 테마" && typeof v === "string") return <td key={c.key} className="px-2 py-2 sm:min-w-[16rem]"><ThemeScope text={v} /></td>
+                  const dateLike = typeof v === "string" && DATE_LIKE.test(v.trim())
+                  return <td key={c.key} className={`px-2 py-2 ${num ? "tabular-nums whitespace-nowrap text-right" : dateLike ? "whitespace-nowrap tabular-nums text-slate-700" : "text-slate-700"}`}>{c.format === "text" || c.format === undefined ? prefTerms(String(v ?? "–")) : fmt(v, c.format)}</td>
                 })}
               </tr>
             ))}
@@ -170,9 +276,23 @@ export function LineSeries({ b, doc }: { b: LineBlock | AreaBlock; doc: ReportDo
       ))}
     </div>
   )
-  const footer = <p className="text-xs text-slate-600">{b.series_ids.filter((id) => on.includes(id)).map((id) => <span key={id} className="mr-4 inline-block">{doc.datasets.series[id]?.label_ko}: 마지막 값 <b className="tabular-nums">{fmt(last[id] as number, b.y_format)}</b></span>)}</p>
+  // 수익률 추이(선 그래프)의 아래 줄: 켜진 선마다 「색 · 이름 · 마지막 값 · 쉬운 설명 한 줄」 범례 (2026-11-15 사용자 요청: 칩 이름이 전문용어라 뜻을 알 수 없음,
+  // ? 아이콘은 부자연스러워 범례에 설명을 붙인다). 칩을 켜고 끄면 그 줄도 생기고 사라진다. 설명이 없는 항목(투입 원금 등)은 이름과 값만. 낙폭(면 그래프)은 그대로
+  const lastText = (v: unknown) => b.y_format === "index" && typeof v === "number" && Number.isFinite(v) ? `${v >= 100 ? "+" : "−"}${Math.abs(v - 100).toFixed(1)}%` : fmt(v as number, b.y_format)
+  const footer = b.type === "line" ? (
+    <ul aria-label="그래프 범례와 설명" className="space-y-2 text-sm sm:grid sm:grid-cols-[auto_auto_auto_minmax(0,1fr)] sm:items-baseline sm:gap-x-3 sm:gap-y-2 sm:space-y-0">
+      {b.series_ids.filter((id) => on.includes(id)).map((id) => (
+        <li key={id} className="flex flex-wrap items-baseline gap-x-2 sm:contents">
+          <span aria-hidden className="inline-block w-4 shrink-0 self-center" style={{ borderTop: `2px ${dash(id) ? "dashed" : "solid"} ${color(id)}` }} />
+          <span className="font-medium text-slate-800">{doc.datasets.series[id]?.label_ko ?? id}</span>
+          <b className="tabular-nums text-slate-900" title={b.y_format === "index" ? `시작 = 100 기준 ${fmt(last[id] as number, "index")}` : undefined}>{lastText(last[id])}</b>
+          <span className="basis-full pl-6 text-xs leading-5 text-slate-600 sm:basis-auto sm:pl-0 sm:text-[13px]">{strategyInfoOf(doc, id)?.short ?? ""}</span>
+        </li>
+      ))}
+    </ul>
+  ) : <p className="text-xs text-slate-600">{b.series_ids.filter((id) => on.includes(id)).map((id) => <span key={id} className="mr-4 inline-block">{doc.datasets.series[id]?.label_ko}: 마지막 값 <b className="tabular-nums">{fmt(last[id] as number, b.y_format)}</b></span>)}</p>
   return (
-    <ChartFrame title={b.title_ko} caption={caption} table={table} height={280} note={"note_ko" in b ? b.note_ko : undefined} controls={controls} footer={footer}>
+    <ChartFrame title={b.title_ko.replace(/^누적 수익률 \(시작 = 100\)/, "투자 가치 추이 (시작 = 100)")} caption={caption} table={table} height={280} note={"note_ko" in b ? b.note_ko : undefined} controls={controls} footer={footer}>
       <div className="h-full w-full">
         <ResponsiveContainer width="100%" height="100%">
           {b.type === "area" ? (
@@ -196,9 +316,14 @@ export function LineSeries({ b, doc }: { b: LineBlock | AreaBlock; doc: ReportDo
 }
 
 export function BarItems({ b }: { b: BarBlock }) {
+  // 종목별 수익 기여: 차트 없이 표만 (2026-11-15 사용자 요청). 기여가 큰 종목부터
+  if (/^종목별 수익 기여/.test(b.title_ko ?? "")) return <DataTable b={{ type: "table", title_ko: b.title_ko, columns: [{ key: "label", label_ko: "종목" }, { key: "value", label_ko: "수익 기여", format: b.format }], rows: [...b.items].sort((x, y) => y.value - x.value), note_ko: b.note_ko?.replace(/^막대를 모두 더하면/, "모두 더하면") }} />  // 표로 바뀌었으니 안내문의 「막대를」은 뺀다
   const table = { columns: [{ key: "label", label_ko: "항목" }, { key: "value", label_ko: "값", format: b.format }], rows: b.items }
+  // 「섹터 노출 (기간 평균 비중, 최소분산)」 → 「업종별 투자 비중 (최소분산, 백테스트 기간 평균)」 (2026-11-15 사용자 요청: 「노출」이 무슨 뜻인지 알기 어려움). 틀이 다르면 앞말만 바꾼다
+  const sector = /^섹터 노출 \(기간 평균 비중, (.+)\)$/.exec(b.title_ko ?? "")
+  const title = sector ? `업종별 투자 비중 (${sector[1]}, 백테스트 기간 평균)` : (b.title_ko ?? "").replace(/^섹터 노출/, "업종별 투자 비중")
   return (
-    <ChartFrame title={b.title_ko} caption={`${b.items.length}개 항목 · ${b.format === "pp" ? "%p" : "%"}`} table={table} height={Math.max(200, b.items.length * 26)} note={b.note_ko}>
+    <ChartFrame title={title} caption={`${b.items.length}개 항목 · ${b.format === "pp" ? "%p" : "%"}`} table={table} height={Math.max(200, b.items.length * 26)} note={b.note_ko}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={b.items} layout="vertical" margin={{ left: 20 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" /><XAxis type="number" tickFormatter={(v: number) => `${(v * 100).toFixed(1)}`} tick={{ fontSize: 11 }} /><YAxis type="category" dataKey="label" width={60} tick={{ fontSize: 11 }} />
@@ -211,17 +336,21 @@ export function BarItems({ b }: { b: BarBlock }) {
 }
 
 /** 선정 과정: 단계 번호(「1단계」…) + 막대 + 종목 수 + 단계 이름. 아래에 「제외된 종목」과 「재선정」이 무엇인지 짧게 구분한다. */
+/** 괄호와 그 안의 글자를 모두 지운다 (괄호 안에 괄호가 있어도): 「선정 지표(모멘텀(최근 12개월 수익률)) 계산 가능」 → 「선정 지표 계산 가능」. */
+export const dropParens = (t: string) => { let x = t, prev = ""; while (x !== prev) { prev = x; x = x.replace(/\s?\([^()]*\)/g, "") } return x.trim() }
+
+/** 선정 과정: 단계별 남은 종목 수. 단계 이름의 괄호 설명은 빼고 짧게 (2026-11-14 사용자 요청). 선정 지표 설명은 제목 옆 ? 에. */
 export function Funnel({ b }: { b: FunnelBlock }) {
   const max = Math.max(...b.items.map((x) => x.count))
   return (
     <div className={card}>
-      <h3 className={h3}>선정 과정</h3>
+      <h3 className={`${h3} flex items-center gap-1`}>선정 과정{b.help_ko && <HelpTip label="선정 지표">{b.help_ko}</HelpTip>}</h3>
       <ol className="space-y-2" aria-label="선정 단계">
         {b.items.map((x, i) => (
           <li key={i} className="flex items-center gap-3 text-sm">
             <span className="w-12 shrink-0 whitespace-nowrap text-right text-xs font-semibold text-slate-500">{i + 1}단계</span>
             <div className="h-6 shrink-0 rounded bg-blue-600/80" style={{ width: `${Math.max(4, (x.count / max) * 100)}%`, maxWidth: "45%" }} />
-            <span className="shrink-0 tabular-nums font-semibold">{x.count}</span><span className="min-w-0 text-slate-700">{x.label_ko}</span>
+            <span className="shrink-0 tabular-nums font-semibold">{x.count}</span><span className="min-w-0 text-slate-700">{dropParens(x.label_ko)}</span>
           </li>
         ))}
       </ol>
@@ -232,25 +361,42 @@ export function Funnel({ b }: { b: FunnelBlock }) {
 export function Callout({ tone, title, text }: { tone: "info" | "caution"; title: string; text: string }) {
   return (
     <div className={`rounded-xl border p-4 text-sm leading-6 ${tone === "caution" ? "border-amber-300 bg-amber-50 text-amber-900" : "border-slate-200 bg-slate-50 text-slate-700"}`}>
-      <div className="mb-1 font-semibold">{title}</div><div className="whitespace-pre-line"><CitedText text={text} /></div>
+      <div className="mb-1 font-semibold">{title}</div><div className="whitespace-pre-line"><CitedText text={title === "백테스트 가정" ? politeAssumptions(text) : text} /></div>
     </div>
   )
 }
 
-export function Cards({ b }: { b: CardsBlock }) {
+/** 카드 묶음 제목 표시: 뉴스 의견(Black-Litterman) 카드 묶음은 쉬운 말(전문용어) 순서로 — 시작일·분석 기준일을 제목에서 구분한다. 나머지는 그대로. */
+const cardsTitle = (t: string) => {
+  if (/^시작일 뉴스 뷰 Black-Litterman 포트폴리오$/.test(t)) return "뉴스로 조정한 비중 (백테스트 시작일 · Black-Litterman)"
+  const m = /^현재 구성 BL (\d+): .+$/.exec(t)  // 분석 기준일 구성: 주제는 카드 안 제목에 그대로 있다
+  if (m) return `뉴스로 조정한 비중 (분석 기준일 · Black-Litterman)${m[1] !== "1" ? ` · 구성 ${m[1]}` : ""}`
+  return t
+}
+
+/** between: 첫 번째 뉴스 의견 카드의 「뉴스로 만든 투자 의견」과 「숫자로 보기」 사이에 넣을 내용 (없으면 예전 그대로). */
+export function Cards({ b, between }: { b: CardsBlock; between?: React.ReactNode }) {
   const ctx = useContext(CitationContext)
   const cite = (v: string) => v.split(/[,\s]+/).filter((x) => /^(ev\d+|dc\d+|fin:\S+|calc:\S+)$/.test(x))
   return (
     <div>
-      {b.title_ko && <h3 className={h3}>{b.title_ko}</h3>}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        {b.items.map((c, i) => (
-          <div key={i} className={`${card} min-w-0`}>
-            <div className="font-semibold text-slate-900">{c.title_ko}</div>
-            <p className="mt-2 whitespace-pre-line break-words text-sm leading-6 text-slate-700"><CitedText text={c.text_ko} /></p>
-            {c.meta.length > 0 && <dl className="mt-3 space-y-1 text-xs text-slate-600">{c.meta.map((m) => { const ids = m.label_ko === "근거" && ctx ? cite(m.value) : []; return <div key={m.label_ko} className="flex gap-2"><dt className="shrink-0 font-medium">{m.label_ko}</dt><dd>{ids.length ? ids.map((id) => <button key={id} type="button" onClick={() => ctx!.onCite(id)} className="mr-1 font-bold text-blue-700 hover:underline" aria-label={`근거 ${id} 보기`}>[{ctx!.label(id)}]</button>) : m.value}</dd></div> })}</dl>}
-          </div>
-        ))}
+      {b.title_ko && <h3 className={h3}>{cardsTitle(b.title_ko)}</h3>}
+      {/* 두 칸 격자는 카드가 2개 이상일 때만 — 1개면 왼쪽 칸만 차지해 오른쪽이 비어 보이므로 전체 폭을 쓴다 */}
+      <div className={`grid grid-cols-1 gap-3 ${b.items.length > 1 ? "md:grid-cols-2" : ""}`}>
+        {b.items.map((c, i) => {
+          const metaRow = (m: (typeof c.meta)[number]) => { const ids = m.label_ko === "근거" && ctx ? cite(m.value) : []; return <div key={m.label_ko} className="flex gap-2"><dt className="shrink-0 font-medium">{m.label_ko}</dt><dd>{ids.length ? ids.map((id) => <button key={id} type="button" onClick={() => ctx!.onCite(id)} className="mr-1 font-bold text-blue-700 hover:underline" aria-label={`근거 ${id} 보기`}>[{ctx!.label(id)}]</button>) : m.value}</dd></div> }
+          const pv = parseViewCard(c)  // 뉴스 투자 의견 카드면 종목·의견·비중 변화로 나눠 보여 준다 (틀이 다르면 원문 그대로)
+          return (
+            <div key={i} className={`${card} min-w-0`}>
+              <div className="font-semibold text-slate-900">{c.title_ko}</div>
+              {pv ? <ViewCardBody p={pv} text={(t) => <CitedText text={t} />} evidence={c.meta.filter((m) => m.label_ko === "근거").map(metaRow)} between={i === 0 ? between : undefined} /> : <>
+                <p className="mt-2 whitespace-pre-line break-words text-sm leading-6 text-slate-700"><CitedText text={c.text_ko} /></p>
+                {i === 0 && between ? <div className="mt-3">{between}</div> : null}
+                {c.meta.length > 0 && <dl className="mt-3 space-y-1 text-xs text-slate-600">{c.meta.map(metaRow)}</dl>}
+              </>}
+            </div>
+          )
+        })}
       </div>
     </div>
   )

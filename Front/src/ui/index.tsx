@@ -175,7 +175,7 @@ export function Disclosure({ title, summary, open: openProp, defaultOpen = false
   return (
     <div className={`rounded-xl border border-slate-200 bg-white ${className}`}>
       <button type="button" aria-expanded={open} aria-controls={id} onClick={toggle} className={`flex w-full items-center justify-between gap-3 text-left ${size === "sm" ? "px-4 py-2.5 text-sm" : "px-5 py-3.5"} font-semibold text-slate-800 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-xl`}>
-        <span className="min-w-0 truncate">{title}</span>
+        <span className="min-w-0 truncate font-semibold">{title}</span>{/* 전역 CSS 「button { font: inherit }」가 버튼의 font-semibold 를 덮어써서 제목 글자에 직접 준다 */}
         <span className="flex shrink-0 items-center gap-3 text-xs font-normal text-slate-500">{summary}<ChevronDown className={`size-4 transition-transform ${open ? "rotate-180" : ""}`} /></span>
       </button>
       <div id={id} hidden={!open} className={open ? `border-t border-slate-100 ${size === "sm" ? "p-4" : "p-5"}` : ""}>{mounted ? children : null}</div>
