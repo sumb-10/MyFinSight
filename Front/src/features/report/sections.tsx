@@ -13,21 +13,21 @@ import { glossaryOf, HelpTip, Term, TermIndex, termsInText, type TermItem } from
 import { SubPart } from "./SubPart"
 import { buildFlowSteps } from "./buildFlow"
 import { ThemeScope } from "./blocks/ThemeScope"
-import { compareRowOf, MockTag, proposed, reasonsOf, strategyInfoOf } from "./proposedView"
+import { chosenDescOf, compareRowOf, MockTag, proposed, reasonsOf, strategyInfoOf } from "./proposedView"
 import { analysisRisk, benchName, idByLabel, isShortWindow, shortWindowNote } from "./wording"
 
 // 「자세한 분석 보기」의 섹션 본문. 섹션마다 위에 핵심 요약(서버 summary·블록에서 고른 값)을 두고, 서버 블록은 순서대로 그리되
 // 긴 문단·큰 비교표는 접어서 둔다. 어떤 블록도 버리지 않는다 — 분류하지 못한 블록은 원래 순서대로 끝에 그린다.
 
 const PROSE: Record<string, string> = {
-  verdict: "선택 근거 자세히 보기", construction: "비중 결정 설명", companies: "선정 과정 설명", market: "시장 분석 원문",
+  verdict: "선택 근거 자세히 보기", construction: "포트폴리오 비중 결정 설명", companies: "선정 과정 설명", market: "시장 분석 원문",
   performance: "성과 해석", assumptions: "분석의 전제", references: "자세한 설명",
 }
 
 /** 한 섹션에 문단 묶음이 둘 이상이면 내용(서버 src: 14a 해석 · 14b 서술 · 14c 시장 분석)에 맞는 다른 이름을 쓴다. 같은 이름이 반복되지 않게. */
 const PROSE_BY_SRC: Record<string, Record<string, string>> = {
   market: { "14b": "아이디어 해석", "14c": "주요 뉴스와 공시" },
-  construction: { "14b": "비중 결정 설명", "14a": "뉴스 반영 해석" },
+  construction: { "14b": "포트폴리오 비중 결정 설명", "14a": "뉴스 반영 해석" },
 }
 const proseLabel = (sec: string, bs: Block[]) => (bs[0]?.src && PROSE_BY_SRC[sec]?.[bs[0].src]) || PROSE[sec] || "자세한 설명"
 
@@ -77,7 +77,22 @@ function ProseFold({ label, blocks, lead, terms, tight, narrow }: { label: strin
  *  서버 자료는 그대로 읽는다(저장된 리포트도 같은 이름으로 보인다). */
 export function cardsView(b: CardsBlock): CardsBlock {
   if (!/^다음에 검토할 수 있는 선택지/.test(b.title_ko ?? "")) return b
-  return { ...b, title_ko: "다음 분석에서 바꿔 볼 조건", items: b.items.map((c) => ({ ...c, title_ko: c.title_ko.replace(/^선택지 (\d+)$/, "조건 $1") })) }
+  return { ...b, title_ko: "다음 분석에서 바꿔 볼 조건", items: b.items.map((c) => {
+    const m = c.title_ko.match(/^선택지 (\d+)$/)
+    return m ? { ...c, title_ko: actionTitle(c.text_ko) ?? `조건 ${m[1]}` } : c
+  }) }
+}
+
+/** 제목이 번호뿐인 카드(2026-11-19 이전 리포트)의 제목을 본문 첫 구절로: 제목만 읽어도 어떤 조건인지 알 수 있게 (2026-11-19 사용자 요청).
+ *  「다음 분석에서 백테스트 기간을 3년으로 설정해 보면, …」 → 「백테스트 기간을 3년으로 설정해 보기」,
+ *  「A와 B를 필수 포함 목록에서 빼고, …」 → 「A와 B를 필수 포함에서 빼고 다시 고르기」. 알아볼 수 없으면 null(번호 제목). */
+export function actionTitle(text: string): string | null {
+  const t = text.replace(/\*\*/g, "").replace(/^\[목업\]\s*/, "").trim()
+  const must = t.match(/^(.{1,60}?[을를]) 필수 포함 (?:목록|종목)?에서 빼/)
+  if (must) return `${must[1]} 필수 포함에서 빼고 다시 고르기`
+  const m = t.match(/^(?:다음 분석에서\s+)?([^,.]{4,60}?)면,/)
+  if (!m || /려$/.test(m[1])) return null
+  return `${m[1].replace(/으$/, "")}기`
 }
 
 /** 서버 블록을 순서대로: 묶음·문단·큰 비교표·긴 카드 묶음은 접는다 (묶음은 서버의 group_open 과 관계없이 접힌 채 — 성과의 「검증 상세」만 예외). */
@@ -94,11 +109,11 @@ export function Blocks({ blocks, doc, sec }: { blocks: Block[]; doc: ReportDoc; 
         const rich = e.kind === "prose" && (sec === "verdict" || (sec === "construction" && e.blocks[0]?.src === "14b" && !e.blocks[0]?.group_ko) || (sec === "market" && e.blocks[0]?.src === "14c") || (sec === "assumptions" && e.blocks[0]?.src === "14b"))
         if (e.kind === "prose") return <ProseFold key={i} label={nth(i)} blocks={e.blocks} tight={rich} terms={rich ? termsInText(glossaryOf(doc), e.blocks.flatMap((b) => (b.type === "paragraphs" ? b.items : []))) : undefined} />
         const b = e.b
-        if (b.type === "weights_compare") return <Disclosure key={i} title="전략별 비중 비교표" summary={`${b.columns.length}개 전략 · ${b.rows.length}종목`}><RenderBlock b={b} doc={doc} /></Disclosure>
+        if (b.type === "weights_compare") return <Disclosure key={i} title="전략별 포트폴리오 비중 비교표" summary={`${b.columns.length}개 전략 · ${b.rows.length}종목`}><RenderBlock b={b} doc={doc} /></Disclosure>
         // 카드 묶음을 접을 때는 접이식 제목만 — 펼쳤을 때 같은 제목이 안에서 한 번 더 나오지 않게 (2026-11-16 사용자 요청)
         if (b.type === "cards" && (b.items.length >= 3 || textLen(b) > 600)) { const cb = cardsView(b); return <Disclosure key={i} title={cb.title_ko ?? "자세히 보기"} summary={`${b.items.length}개`}><Cards b={{ ...cb, title_ko: undefined }} /></Disclosure> }
         if (b.type === "cards") return <RenderBlock key={i} b={cardsView(b)} doc={doc} />
-        if (b.type === "bar" && sec === "construction" && /기준 비중 대비 변화$/.test(b.title_ko ?? "")) return <Disclosure key={i} title="비중 변화 그래프" summary={b.title_ko?.replace(/: 기준 비중 대비 변화$/, "")}><RenderBlock b={b} doc={doc} /></Disclosure>  // 위 뉴스 의견 카드의 비중 변화를 그래프로 다시 그린 것이라 접어 둔다
+        if (b.type === "bar" && sec === "construction" && /기준 비중 대비 변화$/.test(b.title_ko ?? "")) return <Disclosure key={i} title="포트폴리오 비중 변화 그래프" summary={b.title_ko?.replace(/: 기준 비중 대비 변화$/, "")}><RenderBlock b={b} doc={doc} /></Disclosure>  // 위 뉴스 의견 카드의 비중 변화를 그래프로 다시 그린 것이라 접어 둔다
         if (isCompareTable(b)) return <Disclosure key={i} title="전체 전략 비교표" summary={`${b.rows.length}개`}><StrategyTable doc={doc} t={b} /></Disclosure>
         return <RenderBlock key={i} b={b} doc={doc} />
       })}
@@ -135,7 +150,7 @@ function riskRowsKo(b: Block, doc: ReportDoc): Block {
 }
 
 /** 제외 이유 코드(서버 m3 screen)를 한국어로 보여 준다. 코드는 괄호로 남긴다. 모르는 코드는 그대로. */
-const REJECT_KO: Record<string, string> = { metric_missing: "선정 지표를 계산할 자료 없음", rank_beyond_n: "선정 지표 순위가 선정 개수 밖", weight_capacity: "비중 한도 안에 담을 수 없음" }
+const REJECT_KO: Record<string, string> = { metric_missing: "선정 지표를 계산할 자료 없음", rank_beyond_n: "선정 지표 순위가 선정 개수 밖", weight_capacity: "포트폴리오 비중 한도 안에 담을 수 없음" }
 function rejectKo(b: Block, doc?: ReportDoc): Block {
   if (b.type !== "table" || !b.columns.some((c) => c.key === "reason") || !b.columns.some((c) => c.key === "ticker")) return b
   const names = proposed(doc)?.structured?.exclusion_reasons ?? REJECT_KO  // 서버가 이름을 주면(제안 계약) 그것을 쓴다
@@ -210,6 +225,12 @@ function VerdictResult({ sm }: { sm: NonNullable<ReportDoc["summary"]> }) {
   return <span className="text-sm text-slate-700">선택 전략: <b className="font-semibold text-slate-900">{sm.verdict.chosen_label_ko}</b></span>
 }
 
+/** 선택 전략 설명 한 줄 (낙폭 맞춤안이면 어떤 구성인지, 2026-11-20 사용자 요청: 「이 전략을 고른 이유」 목록이 아니라 선택 전략에 둔다). */
+function ChosenDesc({ doc }: { doc: ReportDoc }) {
+  const d = chosenDescOf(doc)
+  return d ? <span className="mt-1 block text-sm leading-6 text-slate-600" data-testid="chosen-desc">{d}</span> : null
+}
+
 function VerdictWhy({ doc }: { doc: ReportDoc }) {
   const sm = doc.summary
   if (!sm) return null
@@ -217,7 +238,7 @@ function VerdictWhy({ doc }: { doc: ReportDoc }) {
   const reasons = reasonsOf(doc, o.short)  // 구조화된 판단 이유(제안 계약)가 있으면 그것, 없으면 서버가 " · " 로 이어 붙인 문장을 틀대로 읽는다
   return (
     <>
-      <SubPart title="이 전략을 고른 이유" desc={<span className="mt-1 inline-flex flex-wrap items-center gap-x-2 gap-y-1"><VerdictResult sm={sm} />{proposed(doc)?.structured?.reasons?.length ? <MockTag /> : null}</span>}>
+      <SubPart title="이 전략을 고른 이유" desc={<><span className="mt-1 inline-flex flex-wrap items-center gap-x-2 gap-y-1"><VerdictResult sm={sm} />{proposed(doc)?.structured?.reasons?.length ? <MockTag /> : null}</span><ChosenDesc doc={doc} /></>}>
         {reasons.length ? (
           <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200" aria-label="이 전략을 고른 이유">
             {reasons.map(({ t, r }, i) => (
@@ -242,8 +263,8 @@ function VerdictWhy({ doc }: { doc: ReportDoc }) {
 function BuildFlow({ doc }: { doc: ReportDoc }) {
   const steps = buildFlowSteps(doc)  // 단계별 짧은 설명은 기존 리포트 자료로 만든다 (buildFlow.ts, 2026-11-16 사용자 요청)
   return (
-    <SubPart title="비중이 정해진 과정">
-      <ol className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4" aria-label="비중 결정 과정">
+    <SubPart title="포트폴리오 비중이 정해진 과정">
+      <ol className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4" aria-label="포트폴리오 비중 결정 과정">
         {steps.map((x, i) => (
           <li key={x.t} className={`relative rounded-xl border p-3 ${x.off ? "border-dashed border-slate-300 bg-white text-slate-500" : "border-slate-200 bg-slate-50"}`}>
             {/* 원 안 숫자는 가로·세로 가운데 (inline-grid + place-items-center + leading-none, 원 크기는 그대로 size-5).
@@ -268,7 +289,7 @@ function ChosenWeights({ doc, children }: { doc: ReportDoc; children?: React.Rea
   if (!wc) return children ? <SubPart title="백테스트 시작일의 기준 비중과 선택 전략 비중">{children}</SubPart> : null
   const col = wc.columns.find((c) => c.id === chosen)
   const base = wc.columns.find((c) => c.id === wc.baseline_id)
-  if (!col || !base) return <SubPart title="백테스트 시작일의 기준 비중과 선택 전략 비중">{children || <p className="text-sm text-slate-600">선택 전략의 비중은 개요의 종목 구성과 투자 금액, 리밸런싱 기록에 있습니다.</p>}</SubPart>
+  if (!col || !base) return <SubPart title="백테스트 시작일의 기준 비중과 선택 전략 비중">{children || <p className="text-sm text-slate-600">선택 전략의 포트폴리오 비중은 개요의 종목 구성과 투자 금액, 리밸런싱 기록에 있습니다.</p>}</SubPart>
   const same = col.id === base.id
   const rows = [...wc.rows].sort((a, b) => (b.weights[col.id] ?? 0) - (a.weights[col.id] ?? 0))
   // 묶은 세로 막대 (2026-11-15 사용자 요청: 점 그래프 대신 비교가 바로 보이는 다른 그래프로). 종목마다 기준(회색)·선택(파랑) 막대를 같은 바닥선에 나란히,
@@ -289,14 +310,14 @@ function ChosenWeights({ doc, children }: { doc: ReportDoc; children?: React.Rea
   return (
     <SubPart title="백테스트 시작일의 기준 비중과 선택 전략 비중" desc={wc !== wc0 ? <MockTag /> : undefined}>
       {same && <p className="text-xs text-slate-600">선택 전략이 기준 비중({base.label_ko})과 같습니다.</p>}{/* 예전에는 파트 설명줄이 「선택 전략 = 기준 비중」을 알렸다 — 설명줄을 질문으로 바꿔 범례 자리로 (2026-11-16) */}
-      {!same && <p className="flex flex-wrap gap-4 text-xs text-slate-600"><span className="inline-flex items-center gap-1.5"><i className="inline-block size-3 rounded-sm bg-slate-300" />기준 비중 ({base.label_ko})</span><span className="inline-flex items-center gap-1.5"><i className="inline-block size-3 rounded-sm bg-blue-600" />선택 전략 비중 ({col.label_ko})</span><span className="text-slate-500">막대 위 숫자 = 비중(%)</span></p>}
+      {!same && <p className="flex flex-wrap gap-4 text-xs text-slate-600"><span className="inline-flex items-center gap-1.5"><i className="inline-block size-3 rounded-sm bg-slate-300" />기준 비중 ({base.label_ko})</span><span className="inline-flex items-center gap-1.5"><i className="inline-block size-3 rounded-sm bg-blue-600" />선택 전략 비중 ({col.label_ko})</span><span className="text-slate-500">막대 위 숫자 = 포트폴리오 비중(%)</span></p>}
       {/* 좁은 화면은 종목마다 최소 폭을 지키고 옆으로 밀어 본다 (티커·숫자가 잘리지 않게) */}
       <div className="overflow-x-auto"><div className="flex gap-2 pt-4" style={{ minWidth: `${2.5 + items.length * (same ? 2.5 : 3.5)}rem` }}>
         <div aria-hidden className={`relative ${H} w-8 shrink-0 text-right text-[11px] tabular-nums text-slate-500`}>{ticks.map((t) => <span key={t} className="absolute right-0 translate-y-1/2" style={{ bottom: h(t) }}>{Math.round(t * 100)}%</span>)}</div>
         <div className="min-w-0 flex-1">
           <div className={`relative ${H}`}>
             <span aria-hidden className="pointer-events-none absolute inset-0">{ticks.map((t, i) => <span key={t} className={`absolute inset-x-0 h-px ${i === 0 ? "bg-slate-300" : "bg-slate-100"}`} style={{ bottom: h(t) }} />)}</span>
-            <ul aria-label="종목별 비중 비교" className="relative flex h-full items-end">
+            <ul aria-label="종목별 포트폴리오 비중 비교" className="relative flex h-full items-end">
               {items.map((x) => (
                 <li key={x.key} aria-label={same ? `${x.label} ${fmt(x.a, "pct1")}` : `${x.label} 기준 ${fmt(x.b, "pct1")}, 선택 ${fmt(x.a, "pct1")}`} title={same ? `${x.label} ${fmt(x.a, "pct1")}` : `${x.label} · 기준 ${fmt(x.b, "pct1")} · 선택 ${fmt(x.a, "pct1")}`} className="flex h-full min-w-0 flex-1 items-end justify-center gap-0.5 px-0.5 sm:gap-1 sm:px-1.5">
                   {!same && bar(x.b, "bg-slate-300", "text-[11px] text-slate-500")}
@@ -320,14 +341,14 @@ function startAmount(b: Block, doc: ReportDoc): Block {
   const m = b.type === "table" ? START_AMOUNT.exec(b.title_ko ?? "") : null
   if (!m || b.type !== "table") return b
   const start = doc.header.backtest_period?.as_of ?? doc.header.backtest_period?.start  // 첫 투자일 = 첫 거래일(백테스트 시작일). start 는 요청한 기간 시작이라 휴일일 수 있다 (2022-11-05 토요일)
-  return { ...b, title_ko: `백테스트 시작일 투자 금액 (${m[1]})`, subtitle_ko: `백테스트를 시작한 날${start ? `(${start})` : ""} 첫 투자금 ${m[2]}를 선택 전략(${m[1]}) 비중대로 종목마다 나눈 금액입니다.${m[3] ? " 원화는 그날 환율로 계산했습니다." : ""} 이후 매달 적립한 금액과 리밸런싱은 아래 「과거 비중 조정 기록」에 있습니다.` }
+  return { ...b, title_ko: `백테스트 시작일 투자 금액 (${m[1]})`, subtitle_ko: `백테스트를 시작한 날${start ? `(${start})` : ""} 첫 투자금 ${m[2]}를 선택 전략(${m[1]}) 포트폴리오 비중대로 종목마다 나눈 금액입니다.${m[3] ? " 원화는 그날 환율로 계산했습니다." : ""} 이후 매달 적립한 금액과 리밸런싱은 아래 「과거 비중 조정 기록」에 있습니다.` }
 }
 
 /** 「분석 기준일의 종목과 비중」 파트 이름: '분석 기준일' 이라는 말 대신 그 날짜로 (2026-11-16 사용자 요청).
  *  연도까지 쓴다 — 백테스트 시작일과 월·일이 같은 경우가 많다(1·3년 백테스트). 날짜가 없으면 예전 이름. */
 export function nowTitle(doc: Pick<ReportDoc, "header">): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(doc.header.selection_as_of ?? "")
-  return m ? `${m[1]}년 ${Number(m[2])}월 ${Number(m[3])}일의 종목과 비중` : "분석 기준일의 종목과 비중"
+  return m ? `${m[1]}년 ${Number(m[2])}월 ${Number(m[3])}일의 종목과 포트폴리오 비중` : "분석한 날의 종목과 포트폴리오 비중"
 }
 
 /** 3. 포트폴리오 구성 본문 (2026-11-14 사용자 요청: 파트가 무엇을 뜻하는지 헷갈림 → 질문 하나에 파트 하나).
@@ -362,13 +383,13 @@ function ConstructionBody({ s, doc }: { s: Section; doc: ReportDoc }) {
       {now.length > 0 && <SubPart title={nowTitle(doc)}><NowParts now={now} nowProse={nowProse} nowNote={nowNote} doc={doc} /></SubPart>}{/* 예전 「분석 기준일의 현재 구성」 묶음 안에서처럼 접지 않고 그대로 그린다 (카드마다 접힘이 들쭉날쭉하지 않게) */}
       <ChosenWeights doc={doc}>{amount.length > 0 ? <Blocks blocks={amount} doc={doc} sec={s.id} /> : null}</ChosenWeights>
       {compare.length > 0 && <SubPart title="전략별 투자 비중"><Blocks blocks={compare} doc={doc} sec={s.id} /></SubPart>}
-      {bl.length > 0 && <SubPart title="뉴스를 반영한 비중" badge={chosenBl ? pill("선택 전략", "bg-blue-600 text-white") : pill("비교용 구성", "bg-slate-100 text-slate-600")}>
+      {bl.length > 0 && <SubPart title="뉴스를 반영한 포트폴리오 비중" badge={chosenBl ? pill("선택 전략", "bg-blue-600 text-white") : pill("비교용 구성", "bg-slate-100 text-slate-600")}>
         {/* 카드 묶음 제목 「뉴스로 조정한 비중 (백테스트 시작일 · Black-Litterman)」은 파트 제목과 겹쳐 뺀다 (2026-11-16 사용자 요청). 카드가 많으면 예전처럼 접되 제목은 쉬운 말로 */}
         {bl.map((b, i) => b.type === "cards"
           ? (b.items.length >= 3 ? <Disclosure key={i} title="뉴스로 만든 구성" summary={`${b.items.length}개`}><Cards b={{ ...b, title_ko: undefined }} /></Disclosure> : <Cards key={i} b={{ ...b, title_ko: undefined }} />)
           : <RenderBlock key={i} b={b} doc={doc} />)}
       </SubPart>}
-      {runs.length > 0 && <SubPart title="과거 비중 조정 기록"><Blocks blocks={runs} doc={doc} sec={s.id} /></SubPart>}
+      {runs.length > 0 && <SubPart title="과거 포트폴리오 비중 조정 기록"><Blocks blocks={runs} doc={doc} sec={s.id} /></SubPart>}
       {rest.length > 0 && <SubPart title="그 밖의 내용"><Blocks blocks={rest} doc={doc} sec={s.id} /></SubPart>}
     </>
   )
@@ -382,7 +403,7 @@ function ConstructionBody({ s, doc }: { s: Section; doc: ReportDoc }) {
 function NowParts({ now, nowProse, nowNote, doc }: { now: Block[]; nowProse: Block[]; nowNote: Block[]; doc: ReportDoc }) {
   // 「계산 기준」 안내 상자(뉴스·공시 기간·건수)는 빼고, 기간·건수는 아래 본문에 한 번만 (2026-11-16 사용자 요청)
   // 본문에 나온 용어·공백 정리도 다른 본문처럼 (2026-11-16 사용자 요청)
-  const fold = nowProse.length > 0 ? <ProseFold label="종목·비중을 정한 근거" blocks={nowProse} tight narrow terms={termsInText(glossaryOf(doc), nowProse.flatMap((b) => (b.type === "paragraphs" ? b.items : [])))} /> : null
+  const fold = nowProse.length > 0 ? <ProseFold label="종목·포트폴리오 비중을 정한 근거" blocks={nowProse} tight narrow terms={termsInText(glossaryOf(doc), nowProse.flatMap((b) => (b.type === "paragraphs" ? b.items : [])))} /> : null
   const rest = now.filter((b) => b.type !== "paragraphs" && !nowNote.includes(b))
   const news = rest.filter((b): b is CardsBlock => b.type === "cards" && /^현재 구성 BL \d+:/.test(b.title_ko ?? ""))
   const rec = rest.filter((b) => b.type === "donut" || (b.type === "table" && (b.title_ko ?? "").startsWith("배분 금액")))
@@ -464,14 +485,23 @@ const isCompareTable = (b: Block): b is TableBlock => b.type === "table" && b.co
    예전 리포트의 두 표(검증 규칙 · 전체 포트폴리오 검증 요약)는 규칙 번호·수준 열 없이 새 이름으로 보여 준다. 새 리포트는 서버가 새 표를 준다. */
 const VAL_GROUP = "검증 상세", VAL_TITLE = "조건별 근거 보기"
 const RULE_PLAIN: Record<string, string> = { R1: "최대낙폭과 허용 한도", R1b: "비교지수와 최대낙폭 비교", R2: "목표 수익률 달성 여부", R3: "비교지수와 수익률 비교", R7: "변동성 기준 충족 여부", R4b: "조정일 사이 종목 비중 변화", R5b: "조정일 사이 업종 비중 변화", R9: "주식과 현금 비중" }
+/** 판정 없이 값만 보여 주는 참고 항목의 결과 이름 (2026-11-20 사용자 요청: '측정 결과' 는 뜻이 잘 드러나지 않음). 서버 validation_text.MEASURED 와 같은 말. */
+const MEASURED = "참고(판정 없음)"
+const MEASURED_NOTE_TAIL = "참고(판정 없음)는 기준 충족 여부를 판정하지 않고 값만 알려 주는 항목입니다."
+const MEASURED_NOTE = `판정 보류는 평가 기간이 짧아 기준 충족 여부를 판단하지 않은 항목, ${MEASURED_NOTE_TAIL}`
 export function validationTableView(b: Block, chosenLabel?: string | null): Block {
   if (b.type !== "table") return b
   const t = b.title_ko ?? ""
   if (/^검증 규칙 \(/.test(t) && b.columns.some((c) => c.key === "rule")) {
-    const res = (r: Record<string, unknown>) => { const st = String(r.status ?? ""); if (st === "참고") return ["R2", "R7"].includes(String(r.rule)) && /vs|목표/.test(String(r.msg ?? "")) && /창이 짧아|참고만/.test(String(r.msg ?? "")) ? "판정 보류" : "측정 결과"; return st === "통과" ? "충족" : st }
-    return { ...b, title_ko: t.replace(/^검증 규칙/, "선택 전략의 조건별 결과"), note_ko: "판정 보류는 평가 기간이 짧아 기준 충족 여부를 판단하지 않은 항목, 측정 결과는 기준 충족 여부를 따지지 않고 값을 알려 주는 항목입니다.",
+    const res = (r: Record<string, unknown>) => { const st = String(r.status ?? ""); if (st === "참고") return ["R2", "R7"].includes(String(r.rule)) && /vs|목표/.test(String(r.msg ?? "")) && /창이 짧아|참고만/.test(String(r.msg ?? "")) ? "판정 보류" : MEASURED; return st === "통과" ? "충족" : st }
+    return { ...b, title_ko: t.replace(/^검증 규칙/, "선택 전략의 조건별 결과"), note_ko: MEASURED_NOTE,
       columns: [{ key: "name", label_ko: "점검 항목", format: "text" }, { key: "msg", label_ko: "기준과 측정값", format: "text" }, { key: "status", label_ko: "결과", format: "text" }] as TableBlock["columns"],
       rows: b.rows.map((r) => ({ ...r, name: RULE_PLAIN[String(r.rule)] ?? r.name, status: res(r) })) }
+  }
+  // 새 리포트(서버가 준 표)와 덧씌운 글의 표: 예전 이름 '측정 결과' → '참고(판정 없음)' (2026-11-20 사용자 요청)
+  if (/^선택 전략의 조건별 결과/.test(t) && b.rows.some((r) => r.status === "측정 결과")) {
+    return { ...b, note_ko: b.note_ko ? b.note_ko.replace(/측정 결과는 기준 충족 여부를 따지지 않고 값을 알려 주는 항목입니다\.?/, MEASURED_NOTE_TAIL) : MEASURED_NOTE,
+      rows: b.rows.map((r) => (r.status === "측정 결과" ? { ...r, status: MEASURED } : r)) }
   }
   if (t === "전체 포트폴리오 검증 요약" && b.columns.some((c) => c.key === "warns")) {
     const plain = (x: unknown) => String(x ?? "-").split(", ").filter((y) => y && y !== "-").map((y) => { const m = /^(R\d+b?) (.+?)( \(허용 초과\))?$/.exec(y); return m ? `${RULE_PLAIN[m[1]] ?? m[2]}${m[3] ? "(허용 초과)" : ""}` : y })
@@ -649,7 +679,7 @@ function Cautions({ doc, s }: { doc: ReportDoc; s: Section }) {
       {notRecommended && <AlertList items={[{ tone: "slate", tag: "추천 결과", text: sm.verdict.label_plain_ko ?? sm.verdict.label_ko }]} label="추천 결과" />}
       {alerts.length ? <AlertList items={alerts} /> : <p className="text-sm text-slate-600">미충족·주의 항목이 없습니다.</p>}
       {/* 「분석 중 확인한 점」 상자는 두지 않는다: 같은 문장이 아래 「분석 중 확인한 점」 표에 더 자세히(전체 건수·날짜) 있다 (2026-11-14 사용자 요청) */}
-      {info.length > 0 && <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2.5"><StatusPill tone="slate" icon={Info}>참고</StatusPill><ul className="mt-1.5 list-disc pl-5 text-sm leading-6 text-slate-700">{info.map((t, i) => <li key={i}>{t}</li>)}</ul></div>}
+      {info.length > 0 && <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3.5"><StatusPill tone="slate" icon={Info}>참고</StatusPill><ul className="mt-2.5 list-disc space-y-3 pl-5 text-sm leading-6 text-slate-700">{info.map((t, i) => <li key={i}><CitedText text={t} /></li>)}</ul></div>}
       {next.length > 0 && <div><p className="text-xs font-semibold text-slate-600">다음 검토 사항</p><ul className="mt-1 space-y-1 text-sm leading-6 text-slate-700">{next.map((t, i) => <li key={i} className="flex gap-2"><span className="text-slate-400">{i + 1}.</span><span><CitedText text={t} /></span></li>)}</ul></div>}
     </SubPart>
   )
@@ -680,10 +710,10 @@ function ReferencesTop({ doc, s }: { doc: ReportDoc; s: Section }) {
       </SubPart>
       <SubPart title="계산 조건과 실행 기록">
         <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <div><dt className="text-xs font-semibold text-slate-500">분석 기준일</dt><dd className="mt-0.5 tabular-nums text-slate-900">{h.data_as_of}</dd></div>
+          <div><dt className="text-xs font-semibold text-slate-500">분석한 날</dt><dd className="mt-0.5 tabular-nums text-slate-900">{h.data_as_of}</dd></div>
           <div><dt className="text-xs font-semibold text-slate-500">종목 선정 기준일</dt><dd className="mt-0.5 tabular-nums text-slate-900">{h.selection_as_of}</dd></div>
           <div><dt className="text-xs font-semibold text-slate-500">백테스트 기간</dt><dd className="mt-0.5 tabular-nums text-slate-900">{h.backtest_period.start} ~ {h.backtest_period.end}</dd></div>
-          {typeof fx === "string" && <div className="min-w-0"><dt className="text-xs font-semibold text-slate-500">환율 (분석 기준일)</dt><dd className="mt-0.5 break-words text-slate-900">{fx}</dd></div>}
+          {typeof fx === "string" && <div className="min-w-0"><dt className="text-xs font-semibold text-slate-500">환율 (분석한 날)</dt><dd className="mt-0.5 break-words text-slate-900">{fx}</dd></div>}
         </dl>
         {rep?.openPanel && <div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={() => rep.openPanel!("calc")}><Sigma className="size-4" />계산 조건 전체</Button><Button variant="secondary" onClick={() => rep.openPanel!("exec")}><ListChecks className="size-4" />실행 기록</Button></div>}
       </SubPart>

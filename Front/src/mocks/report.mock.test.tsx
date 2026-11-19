@@ -29,7 +29,7 @@ describe("카드 2: 현재 구성과 주식 수", () => {
     const card = screen.getByRole("heading", { name: /^종목 구성과 투자 금액/ }).closest("section")!
     expect(within(card).queryByRole("radiogroup")).toBeNull()
     expect(within(card).queryByText(/추천 전략 · 기준일 적용|추천 전략 · 백테스트 시작일|어떤 구성의 금액을 볼까요/)).toBeNull()
-    expect(within(card).queryByText(/이 배분은 분석 기준일의 「현재 구성」입니다/)).toBeNull()  // 안내 문장 없이 카드 설명의 기준만
+    expect(within(card).queryByText(/이 배분은 분석한 날의 「현재 구성」입니다/)).toBeNull()  // 안내 문장 없이 카드 설명의 기준만
     expect(within(card).queryByText("금액 미제공")).toBeNull()  // 현재 구성의 현금도 금액이 있다 (목업)
     expect(within(card).queryByRole("button", { name: /예상 매수 주문/ })).toBeNull()  // 따로 접힌 주문 표 없이 위 표의 주식 수 칸으로 (2026-11-11 사용자 요청)
     expect(within(within(card).getByRole("list", { name: "종목별 목표 배분액" })).getAllByText(/^\d+주$/).length).toBeGreaterThan(3)
@@ -104,7 +104,7 @@ describe("조건별 검증과 판단 이유: 분석 당시 성향·위험 기준
 describe("상세 섹션", () => {
   it("선택 전략이 서버 비교표에 없는 낙폭 맞춤안이어도 기준 비중과 나란히 비교한다", async () => {
     await open("mock_rep_caution", "construction")
-    expect(await screen.findByRole("list", { name: "종목별 비중 비교" })).toBeInTheDocument()
+    expect(await screen.findByRole("list", { name: "종목별 포트폴리오 비중 비교" })).toBeInTheDocument()
     expect(screen.queryByText(/따로 없어 기준 비중과 나란히 그리지 않았습니다/)).toBeNull()
   })
   it("시장 주제 카드 4개, 기업별 뉴스 투자 의견 상태, 구조화된 선정 이유", async () => {

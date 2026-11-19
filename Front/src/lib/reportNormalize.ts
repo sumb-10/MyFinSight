@@ -25,6 +25,66 @@ export function hideCodeIds(doc: ReportDoc): ReportDoc {
   return changed ? { ...doc, sections } : doc
 }
 
+/** 굵은 글씨 표시(**)는 문단·카드 본문·주의 문장처럼 CitedText 로 그리는 곳에만 남기고, 제목·표 칸·요약 같은 나머지 글에서는 지운다
+ *  (2026-11-19: 서버 글에 강조를 쓰기 시작 — 글자로 그리는 곳에 「**」가 그대로 보이지 않게). 바꿀 것이 없으면 같은 객체. */
+const KEEP_BOLD_BLOCK: Record<string, string[]> = { paragraphs: ["items"], cards: ["text_ko"], callout: ["text_ko"], companies: ["rationale_ko"] }
+const KEEP_BOLD_SUMMARY = new Set(["cautions_plain", "info_plain_ko", "rules_plain_ko", "label_plain_ko", "period_note_ko", "next_actions_ko"])
+export function stripStrayBold(doc: ReportDoc): ReportDoc {
+  let changed = false
+  const strip = (v: unknown, keep: (k: string) => boolean, key = ""): unknown => {
+    if (typeof v === "string") { if (!keep(key) && v.includes("**")) { changed = true; return v.replace(/\*\*/g, "") } return v }
+    if (Array.isArray(v)) { const out = v.map((x) => strip(x, keep, key)); return out.some((x, i) => x !== v[i]) ? out : v }
+    if (v && typeof v === "object") {
+      if (keep(key)) return v
+      let out: Record<string, unknown> | null = null
+      for (const [k, x] of Object.entries(v)) { const y = strip(x, keep, k); if (y !== x) (out ??= { ...(v as Record<string, unknown>) })[k] = y }
+      return out ?? v
+    }
+    return v
+  }
+  const sections = doc.sections.map((sec) => {
+    const blocks = sec.blocks.map((b) => { const keepKeys = KEEP_BOLD_BLOCK[b.type] ?? []; return strip(b, (k) => keepKeys.includes(k)) as Block })
+    return blocks.some((b, i) => b !== sec.blocks[i]) ? { ...sec, blocks } : sec
+  })
+  const header = strip(doc.header, () => false) as ReportDoc["header"]
+  const summary = doc.summary ? (strip(doc.summary, (k) => KEEP_BOLD_SUMMARY.has(k)) as ReportSummary) : doc.summary
+  return changed ? { ...doc, sections, header, summary } : doc
+}
+
+/** '분석 기준일' → '분석한 날' (2026-11-19 사용자 요청: 처음 보는 사람도 알 수 있는 말로). '기준일' 과 '날' 은 받침이 같아(ㄹ) 뒤 조사는 그대로 맞다.
+ *  뒤에 이름이 바로 붙으면 '의' 를 넣는다('분석 기준일 구성' → '분석한 날의 구성'). */
+export function easyAsOfWord(t: string): string {
+  if (!t.includes("분석 기준일")) return t
+  return t
+    .replace(/분석 기준일 (?=(?:구성|비중|포트폴리오|순위|환율|종가|목록|선정|제안|추천|자료|테마|지표|기준|현재))/g, "분석한 날의 ")
+    .replace(/분석 기준일/g, "분석한 날")
+}
+/** 리포트 화면 글 전체에 easyAsOfWord. 화면이 서버 이름으로 찾는 자리(묶음 이름 group_ko, 「현재 구성 (분석 기준일 …)」·「분석 기준일 선정 목록과 …」 제목)는 그대로 둔다. */
+const KEEP_TITLE = /^(현재 구성 \(분석 기준일|분석 기준일 선정 목록과 백테스트 시작일 재선정 목록의 차이)/
+export function easyAsOfWords(doc: ReportDoc): ReportDoc {
+  let changed = false
+  const walk = (v: unknown, key = ""): unknown => {
+    if (typeof v === "string") {
+      if (key === "group_ko" || (key === "title_ko" && KEEP_TITLE.test(v))) return v
+      const t = easyAsOfWord(v)
+      if (t !== v) changed = true
+      return t
+    }
+    if (Array.isArray(v)) { const out = v.map((x) => walk(x, key)); return out.some((x, i) => x !== v[i]) ? out : v }
+    if (v && typeof v === "object") {
+      let out: Record<string, unknown> | null = null
+      for (const [k, x] of Object.entries(v)) { const y = walk(x, k); if (y !== x) (out ??= { ...(v as Record<string, unknown>) })[k] = y }
+      return out ?? v
+    }
+    return v
+  }
+  const sections = walk(doc.sections, "sections") as ReportDoc["sections"]
+  const summary = doc.summary ? (walk(doc.summary, "summary") as ReportSummary) : doc.summary
+  const header = walk(doc.header, "header") as ReportDoc["header"]
+  const kpis = doc.kpis ? (walk(doc.kpis, "kpis") as ReportDoc["kpis"]) : doc.kpis  // 「주요 성과 지표」 보조 문장 ('원화는 둘 다 분석 기준일 환율로 계산')
+  return changed ? { ...doc, sections, summary, header, kpis } : doc
+}
+
 /** 저장된 v1 문서(라운드 3 이전)를 v2 화면이 그릴 수 있게 바꾼다. v2 문서는 그대로 돌려준다 (같은 객체). 서버의 present_doc 과 같은 규칙. */
 export function normalizeDoc(doc: ReportDoc): ReportDoc {
   if ((doc.doc_version ?? 1) >= 2 && doc.summary) return doc

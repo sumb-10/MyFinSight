@@ -241,18 +241,21 @@ def test_walkforward_news_bl_label_says_walkforward(monkeypatch, tmp_path):
 
 
 def test_forward_market_model_exports_how_delta_was_set(monkeypatch, tmp_path):
-    """020: 기준일(10f) δ=3.375 는 시장 추정치가 음수라 하한 1.5 × 성향 1.5 × 낙폭 1.5 였는데, 10f 가 delta_market·delta_base 를 빼서 리포트가 설명할 수 없었다."""
+    """020: 기준일(10f) δ=3.375 는 시장 추정치가 음수라 하한 1.5 × 성향 1.5 × 낙폭 1.5 였는데, 10f 가 delta_market·delta_base 를 빼서 리포트가 설명할 수 없었다.
+    2026-11-19: 10f 는 백테스트에서 비중을 꺼내고 시장모형(build_market_model)만 분석 기준일로 계산한다 — δ 설명 값은 그대로 내보낸다."""
     from backend.analysis.executor import stages
     from backend.analysis.executor.context import RunContext
+    from backend.analysis.m4_portfolio import market_model as MM
 
     mm = {"as_of": "2025-01-14", "lookback": {}, "tickers": ["A"], "ann_vol": {"A": 0.2}, "cap_weights": {"A": 1.0}, "delta": 3.375, "delta_source": "market_implied",
-          "tau": 0.05, "implied_returns": {"A": 0.05}, "delta_capped": False, "delta_market": -0.4213, "delta_base": 1.5, "delta_multiplier": 1.5, "delta_dd_multiplier": 1.5}  # fmt: skip
-    res = SimpleNamespace(market_model=mm, evidence=None, baselines={"chosen_baseline": "equal_weight", "portfolios": []}, applied_bl=[], baseline_weights={"A": 1.0},
-                          view_sets=[], chosen_weights={"A": 1.0}, fallback=True, fallback_reason_ko="", params=None, warnings=[], bl_portfolios=[])  # fmt: skip
-    monkeypatch.setattr(stages, "construct", lambda *a, **k: res)
+          "tau": 0.05, "implied_returns": {"A": 0.05}, "delta_capped": False, "delta_market": -0.4213, "delta_base": 1.5, "delta_multiplier": 1.5, "delta_dd_multiplier": 1.5,
+          "cov": [[0.04]], "notes": []}  # fmt: skip
+    monkeypatch.setattr(MM, "build_market_model", lambda *a, **k: (mm, {}))
     req = {"request_id": "r", "derived": {"as_of": "2025-01-14", "initial_amount_usd": 10_000, "fx_rate": 1.0, "fx_date": "2025-01-14"}}
     ctx = RunContext("run_t", req, None, SimpleNamespace(view=lambda x: SimpleNamespace(as_of=x)), None, AnalysisSettings(), tmp_path)
-    ctx.outputs.update({"05_selection": {"selected": [{"ticker": "A"}]}, "02_intent": {}})
+    ctx.outputs.update({"07_backtest_spec": {"selection": {"tickers": ["A"]}, "period": {"as_of": "2024-01-02"}},
+                        "10_target_portfolios": {"templates": [], "baseline": {"id": "equal_weight", "weights": {"A": 1.0}}},
+                        "11_backtest_results": {"portfolios": [{"id": "equal_weight", "kind": "template", "target_weights": {"A": 1.0}}]}})  # fmt: skip
     stages.st_forward(ctx)
     out = ctx.out("10f_forward_portfolios")["market_model"]
     assert {k: out[k] for k in ("delta", "delta_market", "delta_base", "delta_multiplier", "delta_dd_multiplier", "delta_capped")} == {

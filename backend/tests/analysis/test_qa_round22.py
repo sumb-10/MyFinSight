@@ -126,7 +126,7 @@ def test_risk_gap_caution_when_current_holdings_are_much_riskier(monkeypatch):
 
     monkeypatch.setattr(B, "find", lambda R, pid: {"id": pid, "kind": "template", "metrics": {"risk": {"ann_vol": 0.2795}}})
     R = {"portfolio": {"forward": {"templates": [{"id": "equal_weight", "weights": {"A": 0.5, "B": 0.5}, "ex_ante": {"vol": 0.4185}}]}}}
-    assert B.risk_gap_note(R, "equal_weight").startswith("분석 기준일 추천 구성을 최근 주가 기록으로 추정한 변동성(1년 기준)은 41.9%로, 백테스트에서 계산한 변동성 28.0%보다 크게 높습니다")
+    assert B.risk_gap_note(R, "equal_weight").startswith("분석 기준일 추천 구성을 최근 주가 기록으로 추정한 변동성(1년 기준)은 **41.9%**로, 백테스트에서 계산한 변동성 28.0%보다 크게 높습니다")
     R["portfolio"]["forward"]["templates"][0]["ex_ante"]["vol"] = 0.33  # 1.18배는 말하지 않는다
     assert B.risk_gap_note(R, "equal_weight") is None
 

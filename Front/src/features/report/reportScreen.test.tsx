@@ -6,8 +6,8 @@ import type { CompanyItem, ReportDoc, ReportSummary } from "../../api/types"
 import { ReportDetail } from "./ReportDetail"
 import { nowTitle } from "./sections"
 
-// 「분석 기준일의 종목과 비중」 파트 이름은 그 날짜로 (2026-11-16 사용자 요청) — 아래 문서의 selection_as_of 2026-10-30
-const NOW_TITLE = "2026년 10월 30일의 종목과 비중"
+// 「분석 기준일의 종목과 포트폴리오 비중」 파트 이름은 그 날짜로 (2026-11-16 사용자 요청) — 아래 문서의 selection_as_of 2026-10-30
+const NOW_TITLE = "2026년 10월 30일의 종목과 포트폴리오 비중"
 
 // 리포트 화면 전체: 개요 → 자세한 분석(통째로 접힘, 안의 섹션도 접힘). 정보가 사라지지 않는지(모두 펼치면 전부 보이는지)와 주소로 들어온 부분이 펼쳐지는지 확인한다.
 
@@ -113,13 +113,13 @@ describe("리포트 화면 구조", () => {
   it("선택 전략이 기준과 다르면 같은 시점의 두 비중을 종목마다 막대 두 개로 나란히 보여 주고(차이 숫자는 쓰지 않는다), 비교표에 없으면 그리지 않는다", async () => {
     const d = doc()
     const { unmount } = show({ ...d, header: { ...d.header, chosen_portfolio_id: "market_cap", chosen_label_ko: "시가총액비중" } }, { sec: "construction" })
-    const list = await screen.findByRole("list", { name: "종목별 비중 비교" })
+    const list = await screen.findByRole("list", { name: "종목별 포트폴리오 비중 비교" })
     expect(within(list).getAllByRole("listitem").map((x) => x.getAttribute("aria-label"))).toEqual(["AAA 기준 45.0%, 선택 70.0%", "BBB 기준 45.0%, 선택 20.0%", "현금 기준 10.0%, 선택 10.0%"])
     expect(list).not.toHaveTextContent("%p"); expect(list).not.toHaveTextContent("변화 없음")
     unmount()
     show({ ...d, header: { ...d.header, chosen_portfolio_id: "dd_match", chosen_label_ko: "낙폭 맞춤안" } }, { sec: "construction" })
-    expect(await screen.findByText(/선택 전략의 비중은 개요의 종목 구성과 투자 금액, 리밸런싱 기록에 있습니다/)).toBeInTheDocument()
-    expect(screen.queryByRole("list", { name: "종목별 비중 비교" })).toBeNull()
+    expect(await screen.findByText(/선택 전략의 포트폴리오 비중은 개요의 종목 구성과 투자 금액, 리밸런싱 기록에 있습니다/)).toBeInTheDocument()
+    expect(screen.queryByRole("list", { name: "종목별 포트폴리오 비중 비교" })).toBeNull()
   })
   it("3. 포트폴리오 구성은 질문별 파트로 나누고, 어디에도 맞지 않는 블록도 맨 아래에 남긴다", async () => {
     const d = doc()
@@ -139,23 +139,23 @@ describe("리포트 화면 구조", () => {
     show({ ...d, sections: d.sections.map((x) => (x === con ? { ...con, blocks: [...con.blocks, ...extra] } : x)) } as never, { sec: "construction" })
     await screen.findByRole("heading", { name: /^전략별 투자 비중/ })
     const hs = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent ?? "")
-    // 2026-11-16 사용자 표: 1 과정 → 2 분석 기준일 → 3 백테스트 시작일 비중(+ 시작일 투자 금액) → 4 전략별 → 5 뉴스 반영 → 6 조정 기록 → 그 밖
-    const order = ["비중이 정해진 과정", NOW_TITLE, "백테스트 시작일의 기준 비중과 선택 전략 비중", "백테스트 시작일 투자 금액 (동일비중)", "전략별 투자 비중", "뉴스를 반영한 비중", "과거 비중 조정 기록", "그 밖의 내용"]
+    // 2026-11-16 사용자 표: 1 과정 → 2 분석 기준일 → 3 백테스트 시작일 포트폴리오 비중(+ 시작일 투자 금액) → 4 전략별 → 5 뉴스 반영 → 6 조정 기록 → 그 밖
+    const order = ["포트폴리오 비중이 정해진 과정", NOW_TITLE, "백테스트 시작일의 기준 비중과 선택 전략 비중", "백테스트 시작일 투자 금액 (동일비중)", "전략별 투자 비중", "뉴스를 반영한 포트폴리오 비중", "과거 포트폴리오 비중 조정 기록", "그 밖의 내용"]
     expect(order.map((t) => hs.findIndex((h) => h.startsWith(t)))).toEqual([...order.map((t) => hs.findIndex((h) => h.startsWith(t)))].sort((a, b) => a - b))
     expect(order.every((t) => hs.some((h) => h.startsWith(t)))).toBe(true)
     expect(screen.getByText("비교용 구성")).toBeInTheDocument()
-    expect(screen.getByText(/첫 투자금 13,755 USD를 선택 전략\(동일비중\) 비중대로 종목마다 나눈 금액입니다\. 원화는 그날 환율로 계산했습니다\./)).toBeInTheDocument()
+    expect(screen.getByText(/첫 투자금 13,755 USD를 선택 전략\(동일비중\) 포트폴리오 비중대로 종목마다 나눈 금액입니다\. 원화는 그날 환율로 계산했습니다\./)).toBeInTheDocument()
     expect(screen.getByText("BL 기간 결과")).toBeInTheDocument(); expect(screen.queryByText("기준 기간 결과")).toBeNull()  // BL 이 아닌 전략의 기간 성과 한 줄은 「과거 성과 → 전략 비교」에 있어 여기서는 그리지 않는다
     expect(screen.getByText("오늘 구성")).toBeInTheDocument()  // 현재 구성은 접지 않는다
     expect(screen.getByText("남아야 하는 내용")).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: /비중 변화 그래프|뉴스 반영 해석/ })).toBeNull()  // BL 파트의 비중 변화 그래프·뉴스 반영 해석은 그리지 않는다
+    expect(screen.queryByRole("button", { name: /포트폴리오 비중 변화 그래프|뉴스 반영 해석/ })).toBeNull()  // BL 파트의 포트폴리오 비중 변화 그래프·뉴스 반영 해석은 그리지 않는다
     // 큰 파트는 번호가 붙은 구역이고, 작은 파트(블록)는 그 구역 안에 들어 있다
-    const bl = screen.getByRole("region", { name: "뉴스를 반영한 비중" })
+    const bl = screen.getByRole("region", { name: "뉴스를 반영한 포트폴리오 비중" })
     expect(within(bl).getByText("BL 기간 결과")).toBeInTheDocument()
     expect(within(screen.getByRole("region", { name: NOW_TITLE })).getByText("오늘 구성")).toBeInTheDocument()
     const now = screen.getByRole("region", { name: NOW_TITLE })
     expect(within(now).queryByText(/뉴스 창과 계산 세부값/)).toBeNull()
-    fireEvent.click(within(now).getByRole("button", { name: /종목·비중을 정한 근거/ }))
+    fireEvent.click(within(now).getByRole("button", { name: /종목·포트폴리오 비중을 정한 근거/ }))
     expect(within(now).queryByText(/뉴스 창과 계산 세부값/)).toBeNull()  // 「계산 기준」 안내 상자는 없앴다 — 기간·건수는 본문에 한 번만 (2026-11-16 사용자 요청)
   })
   it("주소의 기업·시점으로 들어오면 그 섹션과 그 기업만 펼친다", async () => {
@@ -370,8 +370,36 @@ describe("머리말", () => {
 
 describe("분석 기준일 파트 이름 (2026-11-16)", () => {
   it("'분석 기준일' 대신 연·월·일, 날짜가 없으면 예전 이름", () => {
-    expect(nowTitle({ header: { selection_as_of: "2026-11-10" } } as never)).toBe("2026년 11월 10일의 종목과 비중")
-    expect(nowTitle({ header: { selection_as_of: "" } } as never)).toBe("분석 기준일의 종목과 비중")
+    expect(nowTitle({ header: { selection_as_of: "2026-11-10" } } as never)).toBe("2026년 11월 10일의 종목과 포트폴리오 비중")
+    expect(nowTitle({ header: { selection_as_of: "" } } as never)).toBe("분석한 날의 종목과 포트폴리오 비중")
+  })
+})
+
+describe("낙폭 맞춤안 설명은 「이 전략을 고른 이유」 목록이 아니라 선택 전략 아래 (2026-11-20)", () => {
+  it("판단 이유에서 구성 설명을 빼고, 선택 전략 설명 한 문장으로", async () => {
+    const { reasonsOf, chosenDescOf } = await import("./proposedView")
+    const reason_ko = "후보 12개 중 1위 · 목표수익은 창이 짧아 참고만 · Sharpe 0.89 · 시가총액비중의 주식 비중을 42.7%로 줄여 과거 최대낙폭을 목표 15.0% 안에 맞춘 구성 · CAGR 22.5%, 최종 평가금액 20,494 USD."
+    const doc = { summary: { verdict: { reason_ko } } } as unknown as ReportDoc
+    const rs = reasonsOf(doc, true).map(({ t }) => t)
+    expect(rs).toHaveLength(4)
+    expect(rs.some((t) => t.includes("주식 비중을 42.7%로 줄여"))).toBe(false)
+    expect(chosenDescOf(doc)).toBe("시가총액비중 구성에서 주식 비중을 42.7%로 줄이고 나머지를 현금으로 두어, 과거 최대 하락폭을 목표 15.0% 안에 맞춘 구성입니다.")
+    expect(chosenDescOf({ summary: { verdict: { reason_ko: "후보 3개 중 1위 · Sharpe 1.20로 가장 높음" } } } as unknown as ReportDoc)).toBeNull()
+  })
+})
+
+describe("다음 분석에서 바꿔 볼 조건 — 번호 제목 대신 조건의 뜻 (2026-11-19)", () => {
+  it("저장된 리포트의 「선택지 N」은 본문 첫 구절로 제목을 만든다", async () => {
+    const { actionTitle, cardsView } = await import("./sections")
+    expect(actionTitle("다음 분석에서 백테스트 기간을 3년으로 설정해 보면, 목표 수익률과 변동성 기준을 판정할 수 있는지 확인할 수 있습니다.")).toBe("백테스트 기간을 3년으로 설정해 보기")
+    expect(actionTitle("다음 분석에서 업종 상한을 75%보다 낮게 설정하면, 정보기술 업종 집중도를 살펴볼 수 있습니다.")).toBe("업종 상한을 75%보다 낮게 설정하기")
+    expect(actionTitle("다음 분석에서 최소 현금 비율을 정해 보면, 수익률과 최대낙폭이 어떻게 달라지는지 보면 됩니다.")).toBe("최소 현금 비율을 정해 보기")
+    expect(actionTitle("다음 분석에서 현금을 더 넣으면, x")).toBe("현금을 더 넣기")
+    expect(actionTitle("ServiceNow와 Micron Technology를 필수 포함 목록에서 빼고, 다른 종목과 같은 기준으로 다시 골라볼 수 있습니다.")).toBe("ServiceNow와 Micron Technology를 필수 포함에서 빼고 다시 고르기")
+    expect(actionTitle("[목업] 다음 분석에서 비중을 맞추는 주기를 바꿔 보면, x")).toBe("비중을 맞추는 주기를 바꿔 보기")
+    expect(actionTitle("조건을 확인해 보세요.")).toBeNull()
+    const v = cardsView({ type: "cards", title_ko: "다음에 검토할 수 있는 선택지", items: [{ title_ko: "선택지 1", text_ko: "다음 분석에서 최소 현금 비율을 정해 보면, x", meta: [] }, { title_ko: "선택지 2", text_ko: "b", meta: [] }] })
+    expect(v.items.map((x) => x.title_ko)).toEqual(["최소 현금 비율을 정해 보기", "조건 2"])
   })
 })
 
@@ -380,7 +408,9 @@ describe("다음 분석에서 바꿔 볼 조건 (2026-11-16)", () => {
     const { cardsView } = await import("./sections")
     const v = cardsView({ type: "cards", title_ko: "다음에 검토할 수 있는 선택지", items: [{ title_ko: "선택지 1", text_ko: "a", meta: [] }, { title_ko: "선택지 2", text_ko: "b", meta: [] }] })
     expect(v.title_ko).toBe("다음 분석에서 바꿔 볼 조건")
-    expect(v.items.map((x) => x.title_ko)).toEqual(["조건 1", "조건 2"])
+    expect(v.items.map((x) => x.title_ko)).toEqual(["조건 1", "조건 2"])  // 본문에서 조건을 알아볼 수 없으면 번호
+    const named = cardsView({ type: "cards", title_ko: "다음에 검토할 수 있는 선택지", items: [{ title_ko: "기간 3년으로", text_ko: "다음 분석에서 기간을 늘려 보면, x", meta: [] }] })
+    expect(named.items[0].title_ko).toBe("기간 3년으로")  // 서버가 준 제목은 그대로
     const lim = { type: "cards" as const, title_ko: "확인한 한계", items: [{ title_ko: "한계 1", text_ko: "a", meta: [] }] }
     expect(cardsView(lim)).toBe(lim)
   })

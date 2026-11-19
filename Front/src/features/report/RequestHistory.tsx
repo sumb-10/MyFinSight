@@ -1,3 +1,4 @@
+import { easyAsOfWord } from "../../lib/reportNormalize"
 import { useService } from "../../app/providers"
 import { useResource } from "../../state/useResource"
 import { Button, Disclosure, Loading } from "../../ui"
@@ -45,7 +46,7 @@ function FinalConditions({ items }: { items: Cond[] }) {
           <dl className="divide-y divide-slate-100">
             {cs.map((c) => (
               <div key={c.label_ko} className={`flex items-start justify-between gap-4 px-4 py-2.5 text-sm ${c.changed ? "bg-blue-50/70" : ""}`}>
-                <dt className="flex shrink-0 flex-col items-start gap-0.5 text-slate-500">{c.label_ko}{c.changed && <span className="rounded-full bg-blue-100 px-1.5 py-px text-[11px] font-semibold text-blue-800">요청으로 바뀜</span>}</dt>
+                <dt className="flex shrink-0 flex-col items-start gap-0.5 text-slate-500">{easyAsOfWord(c.label_ko)}{c.changed && <span className="rounded-full bg-blue-100 px-1.5 py-px text-[11px] font-semibold text-blue-800">요청으로 바뀜</span>}</dt>
                 <dd className={`min-w-0 break-words text-right ${c.changed ? "font-bold text-slate-950" : "font-semibold text-slate-900"}`}>{c.value_ko}</dd>
               </div>
             ))}

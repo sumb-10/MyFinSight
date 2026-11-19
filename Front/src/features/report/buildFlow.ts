@@ -46,12 +46,16 @@ function selectionStep(comp: CompaniesBlock, must: Set<string>): FlowStep {
   const fBt = comp.items.filter((x) => x.in_backtest && isF(x)).length
   const rank = RANK_SHORT[comp.metric] ?? `${comp.metric_ko} 값이 ${comp.direction === "asc" ? "낮은" : "높은"}`
   const how = (n: number, f: number) => (f === 0 ? `${rank} 순 ${n}종목` : f >= n ? "모두 필수 포함" : `필수 포함 ${f}종목, ${rank} 순 ${n - f}종목`)
+  if (comp.holdings_fixed) {  // 2026-11-19: 백테스트 시작일에 한 번 고르고 분석 기준일까지 유지
+    const tail = fBt === 0 ? ` 모두 ${rank} 순으로 골랐습니다.` : fBt >= nBt ? " 모두 필수 포함 종목입니다." : ` 필수 포함 ${fBt}종목과 ${rank} 순으로 고른 ${nBt - fBt}종목입니다.`
+    return { t: "투자 종목 선정", d: `백테스트 시작일에 ${nBt}종목을 골라 분석한 날까지 그대로 유지했습니다.${tail}` }
+  }
   if (nNow === nBt && fNow === fBt) {
-    const head = `분석 기준일과 백테스트 시작일에 각각 ${nNow}종목을 담았습니다.`
+    const head = `분석한 날과 백테스트 시작일에 각각 ${nNow}종목을 담았습니다.`
     const tail = fNow === 0 ? ` 모두 ${rank} 순으로 골랐습니다.` : fNow >= nNow ? " 모두 필수 포함 종목입니다." : ` 필수 포함 ${fNow}종목과 ${rank} 순으로 고른 ${nNow - fNow}종목입니다.`
     return { t: "투자 종목 선정", d: head + tail }
   }
-  return { t: "투자 종목 선정", d: `분석 기준일에는 ${nNow}종목(${how(nNow, fNow)}), 백테스트 시작일에는 ${nBt}종목(${how(nBt, fBt)})을 담았습니다.` }
+  return { t: "투자 종목 선정", d: `분석한 날에는 ${nNow}종목(${how(nNow, fNow)}), 백테스트 시작일에는 ${nBt}종목(${how(nBt, fBt)})을 담았습니다.` }
 }
 
 function baseStep(wc: WeightsCompareBlock): FlowStep | null {
@@ -85,11 +89,11 @@ function finalStep(doc: ReportDoc): FlowStep {
   const label = v?.chosen_label_ko ?? doc.header.chosen_label_ko
   const ph = chosenPhrase(id, label)
   const d =
-    v?.status === "none_baseline" ? `조건을 충족한 추천 구성이 없어, 기준 구성인 ${ph}의 비중을 실었습니다.`
-    : v?.status === "none_cash_blend" ? `조건을 충족한 추천 구성이 없어, 현금을 섞은 ${ph}의 비중을 실었습니다.`
+    v?.status === "none_baseline" ? `조건을 충족한 추천 구성이 없어, 기준 구성인 ${ph}의 포트폴리오 비중을 실었습니다.`
+    : v?.status === "none_cash_blend" ? `조건을 충족한 추천 구성이 없어, 현금을 섞은 ${ph}의 포트폴리오 비중을 실었습니다.`
     : v?.status === "insufficient" ? `과거 성과를 비교한 뒤 ${ph}으로 정했지만, 투자 비율이 낮아 구성 불충분으로 표시했습니다.`
-    : `과거 성과를 비교한 뒤, ${ph}으로 최종 비중을 정했습니다.`
-  return { t: "최종 비중 결정", d }
+    : `과거 성과를 비교한 뒤, ${ph}으로 최종 포트폴리오 비중을 정했습니다.`
+  return { t: "최종 포트폴리오 비중 결정", d }
 }
 
 export function buildFlowSteps(doc: ReportDoc): FlowStep[] {

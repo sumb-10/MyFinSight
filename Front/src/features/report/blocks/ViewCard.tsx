@@ -96,10 +96,10 @@ export function ViewCardBody({ p, text, evidence, between }: { p: ParsedViewCard
             <li key={d.ticker} className="px-4 py-3">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                 <b className="text-sm font-bold text-slate-950">{d.ticker}</b>
-                <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-500">{d.noView ? "다른 종목 조정에 따른 비중 변화" : "의견 없음"}</span>
+                <span className="inline-flex shrink-0 items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-500">{d.noView ? "다른 종목 조정에 따른 포트폴리오 비중 변화" : "의견 없음"}</span>
                 <span className="ml-auto text-sm font-semibold tabular-nums text-slate-900">비중 {d.value}</span>
               </div>
-              <p className="mt-1 text-sm leading-6 text-slate-600">{d.noView ? "이 종목에 대한 의견은 없고, 다른 종목 비중을 옮기면서 함께 바뀌었습니다." : "기준 비중과 달라진 종목입니다."}</p>
+              <p className="mt-1 text-sm leading-6 text-slate-600">{d.noView ? "이 종목에 대한 의견은 없고, 다른 종목의 포트폴리오 비중을 옮기면서 함께 바뀌었습니다." : "기준 비중과 달라진 종목입니다."}</p>
             </li>
           ))}
         </ul>
@@ -110,7 +110,7 @@ export function ViewCardBody({ p, text, evidence, between }: { p: ParsedViewCard
         <ul className="space-y-1.5 text-sm leading-6 text-slate-700">
           {p.views.map((v, i) => <li key={i}><b className="font-semibold text-slate-900">{v.kind === "rel" ? `${v.long.join("+")} vs ${v.short.join("+")}` : v.long.join("+")}</b> · {v.numbers}</li>)}
         </ul>
-        <p className="mt-2 text-xs leading-5 text-slate-500">시장 기준 기대는 뉴스를 반영하기 전 시장 가격에 담긴 연 기대 수익률이고, 확신 정도가 높을수록 비중을 더 많이 옮깁니다. 앞으로의 수익을 뜻하지 않습니다.</p>
+        <p className="mt-2 text-xs leading-5 text-slate-500">시장 기준 기대는 뉴스를 반영하기 전 시장 가격에 담긴 연 기대 수익률이고, 확신 정도가 높을수록 포트폴리오 비중을 더 많이 옮깁니다. 앞으로의 수익을 뜻하지 않습니다.</p>
       </Disclosure>
       <dl className="space-y-1 text-xs text-slate-600">
         {p.hit && <div className="flex gap-2"><dt className="shrink-0 font-medium">과거에 이런 의견이 맞은 비율</dt><dd>{p.hit} (백테스트)</dd></div>}

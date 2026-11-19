@@ -31,10 +31,27 @@ export { CitationContext }  // 정의는 citationContext.ts (기존 import 경�
  *  출처가 있는 줄만 줄 간격이 벌어졌다 → 크기·굵기는 안쪽 span 에, 위로 올리는 것은 줄 높이에 영향이 없는 relative 로.
  *  출처 앞 공백·출처 사이 공백도 빼서 「입니다 [3] .」 처럼 떨어지지 않게 한다. 다른 섹션은 예전 모양 그대로. */
 /** 서버의 '(뷰 없음, 재배분)'·'(그날 뷰 없음, 재배분)' 표기를 화면에서는 '다른 종목 조정에 따른 비중 변화' 로 (2026-11-16 사용자 요청). 저장된 글은 그대로 읽는다. */
-export const relabelNoView = (t: string) => t.replace(/\((?:그날 )?뷰 없음, 재배분\)/g, "(다른 종목 조정에 따른 비중 변화)")
+export const relabelNoView = (t: string) => t.replace(/\((?:그날 )?뷰 없음, 재배분\)/g, "(다른 종목 조정에 따른 포트폴리오 비중 변화)")
 
 /** tight 문단의 공백 정리: 줄 앞뒤의 공백·탭과 연속 공백을 하나로 (같은 문단의 줄이 같은 왼쪽 기준선에 오게). 줄바꿈은 그대로. */
 export const tidySpaces = (t: string) => t.replace(/\t/g, " ").replace(/[ \u00a0\u3000]*\n[ \u00a0\u3000]*/g, "\n").replace(/[ \u00a0\u3000]{2,}/g, " ").trim()
+
+/** 서버 글의 `**강조**` 를 굵은 글씨로 (2026-11-19 사용자 요청: 중요한 말은 굵게). 짝이 맞지 않는 `**` 는 지운다. */
+const BOLD_RE = /\*\*([^*\n]+?)\*\*/g
+export function withBold(seg: string, key: string): React.ReactNode[] {
+  const out: React.ReactNode[] = []
+  let last = 0, n = 0
+  for (const m of seg.matchAll(BOLD_RE)) {
+    const at = m.index ?? 0
+    if (at > last) out.push(seg.slice(last, at).replace(/\*\*/g, ""))
+    out.push(<strong key={`${key}-b${n++}`} className="font-semibold text-slate-900">{m[1]}</strong>)
+    last = at + m[0].length
+  }
+  if (last < seg.length) out.push(seg.slice(last).replace(/\*\*/g, ""))
+  return out.filter((x) => x !== "")
+}
+/** 굵은 글씨 표시(**)를 뺀 글 — 제목·표 칸·도움말처럼 글자만 보이는 곳. */
+export const stripBold = (t: string) => t.replace(/\*\*/g, "")
 
 export function CitedText({ text: raw, tight }: { text: string; tight?: boolean }) {
   const ctx = useContext(CitationContext)
@@ -46,7 +63,7 @@ export function CitedText({ text: raw, tight }: { text: string; tight?: boolean 
     if (start > last) {
       const seg = text.slice(last, start)
       const keep = tight ? seg.replace(/[ \t]+$/, "") : seg
-      if (keep) parts.push(keep)
+      if (keep) parts.push(...withBold(keep, `s${start}`))
     }
     const id = m[1]
     parts.push(
@@ -64,7 +81,7 @@ export function CitedText({ text: raw, tight }: { text: string; tight?: boolean 
     )
     last = start + m[0].length
   }
-  if (last < text.length) parts.push(text.slice(last))
+  if (last < text.length) parts.push(...withBold(text.slice(last), "end"))
   return <>{parts}</>
 }
 
@@ -368,9 +385,9 @@ export function Callout({ tone, title, text }: { tone: "info" | "caution"; title
 
 /** 카드 묶음 제목 표시: 뉴스 의견(Black-Litterman) 카드 묶음은 쉬운 말(전문용어) 순서로 — 시작일·분석 기준일을 제목에서 구분한다. 나머지는 그대로. */
 const cardsTitle = (t: string) => {
-  if (/^시작일 뉴스 뷰 Black-Litterman 포트폴리오$/.test(t)) return "뉴스로 조정한 비중 (백테스트 시작일 · Black-Litterman)"
+  if (/^시작일 뉴스 뷰 Black-Litterman 포트폴리오$/.test(t)) return "뉴스로 조정한 포트폴리오 비중 (백테스트 시작일 · Black-Litterman)"
   const m = /^현재 구성 BL (\d+): .+$/.exec(t)  // 분석 기준일 구성: 주제는 카드 안 제목에 그대로 있다
-  if (m) return `뉴스로 조정한 비중 (분석 기준일 · Black-Litterman)${m[1] !== "1" ? ` · 구성 ${m[1]}` : ""}`
+  if (m) return `뉴스로 조정한 포트폴리오 비중 (분석한 날 · Black-Litterman)${m[1] !== "1" ? ` · 구성 ${m[1]}` : ""}`
   return t
 }
 

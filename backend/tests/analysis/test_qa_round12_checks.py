@@ -228,17 +228,23 @@ def test_targets_summary_says_news_views_applied_only_when_a_weight_moved(monkey
 
 
 def test_forward_summary_applies_the_same_rule(monkeypatch, tmp_path):
-    """029: 기준일(10f) 요약도 같은 규칙 — 'BL 5' 만 적어 뉴스 뷰가 현재 구성을 바꾼 것처럼 읽혔다."""
+    """2026-11-19 사용자 결정: 분석 기준일 구성은 새로 만들지 않고 백테스트에서 꺼낸다 — 실행 기록 요약도 그 사실(시작일 종목 유지 · 직전 리밸런싱 비중)."""
+    from backend.analysis.m4_portfolio import market_model as MM
+
     req = {"request_id": "r", "derived": {"as_of": "2025-01-14", "initial_amount_usd": 10_000, "fx_rate": 1.0, "fx_date": "2025-01-14"}}
-
-    def run(ports: list[dict]) -> str:
-        monkeypatch.setattr(stages, "construct", lambda *a, **k: _construct_res(ports))
-        ctx = RunContext("run_t", req, None, SimpleNamespace(view=lambda d: SimpleNamespace(as_of=d)), None, AnalysisSettings(), tmp_path)
-        ctx.outputs.update({"05_selection": {"selected": [{"ticker": t} for t in TICKERS]}, "02_intent": {}})
-        return stages.st_forward(ctx)
-
-    assert run([_bl(k, 1e-6) for k in range(1, 6)]) == "기준일 2025-01-14 현재 구성: 비중 규칙 1개 + 뉴스 반영 구성 5개 (뉴스 뷰는 있었지만 상한에 묶여 기준 비중과 같음)"
-    assert run([_bl(1, 0.02)]).endswith("(뉴스 뷰 적용)") and run([]).endswith("뉴스 반영 구성 0개 (뉴스 뷰 없음 — 비중 규칙만)")
+    mm = {"as_of": "2025-01-14", "lookback": {}, "tickers": TICKERS, "ann_vol": {t: 0.2 for t in TICKERS}, "cap_weights": {}, "delta": 2.0, "delta_source": "fixed",
+          "tau": 0.05, "implied_returns": {t: 0.05 for t in TICKERS}, "cov": [[0.04 if i == j else 0.0 for j in TICKERS] for i in TICKERS], "notes": []}  # fmt: skip
+    monkeypatch.setattr(MM, "build_market_model", lambda *a, **k: (mm, {}))
+    eq = {t: round(1 / len(TICKERS), 6) for t in TICKERS}
+    ctx = RunContext("run_t", req, None, SimpleNamespace(view=lambda d: SimpleNamespace(as_of=d)), None, AnalysisSettings(), tmp_path)
+    ctx.outputs.update({"07_backtest_spec": {"selection": {"tickers": TICKERS}, "period": {"as_of": "2024-01-02"}},
+                        "10_target_portfolios": {"templates": [], "baseline": {"id": "equal_weight", "weights": eq}},
+                        "11_backtest_results": {"portfolios": [{"id": "equal_weight", "kind": "template", "target_weights": eq},
+                                                               {"id": "wf_equal_weight", "kind": "template", "weights_by_date": {"2024-01-02": eq, "2025-01-02": eq, "2025-02-03": eq}}]}})  # fmt: skip
+    out = stages.st_forward(ctx)
+    assert out == f"기준일 2025-01-14 구성: 백테스트 시작일 종목 {len(TICKERS)}개 유지, 직전 리밸런싱 비중 사용 (2024-01-02, 2025-01-02)"
+    hn = ctx.out("10f_forward_portfolios")["holdings_now"]
+    assert hn["equal_weight"]["rebalance_date"] == "2024-01-02" and hn["wf_equal_weight"]["rebalance_date"] == "2025-01-02"  # 분석 기준일 뒤(2025-02-03)는 쓰지 않는다
 
 
 # ───────────────────────── 031: 시작일 선정 요약의 후보 수 ─────────────────────────

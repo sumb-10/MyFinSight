@@ -23,12 +23,12 @@ describe("뉴스 투자 의견 카드", () => {
   })
   it("종목 · 의견 · 비중 변화 / 이유로 보여 주고, [절대]·신뢰 같은 숫자는 「숫자로 보기」 안에 쉬운 말로", () => {
     render(<Cards b={real} />)
-    expect(screen.getByRole("heading", { name: "뉴스로 조정한 비중 (백테스트 시작일 · Black-Litterman)" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "뉴스로 조정한 포트폴리오 비중 (백테스트 시작일 · Black-Litterman)" })).toBeInTheDocument()
     expect(screen.queryByText(/\[절대\]/)).toBeNull()
     expect(screen.getByText("▲ 상승 의견 (약하게)")).toBeInTheDocument(); expect(screen.getByText("▼ 하락 의견 (약하게)")).toBeInTheDocument()
     expect(screen.getByText("비중 +1.5%p")).toBeInTheDocument(); expect(screen.getByText("비중 −0.9%p")).toBeInTheDocument()
-    expect(screen.getByText("다른 종목 조정에 따른 비중 변화")).toBeInTheDocument(); expect(screen.queryByText("의견 없음")).toBeNull();  // 다른 종목 비중을 옮기며 바뀐 종목만 (저장된 '(뷰 없음, 재배분)' 표기를 읽어 2026-11-16 새 이름으로)
-    expect(screen.getByText(/다른 종목 비중을 옮기면서 함께 바뀌었습니다/)).toBeInTheDocument()
+    expect(screen.getByText("다른 종목 조정에 따른 포트폴리오 비중 변화")).toBeInTheDocument(); expect(screen.queryByText("의견 없음")).toBeNull();  // 다른 종목 비중을 옮기며 바뀐 종목만 (저장된 '(뷰 없음, 재배분)' 표기를 읽어 2026-11-16 새 이름으로)
+    expect(screen.getByText(/다른 종목의 포트폴리오 비중을 옮기면서 함께 바뀌었습니다/)).toBeInTheDocument()
     expect(screen.getByText("50% (백테스트)")).toBeInTheDocument()
     expect(screen.queryByText(/확신 정도/)).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: /숫자로 보기/ }))
@@ -39,7 +39,7 @@ describe("뉴스 투자 의견 카드", () => {
       text_ko: "요약 문단.\n- [절대] MRNA 오름(약) — 사전 기대 +72.8% → 뷰 +83.1%/년 (신뢰 0.25) — 흑자 복귀 기사.\n- [상대] GOOGL > NVDA (약) — 기대 차이를 GOOGL 쪽으로 +5.6%p (사전 차이 -25.6% → 뷰 반영 차이 -20.1%/년 — 반영 뒤에도 GOOGL 쪽 기대가 낮음) (신뢰 0.30) — AI 경쟁 구도 기사.",
       meta: [{ label_ko: "기준 비중 대비 주요 변화", value: "NVDA -0.8%p, MRNA +0.5%p, NOW +0.2%p (뷰 없음, 재배분)" }, { label_ko: "모형상 기대 수익·예상 변동성(최근 자료로 계산한 참고값, 수익 전망 아님)", value: "82.1% / 40.5%" }, { label_ko: "근거", value: "ev1" }] }] } as CardsBlock
     render(<Cards b={cur} />)
-    expect(screen.getByRole("heading", { name: "뉴스로 조정한 비중 (분석 기준일 · Black-Litterman)" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "뉴스로 조정한 포트폴리오 비중 (분석한 날 · Black-Litterman)" })).toBeInTheDocument()
     expect(screen.queryByText(/\[(절대|상대)\]/)).toBeNull()
     expect(screen.getByText("GOOGL vs NVDA")).toBeInTheDocument(); expect(screen.getByText("GOOGL를 NVDA보다 긍정적으로 평가 (약하게)")).toBeInTheDocument()
     expect(screen.getByText("비중 +0.5%p")).toBeInTheDocument(); expect(screen.getByText("비중 NVDA −0.8%p")).toBeInTheDocument()
@@ -54,9 +54,9 @@ describe("뉴스 투자 의견 카드", () => {
 
 describe("뉴스 의견 카드 안에 끼우는 내용 (2026-11-16 사용자 요청)", () => {
   it("between 은 「뉴스로 만든 투자 의견」 목록 뒤, 「숫자로 보기」 앞에 들어간다 (없으면 예전 그대로)", () => {
-    const { container } = render(<Cards b={real} between={<div data-testid="slot">종목·비중을 정한 근거</div>} />)
+    const { container } = render(<Cards b={real} between={<div data-testid="slot">종목·포트폴리오 비중을 정한 근거</div>} />)
     const order = [...container.querySelectorAll("p, button, [data-testid='slot']")].map((e) => e.textContent ?? "")
-    const iViews = order.findIndex((t) => t.startsWith("뉴스로 만든 투자 의견")), iSlot = order.findIndex((t) => t === "종목·비중을 정한 근거"), iNum = order.findIndex((t) => t.startsWith("숫자로 보기"))
+    const iViews = order.findIndex((t) => t.startsWith("뉴스로 만든 투자 의견")), iSlot = order.findIndex((t) => t === "종목·포트폴리오 비중을 정한 근거"), iNum = order.findIndex((t) => t.startsWith("숫자로 보기"))
     expect(iViews).toBeGreaterThanOrEqual(0)
     expect(iViews < iSlot && iSlot < iNum).toBe(true)
   })

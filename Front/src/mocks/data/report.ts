@@ -7,9 +7,9 @@ import { DEFAULT_VOL_PREF } from "../../lib/tendency"
 import { ko } from "../../lib/format"
 import type { ReportScenario } from "../scenarios"
 import { MOCK_AS_OF, MOCK_FX_NOW } from "../scenarios"
-import { backtest, BL_TITLES, COMMISSION_BPS, MIN_ANNUALIZE_DAYS, NAMES_KO, RULES_KO, templateWeights, toleranceNote, toUsd, type Backtest, type Run } from "./backtest"
+import { backtest, COMMISSION_BPS, MIN_ANNUALIZE_DAYS, NAMES_KO, RULES_KO, templateWeights, toleranceNote, toUsd, type Backtest, type Run } from "./backtest"
 import { stockOf } from "./stocks"
-import { capWeights, normalize, rng, round, seedOf, sum } from "./util"
+import { rng, round, seedOf, sum } from "./util"
 
 export type MockReportDoc = ReportDoc & { proposed: ProposedReport }
 
@@ -136,14 +136,14 @@ export function buildReport(sc: ReportScenario): MockReportDoc {
   const benchVals: Record<string, number | null> = { final_value: bench.m.final_usd, cagr: short ? bench.m.total_return : bench.m.cagr, excess: null, mdd: bench.m.mdd, sharpe: bench.m.sharpe }
   const skpis: SummaryKpi[] = kpis.map((k) => ({ ...k, benchmark_value: benchVals[k.id] ?? null, benchmark_label_ko: benchVals[k.id] != null ? benchName : null }))
 
-  // 분석 기준일의 현재 구성: 뉴스 반영이면 「현재 구성 BL 1」, 아니면 선택 전략의 비중을 그대로 (서버 summary.allocation 과 같은 구분)
-  const nowBase = templateWeights(sc, sim, sc.baseline, n)
-  const blNow = sc.news ? capWeights(normalize(Object.fromEntries(sc.tickers.map((t, i) => [t, Math.max(0.01, nowBase[t] + (i % 2 ? -0.02 : 0.02))]))), sc.max_weight) : null
-  const currentW = blNow ?? chosen.def.weights
-  const currentLabel = sc.news ? `현재 구성 BL 1: ${BL_TITLES[0]}` : chosen.def.label_ko
+  // 분석한 날의 구성 (2026-11-19 사용자 결정, 서버 10f 와 같은 규칙): 백테스트 시작일에 고른 종목을 그대로 두고, 선택 전략의 직전 리밸런싱 목표 비중을 쓴다.
+  // 분석한 날에 뉴스로 비중을 새로 만들지 않는다(예전 「현재 구성 BL 1」 없음). 목업 전략은 리밸런싱마다 시작일 목표 비중으로 되돌리므로 그 비중 그대로.
+  const currentW = chosen.def.weights
+  const currentLabel = chosen.def.label_ko
+  const holdingsRule = `[목업] 백테스트 시작일인 ${start}에 고른 종목을 분석한 날인 ${MOCK_AS_OF}까지 **그대로 유지**했습니다. 분석한 날의 포트폴리오 비중은 리밸런싱 때마다 되돌리는 **백테스트 시작일의 목표 비중**입니다.`
   const currentCash = Math.max(0, 1 - sum(Object.values(currentW)))
   const allocation: ReportSummary["allocation"] = {
-    basis: sc.news ? "forward" : "backtest", basis_ko: sc.news ? `분석 기준일 ${MOCK_AS_OF} 구성 (${currentLabel})` : `백테스트 선택안 (${chosen.def.label_ko})`,
+    basis: "forward", basis_ko: `분석 기준일 ${MOCK_AS_OF} 구성 (${currentLabel})`,
     items: Object.entries(currentW).sort((a, b) => b[1] - a[1]).map(([t, w]) => ({ ticker: t, name: stockOf(t).name_en, sector: stockOf(t).sector_ko, weight: w, usd: round(capUsdNow * w), krw: Math.round(capUsdNow * w * fxNow) })),
     cash_weight: currentCash, initial_amount_usd: round(capUsdNow), fx_rate: fxNow, fx_direction: `1 USD = ${fxNow.toLocaleString("en-US")}.00 KRW`,
   }
@@ -152,7 +152,7 @@ export function buildReport(sc: ReportScenario): MockReportDoc {
   const info_notes = ckChosen.filter((c) => c.status === "info" && !c.ok).map((c) => c.message_ko)
   // 「조건별 근거 보기」 표 행 (서버 validation_text 와 같은 문장 틀, 2026-11-16)
   const NAME_PLAIN: Record<string, string> = { R1: "최대낙폭과 허용 한도", R1b: "비교지수와 최대낙폭 비교", R2: "목표 수익률 달성 여부", R3: "비교지수와 수익률 비교", R7: "변동성 기준 충족 여부" }
-  const resultKo = (c: { rule: string; status: string; threshold: number | null }) => c.status === "info" ? (["R2", "R7"].includes(c.rule) && c.threshold != null ? "판정 보류" : "측정 결과") : ({ pass: "충족", warn: "주의", flag: "허용 초과", fail: "미충족" }[c.status] ?? c.status)
+  const resultKo = (c: { rule: string; status: string; threshold: number | null }) => c.status === "info" ? (["R2", "R7"].includes(c.rule) && c.threshold != null ? "판정 보류" : "참고(판정 없음)") : ({ pass: "충족", warn: "주의", flag: "허용 초과", fail: "미충족" }[c.status] ?? c.status)
   const retPair = (m: { cagr: number; total_return: number }) => (bt.short ? ["같은 기간 수익률", m.total_return, bt.bench.m.total_return] : ["연평균 수익률(CAGR)", m.cagr, bt.bench.m.cagr]) as [string, number, number]
   const pp = (x: number) => `${x > 0 ? "+" : x < 0 ? "-" : ""}${(Math.abs(x) * 100).toFixed(1)}%p`
   const valRows = () => ckChosen.map((c) => {
@@ -183,7 +183,7 @@ export function buildReport(sc: ReportScenario): MockReportDoc {
     const ck = Object.fromEntries(ckChosen.map((c) => [c.rule, c]))
     const bm = bt.bench.m
     const prefKo = { low: "낮은 변동성 기준", medium: "중간 변동성 기준", high: "높은 변동성 기준" }[sc.vol_pref]
-    const r1 = ck.R1 && !ck.R1.ok ? `[목업] ${span} 백테스트에서 고점 대비 가장 크게 떨어진 폭(최대낙폭)은 ${pct1(ck.R1.value ?? 0)}로, 허용하기로 한 ${pct1(ck.R1.threshold ?? 0)}보다 ${pct1((ck.R1.value ?? 0) - (ck.R1.threshold ?? 0))}p 컸습니다. 같은 기간 같은 날 같은 금액을 SPY에 넣었다면 최대낙폭은 ${pct1(Math.abs(bm.mdd))}였습니다. 비슷한 하락이 다시 오면 감내하기로 한 손실보다 더 크게 떨어질 수 있습니다.` : null
+    const r1 = ck.R1 && !ck.R1.ok ? `[목업] ${span} 백테스트에서 고점 대비 가장 크게 떨어진 폭(최대낙폭)은 **${pct1(ck.R1.value ?? 0)}**로, 허용하기로 한 ${pct1(ck.R1.threshold ?? 0)}보다 ${pct1((ck.R1.value ?? 0) - (ck.R1.threshold ?? 0))}p 컸습니다. 같은 기간 같은 날 같은 금액을 SPY에 넣었다면 최대낙폭은 ${pct1(Math.abs(bm.mdd))}였습니다. 비슷한 하락이 다시 오면 감내하기로 한 손실보다 더 크게 떨어질 수 있습니다.` : null
     const r2 = ck.R2?.status === "warn" ? `[목업] ${span}의 수익률을 1년 기준으로 환산한 값은 ${pct1(ck.R2.value ?? 0)}로, 목표한 연 ${pct1(ck.R2.threshold ?? 0)}보다 ${pct1((ck.R2.threshold ?? 0) - (ck.R2.value ?? 0))}p 낮았습니다. 과거 성과로는 목표 수익률에 못 미쳤다는 뜻입니다.` : null
     const r3 = ck.R3?.status === "warn" ? `[목업] ${span} 같은 날 같은 금액을 SPY에 넣었다고 가정했을 때보다 연평균 수익률이 ${pct1(Math.abs(ck.R3.value ?? 0))}p 낮았습니다. 같은 기간 시장 대표 지수에 투자하는 것보다 성과가 낮았다는 뜻입니다.` : null
     const vol = (tail: string, dated = false) => { const c = ck.R7; if (!c || c.threshold == null) return null; const m = c.multiplier ?? 1; const head = `SPY의 변동성을 1년 기준으로 환산한 값은 ${pct1(bm.vol)}였습니다.`
@@ -193,7 +193,7 @@ export function buildReport(sc: ReportScenario): MockReportDoc {
     const cautions = bt.verdict.cautions_ko.map((k) => ({ key: k, text: (k.startsWith("허용 낙폭 초과") ? r1 : k === "목표수익 미달" ? r2 : k === "비교지수 하회" ? r3 : null) ?? k }))
     const info: string[] = []
     const held = [...(ck.R2?.status === "info" ? [`연 ${pct1(sc.target_return)} 목표 수익률`] : []), ...(ck.R7?.status === "info" && ck.R7.threshold != null ? ["변동성 기준"] : [])]
-    if (held.length) info.push(`[목업] ${span}의 수익률은 ${pct1(bt.chosen.m.total_return)}였습니다. 평가 기간이 짧아 ${held.join("과 ")}의 충족 여부는 판정하지 않았습니다.${held.includes("변동성 기준") ? ` 참고로 ${vol("였습니다.")}` : ""}`)
+    if (held.length) info.push(`[목업] ${span}의 수익률은 ${pct1(bt.chosen.m.total_return)}였습니다. 다만 평가 기간이 짧아 ${held.join("과 ")}의 충족 여부는 **판정하지 않았습니다**.${held.includes("변동성 기준") ? ` 참고로 ${vol("였습니다.")}` : ""}`)
     if (ck.R1b && !ck.R1b.ok && ck.R1?.ok) info.push(`[목업] ${span} 같은 날 같은 금액을 SPY에 넣었다면 최대낙폭은 ${pct1(Math.abs(bm.mdd))}였고, 이 전략은 ${pct1(ck.R1b.value ?? 0)}로 더 크게 떨어졌습니다. 시장 전체보다 하락 위험이 컸다는 뜻입니다.`)
     return { rules, cautions, info }
   }
@@ -206,6 +206,12 @@ export function buildReport(sc: ReportScenario): MockReportDoc {
   const headline = vs === "insufficient" ? `[목업] 조건을 모두 지키는 구성은 주식 비중이 ${Math.round(sum(Object.values(chosen.def.weights)) * 100)}%에 그쳐 추천하지 않았습니다.` : vs === "recommended_warn" ? `[목업] ${chosen.def.label_ko}이 1위지만 ${bt.verdict.cautions_ko.join(", ")} 주의가 있습니다.` : `[목업] ${chosen.def.label_ko}이 내 조건을 지키면서 비교지수보다 나은 성과를 보였습니다.`
   // 7. 「다음 분석에서 바꿔 볼 조건」: 바꿀 조건 + 확인할 결과 (2026-11-16)
   const nextActions = [`[목업] 다음 분석에서 허용 손실을 ${pct1(sc.max_dd)}에서 바꿔 보면, 그 기준을 지키는 구성의 주식 비중과 최대낙폭이 어떻게 달라지는지 확인할 수 있습니다.`, `[목업] 다음 분석에서 테마를 넓혀 지금 ${sc.tickers.length}개인 종목 수를 늘려 보면, 업종 비중과 최대낙폭이 어떻게 달라지는지 확인할 수 있습니다.`, "[목업] 다음 분석에서 비중을 맞추는 주기를 바꿔 보면, 한 종목의 비중이 상한을 넘은 날 수와 수익률이 어떻게 달라지는지 확인할 수 있습니다."]
+  // 「성과 해석」 수익 기여 문장 (2026-11-19 사용자 요청, 실제 리포트의 contribution_sentence 와 같은 모양): 플러스로 보탠 위 두 종목
+  const contrib = Object.entries(chosen.def.weights).map(([t, w]) => [t, w * (growth(bt, t, 0, n) - 1)] as const).filter(([, v]) => v > 0.0005).sort((x, y) => y[1] - x[1])
+  const iga = (w: string) => { const c = w.charCodeAt(w.length - 1); return c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 ? `${w}이` : `${w}가` }
+  const ppc = (v: number) => `${(v * 100).toFixed(1)}%p`
+  const contribSentence = contrib.length ? `[목업] 전체 수익률 ${pct1(chosen.m.total_return)} 가운데 **${iga(stockOf(contrib[0][0]).name_ko)} ${ppc(contrib[0][1])}**를 벌어 가장 많이 보탰${contrib[1] ? `고, ${iga(stockOf(contrib[1][0]).name_ko)} ${ppc(contrib[1][1])}로 뒤를 이었습니다.` : "습니다."}` : null
+  const nextActionTitles = ["허용 손실 기준을 바꿔 보기", "테마를 넓혀 종목 수 늘려 보기", "비중을 맞추는 주기 바꿔 보기"]  // 조건의 뜻을 담은 제목 (2026-11-19, 실제 리포트의 next_action_titles_ko 와 같은 모양)
   const period = { start, end, as_of: start, trading_days: n + 1, window_days: n, annualized_reliable: !short }
   const summary: ReportSummary = {
     verdict: { status: vs, label_ko: bt.verdict.label_ko, headline_ko: headline, reason_ko: bt.reason_ko, chosen_portfolio_id: chosen.def.id, chosen_label_ko: chosen.def.label_ko, cautions_ko: bt.verdict.cautions_ko, cautions_plain: plainOf().cautions, period_note_ko: null, notices_ko: sc.key === "none" ? ["[목업] 허용 손실 5%를 지키려면 현금 비중이 크게 늘어나 주식 투자 효과가 거의 없습니다."] : [], n_notices: sc.key === "none" ? 1 : 0 },
@@ -223,7 +229,7 @@ export function buildReport(sc: ReportScenario): MockReportDoc {
   const companies: CompanyItem[] = sc.tickers.map((t, i) => {
     const s = stockOf(t)
     const ids = ev.filter((e) => e.tickers.includes(t) && e.kind === "news").map((e) => e.id)
-    return { ticker: t, name: s.name_en, market: s.market, sector: s.sector_ko, sub_industry: s.sub_industry, summary: s.summary_ko, theme_reason_ko: `[목업] ${s.sub_industry} 기업으로 「${sc.themes[i % sc.themes.length].label}」 테마에 해당합니다.`, theme_confidence: round(0.9 - i * 0.04, 2), weight: currentW[t] ?? null, in_selection_now: true, rank_now: i + 1, metric_now: round(0.42 - i * 0.05, 4), in_backtest: true, rank_bt: i + 1, metric_bt: round(0.35 - i * 0.04, 4), fact_id: `fin:${t}:metric`, rationale_ko: [`[목업] ${s.name_ko}는 선정 지표 순위 ${i + 1}위로 뽑혔습니다 [fin:${t}:metric].`, ids[0] ? `[목업] 최근 보도에서 수요 관련 소식이 확인됐습니다 [${ids[0]}].` : "[목업] 최근 관련 보도는 많지 않았습니다."], evidence_ids: ids, n_news: ids.length, n_disclosures: ev.filter((e) => e.kind === "disclosure" && e.tickers.includes(t)).length }
+    return { ticker: t, name: s.name_en, market: s.market, sector: s.sector_ko, sub_industry: s.sub_industry, summary: s.summary_ko, theme_reason_ko: `[목업] ${s.sub_industry} 기업으로 「${sc.themes[i % sc.themes.length].label}」 테마에 해당합니다.`, theme_confidence: round(0.9 - i * 0.04, 2), weight: currentW[t] ?? null, in_selection_now: true, rank_now: null, metric_now: null, in_backtest: true, rank_bt: i + 1, metric_bt: round(0.35 - i * 0.04, 4), fact_id: `fin:${t}:metric`, rationale_ko: [`[목업] ${s.name_ko}는 선정 지표 순위 ${i + 1}위로 뽑혔습니다 [fin:${t}:metric].`, ids[0] ? `[목업] 최근 보도에서 수요 관련 소식이 확인됐습니다 [${ids[0]}].` : "[목업] 최근 관련 보도는 많지 않았습니다."], evidence_ids: ids, n_news: ids.length, n_disclosures: ev.filter((e) => e.kind === "disclosure" && e.tickers.includes(t)).length }
   })
 
   // 비교표 (같은 기간·같은 적립)
@@ -238,15 +244,15 @@ export function buildReport(sc: ReportScenario): MockReportDoc {
     { id: "verdict", title_ko: "종합 투자 판단", blocks: [
       // 2026-11-16 새 작성 규칙(서버 14a·14b 프롬프트)과 같은 순서: 비교한 포트폴리오 수 → 선택 / 종목을 고른 방법 / 두 날짜의 구성 · 평가 기간 → 판정 여부 / 하락 / 운용 방식
       { type: "paragraphs", tone: "lead", src: "14b", items: [
-        `[목업] 과거 자료로 ${nCand}개 포트폴리오를 비교한 결과, ${chosen.def.label_ko} 전략을 선택했습니다. 같은 기간 SPY를 같은 조건으로 샀다면 ${short ? `기간 수익률 ${spct1(bench.m.total_return)}` : `연평균 ${pct1(bench.m.cagr)}`}였습니다 [calc:cagr].`,
-        `[목업] 포트폴리오에 담을 주식은 ${metricKo} 순위로 골랐습니다. 종목 선정에 쓰지 않은 기업의 특성은 직접 확인하지 않았습니다.`,
-        `[목업] 분석 기준일인 ${MOCK_AS_OF}의 자료로 다시 계산한 종목과 투자 비중은 백테스트 시작일인 ${start}에 고른 종목과 다를 수 있습니다. 이 글에서는 이를 분석 기준일 구성이라고 부릅니다.`,
+        `[목업] 과거 자료로 ${nCand}개 포트폴리오를 비교한 결과, **${chosen.def.label_ko} 전략**을 선택했습니다. 참고로 같은 기간 SPY를 같은 조건으로 샀다면 ${short ? `기간 수익률 ${spct1(bench.m.total_return)}` : `연평균 ${pct1(bench.m.cagr)}`}였습니다 [calc:cagr].`,
+        `[목업] 포트폴리오에 담을 주식은 ${metricKo} 순위로 골랐습니다. 그래서 종목 선정에 쓰지 않은 기업의 특성은 **직접 확인하지 않았습니다**.`,
+        `[목업] 과거 계산을 시작한 날인 백테스트 시작일(${start})에 **${sc.tickers.length}종목**을 골라, 분석한 날인 ${MOCK_AS_OF}까지 같은 종목을 유지했습니다.`,  // 서버 코드 문단과 같은 모양 (2026-11-19: 시작일 종목 유지)
       ] },
       { type: "kpis", ids: kpis.map((k) => k.id) },
       { type: "paragraphs", src: "14a", items: [
-        `[목업] ${start}부터 ${end}까지 백테스트를 진행했고, 이 기간의 수익률은 ${spct1(chosen.m.total_return)}였습니다.${short ? " 평가 기간이 짧아 목표 수익률과 변동성 기준을 충족했는지는 판정하지 않았습니다." : ""}`,
-        `[목업] 이 기간 최대낙폭은 ${pct1(Math.abs(chosen.m.mdd))}로 허용 손실 ${pct1(sc.max_dd)}${Math.abs(chosen.m.mdd) <= sc.max_dd + 1e-9 ? " 이내였습니다" : "를 넘었습니다"} [calc:max_drawdown].`,
-        `[목업] 이번에는 비중을 조정할 때마다 백테스트 시작일에 정한 비율로 되돌리는 방식을 선택했습니다.`,
+        `[목업] ${start}부터 ${end}까지 백테스트를 진행했고, 이 기간의 수익률은 **${spct1(chosen.m.total_return)}**였습니다.${short ? " 다만 평가 기간이 짧아 목표 수익률과 변동성 기준을 충족했는지는 **판정하지 않았습니다**." : ""}`,
+        `[목업] 이 기간 최대낙폭은 **${pct1(Math.abs(chosen.m.mdd))}**로 허용 손실 ${pct1(sc.max_dd)}${Math.abs(chosen.m.mdd) <= sc.max_dd + 1e-9 ? " 이내였습니다" : "를 넘었습니다"} [calc:max_drawdown].`,
+        `[목업] 리밸런싱(포트폴리오 비중을 다시 맞추는 일)에는 두 가지 방식이 있고, 이번에는 포트폴리오 비중을 조정할 때마다 백테스트 시작일에 정한 비율로 되돌리는 **시작일 비중 방식**을 선택했습니다.`,
       ] },
     ] },
     { id: "market", title_ko: "산업과 시장 분석", blocks: [
@@ -263,24 +269,21 @@ export function buildReport(sc: ReportScenario): MockReportDoc {
       { type: "paragraphs", src: "14b", items: [`[목업] 투자 가능 종목 518개에서 테마 관련 후보를 찾고, 선정 지표 순위와 섹터 분산 규칙으로 ${sc.tickers.length}개를 골랐습니다.`] },
       { type: "funnel", items: funnel },
       { type: "callout", tone: "info", title_ko: "선정 지표", text_ko: `[목업] ${metricDesc}` },
-      { type: "companies", title_ko: "선정 종목과 기업별 근거", metric: metricId, metric_ko: metricKo, direction: sc.template === "low_per" || sc.template === "low_volatility" ? "asc" : "desc", as_of_now: MOCK_AS_OF, as_of_bt: start, portfolio_id: chosen.def.id, items: companies },
+      { type: "companies", title_ko: "선정 종목과 기업별 근거", metric: metricId, metric_ko: metricKo, direction: sc.template === "low_per" || sc.template === "low_volatility" ? "asc" : "desc", as_of_now: MOCK_AS_OF, as_of_bt: start, portfolio_id: chosen.def.id, holdings_fixed: true, items: companies },
       table(`테마에는 해당하지만 최종 선정에서 빠진 예 (${MOCK_AS_OF} 기준)`, [["ticker", "티커"], ["name", "회사"], ["reason", "제외 이유"], ["metric", "지표값", "pct"]], [{ ticker: "INTC", name: "Intel Corporation", reason: "rank_beyond_n", metric: -0.12 }, { ticker: "QCOM", name: "Qualcomm", reason: "metric_missing", metric: null }], { group_ko: "제외된 종목과 재선정 차이" }),
-      table("분석 기준일 선정 목록과 백테스트 시작일 재선정 목록의 차이", [["k", "구분"], ["v", "종목"]], [{ k: "백테스트용 재선정에서 추가된 종목", v: "없음" }, { k: "빠진 종목", v: "없음" }], { group_ko: "제외된 종목과 재선정 차이", note_ko: "백테스트는 시작일 당시에 알 수 있던 정보만으로 같은 규칙을 다시 적용합니다. 그래서 목록이 달라질 수 있습니다." }),
     ] },
     { id: "construction", title_ko: "포트폴리오 구성과 운용", blocks: [
       { type: "paragraphs", src: "14b", items: [`[목업] 기준 비중은 ${baseRun.def.label_ko}이며, 종목당 상한 ${pct1(sc.max_weight)}을 지켰습니다.`] },
       { type: "weights_compare", title_ko: "비중 규칙별 구성 (백테스트 시작일)", columns: wcCols.map((r) => ({ id: r.def.id, label_ko: r.def.label_ko, kind: r.def.kind, rule_ko: r.def.rule_ko })), rows: sc.tickers.map((t) => ({ ticker: t, name: stockOf(t).name_en, sector: stockOf(t).sector_ko, weights: Object.fromEntries(wcCols.map((r) => [r.def.id, r.def.weights[t] ?? 0])) })), cash: Object.fromEntries(wcCols.map((r) => [r.def.id, r.def.cash])), ex_ante: Object.fromEntries(wcCols.map((r) => [r.def.id, { vol: r.m.vol }])), baseline_id: baseRun.def.id },
       table(`배분 금액 (${chosen.def.label_ko}, 백테스트 초기 투자금 ${Math.round(capUsdBt).toLocaleString("en-US")} USD 기준)`, [["ticker", "티커"], ["name", "회사"], ["sector", "섹터"], ["w", "비중", "pct1"], ["usd", "USD", "usd"], ["krw", "원화", "krw"]], [...Object.entries(chosen.def.weights).map(([t, w]) => ({ ticker: t, name: stockOf(t).name_en, sector: stockOf(t).sector_ko, w, usd: round(capUsdBt * w), krw: Math.round(capUsdBt * w * sc.fx_bt) })), ...(chosen.def.cash > 0 ? [{ ticker: "현금", name: "", sector: "", w: chosen.def.cash, usd: round(capUsdBt * chosen.def.cash), krw: Math.round(capUsdBt * chosen.def.cash * sc.fx_bt) }] : [])]),
       { type: "timeline", title_ko: `리밸런싱 타임라인 (${chosen.def.label_ko})`, portfolio_id: chosen.def.id, walkforward: false, items: timelineItems(sc, bt) },
-      ...(sc.news ? [
-        { type: "paragraphs", src: "14b", group_ko: "분석 기준일의 현재 구성", group_open: true, items: [`[목업] 분석 기준일 ${MOCK_AS_OF}의 뉴스로 만든 현재 구성입니다. 백테스트 선택안과 비중이 다를 수 있습니다.`] } as Block,
-        { type: "donut", title_ko: `${currentLabel} 배분 비중 (현재 구성)`, items: Object.entries(currentW).map(([label, value]) => ({ label, value })), group_ko: "분석 기준일의 현재 구성" } as Block,
-      ] : []),
+      { type: "callout", tone: "info", title_ko: `현재 구성 (분석 기준일 ${MOCK_AS_OF})`, text_ko: holdingsRule, group_ko: "분석 기준일의 현재 구성" } as Block,  // 서버 forward_blocks 와 같은 모양 (시작일 종목 유지)
+      { type: "donut", title_ko: `${currentLabel} 배분 비중 (현재 구성)`, items: Object.entries(currentW).map(([label, value]) => ({ label, value })), group_ko: "분석 기준일의 현재 구성" } as Block,
     ] },
     { id: "performance", title_ko: "과거 성과와 해석", blocks: [
       { type: "callout", tone: "info", title_ko: "백테스트 가정", text_ko: `[목업] ${start}~${end}, 거래 수수료 ${COMMISSION_BPS / 100}%, 매월 같은 비중으로 리밸런싱, 적립은 매월 ${sc.capital.day}일. 시세는 화면 확인용 예시 값입니다.` },
       { type: "line", title_ko: "누적 수익률 (시작 = 100)", dataset: "index", series_ids: allRuns.map((r) => r.def.id), default_on: defaultOn, y_format: "index" },
-      { type: "paragraphs", src: "14a", items: [`[목업] 선택안은 ${short ? `기간 수익률 ${spct1(chosen.m.total_return)}` : `연평균 ${pct1(chosen.m.cagr)}`}, 연변동성 ${pct1(chosen.m.vol)}였습니다.`] },
+      { type: "paragraphs", src: "14a", items: [`[목업] 선택안은 ${short ? `기간 수익률 ${spct1(chosen.m.total_return)}` : `연평균 ${pct1(chosen.m.cagr)}`}, 연변동성 ${pct1(chosen.m.vol)}였습니다.`, ...(contribSentence ? [contribSentence] : [])] },
       { type: "line", title_ko: "평가금액과 투입 원금 (USD)", dataset: "value_usd", series_ids: [chosen.def.id, bench.def.id, "net_invested"], default_on: [chosen.def.id, bench.def.id, "net_invested"], y_format: "usd" },
       { type: "area", title_ko: "고점 대비 낙폭", dataset: "drawdown", series_ids: defaultOn, default_on: defaultOn, y_format: "pct" },
       table("포트폴리오 비교 (같은 기간·같은 적립)", [["name", "포트폴리오"], ["kind", "종류"], ["cagr", "CAGR", "pct"], ["vol", "변동성", "pct"], ["sharpe", "Sharpe", "ratio"], ["mdd", "최대낙폭", "pct"], ["excess", "비교지수 대비", "pp"], ["final", "최종 평가금액", "usd"], ["irr", "적립 기준 연수익(XIRR)", "pct"], ["status", "검증", "text"]], cmpRows, { note_ko: "비교지수 대비는 SPY 기준 연평균 수익률(CAGR) 차이입니다. [목업] 예시 시세로 계산했습니다." }),
@@ -288,12 +291,12 @@ export function buildReport(sc: ReportScenario): MockReportDoc {
       { type: "bar", title_ko: "종목별 수익 기여 (기간 전체)", items: Object.entries(chosen.def.weights).map(([t, w]) => ({ label: t, value: w * (growth(bt, t, 0, n) - 1) })), format: "pp" },
       { type: "paragraphs", src: "14a", group_ko: "검증 상세", items: [`[목업] 비교한 전략 ${nCand}개 중 순위가 가장 앞선 ${chosen.def.label_ko} 전략을 선택했습니다.`] },
       // 「조건별 근거 보기」 두 표 (서버 validation_text 와 같은 틀, 2026-11-16)
-      table(`선택 전략의 조건별 결과 (${chosen.def.label_ko})`, [["name", "점검 항목"], ["msg", "기준과 측정값"], ["status", "결과"]], valRows(), { group_ko: "검증 상세", note_ko: "[목업] 판정 보류는 평가 기간이 짧아 기준 충족 여부를 판단하지 않은 항목, 측정 결과는 기준 충족 여부를 따지지 않고 값을 알려 주는 항목입니다." }),
+      table(`선택 전략의 조건별 결과 (${chosen.def.label_ko})`, [["name", "점검 항목"], ["msg", "기준과 측정값"], ["status", "결과"]], valRows(), { group_ko: "검증 상세", note_ko: "[목업] 판정 보류는 평가 기간이 짧아 기준 충족 여부를 판단하지 않은 항목, 참고(판정 없음)는 기준 충족 여부를 판정하지 않고 값만 알려 주는 항목입니다." }),
       table("전략별 점검 결과", [["name", "전략"], ["status", "결과"], ["reason", "이유"]], stratRows(), { group_ko: "검증 상세" }),
     ] },
     { id: "assumptions", title_ko: "판단의 전제와 재검토 조건", blocks: [
-      { type: "paragraphs", src: "14b", items: ["[목업] 포트폴리오에 담을 종목을 고를 때는 일정 기간 주가가 얼마나 올랐는지를 봤습니다. 각 기업이 이익을 꾸준히 내고 부채를 감당할 수 있는지는 별도로 평가하지 않았습니다.", "[목업] 백테스트는 과거 시작일에 고른 종목으로 계산했고, 지금 추천 구성은 분석 기준일에 다시 고른 종목입니다. 과거 결과는 지금 구성의 결과가 아닙니다. 매월 첫 거래일에 목표 비중으로 되돌린다(리밸런싱)고 가정했습니다."] },
-      { type: "cards", title_ko: "다음에 검토할 수 있는 선택지", items: nextActions.map((t, i) => ({ title_ko: `선택지 ${i + 1}`, text_ko: t, meta: [] })) },
+      { type: "paragraphs", src: "14b", items: ["[목업] 포트폴리오에 담을 종목을 고를 때는 일정 기간 주가가 얼마나 올랐는지를 봤습니다. 각 기업이 이익을 꾸준히 내고 부채를 감당할 수 있는지는 별도로 평가하지 않았습니다.", "[목업] 백테스트 시작일에 고른 종목을 분석한 날까지 그대로 유지했으므로 과거 결과와 분석한 날의 구성은 같은 종목입니다. 그래도 과거 성과가 앞으로도 이어진다는 뜻은 아닙니다. 매월 첫 거래일에 목표 비중으로 되돌린다(리밸런싱)고 가정했습니다."] },
+      { type: "cards", title_ko: "다음에 검토할 수 있는 선택지", items: nextActions.map((t, i) => ({ title_ko: nextActionTitles[i] ?? `선택지 ${i + 1}`, text_ko: t, meta: [] })) },
       { type: "cards", title_ko: "확인한 한계", items: [["과거 종목 목록", "[목업] 백테스트에서 살펴볼 종목은 화면 확인용 예시 날짜의 지수 구성 목록에서 골랐습니다."], ["기업 규모를 추정한 방법", "[목업] 회사의 주식 수에 그날 장 마감 가격을 곱해 시가총액을 계산했습니다."], ["계산에서 빠진 비용", "[목업] 세금, 환전 수수료, 호가 차이는 계산에 반영하지 않았습니다."]].map(([title_ko, text_ko]) => ({ title_ko, text_ko, meta: [] })) },
     ] },
     { id: "references", title_ko: "참고자료와 분석 조건", blocks: [
@@ -360,7 +363,7 @@ function proposedFor(sc: ReportScenario, bt: Backtest, doc: ReportDoc, currentW:
   return {
     contract: PROPOSED_CONTRACT_VERSION,
     execution: sc.doc_version === 1 ? null : exec,
-    allocations: { current: basis("current", "분석 기준일의 현재 구성", MOCK_AS_OF, sc.news ? "bl_now_01" : chosen.def.id, currentLabel, currentW, capUsd, fx), recommended_now: basis("recommended_now", "추천 전략을 분석 기준일에 적용", MOCK_AS_OF, chosen.def.id, chosen.def.label_ko, nowW, capUsd, fx), backtest_start: basis("backtest_start", "백테스트 시작일의 추천 전략", sim.dates[0], chosen.def.id, chosen.def.label_ko, chosen.def.weights, capUsdBt, sc.fx_bt) },
+    allocations: { current: basis("current", "분석 기준일의 현재 구성", MOCK_AS_OF, chosen.def.id, currentLabel, currentW, capUsd, fx), recommended_now: basis("recommended_now", "추천 전략을 분석 기준일에 적용", MOCK_AS_OF, chosen.def.id, chosen.def.label_ko, nowW, capUsd, fx), backtest_start: basis("backtest_start", "백테스트 시작일의 추천 전략", sim.dates[0], chosen.def.id, chosen.def.label_ko, chosen.def.weights, capUsdBt, sc.fx_bt) },
     chosen_vs_baseline: { as_of: sim.dates[0], chosen_id: chosen.def.id, chosen_label_ko: chosen.def.label_ko, baseline_id: baseRun.def.id, baseline_label_ko: baseRun.def.label_ko, rows: sc.tickers.map((t) => ({ ticker: t, name: stockOf(t).name_en, chosen: chosen.def.weights[t] ?? 0, baseline: baseRun.def.weights[t] ?? 0 })), cash: { chosen: chosen.def.cash, baseline: baseRun.def.cash } },
     company_views: views,
     request_log: { idea: sc.idea, qa: sc.qa.map((q, i) => ({ question_ko: q.question_ko, answer_ko: q.answer_ko, at: `${sc.created_at}T08:${String(10 + i * 3).padStart(2, "0")}:00`, applied_ko: q.applied_ko })), messages: sc.messages.map((m, i) => ({ text: m.text, at: `${sc.created_at}T08:${String(30 + i * 4).padStart(2, "0")}:00`, outcome: m.outcome, changes_ko: m.changes_ko, note_ko: m.note_ko })), final_conditions: [{ label_ko: "투자금", value_ko: sc.capital.currency === "KRW" ? `${sc.capital.amount.toLocaleString("en-US")}원` : `${sc.capital.amount.toLocaleString("en-US")} USD`, changed: false }, { label_ko: "종목당 최대 비중", value_ko: pct1(sc.max_weight), changed: sc.qa.some((q) => q.applied_ko?.includes("종목당")) }, { label_ko: "필수 포함 종목", value_ko: sc.must_include.join(", ") || "없음", changed: sc.messages.some((m) => m.outcome === "applied") }, { label_ko: "손실 감내 수준", value_ko: pct1(sc.max_dd), changed: false }] },

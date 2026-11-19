@@ -17,11 +17,11 @@ const block = (items: CompanyItem[], metric = "pe_ttm"): CompaniesBlock => ({ ty
 describe("기업 상태 문구", () => {
   it("선정 상태를 두 기준일의 실제 값으로만 구분한다", () => {
     expect(selectionStatus({ in_selection_now: true, in_backtest: true })).toBeNull()
-    expect(selectionStatus({ in_selection_now: true, in_backtest: false })).toContain("분석 기준일에만 선정")
+    expect(selectionStatus({ in_selection_now: true, in_backtest: false })).toContain("분석한 날에만 선정")
     expect(selectionStatus({ in_selection_now: false, in_backtest: true })).toContain("백테스트 시작일에만 선정")
     expect(selectionStatus({ in_selection_now: false, in_backtest: false })).toBe("두 기준일 모두 선정되지 않음")
   })
-  it("종목 비중이 분석 기준일 구성과 모두 같으면 분석 기준일 비중, 다르거나 기준일 구성이 없으면 백테스트 시작일 비중", () => {
+  it("종목 비중이 분석 기준일 구성과 모두 같으면 분석 기준일 포트폴리오 비중, 다르거나 기준일 구성이 없으면 백테스트 시작일 포트폴리오 비중", () => {
     const al = (items: { ticker: string; weight: number }[], basis = "forward") => ({ basis, items }) as never
     expect(weightBasis([{ ticker: "A", weight: 0.2 }, { ticker: "B", weight: null }], al([{ ticker: "A", weight: 0.2 }]))).toBe("now")
     expect(weightBasis([{ ticker: "A", weight: 0.16 }, { ticker: "B", weight: null }], al([{ ticker: "A", weight: 0.08 }, { ticker: "B", weight: 0.1 }]))).toBe("bt")
@@ -34,9 +34,9 @@ describe("기업 상태 문구", () => {
   })
   it("설명이 없는 종목은 빈칸으로 두지 않고, 이유를 아는 경우와 모르는 경우를 구분하며, 옛 문구를 쓰지 않는다", () => {
     const { unmount } = render(<CompanyList b={block([company()])} />)
-    expect(screen.queryByText(/이 종목은 분석 기준일에 선정되지 않았습니다/)).toBeNull()  // 카드는 접힌 채 시작
+    expect(screen.queryByText(/이 종목은 분석한 날에 선정되지 않았습니다/)).toBeNull()  // 카드는 접힌 채 시작
     fireEvent.click(screen.getByRole("button", { name: /PLTR/ }))
-    expect(screen.getByText("분석 기준일 선정 종목이 아니어서 선정 이유 설명이 없습니다.")).toBeInTheDocument()
+    expect(screen.getByText("분석한 날의 선정 종목이 아니어서 선정 이유 설명이 없습니다.")).toBeInTheDocument()
     expect(screen.getAllByText("담지 않음").length).toBeGreaterThan(0)
     expect(screen.queryByText(/추천안 비중/)).toBeNull()
     expect(screen.queryByText(/미보유|미선정$|백테스트 미포함$/)).toBeNull()

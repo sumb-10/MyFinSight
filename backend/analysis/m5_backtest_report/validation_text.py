@@ -1,7 +1,7 @@
 """4. 과거 성과 → 투자 조건 충족 여부 → 「조건별 근거 보기」의 쉬운 문장 (2026-11-16 사용자 요청).
 
 - 「선택 전략의 조건별 결과」 표: 점검 항목 / 기준과 측정값 / 결과. 규칙 번호·수준은 화면에 두지 않는다(행 자료의 rule 은 남김).
-  결과는 충족·주의·허용 초과·미충족과, 참고(info)를 뜻에 따라 나눈 '판정 보류'(짧은 평가 기간으로 판단하지 않음)·'측정 결과'(기준 없이 값만)로.
+  결과는 충족·주의·허용 초과·미충족과, 참고(info)를 뜻에 따라 나눈 '판정 보류'(짧은 평가 기간으로 판단하지 않음)·'참고(판정 없음)'(기준 없이 값만)로.
 - 「전략별 점검 결과」 표: 전략 / 결과 / 이유. 주의·미통과는 실제 이유를, 통과는 최종 선택인지와 왜 선택됐는지·안 됐는지를.
 - selection_sentence_ko: 어떤 전략을 왜 골랐는지 한 문장 (14a validation_ko 가 그대로 옮긴다).
 validate.py 의 원래 문장(message_ko)은 바꾸지 않는다 — 화면의 다른 부분(parseVolCheck 등)이 그 형식을 읽는다.
@@ -17,9 +17,9 @@ from backend.analysis.m5_backtest_report.caution_text import PREF_LABEL, _cap, _
 
 NAME_PLAIN = {"R1": "최대낙폭과 허용 한도", "R1b": "비교지수와 최대낙폭 비교", "R2": "목표 수익률 달성 여부", "R3": "비교지수와 수익률 비교",
               "R7": "변동성 기준 충족 여부", "R4b": "조정일 사이 종목 비중 변화", "R5b": "조정일 사이 업종 비중 변화", "R9": "주식과 현금 비중",
-              "R4": "비중을 맞추는 날의 종목 비중 한도", "R5": "비중을 맞추는 날의 업종 비중 한도", "R8": "가격 자료 점검"}  # fmt: skip
+              "R4": "포트폴리오 비중을 맞추는 날의 종목 비중 한도", "R5": "포트폴리오 비중을 맞추는 날의 업종 비중 한도", "R8": "가격 자료 점검"}  # fmt: skip
 RESULT_KO = {"pass": "충족", "warn": "주의", "fail": "미충족", "flag": "허용 초과"}
-HELD, MEASURED = "판정 보류", "측정 결과"
+HELD, MEASURED = "판정 보류", "참고(판정 없음)"  # 2026-11-20 사용자 요청: '측정 결과' → 뜻이 드러나는 이름
 
 
 def _short(c: _Ctx) -> bool:
@@ -27,7 +27,7 @@ def _short(c: _Ctx) -> bool:
 
 
 def result_ko(ck: dict[str, Any]) -> str:
-    """참고(info)는 기준값이 있는데 평가 기간이 짧아 판단하지 않은 것(R2·R7) = 판정 보류, 나머지 = 측정 결과."""
+    """참고(info)는 기준값이 있는데 평가 기간이 짧아 판단하지 않은 것(R2·R7) = 판정 보류, 나머지 = 참고(판정 없음)."""
     st = ck.get("status")
     if st == "info":
         return HELD if ck.get("rule") in ("R2", "R7") and ck.get("threshold") is not None else MEASURED
@@ -62,13 +62,13 @@ def _drift_cell(c: _Ctx, kind: str, ck: dict[str, Any]) -> str:
     tol = float(c.crit.get("drift_tolerance") or 0.25)
     lim = cap * (1 + tol)
     top, who = c.comp.get(f"max_{kind}_weight"), c.comp.get("max_stock_weight_ticker" if kind == "stock" else "max_sector_weight_sector")
-    when = "비중을 맞추는 날" if c.rebal else "처음 비중을 정한 날"
+    when = "포트폴리오 비중을 맞추는 날" if c.rebal else "처음 포트폴리오 비중을 정한 날"
     base = f"기준: {when}의 {what}당 목표 비중 한도 {_cap(cap)}"
     base += f", 조정일 사이에 비중이 크게 벗어났는지 보는 별도 점검 기준 {_pct(lim)}." if lim < 1 - 1e-9 else "."
     if top is None:  # 최대 비중 자료가 없는 예전 결과 → 원래 측정 문장
         return f"{base} 측정값: {ck.get('message_ko')}"
     nm = (c.names.get(who, who) if kind == "stock" else B.sector_ko(who)) if who else None
-    s = f"{base} 측정값: 조정일 사이 가장 높았던 {what} 비중 {_pct(float(top))}" + (f"({nm})" if nm else "") + "."
+    s = f"{base} 측정값: 조정일 사이 가장 높았던 {what}의 포트폴리오 비중 {_pct(float(top))}" + (f"({nm})" if nm else "") + "."
     days, n = int(c.comp.get(f"days_above_{kind}_cap") or 0), c.comp.get("n_days")
     if not days:
         return s + f" {_cap(cap)}를 넘은 날은 없었습니다."
@@ -141,7 +141,7 @@ def integrity_reason(c: _Ctx, ck: dict[str, Any]) -> str:
     r, v, thr = ck.get("rule"), ck.get("value"), ck.get("threshold")
     if r in ("R4", "R5") and v is not None and thr is not None:
         what = "종목" if r == "R4" else "업종"
-        return f"비중을 맞추는 날 한 {what}의 비중이 최대 {_pct(float(v))}로, {what}당 한도 {_cap(float(thr))}를 넘었습니다."
+        return f"포트폴리오 비중을 맞추는 날 한 {what}의 포트폴리오 비중이 최대 {_pct(float(v))}로, {what}당 한도 {_cap(float(thr))}를 넘었습니다."
     if r == "R8" and v is not None and thr is not None:
         if float(v) < float(thr):
             return f"가격 자료가 {int(v)}일치로, 백테스트 기간에 필요한 {int(thr)}일보다 짧았습니다."
@@ -174,8 +174,8 @@ def _mode_phrase(R: dict[str, Any], p: dict[str, Any]) -> str:
     freq = (m.group(1) if (m := re.match(r"^(\S+?)(?:마다)? 첫 거래일", desc)) else "")
     freq = {"매월": "매월", "분기": "분기마다", "매주": "매주", "매년": "매년"}.get(freq, freq)
     if str(p.get("id", "")).startswith("wf_") or p.get("mode") == "walkforward":
-        return f"비중을 맞추는 날마다({freq}) 그때까지의 자료로 목표 비중을 새로 계산하는 방식입니다. " if freq else "비중을 맞추는 날마다 그때까지의 자료로 목표 비중을 새로 계산하는 방식입니다. "
-    return "비중을 맞추는 날마다 백테스트 시작일에 정한 목표 비중으로 되돌리는 방식입니다. "
+        return f"포트폴리오 비중을 맞추는 날마다({freq}) 그때까지의 자료로 목표 비중을 새로 계산하는 방식입니다. " if freq else "포트폴리오 비중을 맞추는 날마다 그때까지의 자료로 목표 비중을 새로 계산하는 방식입니다. "
+    return "포트폴리오 비중을 맞추는 날마다 백테스트 시작일에 정한 목표 비중으로 되돌리는 방식입니다. "
 
 
 def _metrics(R: dict[str, Any], pid: str) -> tuple[float | None, float]:
@@ -247,7 +247,7 @@ def selection_basis_ko(R: dict[str, Any], chosen: str, *, short: bool = False) -
     lead = (f"{', '.join(quals)} 조건을 {'모두 ' if len(quals) > 1 else ''}맞춘 전략 가운데" if quals else "비교한 전략 가운데")
     if short:
         return f"{lead} {why_short} 골랐습니다."
-    return f"{lead} {why} {name} 전략을 골랐습니다."
+    return f"{lead} {why} **{name} 전략**을 골랐습니다."  # 본문 첫 문장: 고른 전략을 굵게 (2026-11-19)
 
 
 def selection_sentence_ko(R: dict[str, Any], chosen: str) -> str:
@@ -260,7 +260,7 @@ def table_note_ko(R: dict[str, Any], chosen: str) -> str:
     integ = res.get("integrity") or []
     n_ok = sum(1 for x in integ if x.get("status") == "pass")
     s = (f"측정값은 {c.start}부터 {c.end}까지 백테스트 결과입니다. 판정 보류는 평가 기간이 짧아 기준 충족 여부를 판단하지 않은 항목, "
-         "측정 결과는 기준 충족 여부를 따지지 않고 값을 알려 주는 항목입니다.")
+         "참고(판정 없음)는 기준 충족 여부를 판정하지 않고 값만 알려 주는 항목입니다.")
     if integ:
-        s += f" 비중을 맞추는 날의 종목·업종 비중 한도와 가격 자료는 따로 점검했고 {len(integ)}개 중 {n_ok}개를 통과했습니다."
+        s += f" 또한 포트폴리오 비중을 맞추는 날의 종목·업종 비중 한도와 가격 자료는 따로 점검했고 {len(integ)}개 중 {n_ok}개를 통과했습니다."
     return s
