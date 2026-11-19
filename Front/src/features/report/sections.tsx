@@ -51,7 +51,7 @@ const textLen = (b: Block) => (b.type === "cards" ? b.items.reduce((n, c) => n +
 
 export { SubPart }
 
-/** narrow: 좁은 카드 안(예: 「참고: 뉴스를 반영했다면」 뉴스 카드 안, 폭 약 708px)에서도 용어를 오른쪽에 — 오른쪽으로 두는 기준을 672px(@2xl)로, 용어 칸을 208px 로 (2026-11-16). */
+/** narrow: 좁은 카드 안(예: 「참고: 뉴스를 반영한 투자의견으로 블랙리터만 최적화를 했다면?」 뉴스 카드 안, 폭 약 708px)에서도 용어를 오른쪽에 — 오른쪽으로 두는 기준을 672px(@2xl)로, 용어 칸을 208px 로 (2026-11-16). */
 function ProseFold({ label, blocks, lead, terms, tight, narrow }: { label: string; blocks: Block[]; lead?: React.ReactNode; terms?: TermItem[]; tight?: boolean; narrow?: boolean }) {
   const body = <div className="min-w-0 space-y-4">{lead}{blocks.map((b, i) => b.type === "paragraphs" ? <Paragraphs key={i} items={b.items} tone={b.tone} tight={tight} /> : null)}</div>
   return (
@@ -377,7 +377,7 @@ function ConstructionBody({ s, doc }: { s: Section; doc: ReportDoc }) {
 /** 「분석 기준일의 종목과 비중」 안 (2026-11-16 사용자 요청):
  *  ① 뉴스로 조정한 비중 — 의견 카드 안 「뉴스로 만든 투자 의견」과 「숫자로 보기」 사이에 「종목·비중을 정한 근거」
  *  ② 추천 전략 구성 — 추천 전략의 배분 비중(도넛)과 배분 금액 표.
- *  선택 전략이 뉴스를 쓰면 ①→②, 쓰지 않으면 ② 다음에 ①을 접힌 「참고: 뉴스를 반영했다면」으로.
+ *  선택 전략이 뉴스를 쓰면 ①→②, 쓰지 않으면 ② 다음에 ①을 접힌 「참고: 뉴스를 반영한 투자의견으로 블랙리터만 최적화를 했다면?」으로 (2026-11-19 사용자 요청: 블랙리터만 설명 두 줄을 그 밑에).
  *  뉴스 의견 카드가 없으면(뉴스 반영 끔 등) 「종목·비중을 정한 근거」는 예전처럼 맨 위. 어디에도 맞지 않는 블록은 맨 아래 그대로 (버리지 않음). */
 function NowParts({ now, nowProse, nowNote, doc }: { now: Block[]; nowProse: Block[]; nowNote: Block[]; doc: ReportDoc }) {
   // 「계산 기준」 안내 상자(뉴스·공시 기간·건수)는 빼고, 기간·건수는 아래 본문에 한 번만 (2026-11-16 사용자 요청)
@@ -403,9 +403,10 @@ function NowParts({ now, nowProse, nowNote, doc }: { now: Block[]; nowProse: Blo
       {news.length > 0 && usesNews && newsCards}
       {recPart}
       {news.length > 0 && !usesNews && (
-        <Disclosure title="참고: 뉴스를 반영했다면" summary="선택 전략에는 반영하지 않음">
+        <Disclosure title="참고: 뉴스를 반영한 투자의견으로 블랙리터만 최적화를 했다면?" summary="선택 전략에는 반영하지 않음">
           <div className="space-y-4">
-            <p className="text-xs leading-5 text-slate-500">분석 모델이 기사 제목과 공시를 읽고 제안한 투자 의견을 기준 비중에 반영한 비교용 구성입니다.</p>
+            <p className="text-xs leading-5 text-slate-500">분석 모델이 기사 제목과 공시를 읽고 제안한 투자 의견을 기준 비중에 반영한 비교용 구성입니다.<br />
+              블랙리터만(Black-Litterman)은 기준 비중을 출발점으로 두고, 투자 의견을 얼마나 확신하는지에 따라 비중을 조금씩 옮기는 방법입니다. 확신이 약하면 기준 비중에 가깝게, 강할수록 의견 쪽으로 더 옮깁니다.</p>
             {newsCards}
           </div>
         </Disclosure>
