@@ -433,7 +433,7 @@ def validate(res: dict[str, Any], targets: dict[str, Any], intent: dict[str, Any
         n_sh = sum(1 for t in cands if t["sharpe"] is not None and lv_s.get(t["id"]) == lv_s.get(best["id"]))
         if len(same) > 1:
             mine = not key(best)[-1]
-            parts.append(f"Sharpe {s:.2f} — 성과가 같은 후보 {len(same)}개 중 " + ("사용자가 고른 기준 비중이라 1위" if mine else "하나"))
+            parts.append(f"Sharpe {s:.2f} — 성과가 같은 후보 {len(same)}개 중 " + ("고르신 기준 비중이라 1위" if mine else "하나"))
         elif top and n_sh > 1:
             parts.append(f"Sharpe {s:.2f} — 같은 값 {n_sh}개 중 최대낙폭이 가장 작음")
         else:

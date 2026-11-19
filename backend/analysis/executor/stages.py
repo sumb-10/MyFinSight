@@ -365,7 +365,7 @@ def st_results(ctx: RunContext) -> str:
     bundle["dialog"] = list(ctx.dialog)  # 리포트 머리말 요약(14d)용 확인 질문·답
     ctx.outputs["13_results"] = bundle
     # '경고 3건' 이 사용자 공지 0건인 실행에도 나왔다 (참고·개발용 기록까지 셈, 003) → 사용자에게 보이는 공지 수
-    return f"결과 통합: 포트폴리오 {len(bundle['backtest']['portfolios'])}개, 인용 색인 {len(bundle['evidence_index'])}건, 사용자 공지 {len(bundle.get('notices') or [])}건"
+    return f"결과 통합: 포트폴리오 {len(bundle['backtest']['portfolios'])}개, 인용 색인 {len(bundle['evidence_index'])}건, 알림 {len(bundle.get('notices') or [])}건"
 
 
 def st_report(ctx: RunContext) -> str:

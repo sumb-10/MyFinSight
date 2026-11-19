@@ -54,7 +54,7 @@ describe("비중이 정해진 과정 (2026-11-16)", () => {
   })
   it("뉴스 반영 구성이 최종 선택돼도 자연스럽게 · 추천이 없으면 판단 결과대로", () => {
     expect(d(doc({ chosen: ["bl_04", "뉴스 뷰: AI 수요"] }))[3]).toBe("최종 비중 결정|과거 성과를 비교한 뒤, 뉴스 뷰: AI 수요 구성으로 최종 비중을 정했습니다.")
-    expect(d(doc({ status: "none_baseline", chosen: ["equal_weight", "동일비중"] }))[3]).toBe("최종 비중 결정|조건을 충족한 추천 구성이 없어, 기준 구성인 동일비중 방식의 비중을 보여 줍니다.")
+    expect(d(doc({ status: "none_baseline", chosen: ["equal_weight", "동일비중"] }))[3]).toBe("최종 비중 결정|조건을 충족한 추천 구성이 없어, 기준 구성인 동일비중 방식의 비중을 실었습니다.")
     expect(d(doc({ status: "none_cash_blend", chosen: ["cash_blend_30", "현금 혼합안 (현금 30%)"] }))[3]).toContain("현금을 섞은 현금 혼합안 (현금 30%) 구성의 비중")
     expect(d(doc({ chosen: ["dd_match_market_cap", "낙폭 맞춤안 (주식 55% + 현금 45%, 시가총액비중 기준)"] }))[3]).toContain("낙폭 맞춤안 (주식 55% + 현금 45%, 시가총액비중 기준) 구성으로 최종 비중을 정했습니다")
   })

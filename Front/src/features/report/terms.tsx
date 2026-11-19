@@ -56,11 +56,11 @@ const COMMON: { term: string; explain_ko: string; aliases?: string[] }[] = [
   { term: "CAGR", aliases: ["연평균 수익률", "연환산 수익률"], explain_ko: "투자 기간 동안 매년 같은 비율로 불어났다고 가정해 계산한 연평균 수익률입니다. 평가 기간이 짧으면 참고용으로만 봅니다." },
   { term: "기간 수익률", aliases: ["전체 기간 수익률"], explain_ko: "백테스트 시작부터 끝까지 전체 기간의 누적 수익률입니다. 1년 평균이 아니어서 연평균 수익률(CAGR)과 다릅니다." },
   { term: "최대낙폭", aliases: ["MDD", "최대 하락폭"], explain_ko: "투자 기간 중 가장 높았던 평가금액에서 가장 크게 떨어진 비율입니다. 과거 값이 앞으로의 손실 한도를 뜻하지는 않습니다." },
-  { term: "Sharpe", aliases: ["Sharpe 비율", "샤프 비율", "샤프"], explain_ko: "감수한 흔들림(변동성)에 비해 무위험 수익률을 넘는 수익을 얼마나 얻었는지 나타내는 값입니다. 높을수록 위험 대비 수익이 좋았다는 뜻입니다." },
+  { term: "Sharpe", aliases: ["Sharpe 비율", "샤프 비율", "샤프"], explain_ko: "흔들림(변동성)에 비해 무위험 수익률을 넘는 수익을 얼마나 냈는지 봅니다. 높을수록 위험 대비 수익이 좋았습니다." },
   { term: "연변동성", explain_ko: "수익률이 위아래로 흔들리는 정도를 1년 기준으로 환산한 값입니다. 숫자가 클수록 흔들림이 큽니다. 손실률을 뜻하지는 않습니다." },
   { term: "변동성", explain_ko: "수익률이 평균에서 얼마나 크게 오르내렸는지 나타내는 값입니다. 클수록 많이 흔들렸습니다." },
   { term: "%p (퍼센트포인트)", aliases: ["%p"], explain_ko: "두 비율의 차이를 나타내는 단위입니다. 예를 들어 30%와 20%의 차이는 10%p입니다." },
-  { term: "백테스트", explain_ko: "과거 자료로 이 전략을 그때 운용했다면 어땠을지 계산해 보는 것입니다. 실제 투자 결과가 아니며 미래 수익을 보장하지 않습니다." },
+  { term: "백테스트", explain_ko: "과거 자료로 이 전략을 그때 운용했다면 어땠을지 계산해 본 것입니다. 실제 투자 결과가 아닙니다." },
   { term: "비교지수", explain_ko: "내 전략의 성과를 견주는 기준입니다. 같은 기간·같은 적립 조건으로 비교지수 ETF를 사서 보유했다고 가정해 계산합니다." },
   { term: "SPY", explain_ko: "미국 S&P 500 지수를 따라가도록 만든 ETF(상장지수펀드)입니다. 미국 대형주 500개 기업의 흐름을 보여 주지만, 시장 전체와 완전히 같지는 않습니다." },
   { term: "매수보유 (동일 적립)", aliases: ["매수보유"], explain_ko: "비교를 위해 내 전략과 같은 날, 같은 금액을 비교지수 ETF에 넣고 팔지 않고 계속 보유했다고 가정한 결과입니다." },
@@ -191,8 +191,8 @@ export function GlossaryPanel({ doc, close, onFull }: { doc: ReportDoc; close: (
     <SidePanel title="투자 용어 설명" close={close}>
       <div className="space-y-5">
         <label className="relative block"><span className="sr-only">용어 찾기</span><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" aria-hidden /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="용어 찾기 (예: CAGR, 낙폭)" className={`${inputClass} pl-9`} /></label>
-        {group("report", "이 리포트의 용어 풀이", "분석 결과와 함께 만들어진 설명입니다. 리포트 아래 「어떤 자료를 근거로 분석했나요?」의 용어 풀이와 같습니다.")}
-        {group("common", "함께 알아두면 좋은 용어", "이 리포트의 용어 풀이에 없는 용어를 쉽게 풀어 쓴 설명입니다.")}
+        {group("report", "이 리포트의 용어 풀이", "이 리포트에 나온 용어입니다.")}
+        {group("common", "함께 알아두면 좋은 용어", "리포트에 따로 풀이가 없는 용어입니다.")}
         {!hit.length && <p className="text-sm text-slate-500">찾는 용어가 없습니다.</p>}
         {onFull && <button type="button" onClick={onFull} className="text-sm font-semibold text-blue-700 hover:underline">리포트의 전체 용어 풀이로 이동</button>}
       </div>

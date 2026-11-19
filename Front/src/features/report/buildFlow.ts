@@ -85,8 +85,8 @@ function finalStep(doc: ReportDoc): FlowStep {
   const label = v?.chosen_label_ko ?? doc.header.chosen_label_ko
   const ph = chosenPhrase(id, label)
   const d =
-    v?.status === "none_baseline" ? `조건을 충족한 추천 구성이 없어, 기준 구성인 ${ph}의 비중을 보여 줍니다.`
-    : v?.status === "none_cash_blend" ? `조건을 충족한 추천 구성이 없어, 현금을 섞은 ${ph}의 비중을 보여 줍니다.`
+    v?.status === "none_baseline" ? `조건을 충족한 추천 구성이 없어, 기준 구성인 ${ph}의 비중을 실었습니다.`
+    : v?.status === "none_cash_blend" ? `조건을 충족한 추천 구성이 없어, 현금을 섞은 ${ph}의 비중을 실었습니다.`
     : v?.status === "insufficient" ? `과거 성과를 비교한 뒤 ${ph}으로 정했지만, 투자 비율이 낮아 구성 불충분으로 표시했습니다.`
     : `과거 성과를 비교한 뒤, ${ph}으로 최종 비중을 정했습니다.`
   return { t: "최종 비중 결정", d }

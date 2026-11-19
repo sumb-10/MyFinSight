@@ -104,7 +104,7 @@ describe("리포트 화면 구조", () => {
     expect(screen.queryByRole("button", { name: /^검증 상세/ })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: /전체 전략 비교표/ }))
     expect(screen.getAllByText("시가총액비중").length).toBeGreaterThan(0)
-    expect(screen.getByText(/선택 전략이 기준 비중\(동일비중\)과 같아 막대 하나로/)).toBeInTheDocument()  // 선택 = 기준이면 비교 막대 없이 한 줄 (2026-11-16: 설명줄 → 범례 자리)
+    expect(screen.getByText(/선택 전략이 기준 비중\(동일비중\)과 같습니다/)).toBeInTheDocument()  // 선택 = 기준이면 비교 막대 없이 한 줄 (2026-11-16: 설명줄 → 범례 자리)
     fireEvent.click(screen.getByRole("button", { name: /확인한 한계/ }))
     expect(screen.getByText("한계 설명 3")).toBeInTheDocument()
     expect(screen.getByText("뉴스 반영을 끈 분석입니다")).toBeInTheDocument()
@@ -185,7 +185,7 @@ describe("리포트 화면 구조", () => {
     await waitFor(() => expect(section(/^\d+\. 과거 성과/)).toHaveAttribute("aria-expanded", "true"))
     expect(document.getElementById("perf-validation")).toHaveTextContent("투자 조건 충족 여부")  // 조건 점검은 과거 성과 안으로 옮겼다
     expect(section(/^\d+\. 종합 판단/)).toHaveAttribute("aria-expanded", "false")
-    fireEvent.click(screen.getByRole("button", { name: /왜 이 전략인가요/ }))
+    fireEvent.click(screen.getByRole("button", { name: /선택 이유 보기/ }))
     await waitFor(() => expect(section(/^\d+\. 종합 판단/)).toHaveAttribute("aria-expanded", "true"))
   })
   it("summary 가 없는 예전 형식 리포트도 요약 카드를 만들고 '자동 변환'을 알린다", async () => {
@@ -225,7 +225,7 @@ describe("이 전략을 고른 이유", () => {
     expect(within(why).getAllByRole("listitem")).toHaveLength(3)
     expect(within(why).getByText(/새로운 서버 문장/)).toBeInTheDocument()
     expect(within(why).getByRole("button", { name: "근거 ev1 보기" })).toBeInTheDocument()
-    expect(within(why).getByText(/Sharpe 비율은 0\.90입니다/)).toBeInTheDocument()
+    expect(within(why).getByText(/샤프 비율은 0\.90입니다/)).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /판단 이유 원문 보기/ })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: /선택 근거 자세히 보기/ }))
     expect(screen.getByText("판단 리드 문단 전문")).toBeInTheDocument()

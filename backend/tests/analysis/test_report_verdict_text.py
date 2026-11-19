@@ -578,7 +578,7 @@ def test_selection_sentence_and_chosen_rows(monkeypatch):
 
     R, ports = _vt_R()
     _vt_patch(monkeypatch, ports)
-    assert VT.selection_sentence_ko(R, "min_variance") == "SPY보다 수익률이 높고 최대낙폭이 허용한 30% 이내였던 전략 중, 샤프 비율이 가장 높은 최소분산 전략을 선택했습니다."
+    assert VT.selection_sentence_ko(R, "min_variance") == "SPY보다 높은 수익률, 최대낙폭 허용 범위(30%) 이내 조건을 모두 맞춘 전략 가운데 샤프 비율이 가장 높은 최소분산 전략을 골랐습니다."
     rows = {r["rule"]: r for r in VT.chosen_rows(R, "min_variance")}
     assert [rows[k]["name"] for k in ("R1", "R2", "R3", "R7", "R4b", "R9")] == ["최대낙폭과 허용 한도", "목표 수익률 달성 여부", "비교지수와 수익률 비교", "변동성 기준 충족 여부", "조정일 사이 종목 비중 변화", "주식과 현금 비중"]
     assert [rows[k]["status"] for k in ("R1", "R2", "R3", "R7", "R4b", "R9")] == ["충족", "판정 보류", "충족", "판정 보류", "측정 결과", "측정 결과"]
@@ -597,10 +597,10 @@ def test_strategy_rows_tell_selection_pass_warn_and_fail_reasons(monkeypatch):
     rows = {r["name"]: r for r in VT.strategy_rows(R, "min_variance")}
     assert rows["최소분산"]["status"] == "통과 · 최종 선택"
     assert rows["최소분산"]["reason"] == ("비중을 맞추는 날마다 백테스트 시작일에 정한 목표 비중으로 되돌리는 방식입니다. "
-                                      "SPY보다 수익률이 높고 최대낙폭이 허용한 30% 이내였던 전략 중, 샤프 비율이 가장 높은 전략이라 최종 선택했습니다.")  # fmt: skip
+                                      "SPY보다 높은 수익률, 최대낙폭 허용 범위(30%) 이내 조건을 모두 맞춘 전략 가운데 샤프 비율이 가장 높아 골랐습니다.")  # fmt: skip
     assert rows["최소분산 (walk-forward)"]["status"] == "통과"
     assert rows["최소분산 (walk-forward)"]["reason"] == ("비중을 맞추는 날마다(매월) 그때까지의 자료로 목표 비중을 새로 계산하는 방식입니다. "
-                                                      "모든 점검을 통과했지만, 샤프 비율 0.48이 최소분산의 0.59보다 낮아 선택되지 않았습니다.")  # fmt: skip
+                                                      "샤프 비율 0.48이 최소분산의 0.59보다 낮아 선택하지 않았습니다.")  # fmt: skip
     assert rows["동일비중"] == {"name": "동일비중", "status": "주의", "reason": "동일비중 전략의 같은 기간 수익률은 8.9%로 SPY의 11.2%보다 낮았습니다."}
     assert rows["시가총액비중"]["status"] == "미통과"
     assert rows["시가총액비중"]["reason"] == "비중을 맞추는 날 한 종목의 비중이 최대 26.3%로, 종목당 한도 20%를 넘었습니다. 가격 자료가 180일치로, 백테스트 기간에 필요한 252일보다 짧았습니다."
@@ -614,7 +614,7 @@ def test_ensure_validation_text_drops_screen_caution_and_table_repeats(monkeypat
     interp = {"validation_ko": ["검증은 추천: 최소분산으로 표시됐습니다. 추천은 후보들 사이의 순위에 따른 선택이며, 목표 달성이나 미래 성과를 뜻하지 않습니다. 평가 기간이 짧아 목표 수익률은 판정을 보류했습니다.",
                                 "화면 주의는 EchoStar(+7.1%p)가 현재 구성에 없고 비중 합이 68%라는 뜻입니다. 검증에서는 연변동성 33.3%가 중립 성향 기준보다 높았습니다."]}  # fmt: skip
     assert ensure_validation_text(interp, R, "min_variance")
-    assert interp["validation_ko"] == ["SPY보다 수익률이 높고 최대낙폭이 허용한 30% 이내였던 전략 중, 샤프 비율이 가장 높은 최소분산 전략을 선택했습니다. 평가 기간이 짧아 목표 수익률은 판정을 보류했습니다."]
+    assert interp["validation_ko"] == ["SPY보다 높은 수익률, 최대낙폭 허용 범위(30%) 이내 조건을 모두 맞춘 전략 가운데 샤프 비율이 가장 높은 최소분산 전략을 골랐습니다. 평가 기간이 짧아 목표 수익률은 판정을 보류했습니다."]
     assert not ensure_validation_text(interp, R, "min_variance")
 
 

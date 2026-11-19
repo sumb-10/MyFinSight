@@ -25,8 +25,8 @@ DB_SOURCES = [
     {"id": "src_universe", "name": "팀 데이터베이스 index_constituent · assets", "what": "S&P 500 · NASDAQ-100 · KOSPI200 구성종목 스냅샷과 GICS 분류, 사업 설명", "url": None},
     {"id": "src_news", "name": "팀 데이터베이스 news", "what": "종목 뉴스 헤드라인 (영문·한국어), 구성일 직전 창의 기사만 근거로 사용", "url": None},
     {"id": "src_pipeline", "name": "MyFinSight 분석 계산", "what": "후보 검색·정량 스크린·비중 계산·Black-Litterman·백테스트(bt)·검증 규칙", "url": None},
-    {"id": "src_llm", "name": "분석 모델 (LLM)", "what": "의도 해석·보충 질문, 테마 분류, 뉴스 근거 뷰, 선정 근거·리포트 서술 (숫자 계산은 하지 않음)", "url": None},
-    {"id": "src_disclosures", "name": "팀 데이터베이스 disclosures", "what": "SEC EDGAR 8-K·10-Q·10-K, DART 공시 목록 — 사건 종류·접수일·이용 가능일(본문 없음). 이용 가능일이 구성일 이전인 것만 씀", "url": None},
+    {"id": "src_llm", "name": "분석 모델 (LLM)", "what": "의도 해석·보충 질문, 테마 분류, 뉴스를 읽고 낸 투자 의견, 선정 근거·리포트 서술 (숫자 계산은 하지 않음)", "url": None},
+    {"id": "src_disclosures", "name": "팀 데이터베이스 disclosures", "what": "SEC EDGAR 8-K·10-Q·10-K와 DART 공시 목록(사건 종류·접수일·이용 가능일만, 본문 없음). 이용 가능일이 구성일 이전인 것만 씀", "url": None},
 ]  # fmt: skip
 
 
@@ -78,7 +78,7 @@ def _theme_fail_ko(tag: dict[str, Any], desc: Any, k: int = 5) -> str:
     fail = [(desc.by_ticker(r["ticker"]) or {}).get("name", r["ticker"]) for r in tag.get("tagged") or [] if r["ticker"] not in passed and r["ticker"] not in ex]
     if not fail or not tag.get("theme_filter_applied", True):
         return ""
-    return f" · 테마에 해당하지 않는다고 판정된 {len(fail)}개: {', '.join(fail[:k])}" + (f" 외 {len(fail) - k}개" if len(fail) > k else "")
+    return f" · 테마에 맞지 않는다고 본 {len(fail)}개: {', '.join(fail[:k])}" + (f" 외 {len(fail) - k}개" if len(fail) > k else "")
 
 
 def _ex_theme_ko(rows: list[dict[str, Any]], k: int = 5) -> str:
@@ -88,7 +88,7 @@ def _ex_theme_ko(rows: list[dict[str, Any]], k: int = 5) -> str:
     by: dict[str, list[str]] = {}
     for r in rows:
         by.setdefault(r["theme_ko"], []).append(r["name"])
-    return " · " + " · ".join(f"제외 테마({th})로 뺌 {len(v)}개: {', '.join(v[:k])}" + (f" 외 {len(v) - k}개" if len(v) > k else "") for th, v in by.items())
+    return " · " + " · ".join(f"빼 달라고 하신 테마({th})라 뺀 {len(v)}개: {', '.join(v[:k])}" + (f" 외 {len(v) - k}개" if len(v) > k else "") for th, v in by.items())
 
 
 def build_results(
@@ -166,7 +166,7 @@ def build_results(
             return f"중앙값 기준선 밖 ({_out_of_range_ko(r['reason'][len('metric_out_of_range('):].rstrip(')'))})"
         if r["reason"].startswith("metric_out_of_range("):  # 'roe_ttm=-0.1572, 범위 >0 ≤10' → 'ROE -15.7%, 자격선 0% 초과 1,000% 이하' (009)
             met = r["reason"].split("(", 1)[1].split("=", 1)[0]
-            return f"자격선 밖 ({M.METRIC_SHORT_KO.get(met, met)} {M.display_metric(met, r.get('metric_value'))}, 자격선 {M.eligible_range_ko(met)})"
+            return f"기준 밖 ({M.METRIC_SHORT_KO.get(met, met)} {M.display_metric(met, r.get('metric_value'))}, 기준 {M.eligible_range_ko(met)})"
         return reason_ko.get(r["reason"]) or guard_reason_ko(r["reason"]) or r["reason"]
 
     excluded = [{"ticker": r["ticker"], "name": (desc.by_ticker(r["ticker"]) or {}).get("name", r["ticker"]), "reason": _reason(r),
@@ -178,19 +178,19 @@ def build_results(
     # 03 에서 빠진 종목을 사유별로 (003: 게임주 4개가 모두 거래대금 기준으로 빠졌는데 깔때기·서술에 그 단계가 없었다)
     cons = req["constraints"]
     filt_ko = {"min_avg_daily_volume_usd": f"일평균 거래대금 {usd_ko(cons.get('min_avg_daily_volume_usd'))} 미만",
-               "min_market_cap_usd": f"시가총액 {usd_ko(cons.get('min_market_cap_usd'))} 미만", "keyword_weak": "테마 키워드가 약하게만 일치 (후보 검색 단계, 분석 모델 판정 전)",
+               "min_market_cap_usd": f"시가총액 {usd_ko(cons.get('min_market_cap_usd'))} 미만", "keyword_weak": "테마 키워드가 약하게만 일치 (테마를 따져 보기 전에 뺌)",
                "market_cap_missing": "시가총액 자료 없음 (직전 주식수로도 추정 불가)",
                "exclude_tickers": "제외 종목", "exclude_sectors": "제외 섹터", "exclude_theme": "제외 테마", "asset_types": "자산 유형 제외",
                "insufficient_price_history": "가격 이력 부족", "share_class_duplicate": "같은 회사의 다른 주식", "candidate_cap": "후보 상한 밖",
                "candidate_cap_metric": "후보 상한 밖(선정 지표 순)"}  # fmt: skip
     # 백테스트 시작일 목록에서 빠진 이유 (그날 기준). 기준일 후보 단계 사유(candidates_filtered)와 섞지 않게 따로 (011)
-    sel_ko = {**reason_ko, "not_in_candidates": "그날 후보 검색에 없음 (상장 전이거나 유니버스·조건 밖)", "not_selected": "그날 선정되지 않음",
+    sel_ko = {**reason_ko, "not_in_candidates": "그날 후보에 없음 (상장 전이거나 지수·조건 밖)", "not_selected": "그날 선정되지 않음",
               "user_removed": "확인 단계에서 사용자가 뺌"}  # fmt: skip
 
     def _why_ko(code: str) -> str:
         key = str(code).split("(")[0].split(":")[0]
         if key == "metric_out_of_range":
-            return "자격선 밖"
+            return "기준 밖"
         return filt_ko.get(key) or sel_ko.get(code) or sel_ko.get(key) or guard_reason_ko(code) or code
 
     rm_why = (spec["selection"].get("diff_vs_original") or {}).get("removed_reasons") or {}
@@ -224,7 +224,7 @@ def build_results(
 
     bt_only_ko = [{"ticker": t, "name": (desc.by_ticker(t) or {}).get("name", t),
                    "reason_ko": (_now_reason(t) if t in rej_now else _why_ko(f_now[t]) if t in f_now else
-                                 "분석 기준일 테마 판정을 통과하지 못함" if t not in passed_now else "분석 기준일 목록에 없음"),
+                                 "분석 기준일에 테마에 맞지 않는다고 봄" if t not in passed_now else "분석 기준일 목록에 없음"),
                    **({"rank_now": rk, "n_ranked_now": len(_pool)} if (rk := _rank_now(t)) else {})} for t in bt_only]  # fmt: skip
     by_reason: dict[str, list[str]] = {}
     for f in cand.get("filtered_out") or []:
@@ -239,8 +239,8 @@ def build_results(
     for f in cand.get("filtered_out") or []:
         k = short_ko.get(str(f["reason"]).split("(")[0].split(":")[0], "기타")
         n_by[k] = n_by.get(k, 0) + 1
-    cand_label = ("후보 조건 통과 (빠짐: " + ", ".join(f"{k} {n}개" for k, n in sorted(n_by.items(), key=lambda x: -x[1])) + ")" if n_by
-                  else "후보 조건 통과 (시가총액·거래대금·제외 조건)")  # fmt: skip
+    cand_label = ("기본 조건 통과 (빠짐: " + ", ".join(f"{k} {n}개" for k, n in sorted(n_by.items(), key=lambda x: -x[1])) + ")" if n_by
+                  else "기본 조건 통과 (시가총액·거래대금·제외 조건)")  # fmt: skip
     # 조건을 못 채웠지만 필수 포함이라 남은 종목을 밝힌다 (038: 거래대금 미달인 이마트·CJ제일제당이 '후보 조건 통과 9' 안에 섞였다)
     min_adv, min_mc = cons.get("min_avg_daily_volume_usd"), cons.get("min_market_cap_usd")
     below = [c.get("name") or c["ticker"] for c in cand.get("candidates") or [] if c.get("forced")
@@ -249,28 +249,28 @@ def build_results(
         cand_label += f" · 그중 조건을 못 채웠지만 필수 포함으로 넣은 {len(below)}개({', '.join(below[:3])}{' 등' if len(below) > 3 else ''})"
     met = sel["summary"]["metric"]
     # 필수 포함 중 지표가 없거나 자격선 밖인 종목 — 종목마다 실제 사유로 (076: ROE −4.2% 인 CRWD 를 '지표 없음·자격선 밖' 으로 뭉뚱그렸다)
-    forced_off = [s["ticker"] + (f"(자격선 밖 {M.display_metric(met, s.get('metric_value'))})" if _finite(s.get("metric_value")) else "(지표 없음)")
+    forced_off = [s["ticker"] + (f"(기준 밖 {M.display_metric(met, s.get('metric_value'))})" if _finite(s.get("metric_value")) else "(지표 없음)")
                   for s in sel["selected"] if s.get("forced") and not M.eligible(met, s.get("metric_value"))]  # fmt: skip
     n_forced = int(sel["summary"].get("n_forced") or 0)
     funnel = [
-        {"stage": "universe", "label_ko": "투자 가능 종목 (" + " ∪ ".join(req["constraints"]["universe"]) + ")", "count": descriptor_info.get("n_stocks", len(D.tickers(desc)))},
+        {"stage": "universe", "label_ko": "투자 가능 종목 (" + "·".join(req["constraints"]["universe"]) + ")", "count": descriptor_info.get("n_stocks", len(D.tickers(desc)))},
         {"stage": "matched", "label_ko": _matched_label_ko(cand["stats"]), "count": cand["stats"].get("n_matched", cand["stats"]["n_candidates"])},
         {"stage": "candidates", "label_ko": cand_label, "count": cand["stats"]["n_candidates"]},
-        {"stage": "theme_passed", "label_ko": (f"테마 해당 판정 (분석 모델, 신뢰도 ≥ {tag['min_confidence']})" if tag.get("theme_filter_applied", True)
-                                               else "제외 테마 판정 (넓은 테마라 테마 해당 여부로는 거르지 않음)") + _ex_theme_ko(ex_theme) + _theme_fail_ko(tag, desc), "count": len(tag["passed_tickers"])},
+        {"stage": "theme_passed", "label_ko": (f"테마에 맞는 종목 (분석 모델이 따져 봄, 확신도 {tag['min_confidence']} 이상)" if tag.get("theme_filter_applied", True)
+                                               else "빼 달라고 하신 테마만 거름 (넓은 테마라 테마에 맞는지는 따지지 않음)") + _ex_theme_ko(ex_theme) + _theme_fail_ko(tag, desc), "count": len(tag["passed_tickers"])},
         # 필수 포함은 지표·자격선과 관계없이 담기므로 따로 적는다 (018: 지표 없는 필수 포함까지 '지표 계산 가능' 으로 셌다;
         # 025: '(필수 포함 2개 포함)' 을 서술이 빠뜨려 '지표를 계산할 수 있는 17개' 라고 썼다 → 지표 없는 필수 포함은 개수를 나눠 적는다)
         # 필수 포함은 지표와 관계없이 따로 센다 — 공지(…자격선 안 6개(필수 포함 2개 별도))와 같은 나눔 (038)
         {"stage": "with_metric", "label_ko": ("배당을 확인했고 " if sel["summary"].get("n_no_dividend") else "")
-                                             + f"선정 지표({M_KO.get(met, met)}) 계산 가능·자격선 안 {sel['summary']['n_with_metric'] - n_forced}개"
-                                             + (f" + 필수 포함 {n_forced}개" + (f"(그중 지표 없음·자격선 밖 {len(forced_off)}개: {', '.join(forced_off)})" if forced_off else "") if n_forced else ""),
+                                             + f"선정 지표({M_KO.get(met, met)})를 계산할 수 있고 기준 안인 {sel['summary']['n_with_metric'] - n_forced}개"
+                                             + (f" + 필수 포함 {n_forced}개" + (f"(그중 지표가 없거나 기준 밖인 {len(forced_off)}개: {', '.join(forced_off)})" if forced_off else "") if n_forced else ""),
          "count": sel["summary"]["n_with_metric"]},  # fmt: skip
         # 섹터 분산은 실제로 순위를 바꿨을 때만 적는다 (015·017: 섹터 상한 100%·한 섹터 12종목인데 '섹터 분산 적용' 이라고 했다)
         {"stage": "selected_now", "label_ko": f"최종 선정 ({sel['summary']['as_of']}"
                                               + (", 섹터 분산으로 순위 일부 조정" if any(r.get("reason") in ("sector_preference", "sector_preference_lower") for r in sel.get("rejected") or []) else "") + ")",
          "count": sel["summary"]["n_selected"]},  # fmt: skip
-        {"stage": "selected_backtest", "label_ko": (f"백테스트용 재선정 ({spec['period']['as_of']}" + (", 넓은 테마라 그날 후보 전체에서" if not tag.get("theme_filter_applied", True) else "") + ")" if reselected
-                                                     else f"백테스트에 쓴 목록 ({spec['period']['as_of']}부터 · 분석 기준일 목록 그대로, 시작일 재선정 없음)"),
+        {"stage": "selected_backtest", "label_ko": (f"백테스트 시작일에 다시 고른 종목 ({spec['period']['as_of']}" + (", 넓은 테마라 그날 후보 전체에서" if not tag.get("theme_filter_applied", True) else "") + ")" if reselected
+                                                     else f"백테스트에 쓴 목록 ({spec['period']['as_of']}부터, 지금 목록 그대로 · 시작일에 다시 고르지 않음)"),
          "count": len(spec["selection"]["tickers"])},  # fmt: skip
     ]  # fmt: skip
     selection = {"funnel": funnel, "metric": sel["summary"]["metric"], "direction": sel["summary"]["direction"], "candidates_summary": cand["stats"],

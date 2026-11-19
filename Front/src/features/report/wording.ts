@@ -69,7 +69,11 @@ export function r1Text(msg: string): { main: string; bench: string } | null {
 }
 
 /** 서버 문장 안의 단독 「CAGR」을 「연평균 수익률(CAGR)」로. 이미 함께 쓴 곳은 그대로. */
-export const pairCagr = (t: string) => t.replace(/(?<![(A-Za-z가-힣])CAGR(?![)A-Za-z])/g, "연평균 수익률(CAGR)")
+/** 문장 속 CAGR 을 쉬운 말로: 처음 한 번만 「연평균 수익률(CAGR)」, 그다음은 「연평균 수익률」. 「CAGR 로」 처럼 띄운 조사는 붙인다 (2026-11-18: 한 문장에 두 번 풀고 「(CAGR) 로」 가 남았다). */
+export const pairCagr = (t: string) => {
+  let first = true
+  return t.replace(/(?<![(A-Za-z가-힣])CAGR(?![)A-Za-z])( (?=[로으이가은는을를의와과도]))?/g, () => { const s = first ? "연평균 수익률(CAGR)" : "연평균 수익률"; first = false; return s })
+}
 
 /** 비교지수 이름 (SPY 등). 서버 KPI 이름 「비교지수(SPY) 대비」에서 읽는다. */
 export function benchName(sm?: ReportSummary | null): string {
@@ -144,9 +148,9 @@ export function explainReason(text: string, o: { short: boolean }): Reason {
   }
   if ((m = /^최대낙폭 ([\d.]+%) vs 허용 ([\d.]+%) \(여유 ([\d.]+%p)\)$/.exec(t))) return { title: "최대낙폭은 허용 범위 이내", tone: "good", desc: `과거 최대 하락폭(최대낙폭)은 ${m[1]}로, 내가 정한 허용 손실 ${m[2]}보다 ${m[3]} 작았습니다.` }
   if ((m = /^최대낙폭 ([\d.]+%) vs 허용 ([\d.]+%) \(([\d.]+%p) 초과\)$/.exec(t))) return { title: "최대낙폭은 허용 범위 초과", tone: "warn", desc: `과거 최대 하락폭(최대낙폭)은 ${m[1]}로, 내가 정한 허용 손실 ${m[2]}보다 ${m[3]} 컸습니다.` }
-  if ((m = /^Sharpe (-?[\d.]+)로 가장 높음$/.exec(t))) return { title: "가장 높은 샤프 비율", tone: "good", desc: `위험 대비 수익성을 나타내는 Sharpe 비율이 ${m[1]}로, 비교한 구성안 중 가장 높았습니다.` }
-  if ((m = /^Sharpe (-?[\d.]+) \(음수, 가장 덜 나쁨\)$/.exec(t))) return { title: "샤프 비율", tone: "warn", desc: `Sharpe 비율이 ${m[1]}로 음수였지만, 비교한 구성안 중에서는 가장 덜 나빴습니다.` }
-  if ((m = /^Sharpe (-?[\d.]+)$/.exec(t))) return { title: "샤프 비율", desc: `Sharpe 비율은 ${m[1]}입니다. 이 값이 가장 높은 구성안은 아니었지만, 앞선 기준(목표 수익률·비교지수·허용 손실)에서 앞서 선택됐습니다.` }
+  if ((m = /^Sharpe (-?[\d.]+)로 가장 높음$/.exec(t))) return { title: "가장 높은 샤프 비율", tone: "good", desc: `위험 대비 수익을 보는 샤프 비율이 ${m[1]}로, 비교한 구성안 중 가장 높았습니다.` }
+  if ((m = /^Sharpe (-?[\d.]+) \(음수, 가장 덜 나쁨\)$/.exec(t))) return { title: "샤프 비율", tone: "warn", desc: `샤프 비율이 ${m[1]}로 음수였지만, 비교한 구성안 중에서는 가장 덜 나빴습니다.` }
+  if ((m = /^Sharpe (-?[\d.]+)$/.exec(t))) return { title: "샤프 비율", desc: `샤프 비율은 ${m[1]}입니다. 이 값이 가장 높은 구성안은 아니었지만, 앞선 기준(목표 수익률·비교지수·허용 손실)에서 앞서 선택됐습니다.` }
   if ((m = /^(.+)의 주식 비중을 (\d+%)로 줄여 과거 최대낙폭을 목표 ([\d.]+%) 안에 맞춘 구성$/.exec(t))) return { title: "주식 비중을 줄인 구성", desc: `${m[1]} 구성에서 주식 비중을 ${m[2]}로 줄이고 나머지를 현금으로 두어, 과거 최대 하락폭을 목표 ${m[3]} 안에 맞췄습니다.` }
   if (t === "손실 시 매도·투자 경험 없음 성향이라 같은 조건이면 낙폭 맞춤안을 우선했습니다") return { title: "낙폭 맞춤안 우선 선택", desc: `${t}.` }
   if ((m = /^CAGR ([+\-−]?[\d.]+%), 최종 평가금액 (.+)$/.exec(t))) return { title: "수익률과 최종 평가금액", desc: `연평균 수익률(CAGR) ${m[1]}${ref}, 백테스트 기간 끝의 평가금액 ${m[2]}입니다.`, annual: true }

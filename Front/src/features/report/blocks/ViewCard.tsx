@@ -76,7 +76,7 @@ export function ViewCardBody({ p, text, evidence, between }: { p: ParsedViewCard
       {p.summary && <p className="whitespace-pre-line break-words text-sm leading-6 text-slate-700">{text(p.summary)}</p>}
       <div>
         <p className="flex items-center gap-1 text-xs font-semibold text-slate-500">뉴스로 만든 투자 의견
-          <HelpTip label="뉴스로 만든 투자 의견">뉴스·공시를 분석 모델이 읽고 종목에 대한 의견을 만든 것입니다. 한 종목이 오르거나 내릴 것이라는 의견(절대 의견)과, 두 종목 가운데 어느 쪽이 나을 것이라는 의견(상대 의견)이 있습니다. 의견의 확신 정도만큼 기준 비중에서 조금씩 비중을 옮깁니다(Black-Litterman 방식).</HelpTip>
+          <HelpTip label="뉴스로 만든 투자 의견">분석 모델이 뉴스·공시를 읽고 제안한 종목 의견입니다. 한 종목이 오르거나 내릴 것이라는 의견(절대 의견)과, 두 종목 가운데 어느 쪽이 나을 것이라는 의견(상대 의견)이 있습니다. 의견의 확신 정도만큼 기준 비중에서 조금씩 비중을 옮깁니다(Black-Litterman 방식).</HelpTip>
         </p>
         <ul className="mt-1.5 divide-y divide-slate-100 rounded-xl border border-slate-200">
           {p.views.map((v, i) => {

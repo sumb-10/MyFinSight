@@ -108,7 +108,7 @@ def test_round15_report_texts(monkeypatch):
     assert RP._wf_changes_facts({"portfolio": {"walkforward": wf, "targets": {"baseline": {"id": "equal_weight"}}}, "backtest": {"portfolios": []}}, "x", "") == {}
     tag = {"passed_tickers": ["A"], "excluded_by_theme": [{"ticker": "B"}], "tagged": [{"ticker": "A"}, {"ticker": "B"}, {"ticker": "PWR"}], "theme_filter_applied": True}
     desc = SimpleNamespace(by_ticker=lambda t: {"name": "Quanta Services"} if t == "PWR" else {})
-    assert C._theme_fail_ko(tag, desc) == " · 테마에 해당하지 않는다고 판정된 1개: Quanta Services"
+    assert C._theme_fail_ko(tag, desc) == " · 테마에 맞지 않는다고 본 1개: Quanta Services"
     assert C._theme_fail_ko({**tag, "theme_filter_applied": False}, desc) == ""
 
 
@@ -250,7 +250,7 @@ def test_tied_candidates_do_not_claim_the_highest_sharpe():
     req = {**REQ, "constraints": {**REQ["constraints"], "max_weight_per_stock": 0.5, "max_weight_per_sector": 1.0, "min_cash_ratio": 0.0}}
     out = validate(res, {"baseline": {"id": "equal_weight"}, "backtest_spec": {"selection": {}}}, _intent_answer([], 10.0), req, {}, lambda t: t, AnalysisSettings())
     assert out["chosen_id"] == "equal_weight"
-    assert "성과가 같은 후보 2개 중 사용자가 고른 기준 비중이라 1위" in out["recommended"]["reason_ko"] and "가장 높음" not in out["recommended"]["reason_ko"]
+    assert "성과가 같은 후보 2개 중 고르신 기준 비중이라 1위" in out["recommended"]["reason_ko"] and "가장 높음" not in out["recommended"]["reason_ko"]
 
 
 def test_start_shortfall_reason_names_the_real_filters():
@@ -380,7 +380,7 @@ def test_round17_ties_lookahead_labels_and_small_texts():
     assert _strip_unlisted_ids("섀시 모듈 공급 보도(ev2691369와 별개로 공급 내용을 다룬 ev2691378)", {"ev2691378"}) == "섀시 모듈 공급 보도(공급 내용을 다룬 ev2691378)"
     R = {"selection": {"backtest_reselected": False, "backtest_as_of": {"diff_vs_original": {"added": [], "removed": []}, "table": [{"ticker": "A"}, {"ticker": "B"}]}}}
     t = RB.diff_table(R)
-    assert t["title_ko"] == "백테스트에 쓴 종목 목록" and "시작일 재선정 없음" in t["note_ko"] and t["rows"][0]["v"] == "A, B"
+    assert t["title_ko"] == "백테스트에 쓴 종목 목록" and "시작일에 다시 고르지 않음" in t["note_ko"] and t["rows"][0]["v"] == "A, B"
 
 
 def test_round18_mirrored_views_drawdown_clip_and_texts():

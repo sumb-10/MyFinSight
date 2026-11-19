@@ -189,12 +189,12 @@ def _why_not(R: dict[str, Any], pid: str, chosen: str) -> str:
     (s1, d1), (s0, d0) = _metrics(R, pid), _metrics(R, chosen)
     cl = B.pf_label(B.find(R, chosen))
     if s1 is not None and s0 is not None and s1 < s0:
-        return f"샤프 비율 {s1:.2f}이 {cl}의 {s0:.2f}보다 낮아 선택되지 않았습니다."
+        return f"샤프 비율 {_josa(f'{s1:.2f}', '이가')} {cl}의 {s0:.2f}보다 낮아 선택하지 않았습니다."
     if s1 == s0 and d1 > d0:
-        return f"샤프 비율은 {cl}와 같지만 최대낙폭 {_pct(d1)}가 {_pct(d0)}보다 커서 선택되지 않았습니다."
+        return f"샤프 비율은 {_josa(cl, '과와')} 같지만 최대낙폭 {_pct(d1)}가 {_pct(d0)}보다 커서 선택하지 않았습니다."
     if s1 == s0 and d1 == d0:
-        return f"성과가 {cl}와 같아, 사용자가 고른 기준 비중 쪽을 선택했습니다."
-    return f"순위가 {cl}보다 뒤라 선택되지 않았습니다."
+        return f"성과가 {_josa(cl, '과와')} 같아, 고르신 기준 비중 쪽을 선택했습니다."
+    return f"순위가 {cl}보다 뒤라 선택하지 않았습니다."
 
 
 def strategy_rows(R: dict[str, Any], chosen: str) -> list[dict[str, Any]]:
@@ -214,7 +214,7 @@ def strategy_rows(R: dict[str, Any], chosen: str) -> list[dict[str, Any]]:
             st += " · 최종 선택"
             reason = mode + (reason + " 그래도 " if reason else "") + selection_basis_ko(R, chosen, short=True)
         elif r["status"] == "pass":
-            reason = mode + "모든 점검을 통과했지만, " + _why_not(R, r["id"], chosen)
+            reason = mode + _why_not(R, r["id"], chosen)  # 결과 칸에 '통과' 가 있어 '모든 점검을 통과했지만' 을 행마다 되풀이하지 않는다
         out.append({"name": name, "status": st, "reason": reason or "-"})
     return out
 
@@ -225,31 +225,29 @@ def selection_basis_ko(R: dict[str, Any], chosen: str, *, short: bool = False) -
     c = _Ctx(R, chosen)
     name = B.pf_label(c.p)
     tol = float(c.crit.get("max_drawdown") or 0)
-    quals = []
+    quals = []  # 조건은 '~넘었고 ~높고 ~이내였던 전략' 처럼 명사 앞에 쌓지 않고 목록으로 (2026-11-18 리포트 문체)
     if c.checks.get("R2", {}).get("status") == "pass":
-        quals.append(f"목표 수익률 연 {_cap(float(c.crit.get('target_annual_return') or 0))}를 넘었고")
+        quals.append(f"목표 수익률(연 {_cap(float(c.crit.get('target_annual_return') or 0))}) 초과")
     if c.checks.get("R3", {}).get("status") == "pass":
-        quals.append(f"{c.bench}보다 수익률이 높고")
+        quals.append(f"{c.bench}보다 높은 수익률")
     if c.mdd <= tol + 1e-9:
-        quals.append(f"최대낙폭이 허용한 {_cap(tol)} 이내였던")
+        quals.append(f"최대낙폭 허용 범위({_cap(tol)}) 이내")
     pool = [r["id"] for r in R["validation"]["results"] if all(r_ck.get("status") == c.checks.get(k, {}).get("status")
             for k in ("R2", "R3") for r_ck in [next((x for x in r["checks"] if x["rule"] == k), {})]) and r["status"] != "fail"]  # fmt: skip
     s0, d0 = _metrics(R, chosen)
     same_sh = [i for i in pool if _metrics(R, i)[0] == s0]
     if len(same_sh) > 1 and all(_metrics(R, i)[1] == d0 for i in same_sh):
-        why = "성과가 같은 전략 중 사용자가 고른 기준 비중인"
+        why, why_short = "성과가 같은 전략이 여럿이라 고르신 기준 비중인", "성과가 같은 전략이 여럿이라 고르신 기준 비중을"
     elif len(same_sh) > 1:
-        why = "샤프 비율이 같은 전략 중 최대낙폭이 가장 작은"
+        why, why_short = "샤프 비율이 같은 전략 중 최대낙폭이 가장 작은", "샤프 비율이 같은 전략 중 최대낙폭이 가장 작아"
     elif s0 is not None and s0 <= 0:
-        why = "샤프 비율이 가장 덜 나쁜"
+        why, why_short = "샤프 비율이 가장 덜 나쁜", "샤프 비율이 가장 덜 나빠"
     else:
-        why = "샤프 비율이 가장 높은"
-    if quals:  # 마지막 조건은 '…전략' 을 꾸미는 꼴로 ('높고' → '높았던', '넘었고' → '넘은')
-        quals[-1] = re.sub(r"높고$", "높았던", re.sub(r"넘었고$", "넘은", quals[-1]))
-    lead = f"{' '.join(quals)} 전략 중" if quals else "비교한 전략 중"
+        why, why_short = "샤프 비율이 가장 높은", "샤프 비율이 가장 높아"
+    lead = (f"{', '.join(quals)} 조건을 {'모두 ' if len(quals) > 1 else ''}맞춘 전략 가운데" if quals else "비교한 전략 가운데")
     if short:
-        return f"{lead}, {why} 전략이라 최종 선택했습니다."
-    return f"{lead}, {why} {name} 전략을 선택했습니다."
+        return f"{lead} {why_short} 골랐습니다."
+    return f"{lead} {why} {name} 전략을 골랐습니다."
 
 
 def selection_sentence_ko(R: dict[str, Any], chosen: str) -> str:
