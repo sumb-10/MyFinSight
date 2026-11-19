@@ -113,7 +113,7 @@ def classify(cand: Candidates, intent: IntentSpec | dict[str, Any], llm: LlmClie
         passed = [r.ticker for r in tagged if r.ticker not in missing or r.ticker in forced]
         off = [r for r in tagged if r.ticker not in missing and not ((r.in_theme and r.confidence >= min_conf) or r.ticker in forced)]
         for r in off:  # 넓은 테마에서는 테마 판정으로 거르지 않았다 → '테마 판정 사유·신뢰도' 로 보이지 않게
-            r.reason_ko = "넓은 테마라 테마 판정으로 거르지 않고 선정 지표 순위로 고름"
+            r.reason_ko = "넓은 테마라 테마에 맞는지 따로 따지지 않고 선정 지표 순위로 고름"  # report_blocks.BROAD_REASON_KO 와 같은 문장
         if off:
             warnings.append(f"broad theme: theme filter not applied ({len(off)} candidates kept that the classifier rated off-theme; ranking is by the selection metric)")
     else:

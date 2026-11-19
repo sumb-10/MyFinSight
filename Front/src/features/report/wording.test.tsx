@@ -48,7 +48,7 @@ describe("지표·제목 이름", () => {
     expect(kpiName({ id: "excess", label_ko: "비교지수(SPY) 대비 (기간)" }).name).toBe("SPY 대비 전체 기간 수익률 차이")
     expect(kpiName({ id: "excess", label_ko: "비교지수(SPY) 대비" }).name).toBe("SPY 대비 연평균 수익률(CAGR) 차이")
     expect(kpiName({ id: "x", label_ko: "모르는 지표" }).name).toBe("모르는 지표")
-    expect(pairCagr("CAGR 47.0% vs 목표 8.0% (전체 CAGR 로 판정)")).toBe("연평균 수익률(CAGR) 47.0% vs 목표 8.0% (전체 연평균 수익률(CAGR) 로 판정)")
+    expect(pairCagr("CAGR 47.0% vs 목표 8.0% (전체 CAGR 로 판정)")).toBe("연평균 수익률(CAGR) 47.0% vs 목표 8.0% (전체 연평균 수익률로 판정)")
     expect(pairCagr("연평균 수익률 (CAGR)")).toBe("연평균 수익률 (CAGR)")
   })
   it("리밸런싱 제목의 중첩 괄호를 구분 기호로 바꾸고, 전략명·비율은 그대로 둔다", () => {

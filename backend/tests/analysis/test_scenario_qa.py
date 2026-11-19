@@ -2036,7 +2036,7 @@ def test_round11_collect_and_report_texts(monkeypatch):
     rows = {"FANG": {"metric_value": 0.05}, "CVX": {"metric_value": float("nan")}, "XOM": {"metric_value": None}, "KMI": {"metric_value": 0.06}}
     assert C.metric_rank(rows, asc=False) == {"KMI": 1, "FANG": 2}
     ex = [{"ticker": t, "name": n, "theme_ko": "화석연료"} for t, n in [("AEE", "Ameren"), ("ATO", "Atmos"), ("CMS", "CMS"), ("CNP", "CenterPoint"), ("D", "Dominion"), ("DTE", "DTE")]]
-    assert C._ex_theme_ko(ex) == " · 제외 테마(화석연료)로 뺌 6개: Ameren, Atmos, CMS, CenterPoint, Dominion 외 1개" and C._ex_theme_ko([]) == ""
+    assert C._ex_theme_ko(ex) == " · 빼 달라고 하신 테마(화석연료)라 뺀 6개: Ameren, Atmos, CMS, CenterPoint, Dominion 외 1개" and C._ex_theme_ko([]) == ""
     nw = RP._shown_news_window({"window": ["2023-07-17", "2023-07-31"], "by_source": {"GOOGLE_RSS": 62, "NAVER_NEWS": 3}, "by_event_type": {"buyback": 4}})
     assert nw["article_sources"] == {"구글 뉴스": 62, "네이버 뉴스": 3} and "by_source" not in nw and "DART" in nw["disclosure_source_note"]  # 038: 기사 출처라고 밝힘 and nw["by_event_type"] == {"자사주 취득·처분 결정": 4} and nw["window"] == ["2023-07-17", "2023-07-30"]
     R = {"intent": {"interpretation": {"summary_ko": "투자 비율 85%를 배분합니다."}}, "request": {"constraints": {"min_cash_ratio": 0.15, "num_holdings": {"target": 10, "min": 7}}}}

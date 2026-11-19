@@ -298,7 +298,7 @@ def test_high_margin_idea_keeps_margins_above_the_universe_median():
     assert any(w.startswith("must_include MUST: operating_margin(") for w in warns)
     note = from_text("05_selection", next(w for w in warns if w.startswith("profit margin: dropped")))
     assert note.code == "low_margin_dropped" and note.level == "user" and "17.5%" in note.message_ko and "D 10.0%, E 5.0%" in note.message_ko
-    assert "같은 유니버스" in note.message_ko
+    assert "같은 시장" in note.message_ko
     assert from_text("05_selection", next(w for w in warns if "unknown" in w)).code == "margin_unknown"
     assert guard_reason_ko("operating_margin(0.1000<0.1750)") == "영업이익률 10.0%로 중앙값 17.5% 미만 (이익률 조건)"
     # 예전 원문(후보 중앙값)도 읽는다
@@ -383,7 +383,7 @@ def test_dividend_and_per_selection_need_to_beat_the_universe_median(monkeypatch
     assert {r.ticker for r in rejected} == {"U3", "CEG", "K1.KS"} and all(r.reason.startswith("metric_out_of_range(") for r in rejected)
     assert any(w.startswith("must_include MUST: metric_out_of_range(dividend_yield_ttm=0.01, 시장 중앙값 0.025 미만)") for w in warnings)
     txt = _out_of_range_ko(next(r for r in rejected if r.ticker == "CEG").reason[len("metric_out_of_range("):].rstrip(")"))
-    assert "같은 유니버스 중앙값" in txt and "미만" in txt and txt.startswith("배당수익률")
+    assert "같은 시장 중앙값" in txt and "미만" in txt and txt.startswith("배당수익률")
     pe = {"U1": 8.0, "U2": 10.0, "U3": 12.0, "U4": 14.0, "U5": 16.0, "U6": 20.0, "U7": 30.0}  # 중앙값 14
     monkeypatch.setitem(M.METRICS, "pe_ttm", lambda view, tks: (pd.Series({t: pe[t] for t in tks if t in pe}, dtype=float), []))
     rejected = []
@@ -438,7 +438,7 @@ def test_style_floor_keeps_the_better_half_when_every_candidate_misses_the_media
     keep = _style_floor(view, desc, "pe_ttm", [("035420.KS", 20.0), ("035720.KS", 40.2)], set(), rejected, warnings)
     assert [t for t, _ in keep] == ["035420.KS"] and [r.ticker for r in rejected] == ["035720.KS"]
     note = from_text("05_selection", next(w for w in warnings if w.startswith("style floor:")))
-    assert note.code == "style_floor_fallback" and note.level == "user" and "PER이 같은 유니버스 중앙값" in note.message_ko and "035420.KS" in note.message_ko
+    assert note.code == "style_floor_fallback" and note.level == "user" and "PER이 같은 시장 중앙값" in note.message_ko and "035420.KS" in note.message_ko
     rejected, warnings = [], []  # 하나라도 기준선 안이면 기준선 그대로
     keep = _style_floor(view, desc, "pe_ttm", [("B1.KS", 9.0), ("035720.KS", 40.2)], set(), rejected, warnings)
     assert [t for t, _ in keep] == ["B1.KS"] and not any(w.startswith("style floor:") for w in warnings)

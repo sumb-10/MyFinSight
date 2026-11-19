@@ -108,7 +108,7 @@ export function VerdictCard({ sm, doc, onMore, paperReason }: { sm: ReportSummar
   const chosenName = sm.verdict.chosen_label_ko || h.chosen_label_ko
   return (
     <>
-      <ResultCard id="q-verdict" tour="verdict" q="선택한 전략" more={onMore ? ["왜 이 전략인가요?", onMore] : undefined}>
+      <ResultCard id="q-verdict" tour="verdict" q="선택한 전략" more={onMore ? ["선택 이유 보기", onMore] : undefined}>
         {/* 날짜 문장(자료 기준일·백테스트 기간)은 두지 않는다 (2026-11-14 사용자 요청). 기간은 아래 「전체 기간 수익률」의 거래일 수와 자세한 분석에 있다 */}
         <div>
           {/* 카드 제목이 「선택한 전략」이라 같은 뜻의 작은 라벨 「선택된 전략」은 두지 않는다 (2026-11-16 사용자 요청) */}
@@ -271,7 +271,7 @@ function CoreChart({ doc, ids }: { doc: ReportDoc; ids: string[] }) {
   const label = (id: string) => doc.datasets.series[id]?.label_ko ?? id
   return (
     <figure className="flex min-w-0 flex-col">
-      <figcaption className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5"><span className="text-base font-bold text-slate-950">누적 수익률</span><span className="text-xs text-slate-500">시작일을 0%로 두고 과거에 이 전략을 따랐다면 어떻게 변했을지 보여 줍니다</span></figcaption>
+      <figcaption className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5"><span className="text-base font-bold text-slate-950">누적 수익률</span><span className="text-xs text-slate-500">시작일 0% 기준</span></figcaption>
       <div className="mt-4 h-60 min-w-0 sm:h-72" role="img" aria-label="누적 수익률 그래프">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
@@ -604,11 +604,11 @@ export function krwFromNote(note: string | null | undefined): { krw: number; res
 
 const KPI_HELP: Record<string, string> = {
   final_value: "백테스트 기간 끝에 평가한 금액입니다. 과거 자료로 계산한 값이며 실제 투자 결과가 아닙니다.",
-  cagr: "백테스트 기간의 수익률입니다. 과거 성과는 미래 성과를 보장하지 않습니다.",
+  cagr: "백테스트 기간 전체의 수익률입니다.",
   excess: "같은 기간 비교지수보다 수익률이 얼마나 높거나 낮았는지를 나타냅니다.",
-  mdd: "기간 중 가장 높았던 평가금액에서 가장 크게 떨어진 비율입니다. 작을수록 덜 흔들린 것입니다.",
-  sharpe: "감수한 변동성에 비해 얻은 수익이 어느 정도인지 나타내는 값입니다. 높을수록 위험 대비 수익이 좋았다는 뜻입니다.",
-  view_hit: "뉴스·공시로 만든 투자 의견이 실제 결과와 맞은 비율입니다.",
+  mdd: "기간 중 가장 높았던 평가금액에서 가장 크게 떨어진 비율입니다. 작을수록 덜 흔들렸다는 뜻입니다.",
+  sharpe: "흔들림(변동성)에 비해 수익을 얼마나 냈는지 봅니다. 높을수록 좋습니다.",
+  view_hit: "분석 모델이 뉴스·공시를 읽고 제안한 투자 의견이 실제 결과와 맞은 비율입니다.",
 }
 
 /** 문서의 모든 KPI (doc.kpis) 에 요약의 비교지수 값을 붙인다. 요약에만 있는 KPI 도 뒤에 남긴다 — 요약에서 빠진 지표가 화면에서 사라지지 않게. */

@@ -574,7 +574,7 @@ def _change_sentence(R: dict[str, Any], group: list[dict[str, Any]], *, after_ca
     if c0["kind"] == "history":
         return f"{subj} 당시 {obj} 계산하는 데 필요한 과거 가격 기록이 부족했습니다."
     if c0["kind"] == "theme":
-        return f"{subj} 분석 모델의 테마 해당 판정을 통과하지 못했습니다."
+        return f"{subj} 테마에 맞지 않는다고 판단해 뺐습니다."
     if c0["kind"] == "none":
         return f"{subj} 빠진 사유가 이 리포트에 기록되어 있지 않습니다."
     return f"{subj} 다음 사유로 빠졌습니다: {c0['reason_ko']}."
@@ -612,10 +612,17 @@ def selection_changes_paragraphs(R: dict[str, Any]) -> list[str]:
         for c in rows:  # 순위 밖은 저장된 값·순위가 종목마다 달라 하나씩, 그 밖은 같은 사유끼리 묶는다
             key = c["kind"] + (f":{c['ticker']}" if c["kind"] == "rank" and side == "dropped_now" and (c.get("value") is not None or c.get("rank")) else "")
             key += f":{c['ticker']}" if c["kind"] in ("out_of_range", "other") and c.get("value") is not None else ""
+            key += f"|{c.get('reason_ko') or ''}" if c["kind"] == "other" else ""  # 2026-11-18: 사유가 다른 KLA(부채비율)·WDC(영업이익률)를 첫 사유 하나로 묶었다
             groups.setdefault(key, []).append(c)
-        had_cap, sents = False, []
+        had_cap, sents, said = False, [], set()
         for g in groups.values():
-            sents.append(_change_sentence(R, g, after_cap=had_cap and g[0]["kind"] == "rank"))
+            s_ = _change_sentence(R, g, after_cap=had_cap and g[0]["kind"] == "rank")
+            m_ = re.search(r" 그 \d+종목 중 [^.]*?가장 [^.]*?였습니다\.$", s_)
+            if m_ and m_.group(0) in said:
+                s_ = s_[: m_.start()].rstrip()  # 같은 비교 문장은 한 번만
+            elif m_:
+                said.add(m_.group(0))
+            sents.append(s_)
             had_cap = had_cap or g[0]["kind"] in ("cap", "cap_metric")
         out.append(f"{title}\n" + " ".join(sents))
     return out
@@ -1076,9 +1083,9 @@ def _matched_note(R: dict[str, Any]) -> str | None:
         cc: dict[str, Any] = {}
         if R.get("validation") and ((R["portfolio"].get("forward") or {}).get("templates") or (R["portfolio"].get("forward") or {}).get("portfolios")):
             cc = B.condition_check(R, B.chosen_portfolio_id(R)[0])  # 지금 구성 자료가 있을 때만 (단위 시험의 최소 결과에는 없다)
-        tail = (f" 다만 이 낙폭은 백테스트 구성(주식 {cc['invested_backtest']}) 기준이고, 주식 {cc['invested_now']}인 지금 구성으로 단순 환산하면 약 {cc['scaled_max_drawdown_now']}로 "
+        tail = (f" 다만 이 낙폭은 백테스트 구성(주식 {cc['invested_backtest']}) 기준이고, 주식 {cc['invested_now']}인 분석 기준일 구성으로 단순 환산하면 약 {cc['scaled_max_drawdown_now']}로 "
                 + ("허용 낙폭을 넘을 수 있습니다." if not cc.get("scaled_within_tolerance") else "허용 낙폭 안입니다(종목이 같다고 본 값).")) if cc.get("scaled_max_drawdown_now") else ""
-        return (f"맞춤안을 만드는 바탕 구성의 과거 최대낙폭({named}, 가장 큰 값 {worst:.1%})이 이미 낙폭 맞춤 목표({target:.1%}) 안이라 현금을 섞은 낙폭 맞춤안을 만들지 않았습니다."
+        return (f"현금을 섞어 낙폭을 줄인 안(낙폭 맞춤안)은 만들지 않았습니다. 바탕이 되는 구성들의 과거 최대낙폭({named}, 가장 큰 값 {worst:.1%})이 이미 목표({target:.1%}) 안이었습니다."
                 + tail)  # 마침표 (025·026: 그대로 옮긴 문장이 마침표 없이 끝났다)
     floor = float(((R.get("parameters") or {}).get("backtest") or {}).get("matched_min_invested", 0.30))  # 정책 결정 2
     # 사용자 조건을 결과에 맞춰 바꾸라고 하지 않는다 (2026-11 평가: '허용 낙폭을 다시 생각하라' 가 '조건을 결론에 맞추라는 논리' 로 지적됐다) — 사실만.
@@ -1094,7 +1101,7 @@ def _matched_note(R: dict[str, Any]) -> str | None:
         tail = f" 비교한 후보 중 허용 낙폭({tol:.1%}) 안에 든 안은 없었습니다. 맞춤안은 그보다 엄격한 목표에 맞추려 해서 만들지 못한 것이라, 허용 낙폭 안의 구성이 불가능하다는 뜻은 아닙니다."
     else:
         tail = ""
-    return f"주식 비중을 {floor:.0%} 이상 남기면서는 과거 최대낙폭을 {tgt_ko} 안으로 맞추지 못해 낙폭 맞춤안(주식 + 현금)을 만들지 않았습니다." + tail
+    return f"주식을 {floor:.0%} 이상 남기면서는 과거 최대낙폭을 {tgt_ko} 안으로 낮출 수 없어, 현금을 섞은 낙폭 맞춤안은 만들지 않았습니다." + tail
 
 
 def _subtitle_ko(R: dict[str, Any], chosen: str) -> str:
@@ -1695,11 +1702,11 @@ def build_doc(R: dict[str, Any], *, interp: dict[str, Any], narr: dict[str, Any]
             {"type": "paragraphs", "items": narr["request_interpretation_ko"], "src": "14b"},
             *_group([B.themes_table(R), conf, B.request_table(R), B.constraints_table(R), B.soft_table(R)], "요청 조건 확인"),
             {"type": "paragraphs", "items": market["market_ko"], "src": "14c"}, B.sector_bar(R, chosen),
-            B.evidence_ref(R, sorted(set(news_ids) | set(market.get("evidence_ids_used", []))), "시장 분석·뷰에 인용된 뉴스·공시 근거") if (news_ids or market.get("evidence_ids_used")) else None)},
+            B.evidence_ref(R, sorted(set(news_ids) | set(market.get("evidence_ids_used", []))), "시장 분석·투자 의견에 인용한 뉴스·공시") if (news_ids or market.get("evidence_ids_used")) else None)},
         {"id": "companies", "title_ko": "기업별 투자 근거", "blocks": nz(
             {"type": "paragraphs", "items": narr["selection_ko"], "src": "14b"}, B.funnel(R), inf,
             {"type": "callout", "tone": "info", "title_ko": "선정 지표", "text_ko": _metric_note(metric)},
-            B.companies(R, chosen), *_group([B.excluded_table(R), B.diff_table(R)], "제외된 종목과 재선정 차이" if R["selection"].get("backtest_reselected") is not False
+            B.companies(R, chosen), *_group([B.excluded_table(R), B.diff_table(R)], "담지 않은 종목과 시점별 차이" if R["selection"].get("backtest_reselected") is not False
                                             else "제외된 종목과 백테스트 목록"))},
         {"id": "construction", "title_ko": "포트폴리오 구성과 운용", "blocks": nz(
             {"type": "paragraphs", "items": narr["construction_ko"], "src": "14b"}, B.weights_compare(R), B.scenario_cards(R),
@@ -1789,11 +1796,11 @@ def present_doc(doc: dict[str, Any], R: dict[str, Any] | None = None) -> dict[st
 
 def _metric_note(metric: str) -> str:
     # 재무 지표는 기준일 전 거래일 자료(정보 마감 t−1)이고, 자격선(정책 결정 3: PER 0~50배 · ROE 0 초과 · 배당 0 초과~30%) 밖은 뽑지 않는다 — 예전 문구에는 둘 다 없었다
-    return {"return_12m_1m": "모멘텀은 최근 12개월 주가 수익률에서 가장 최근 1개월을 뺀 값입니다. 단기 반전 효과를 피하려 최근 1개월을 빼며, 값이 높은 순서로 뽑습니다.",
-            "vol_60d": "저변동성은 최근 60거래일 일수익률의 연환산 표준편차입니다. 값이 낮은 순서로 뽑습니다.",
-            "pe_ttm": "저PER은 기준일 전 거래일 종가를 그날까지 공시된 최근 4분기 주당순이익으로 나눈 값입니다. 적자 기업과 PER 50배 초과 종목은 제외하고 낮은 순서로 뽑습니다.",
-            "roe_ttm": "퀄리티(ROE)는 최근 4분기 순이익을 평균 자본으로 나눈 자기자본이익률입니다. ROE 가 0 이하이거나 1,000% 를 넘는(자기자본이 0 근처라 생긴 왜곡) 종목은 제외하고 높은 순서로 뽑습니다.",
-            "dividend_yield_ttm": "고배당은 최근 1년 주당배당금을 기준일 전 거래일 종가로 나눈 값입니다. 배당이 없거나 30% 를 넘는(자료 오류로 보는) 종목은 제외하고 높은 순서로 뽑습니다."}.get(metric, metric)  # fmt: skip
+    return {"return_12m_1m": "모멘텀은 최근 12개월 동안 주가가 얼마나 올랐는지 봅니다. 바로 직전 1개월은 뺍니다(짧게 오르내린 것이 순위를 흔들지 않게). 많이 오른 순서로 뽑습니다.",
+            "vol_60d": "저변동성은 최근 60거래일 동안 주가가 얼마나 오르내렸는지(연 단위로 환산) 봅니다. 덜 흔들린 순서로 뽑습니다.",
+            "pe_ttm": "저PER은 주가가 최근 4분기 주당순이익의 몇 배인지 봅니다(기준일 전 거래일 종가, 그날까지 공시된 이익). 적자 기업과 50배가 넘는 종목은 빼고, 이익에 비해 싼 순서로 뽑습니다.",
+            "roe_ttm": "퀄리티(ROE)는 최근 4분기 순이익이 평균 자기자본의 몇 %인지 봅니다. 0 이하이거나 1,000%가 넘는 종목(자기자본이 거의 없어 숫자가 부풀려진 경우)은 빼고, 높은 순서로 뽑습니다.",
+            "dividend_yield_ttm": "고배당은 최근 1년 주당배당금이 주가(기준일 전 거래일 종가)의 몇 %인지 봅니다. 배당이 없거나 30%가 넘는 종목(자료 오류로 봄)은 빼고, 높은 순서로 뽑습니다."}.get(metric, metric)  # fmt: skip
 
 
 def _retry_feedback(errors: list[str]) -> dict[str, str]:
@@ -1830,6 +1837,7 @@ def _usage(llm: Any) -> dict[str, Any] | None:
 def generate_report(R: dict[str, Any], llm: LlmClient, settings: AnalysisSettings, *, step_summaries: dict[str, str] | None = None) -> tuple[dict[str, Any], list[str]]:
     """LLM 네 번(14a ∥ 14c ∥ 14d → 14b) → 문서 → 검증. 검증 오류가 있으면 오류를 낸 호출만 피드백으로 1회 다시 받고, 그래도 실패면 ReportCheckError.
     머리말(14d)은 자기 검사를 따로 하고, 실패하면 코드 제목으로 둔다."""
+    R = B.plain_old_results(R)  # 옛 결과의 깔때기 이름·공지에 남은 내부 말(자격선 등)을 지금 말로 (새 결과는 그대로)
     chosen, _ = B.chosen_portfolio_id(R)
     parallel = settings.executor.parallel_report_calls
     interp, market, head = _run_all([lambda: call_interpret(R, chosen, llm), lambda: call_market(R, llm), lambda: call_header(R, chosen, llm, settings)], parallel)

@@ -330,7 +330,7 @@ def test_candidates_funnel_label_names_actual_reasons(e2e):
     ctx, _ = e2e
     R = ctx.outputs["13_results"]
     lab = next(f["label_ko"] for f in R["selection"]["funnel"] if f["stage"] == "candidates")
-    assert lab.startswith("후보 조건 통과 (")
+    assert lab.startswith("기본 조건 통과 (")
     if ctx.outputs["03_candidates"].get("filtered_out"):
         assert "빠짐: " in lab
 

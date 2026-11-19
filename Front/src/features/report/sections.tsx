@@ -197,7 +197,7 @@ function excludedTable(b: TableBlock, comp: CompaniesBlock | undefined): TableBl
   const reasonKey = b.columns.find((c) => c.label_ko === "제외 이유")?.key
   return {
     ...b, title_ko: `선정에서 빠진 후보 (${m[1]} 기준)`,
-    note_ko: [b.note_ko, "빠진 후보 전체가 아니라, 순위가 높았던 종목부터 일부를 보여 줍니다."].filter(Boolean).join(" "),
+    note_ko: [b.note_ko, "순위가 높았던 종목부터 일부만 실었습니다."].filter(Boolean).join(" "),
     columns: b.columns.map((c) => (c.label_ko === "지표값" ? { ...c, label_ko: metric } : c)),
     rows: reasonKey ? b.rows.map((r) => { const v = String(r[reasonKey] ?? ""); return { ...r, [reasonKey]: REASON[v] ?? v } }) : b.rows,
   }
@@ -242,7 +242,7 @@ function VerdictWhy({ doc }: { doc: ReportDoc }) {
 function BuildFlow({ doc }: { doc: ReportDoc }) {
   const steps = buildFlowSteps(doc)  // 단계별 짧은 설명은 기존 리포트 자료로 만든다 (buildFlow.ts, 2026-11-16 사용자 요청)
   return (
-    <SubPart title="비중이 정해진 과정" desc="종목을 고르고 비중을 정하는 데 어떤 단계를 거쳤나요?">
+    <SubPart title="비중이 정해진 과정">
       <ol className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4" aria-label="비중 결정 과정">
         {steps.map((x, i) => (
           <li key={x.t} className={`relative rounded-xl border p-3 ${x.off ? "border-dashed border-slate-300 bg-white text-slate-500" : "border-slate-200 bg-slate-50"}`}>
@@ -265,10 +265,10 @@ function ChosenWeights({ doc, children }: { doc: ReportDoc; children?: React.Rea
   const chosen = doc.header.chosen_portfolio_id
   // 선택 전략이 서버 비교표에 없을 때(낙폭 맞춤안 등) 제안 계약의 「선택 vs 기준」 값이 있으면 같은 모양의 표로 바꿔 그린다
   const wc: WeightsCompareBlock | undefined = wc0 && wc0.columns.some((c) => c.id === chosen) ? wc0 : cvb ? { type: "weights_compare", title_ko: "", baseline_id: cvb.baseline_id, columns: [{ id: cvb.chosen_id, label_ko: cvb.chosen_label_ko, kind: "", rule_ko: "" }, ...(cvb.baseline_id !== cvb.chosen_id ? [{ id: cvb.baseline_id, label_ko: cvb.baseline_label_ko, kind: "", rule_ko: "" }] : [])], rows: cvb.rows.map((r) => ({ ticker: r.ticker, name: r.name, sector: "", weights: { [cvb.chosen_id]: r.chosen, [cvb.baseline_id]: r.baseline } })), cash: { [cvb.chosen_id]: cvb.cash.chosen, [cvb.baseline_id]: cvb.cash.baseline }, ex_ante: {} } : wc0
-  if (!wc) return children ? <SubPart title="백테스트 시작일의 기준 비중과 선택 전략 비중" desc="과거 분석을 시작할 때 기준 전략과 선택 전략은 각각 어떻게 투자했나요?">{children}</SubPart> : null
+  if (!wc) return children ? <SubPart title="백테스트 시작일의 기준 비중과 선택 전략 비중">{children}</SubPart> : null
   const col = wc.columns.find((c) => c.id === chosen)
   const base = wc.columns.find((c) => c.id === wc.baseline_id)
-  if (!col || !base) return <SubPart title="백테스트 시작일의 기준 비중과 선택 전략 비중" desc="과거 분석을 시작할 때 기준 전략과 선택 전략은 각각 어떻게 투자했나요?">{children || <p className="text-sm text-slate-600">선택 전략의 비중은 개요의 종목 구성과 투자 금액, 리밸런싱 기록에 있습니다.</p>}</SubPart>
+  if (!col || !base) return <SubPart title="백테스트 시작일의 기준 비중과 선택 전략 비중">{children || <p className="text-sm text-slate-600">선택 전략의 비중은 개요의 종목 구성과 투자 금액, 리밸런싱 기록에 있습니다.</p>}</SubPart>
   const same = col.id === base.id
   const rows = [...wc.rows].sort((a, b) => (b.weights[col.id] ?? 0) - (a.weights[col.id] ?? 0))
   // 묶은 세로 막대 (2026-11-15 사용자 요청: 점 그래프 대신 비교가 바로 보이는 다른 그래프로). 종목마다 기준(회색)·선택(파랑) 막대를 같은 바닥선에 나란히,
@@ -287,8 +287,8 @@ function ChosenWeights({ doc, children }: { doc: ReportDoc; children?: React.Rea
     </span>
   )
   return (
-    <SubPart title="백테스트 시작일의 기준 비중과 선택 전략 비중" desc={<>과거 분석을 시작할 때 기준 전략과 선택 전략은 각각 어떻게 투자했나요?{wc !== wc0 && <MockTag />}</>}>
-      {same && <p className="text-xs text-slate-600">선택 전략이 기준 비중({base.label_ko})과 같아 막대 하나로 보여 줍니다.</p>}{/* 예전에는 파트 설명줄이 「선택 전략 = 기준 비중」을 알렸다 — 설명줄을 질문으로 바꿔 범례 자리로 (2026-11-16) */}
+    <SubPart title="백테스트 시작일의 기준 비중과 선택 전략 비중" desc={wc !== wc0 ? <MockTag /> : undefined}>
+      {same && <p className="text-xs text-slate-600">선택 전략이 기준 비중({base.label_ko})과 같습니다.</p>}{/* 예전에는 파트 설명줄이 「선택 전략 = 기준 비중」을 알렸다 — 설명줄을 질문으로 바꿔 범례 자리로 (2026-11-16) */}
       {!same && <p className="flex flex-wrap gap-4 text-xs text-slate-600"><span className="inline-flex items-center gap-1.5"><i className="inline-block size-3 rounded-sm bg-slate-300" />기준 비중 ({base.label_ko})</span><span className="inline-flex items-center gap-1.5"><i className="inline-block size-3 rounded-sm bg-blue-600" />선택 전략 비중 ({col.label_ko})</span><span className="text-slate-500">막대 위 숫자 = 비중(%)</span></p>}
       {/* 좁은 화면은 종목마다 최소 폭을 지키고 옆으로 밀어 본다 (티커·숫자가 잘리지 않게) */}
       <div className="overflow-x-auto"><div className="flex gap-2 pt-4" style={{ minWidth: `${2.5 + items.length * (same ? 2.5 : 3.5)}rem` }}>
@@ -319,7 +319,7 @@ const START_AMOUNT = /^배분 금액 \((.+?), 백테스트(?: 시작일)? 초기
 function startAmount(b: Block, doc: ReportDoc): Block {
   const m = b.type === "table" ? START_AMOUNT.exec(b.title_ko ?? "") : null
   if (!m || b.type !== "table") return b
-  const start = doc.header.backtest_period?.start
+  const start = doc.header.backtest_period?.as_of ?? doc.header.backtest_period?.start  // 첫 투자일 = 첫 거래일(백테스트 시작일). start 는 요청한 기간 시작이라 휴일일 수 있다 (2022-11-05 토요일)
   return { ...b, title_ko: `백테스트 시작일 투자 금액 (${m[1]})`, subtitle_ko: `백테스트를 시작한 날${start ? `(${start})` : ""} 첫 투자금 ${m[2]}를 선택 전략(${m[1]}) 비중대로 종목마다 나눈 금액입니다.${m[3] ? " 원화는 그날 환율로 계산했습니다." : ""} 이후 매달 적립한 금액과 리밸런싱은 아래 「과거 비중 조정 기록」에 있습니다.` }
 }
 
@@ -359,16 +359,16 @@ function ConstructionBody({ s, doc }: { s: Section; doc: ReportDoc }) {
     <>
       {/* 3. 포트폴리오 구성 파트 순서 (2026-11-16 사용자 표): 1 과정 → 2 분석 기준일 → 3 백테스트 시작일 비중 → 4 전략별 → 5 뉴스 반영 → 6 조정 기록 */}
       <BuildFlow doc={doc} />
-      {now.length > 0 && <SubPart title={nowTitle(doc)} desc="분석 기준일에는 어떤 종목에 얼마씩 투자하나요?"><NowParts now={now} nowProse={nowProse} nowNote={nowNote} doc={doc} /></SubPart>}{/* 예전 「분석 기준일의 현재 구성」 묶음 안에서처럼 접지 않고 그대로 그린다 (카드마다 접힘이 들쭉날쭉하지 않게) */}
+      {now.length > 0 && <SubPart title={nowTitle(doc)}><NowParts now={now} nowProse={nowProse} nowNote={nowNote} doc={doc} /></SubPart>}{/* 예전 「분석 기준일의 현재 구성」 묶음 안에서처럼 접지 않고 그대로 그린다 (카드마다 접힘이 들쭉날쭉하지 않게) */}
       <ChosenWeights doc={doc}>{amount.length > 0 ? <Blocks blocks={amount} doc={doc} sec={s.id} /> : null}</ChosenWeights>
-      {compare.length > 0 && <SubPart title="전략별 투자 비중" desc="같은 종목에 다른 비중 규칙을 적용하면 무엇이 달라지나요?"><Blocks blocks={compare} doc={doc} sec={s.id} /></SubPart>}
-      {bl.length > 0 && <SubPart title="뉴스를 반영한 비중" badge={chosenBl ? pill("선택 전략", "bg-blue-600 text-white") : pill("비교용 구성", "bg-slate-100 text-slate-600")} desc="앞에서 본 기준 비중에 뉴스와 공시를 반영하면 어떻게 달라지나요?">
+      {compare.length > 0 && <SubPart title="전략별 투자 비중"><Blocks blocks={compare} doc={doc} sec={s.id} /></SubPart>}
+      {bl.length > 0 && <SubPart title="뉴스를 반영한 비중" badge={chosenBl ? pill("선택 전략", "bg-blue-600 text-white") : pill("비교용 구성", "bg-slate-100 text-slate-600")}>
         {/* 카드 묶음 제목 「뉴스로 조정한 비중 (백테스트 시작일 · Black-Litterman)」은 파트 제목과 겹쳐 뺀다 (2026-11-16 사용자 요청). 카드가 많으면 예전처럼 접되 제목은 쉬운 말로 */}
         {bl.map((b, i) => b.type === "cards"
           ? (b.items.length >= 3 ? <Disclosure key={i} title="뉴스로 만든 구성" summary={`${b.items.length}개`}><Cards b={{ ...b, title_ko: undefined }} /></Disclosure> : <Cards key={i} b={{ ...b, title_ko: undefined }} />)
           : <RenderBlock key={i} b={b} doc={doc} />)}
       </SubPart>}
-      {runs.length > 0 && <SubPart title="과거 비중 조정 기록" desc="백테스트 기간에 선택 전략의 비중을 언제, 어떻게 조정했나요?"><Blocks blocks={runs} doc={doc} sec={s.id} /></SubPart>}
+      {runs.length > 0 && <SubPart title="과거 비중 조정 기록"><Blocks blocks={runs} doc={doc} sec={s.id} /></SubPart>}
       {rest.length > 0 && <SubPart title="그 밖의 내용"><Blocks blocks={rest} doc={doc} sec={s.id} /></SubPart>}
     </>
   )
@@ -405,7 +405,7 @@ function NowParts({ now, nowProse, nowNote, doc }: { now: Block[]; nowProse: Blo
       {news.length > 0 && !usesNews && (
         <Disclosure title="참고: 뉴스를 반영했다면" summary="선택 전략에는 반영하지 않음">
           <div className="space-y-4">
-            <p className="text-xs leading-5 text-slate-500">MyFinSight의 AI 분석 모델이 기사 제목과 공시를 바탕으로 만든 투자 의견을 기준 비중에 반영한 비교용 구성입니다.</p>
+            <p className="text-xs leading-5 text-slate-500">분석 모델이 기사 제목과 공시를 읽고 제안한 투자 의견을 기준 비중에 반영한 비교용 구성입니다.</p>
             {newsCards}
           </div>
         </Disclosure>

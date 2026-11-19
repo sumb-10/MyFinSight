@@ -78,7 +78,7 @@ describe("카드 1·4: 결과와 조건", () => {
     const { container } = render(<VerdictCard sm={s} doc={doc()} onMore={() => {}} />)
     expect(screen.queryByText("선택된 전략")).toBeNull(); expect(screen.getByText("동일비중")).toBeInTheDocument()  // 카드 제목 「선택한 전략」 아래에 전략 이름만 (같은 뜻의 작은 라벨은 없다)
     expect(screen.getByRole("heading", { name: "선택한 전략" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /왜 이 전략인가요\?/ })).toBeInTheDocument()  // 제목과 같은 줄 오른쪽
+    expect(screen.getByRole("button", { name: /선택 이유 보기/ })).toBeInTheDocument()  // 제목과 같은 줄 오른쪽
     expect(screen.getByText("선정한 종목에 같은 비율로 나눠 투자하는 방식입니다.")).toBeInTheDocument()  // 전략 설명은 ? 밖에 한 줄
     expect(screen.queryByText(/2025-10-30 ~ 2026-10-30|자료 기준/)).toBeNull()  // 날짜 문장은 두지 않는다 (2026-11-14)
     expect(container.querySelector("section[data-tour='verdict']")).not.toBeNull()  // 둘러보기 1단계는 카드 전체를 비춘다

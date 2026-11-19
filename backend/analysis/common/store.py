@@ -136,7 +136,7 @@ class ProfileStore:
         for x in doc["versions"]:
             if x["version"] == version:
                 return x
-        raise NotFound(f"프로필 버전 {version} 이 없습니다")
+        raise NotFound(f"프로필 버전 {version}이 없습니다")
 
     def save(self, fields: dict[str, Any], *, note: str | None = None) -> dict[str, Any]:
         """새 버전을 추가하고 그 버전을 돌려준다. fields = profile/capital/horizon/risk/constraints/strategy_preference + 진단."""

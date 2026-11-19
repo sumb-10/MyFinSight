@@ -45,7 +45,7 @@ def shift_window_ok(end: dt.date, day: dt.date, total_days: int) -> bool:
 START_DROP_KO = {"min_market_cap_usd": "그날 시가총액이 최소 시가총액({mc})에 못 미침", "market_cap_missing": "그날 시가총액 자료 없음",
                  "min_avg_daily_volume_usd": "그날 거래대금이 최소 거래대금에 못 미침", "insufficient_price_history": "상장 전이거나 가격 이력 부족",
                  "not_in_candidates": "그날 후보 검색에 없음(상장 전이거나 조건 밖)", "metric_missing": "그날 선정 지표 자료 없음",
-                 "metric_out_of_range": "그날 선정 지표가 자격선 밖", "rank_beyond_n": "그날 순위 밖", "sector_preference": "그날 섹터 선호로 밀림",
+                 "metric_out_of_range": "그날 선정 지표가 기준 밖", "rank_beyond_n": "그날 순위 밖", "sector_preference": "그날 섹터 선호로 밀림",
                  "sector_preference_lower": "그날 섹터 선호로 밀림", "no_dividend": "그날 최근 12개월 배당 확인 안 됨(배당 기업 테마)"}  # fmt: skip
 
 

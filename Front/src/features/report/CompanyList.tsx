@@ -110,7 +110,7 @@ function CompanyBody({ it, b, basis }: { it: CompanyItem; b: CompaniesBlock; bas
     ...weightRows,
     [`${b.metric_ko} (${b.as_of_now})`, it.metric_now !== null ? <>{metricValue(b.metric, it.metric_now)} · 순위 {it.rank_now ?? "–"}{it.fact_id && rep && <button type="button" onClick={() => rep.openEvidence(it.fact_id!)} className="ml-1 align-super text-[11px] font-bold text-blue-700 hover:underline" aria-label={`지표 근거 ${it.fact_id} 보기`}>[{rep.numberOf(it.fact_id)}]</button>}</> : "–"],
     [`${b.metric_ko} (${b.as_of_bt})`, it.metric_bt !== null ? `${metricValue(b.metric, it.metric_bt)} · 순위 ${it.rank_bt ?? "–"}` : "–"],
-    ["투자 테마와의 관련성", `${it.theme_reason_ko || "–"}${it.theme_confidence !== null ? ` (신뢰도 ${it.theme_confidence.toFixed(2)})` : ""}`],
+    ["투자 테마와의 관련성", `${it.theme_reason_ko || "–"}${it.theme_confidence ? ` (확신 정도 ${Math.round(it.theme_confidence * 100)}%)` : ""}`],
     ...(view ? [["뉴스 투자 의견", <><MockTag />{" "}{view.reason_ko}{view.view_summaries_ko.length > 0 && <span className="mt-0.5 block text-slate-600">{view.view_summaries_ko.join(" / ")}</span>}</>] as [string, React.ReactNode]] : []),
     ["근거 자료", <>{it.n_news}건 뉴스 · {it.n_disclosures}건 공시{rep && (it.n_news + it.n_disclosures > 0) && <button type="button" onClick={() => rep.openDrawer({ ticker: it.ticker, title: `${it.ticker} 관련 근거` })} className="ml-2 text-xs font-semibold text-blue-700 hover:underline">출처 보기</button>}</>],
   ]
