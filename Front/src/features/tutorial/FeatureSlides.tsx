@@ -15,7 +15,7 @@ const appear = (on: boolean) => `transition-all duration-500 ease-out ${on ? "tr
 
 interface Feature { kicker: string; title: string; body: string }
 // 「포트폴리오 구성」 다음 장: 이 프로젝트에서 Black-Litterman 이 하는 일 (자세한 계산은 README)
-const BL_FEATURE: Feature = { kicker: "Black-Litterman", title: "공시·뉴스 근거만큼만,\n기준 비중에서 조금씩", body: "과거 데이터로 정한 기준 비중을 출발점으로, 최근 공시와 뉴스에서 나온 의견을 근거가 분명할수록 더 크게 반영합니다. 관련 공시·뉴스가 없거나 근거가 약한 종목은 기준 비중 근처에 머물고, 한 종목이 움직이는 폭에도 한도가 있습니다.\n계산 방식은 README에서 자세히 볼 수 있어요." }
+const BL_FEATURE: Feature = { kicker: "Black-Litterman", title: "공시·뉴스 근거만큼,\n기준 비중에서 가감해요", body: "과거 데이터로 정한 기준 비중을 출발점으로, 최근 공시와 뉴스에서 나온 의견을 근거가 분명할수록 더 크게 반영합니다. 관련 공시·뉴스가 없거나 근거가 약한 종목은 기준 비중 근처에 머물고, 한 종목이 움직이는 폭에도 한도가 있습니다. 계산 방식은 README에서 자세히 볼 수 있어요." }
 const BASE_FEATURES: Feature[] = [
   { kicker: "아이디어 해석", title: "당신의 요청을 적으면\nLLM이 분석합니다", body: "문장 속 지역, 산업, 기간, 원하는 점을 LLM이 읽어 분석 조건으로 바꿉니다.\n애매한 부분은 짐작하지 않고 되묻습니다." },
   { kicker: "종목 선정", title: "LLM이 조건을 확인하고\n종목 후보를 골라요", body: "종목 사전에서 후보를 찾은 뒤, 기업의 투자 가치가 아이디어에 맞는지 LLM이 분류합니다. 남은 종목은 지표로 순위를 매기고 종목별 근거를 남깁니다." },
