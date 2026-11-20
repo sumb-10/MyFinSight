@@ -12,6 +12,7 @@ import { ContinueCard } from "./ContinueCard"
 import { useRenameTick } from "../report/ReportName"
 import { Coachmark } from "../tutorial/Coachmark"
 import { HOME_TOUR_STEPS } from "../tutorial/homeSteps"
+import { clearHomeTourFlag, hasHomeTourFlag } from "../tutorial/IntroScroll"
 import { HomeInfo, TOUR_TAB, type InfoTab } from "./HomeInfo"
 import { HelpMenu } from "./HelpMenu"
 import { RequestChat, useRequestDialog } from "./RequestChat"
@@ -50,7 +51,8 @@ export function HomeScreen({ request }: { request?: { id: string; res: Resource<
   const [overrides, setOverrides] = useState<Overrides>(() => { const u = loadUi(); return (u.prefillOverrides ?? u.draftOverrides ?? {}) as Overrides })
   const [leftNote, setLeftNote] = useState(() => loadUi().prefillNote ?? "")  // 요청을 그만두고 돌아왔을 때: 왜 채워져 있는지
   const [detail, setDetail] = useState(false)
-  const [tour, setTour] = useState<number | null>(null)  // 홈 둘러보기 단계
+  const [tour, setTour] = useState<number | null>(() => (hasHomeTourFlag() ? 0 : null))  // 홈 둘러보기 단계 (소개에서 「화면 둘러보기」를 고르면 바로 시작)
+  useEffect(() => { clearHomeTourFlag() }, [])
   const [tab, setTab] = useState<InfoTab | null>(null)   // 오른쪽 카드에서 연 탭 (null = 리포트 수를 보고 아직 정하는 중)
   const renamed = useRenameTick()
   const reports = useResource(() => svc.listReports(), [svc, renamed])
@@ -113,10 +115,9 @@ export function HomeScreen({ request }: { request?: { id: string; res: Resource<
           <div className="flex items-center justify-between border-b border-line px-6 py-3.5">
             <h1 id="home-new" className="t-title">새 분석</h1>
             {/* 도움 셋을 버튼 하나로 (2026-11-18 사용자 결정: 나란히 두면 소개와 둘러보기의 차이가 안 보임).
-                「서비스 소개」(#/intro, IntroScroll)는 tutorial-improve 브랜치에 있다 → 그 브랜치가 main 에 들어오면 navigate({ page: "intro" }) 로 바꾼다.
-                그 전에는 이 브랜치에서 누르면 「페이지를 찾을 수 없습니다」가 뜬다 (docs/updates/2026-11-18_help_menu_tutorial_merge.md) */}
+                「서비스 소개」는 스크롤형 소개 화면(#/intro, IntroScroll) */}
             <HelpMenu className={HEAD_BTN} items={[
-              { icon: Sparkles, label: "서비스 소개", onClick: () => { window.location.hash = "#/intro" } },
+              { icon: Sparkles, label: "서비스 소개", onClick: () => navigate({ page: "intro" }) },
               { icon: Compass, label: "홈 화면 둘러보기", onClick: () => setTour(0) },
               { icon: FileText, label: "예시 리포트 둘러보기", onClick: () => navigate({ page: "tutorial" }) },
             ]} />

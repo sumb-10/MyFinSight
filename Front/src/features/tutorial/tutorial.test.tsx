@@ -88,9 +88,11 @@ describe("예시 리포트 둘러보기", () => {
     for (let n = 0; n < i; n++) fireEvent.click(screen.getByRole("button", { name: "다음" }))
     expect(TOUR_STEPS[i].title).toBe("용어 설명")
     expect(TOUR_STEPS[i].also).toEqual(["glossary"])
-    expect(screen.getByRole("dialog", { name: TOUR_STEPS[i].title })).toHaveTextContent(/용어 옆 \? 를 누르면/)
+    expect(screen.getByRole("dialog", { name: TOUR_STEPS[i].title })).toHaveTextContent(/용어 옆 「\?」를 누르면/)
     const help = document.querySelector<HTMLElement>('[data-tour="term-help"]')!
-    await waitFor(() => expect(within(help).getByRole("button", { name: /설명 보기/ })).toHaveAttribute("aria-expanded", "true"))
+    // 처음엔 강조 크기를 재려고 보이지 않게 잠깐 열었다 닫고, 커서가 ? 를 누르는 순간 다시 열린다
+    await waitFor(() => expect(within(help).getByRole("button", { name: /설명 보기/ })).toHaveAttribute("aria-expanded", "false"))
+    await waitFor(() => expect(within(help).getByRole("button", { name: /설명 보기/ })).toHaveAttribute("aria-expanded", "true"), { timeout: 3000 })
     expect(help.querySelector('[role="dialog"]')).not.toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "다음" }))
     expect(help.querySelector('[role="dialog"]')).toBeNull()

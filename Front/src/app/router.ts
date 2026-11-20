@@ -12,6 +12,7 @@ export type Route =
   | { page: "paper"; paperId?: string }
   | { page: "comparison"; comparisonId: string }
   | { page: "tutorial"; next?: "reports"; reportId?: string }  // next·reportId: 가이드를 마친 뒤 돌아갈 곳
+  | { page: "intro" }  // 처음 온 사람용 스크롤형 소개
   | { page: "not-found"; path: string }
 
 export const routePath = (r: Route): string => {
@@ -33,6 +34,7 @@ export const routePath = (r: Route): string => {
     case "paper": return r.paperId ? `#/paper/${r.paperId}` : "#/paper"
     case "comparison": return `#/comparisons/${r.comparisonId}`
     case "tutorial": return r.reportId ? `#/tutorial?report=${r.reportId}` : r.next ? `#/tutorial?next=${r.next}` : "#/tutorial"
+    case "intro": return "#/intro"
     case "not-found": return r.path
   }
 }
@@ -64,6 +66,7 @@ export const parseRoute = (hash: string = window.location.hash): Route => {
     const reportId = q.get("report")
     return reportId ? { page: "tutorial", reportId } : q.get("next") === "reports" ? { page: "tutorial", next: "reports" } : { page: "tutorial" }
   }
+  if (a === "intro") return { page: "intro" }
   return { page: "not-found", path: hash }
 }
 
@@ -80,6 +83,7 @@ export function useHashRoute(): Route {
   useEffect(() => {
     const onHash = () => setRoute(parseRoute())
     window.addEventListener("hashchange", onHash)
+    onHash()  // 듣기 시작하기 전에 주소가 바뀌었으면(첫 화면에서 바로 넘긴 경우) 그 변경을 놓치지 않게 한 번 맞춘다
     return () => window.removeEventListener("hashchange", onHash)
   }, [])
   return route

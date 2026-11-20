@@ -13,7 +13,7 @@ export const proposed = (doc?: ReportDoc | null): ProposedReport | null => (doc 
 export function MockTag() {
   const svc = useContext(ServiceContext)
   if (svc?.mode !== "mock") return null
-  return <span className="ml-1.5 inline-flex shrink-0 items-center rounded border border-amber-300 bg-amber-50 px-1.5 py-px align-middle text-[11px] font-semibold text-amber-900">목업</span>
+  return <span data-mock-ui className="ml-1.5 inline-flex shrink-0 items-center rounded border border-amber-300 bg-amber-50 px-1.5 py-px align-middle text-[11px] font-semibold text-amber-900">목업</span>
 }
 
 /** KPI 이름·기간: 구조화된 kpi_meta 가 있으면 그것, 없으면 서버 이름 읽기. */
