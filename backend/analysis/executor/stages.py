@@ -140,8 +140,11 @@ def st_selection(ctx: RunContext) -> str:
 
 
 def st_explain(ctx: RunContext) -> str:
+    """기업별 근거: 실제로 담는 종목 = 백테스트 시작일에 고른 종목(2026-11-19 사용자 결정, 분석 기준일까지 유지)으로 쓴다.
+    선정 지표 값은 그 종목을 고른 날(시작일) 값, 뉴스·공시는 분석 기준일까지. 시작일에 다시 고르지 않은 실행(대화에서 '지금 목록') 은 분석 기준일 선정 그대로."""
     view = ctx.md.view(_as_of(ctx))
-    sel = Selection.model_validate(ctx.out("05_selection"))
+    held = ctx.outputs.get("07_selection_bt")
+    sel = Selection.model_validate(held or ctx.out("05_selection"))
     ds = ctx.settings.disclosures
     win = view.news_window([s.ticker for s in sel.selected], dc_days=(ds.summary_days if ds.enabled else 0),
                            dc_event_types=[*ds.event_types, *ds.summary_extra_event_types])  # 기업 근거용: 90일 사건 요약 (정기 보고 포함)
@@ -149,7 +152,7 @@ def st_explain(ctx: RunContext) -> str:
     from backend.analysis.common.warnings import merge as _merge, render as _render
 
     notes_ko = [_render(w) for w in _merge(ctx.warnings_of("05_selection") + ctx.warnings_of("03_candidates")) if w.level == "user"]
-    facts05 = ctx.outputs.get("_facts_05", ctx.facts)
+    facts05 = ctx.outputs.get("_facts_07") if held and ctx.outputs.get("_facts_07") is not None else ctx.outputs.get("_facts_05", ctx.facts)
     out = explain(sel, Tagging.model_validate(ctx.out("04_tagging")), ctx.out("02_intent"), ctx.llm,
                   facts=[f for f in facts05 if f["ticker"] in {s.ticker for s in sel.selected}], news=win, warnings_ko=notes_ko,
                   summaries={c["ticker"]: c.get("company_summary") or "" for c in (ctx.outputs.get("03_candidates") or {}).get("candidates") or []})  # fmt: skip
@@ -169,6 +172,7 @@ def st_backtest_spec(ctx: RunContext) -> str:
     for k, v in extras.items():
         if k == "facts_bt":
             ctx.facts += v
+            ctx.outputs["_facts_07"] = list(v)  # 06 기업별 근거가 쓰는 시작일 지표 (2026-11-19: 보유 종목 = 시작일 종목)
         else:
             ctx.outputs[f"07_{k}"] = v
     ctx.warn_all("07_backtest_spec", list(spec["warnings"]))
@@ -291,39 +295,57 @@ def st_walkforward(ctx: RunContext) -> str:
 
 
 def st_forward(ctx: RunContext) -> str:
-    """현재 구성: 분석 기준일에 현재 선정 종목으로 construct(mode=current) + USD·KRW 배분."""
-    sel = ctx.out("05_selection")
+    """분석 기준일 구성 (2026-11-19 사용자 결정): 종목·비중을 분석 기준일에 새로 계산하지 않고 백테스트에서 그대로 꺼낸다.
+    백테스트 시작일에 고른 종목을 유지하고, 비중은 직전 리밸런싱의 목표 비중(분석 기준일이 리밸런싱일이면 그날 비중) — holdings_now.
+    분석 기준일 뉴스로 투자 의견을 다시 만들지 않는다(AI 호출 없음). 예상 연변동성만 분석 기준일까지의 주가 기록(시장모형)으로 계산한다.
+    출력 모양은 예전 10f 와 같게 두고(templates·portfolios·chosen_weights·market_model), 구성 id 별 비중은 holdings_now 에 둔다."""
+    import numpy as np
+
+    from backend.analysis.m4_portfolio import math as P
+    from backend.analysis.m4_portfolio.holdings_now import holdings_now
+    from backend.analysis.m4_portfolio.market_model import build_market_model
+
+    spec, bt, tg = ctx.out("07_backtest_spec"), ctx.out("11_backtest_results"), ctx.out("10_target_portfolios")
     as_of = _as_of(ctx)
-    tickers = [s["ticker"] for s in sel["selected"]]
-    res = wait_cancellable(lambda: construct(ctx.md.view(as_of), tickers, ctx.request, ctx.out("02_intent"), ctx.settings, ctx.llm, ctx.desc, mode="current",
-                                             stage_tag=f"09_views_news_{as_of}_current", id_prefix="fwd_bl", name_prefix="현재 구성 BL"),
-                           ctx.cancel_check, name="construct_current")  # fmt: skip  (뉴스 조회·최적화 중에도 취소)
-    if res.evidence:
-        ctx.add_news_window("10f_current", res.evidence.to_dict())
+    tickers = list(spec["selection"]["tickers"])
+    model, _base = build_market_model(ctx.md.view(as_of), tickers, ctx.request, ctx.desc, ctx.settings, request_id=ctx.request_id)
+    tk = list(model["tickers"])
+    cov, pi = np.asarray(model["cov"], float), np.asarray([model["implied_returns"].get(t, 0.0) for t in tk], float)
+
+    def ex_ante(w: dict[str, float]) -> dict[str, float]:
+        return P.ex_ante_stats(np.asarray([float(w.get(t, 0.0)) for t in tk], float), pi, cov)
+
     d = ctx.request["derived"]
     init, fx = d["initial_amount_usd"], d["fx_rate"]
     amt = init or d.get("monthly_contribution_usd") or 0.0  # 0원 시작(이슈 #14 의 3번)이면 배분 금액은 첫 적립금 기준 (report_blocks.basis_amount 와 같은 규칙)
-    ports = [dict(p) for p in res.applied_bl]  # 최적화 실패 세트(= 기준 비중)는 '현재 구성 BL' 로 보이지 않게 뺀다
-    templates = [dict(p) for p in res.baselines["portfolios"]]
-    for p in [*templates, *ports]:
-        p["allocation"] = [{"ticker": t, "weight": w_, "usd": round(amt * w_, 2), "krw": round(amt * w_ * fx)}
-                           for t, w_ in sorted(p["weights"].items(), key=lambda x: -x[1])]  # fmt: skip
-    ev = res.evidence
-    out = {"request_id": ctx.request_id, "stage": "10f_forward_portfolios", "as_of": str(as_of), "news_window": ev.summary() if ev else None,
-           "evidence": {r["evidence_id"]: r for r in (ev.records if ev else [])},
-           "market_model": {**{k: res.market_model[k] for k in ["as_of", "lookback", "tickers", "ann_vol", "cap_weights", "delta", "delta_source", "tau", "implied_returns"]},
-                            "delta_capped": bool(res.market_model.get("delta_capped")),
-                            # δ 를 어떻게 정했는지 (020: 시장 추정치가 음수라 하한 1.5 × 성향 1.5 × 낙폭 1.5 = 3.375 였는데 이 값들이 빠져 리포트가 '시장 자료로 추정' 이라고만 썼다)
-                            **{k: res.market_model.get(k) for k in ["delta_market", "delta_base", "delta_multiplier", "delta_dd_multiplier"]}},
-           "baseline": {"id": res.baselines["chosen_baseline"], "weights": res.baseline_weights}, "templates": templates, "views_sets": res.view_sets,
-           "portfolios": ports, "chosen_weights": res.chosen_weights, "fallback": res.fallback, "fallback_reason_ko": res.fallback_reason_ko,
-           "parameters": res.params, "capital": {"initial_amount_usd": init, "fx_rate": fx, "fx_date": str(ctx.request["derived"]["fx_date"])},
-           "warnings": res.warnings}  # fmt: skip
+
+    def alloc(w: dict[str, float]) -> list[dict[str, Any]]:
+        return [{"ticker": t, "weight": w_, "usd": round(amt * w_, 2), "krw": round(amt * w_ * fx)} for t, w_ in sorted(w.items(), key=lambda x: -x[1])]
+
+    hn = holdings_now(bt["portfolios"], as_of, spec["period"]["as_of"])
+    for h in hn.values():
+        h["ex_ante"], h["allocation"] = ex_ante(h["weights"]), alloc(h["weights"])
+    # 시작일 비중으로 되돌리는 규칙 4개(시작일 목표 비중 = 분석 기준일 비중): 화면·모의투자의 예전 읽는 자리(templates)와 같은 모양
+    templates = [{**t, "weights": hn.get(t["id"], {}).get("weights") or t["weights"], "ex_ante": ex_ante(hn.get(t["id"], {}).get("weights") or t["weights"]),
+                  "allocation": alloc(hn.get(t["id"], {}).get("weights") or t["weights"])} for t in tg.get("templates") or []]  # fmt: skip
+    bl_ids = [pid for pid, h in hn.items() if h.get("kind") == "black_litterman"]
+    chosen_bl = "wf_bl_news" if "wf_bl_news" in hn else (bl_ids[0] if bl_ids else None)
+    out = {"request_id": ctx.request_id, "stage": "10f_forward_portfolios", "as_of": str(as_of), "news_window": None, "evidence": {},
+           "derived_from_backtest": True,
+           "rule_ko": "백테스트 시작일에 고른 종목을 유지하고, 직전 리밸런싱일(분석 기준일이 리밸런싱일이면 그날)의 목표 비중을 그대로 씁니다.",
+           "market_model": {**{k: model[k] for k in ["as_of", "lookback", "tickers", "ann_vol", "cap_weights", "delta", "delta_source", "tau", "implied_returns"]},
+                            "delta_capped": bool(model.get("delta_capped")),
+                            **{k: model.get(k) for k in ["delta_market", "delta_base", "delta_multiplier", "delta_dd_multiplier"]}},
+           "baseline": {"id": tg["baseline"]["id"] if isinstance(tg.get("baseline"), dict) and tg["baseline"].get("id") else None,
+                        "weights": (tg.get("baseline") or {}).get("weights") if isinstance(tg.get("baseline"), dict) else None},
+           "templates": templates, "views_sets": [], "portfolios": [],
+           "chosen_weights": (hn[chosen_bl]["weights"] if chosen_bl else {}), "holdings_now": hn,
+           "fallback": True, "fallback_reason_ko": "분석 기준일에는 뉴스로 투자 의견을 다시 만들지 않고 백테스트의 직전 리밸런싱 비중을 그대로 씀",
+           "parameters": {}, "capital": {"initial_amount_usd": init, "fx_rate": fx, "fx_date": str(ctx.request["derived"]["fx_date"])},
+           "warnings": [n for n in model.get("notes", []) if n.startswith("dropped")]}  # fmt: skip
     ctx.outputs["10f_forward_portfolios"] = out
-    ctx.warn_all("10f_current", list(res.warnings), dates=[str(as_of)])
-    _warn_optimizer(ctx, "10f_current", res.bl_portfolios, dates=[str(as_of)])
-    # 10 단계와 같은 규칙: 뉴스 뷰가 비중을 실제로 바꿨는지까지 (029: 다섯 세트 모두 기준 비중과 같았는데 'BL 5' 만 적었다)
-    return f"기준일 {as_of} 현재 구성: 비중 규칙 {len(templates)}개 + 뉴스 반영 구성 {len(ports)}개 ({_news_effect_ko(ports, res.baseline_weights)})"
+    days = sorted({h["rebalance_date"] for h in hn.values()})
+    return f"기준일 {as_of} 구성: 백테스트 시작일 종목 {len(tickers)}개 유지, 직전 리밸런싱 비중 사용 ({', '.join(days[-2:])})"
 
 
 # ───────────────────────── bucket 3·4: 백테스트·검증 ─────────────────────────
@@ -356,7 +378,12 @@ def st_validation(ctx: RunContext) -> str:
 # ───────────────────────── bucket 5: 리포트 ─────────────────────────
 def st_results(ctx: RunContext) -> str:
     o = ctx.outputs
-    bundle = build_results(run_id=ctx.run_id, req=ctx.request, intent=o["02_intent"], cand=o["03_candidates"], tag=o["04_tagging"], sel=o["05_selection"],
+    sel = o["05_selection"]
+    held = o.get("07_selection_bt")
+    if held and (o.get("10f_forward_portfolios") or {}).get("derived_from_backtest"):  # 2026-11-19: 담는 종목 = 백테스트 시작일에 고른 종목(분석 기준일까지 유지)
+        sel = {**sel, "selected": held["selected"],
+               "summary": {**sel["summary"], "n_selected": len(held["selected"]), "n_forced": sum(1 for x in held["selected"] if x.get("forced"))}}  # fmt: skip
+    bundle = build_results(run_id=ctx.run_id, req=ctx.request, intent=o["02_intent"], cand=o["03_candidates"], tag=o["04_tagging"], sel=sel,
                            expl=o.get("06_selection_explained"), spec=o["07_backtest_spec"], mm=o["08_market_model"], base=o["08_baseline_portfolios"],
                            views=o["09_views"], targets=o["10_target_portfolios"], bt=o["11_backtest_results"], val=o["12_validation"], desc=ctx.desc,
                            descriptor_info=ctx.desc_info, settings=ctx.settings, facts=ctx.facts, news_windows=ctx.news_windows,
@@ -365,7 +392,7 @@ def st_results(ctx: RunContext) -> str:
     bundle["dialog"] = list(ctx.dialog)  # 리포트 머리말 요약(14d)용 확인 질문·답
     ctx.outputs["13_results"] = bundle
     # '경고 3건' 이 사용자 공지 0건인 실행에도 나왔다 (참고·개발용 기록까지 셈, 003) → 사용자에게 보이는 공지 수
-    return f"결과 통합: 포트폴리오 {len(bundle['backtest']['portfolios'])}개, 인용 색인 {len(bundle['evidence_index'])}건, 사용자 공지 {len(bundle.get('notices') or [])}건"
+    return f"결과 통합: 포트폴리오 {len(bundle['backtest']['portfolios'])}개, 인용 색인 {len(bundle['evidence_index'])}건, 알림 {len(bundle.get('notices') or [])}건"
 
 
 def st_report(ctx: RunContext) -> str:
@@ -433,9 +460,9 @@ STAGES: list[Stage] = [
     Stage("03_candidates", "후보 검색", "candidates", st_candidates, deps=("02_intent",)),
     Stage("04_tagging", "테마 분류", "candidates", st_tagging, deps=("03_candidates",)),
     Stage("05_selection", "정량 선정", "candidates", st_selection, deps=("04_tagging",)),
-    Stage("06_explain", "기업별 근거", "candidates", st_explain, deps=("05_selection",)),
+    Stage("06_explain", "기업별 근거", "candidates", st_explain, deps=("07_backtest_spec",)),  # 2026-11-19: 시작일에 고른(보유) 종목으로
     Stage("07_backtest_spec", "백테스트 사양·시작일 재선정", "candidates", st_backtest_spec, deps=("05_selection",)),
-    Stage("10f_current", "현재 구성", "candidates", st_forward, deps=("05_selection",)),
+    Stage("10f_current", "현재 구성", "candidates", st_forward, deps=("11_backtest",)),  # 2026-11-19: 백테스트에서 분석 기준일 비중을 꺼낸다
     Stage("10_targets", "시작일 포트폴리오 구성", "candidates", st_targets, deps=("07_backtest_spec",)),
     Stage("10w_paths", "리밸런싱일별 재구성 (walk-forward)", "candidates", st_walkforward, deps=("07_backtest_spec",)),
     Stage("11_backtest", "백테스트", "backtest", st_backtest, deps=("10_targets", "10w_paths")),

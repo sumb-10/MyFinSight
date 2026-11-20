@@ -6,7 +6,7 @@ import { ApiError, errorMessage } from "../../api/client"
 import type { Options, ProfileFields, ProfileView, Tendency } from "../../api/types"
 import { useResource } from "../../state/useResource"
 import { clearLegacy, loadLegacyProfile, loadUi, saveUi } from "../../state/uiStorage"
-import { Alert, Badge, Button, Chip, ErrorState, Field, inputClass, Loading } from "../../ui"
+import { Alert, Badge, Button, Chip, ErrorState, Field, inputClass, Loading, NOTICE_BOX } from "../../ui"
 import { ko } from "../../lib/format"
 import { QUESTIONS, TENDENCIES, TENDENCY_HELP, computeTendency, toRiskTolerance } from "./diagnosis"
 import { InfoField, InfoTip, NumberInput, PercentSlider, SectorPicker, TagInput } from "./inputs"
@@ -18,9 +18,10 @@ import { VersionHistory } from "./history"
 import { tendencyLabel } from "../../lib/tendency"
 import { proposedRulesOf } from "../../api/proposed"
 import { MockTag } from "../report/proposedView"
-import { StockPicker, useStockNames } from "./stocks"
+import { TickerListField, useStockNames } from "./stocks"
 import { StrategyRecommendation, asPref, useRecommendation } from "./StrategyRecommend"
 import { DEFAULT_FORM } from "./defaults"
+import { HOLDINGS, LABEL, PCT, THEME_FIELD, TICKER_PLACEHOLDER } from "./fields"
 import { validateProfile } from "./validate"
 
 type Form = ProfileFields
@@ -107,13 +108,12 @@ function ProfileSummary({ view }: { view: ProfileView }) {
 
 const STEPS = ["기본 조건", "투자성향", "종목 범위·제약", "투자 전략"]
 const STEP_KEYS = [["capital.", "horizon.", "profile."], ["risk.", "diagnosis", "tendency"], ["constraints."], ["strategy_preference."]]
-const FIELD_KO: Record<string, string> = { "capital.initial_amount": "투자 금액", "capital.monthly_contribution": "매월 추가 투자금", "horizon.target_years": "투자기간", "horizon.backtest_years": "백테스트 기간", "constraints.num_holdings": "종목 수", "constraints.max_weight_per_stock": "종목당 상한", "constraints.max_weight_per_sector": "섹터당 상한", "constraints.universe": "투자 대상 지수", "constraints.exclude_tickers": "제외 종목", diagnosis: "투자성향 진단", tendency: "투자성향" }
+const FIELD_KO: Record<string, string> = { "capital.initial_amount": "투자 금액", "capital.monthly_contribution": "매월 추가 투자금", "horizon.target_years": "투자기간", "horizon.backtest_years": "백테스트 기간", "constraints.num_holdings": "종목 수", "constraints.max_weight_per_stock": "종목당 상한", "constraints.max_weight_per_sector": "섹터당 상한", "constraints.universe": "투자 대상 지수", "constraints.exclude_tickers": "제외 종목", "constraints.must_include_tickers": "반드시 포함할 종목", diagnosis: "투자성향 진단", tendency: "투자성향" }
 const ADVANCED_KEYS = ["constraints.max_weight_per_stock", "constraints.max_weight_per_sector", "constraints.min_cash_ratio", "constraints.rebalance", "constraints.min_market_cap_usd", "constraints.min_avg_daily_volume_usd"]
 const LIST_KEYS = ["constraints.exclude_tickers", "constraints.must_include_tickers", "constraints.exclude_sectors", "constraints.exclude_themes"]
 const hasKey = (errors: Record<string, string>, keys: string[]) => Object.keys(errors).some((k) => keys.some((p) => k.startsWith(p)))
 
 
-const TICKER_INFO = <>회사 이름이 아니라 <b>종목 코드(티커)</b>로 입력합니다. 미국: TSLA(테슬라), AAPL(애플) · 한국: 6자리 종목코드 005930(삼성전자) 또는 005930.KS. 회사 이름으로 찾는 기능은 아직 없습니다.</>
 
 function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setup: boolean; onSaved: (v: ProfileView) => void }) {
   const svc = useService()
@@ -196,7 +196,6 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
   const c = form.constraints
   const sp = strategySummary(form.strategy_preference)
   const listCount = c.exclude_tickers.length + c.must_include_tickers.length + c.exclude_sectors.length + (c.exclude_themes ?? []).length
-  const upperTicker = (s: string) => s.trim().toUpperCase()
   return (
     <div className="mx-auto max-w-4xl">
       {/* 저장된 투자조건 화면과 같은 머리: 좁으면 버튼을 제목 아래로. 입력을 그만두는 「저장하지 않고 나가기」는 (수정·처음 설정 공통; 수정은 저장된 투자조건, 처음 설정은 리포트 목록으로: 프로필이 없으면 홈 등은 처음 설정으로 되돌아오므로) 단계 이동(아래 이전·다음)과 떨어진 위쪽 오른쪽에 둔다. */}
@@ -207,7 +206,7 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
           <p className="mt-2 text-sm leading-6 text-slate-600">금액과 기간, 투자성향, 종목 범위, 투자 전략을 설정합니다. 분석을 요청할 때 아이디어에 맞춰 일부를 바꿀 수 있습니다.</p>
         </div>
         <div className="flex shrink-0 gap-2">
-          {setup && svc.startProfileChat && <Button variant="secondary" onClick={() => navigate({ page: "profile", mode: "chat" })}><MessagesSquare className="size-4" aria-hidden />{resumable ? "대화로 이어서 하기" : "대화로 설정하기"}<MockTag /></Button>}
+          {svc.startProfileChat && <Button variant="secondary" onClick={() => navigate({ page: "profile", mode: "chat" })}><MessagesSquare className="size-4" aria-hidden />{resumable ? "대화로 이어서 하기" : setup ? "대화로 설정하기" : "대화로 다시 설정"}<MockTag /></Button>}
           <Button variant="neutral" onClick={() => navigate(setup ? { page: "reports" } : { page: "profile" })}><LogOut className="size-4" aria-hidden />저장하지 않고 나가기</Button>
         </div>
       </header>
@@ -242,7 +241,7 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
             <h2 className="text-lg font-bold text-slate-950">기본 조건</h2>
             <Part title="투자금과 목적" tag="필수" info="분석의 계산 조건으로 쓰입니다. 계산은 USD 로 하고, 원화는 분석 기준일 환율로 환산합니다.">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_140px]">
-                <InfoField label="처음 투자할 금액" error={err("capital.initial_amount")} help={allowZero && form.capital.initial_amount === 0 ? "0원 · 처음 투자금 없이 매월 추가 투자금으로 시작합니다" : money(form.capital.initial_amount, cur)} info={allowZero ? "0원으로 두면 처음 투자금 없이 매월 추가 투자금으로만 투자합니다. 이때는 매월 추가 투자금을 꼭 정해야 합니다. 첫 적립일에 처음 매수하고, 수익률은 그날부터 계산합니다." : "0원은 입력할 수 없습니다. 처음 투자금 없이 매월 적립만 하는 방식은 아직 지원하지 않습니다."}>
+                <InfoField label={LABEL.initial_amount} error={err("capital.initial_amount")} help={allowZero && form.capital.initial_amount === 0 ? "0원 · 처음 투자금 없이 매월 추가 투자금으로 시작합니다" : money(form.capital.initial_amount, cur)} info={allowZero ? "0원으로 두면 처음 투자금 없이 매월 추가 투자금으로만 투자합니다. 이때는 매월 추가 투자금을 꼭 정해야 합니다. 첫 적립일에 처음 매수하고, 수익률은 그날부터 계산합니다." : "0원은 입력할 수 없습니다. 처음 투자금 없이 매월 적립만 하는 방식은 아직 지원하지 않습니다."}>
                   <input className={inputClass} inputMode="numeric" value={form.capital.initial_amount.toLocaleString("ko-KR")} onChange={(e) => { const v = Number(e.target.value.replace(/\D/g, "")); upd((f) => { f.capital.initial_amount = v }) }} />
                 </InfoField>
                 <Field label="통화"><select className={inputClass} value={form.capital.currency} onChange={(e) => upd((f) => { f.capital.currency = e.target.value as "KRW" | "USD" })}><option value="KRW">원 (KRW)</option><option value="USD">달러 (USD)</option></select></Field>
@@ -321,8 +320,8 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
             </Part>
             <Part title="손실 기준과 목표" tag="필수" info="분석이 끝나면 결과가 이 기준을 지켰는지 점검해 리포트에 보여 줍니다. 목표 수익률을 보장하는 값은 아닙니다.">
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                <PercentSlider label="손실 감내 수준 (최대 하락 폭)" value={form.risk.max_drawdown_tolerance} min={0.05} max={0.6} step={0.01} onChange={(v) => upd((f) => { f.risk.max_drawdown_tolerance = v })} error={err("risk.max_drawdown_tolerance")} info="투자금이 가장 높았던 때보다 이만큼까지 떨어지는 것은 견딜 수 있다는 기준입니다. 첫 번째 질문의 답으로 채워지며, 직접 바꿀 수 있습니다." />
-                <PercentSlider label="목표 연수익률" value={form.risk.target_annual_return} min={0} max={0.3} step={0.01} onChange={(v) => upd((f) => { f.risk.target_annual_return = v })} error={err("risk.target_annual_return")} info="1년에 평균 이 정도 수익을 기대한다는 기준입니다." />
+                <PercentSlider {...PCT["risk.max_drawdown_tolerance"]} info={`${PCT["risk.max_drawdown_tolerance"].info} 첫 번째 질문의 답으로 채워지며, 직접 바꿀 수 있습니다.`} value={form.risk.max_drawdown_tolerance} onChange={(v) => upd((f) => { f.risk.max_drawdown_tolerance = v })} error={err("risk.max_drawdown_tolerance")} />
+                <PercentSlider {...PCT["risk.target_annual_return"]} value={form.risk.target_annual_return} onChange={(v) => upd((f) => { f.risk.target_annual_return = v })} error={err("risk.target_annual_return")} />
               </div>
               <div className="sm:w-1/2">
                 <InfoField label="비교지수" error={err("risk.benchmark")} info="내 포트폴리오의 성과를 견주어 볼 시장 지수입니다. 투자금을 나누는 방식과는 관계없습니다."><select className={inputClass} value={form.risk.benchmark} onChange={(e) => upd((f) => { f.risk.benchmark = e.target.value })}>{bench.map((b) => <option key={b} value={b}>{benchName(b)}</option>)}</select></InfoField>
@@ -343,10 +342,10 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
                 ))}</div>
               </Field>
               <div>
-                <p className="mb-2 flex items-center gap-1 text-sm font-semibold text-slate-700">종목 수<InfoTip label="종목 수">목표만큼 고르되, 조건에 맞는 후보가 부족하면 최소~최대 범위 안에서 조정합니다.</InfoTip></p>
+                <p className="mb-2 flex items-center gap-1 text-sm font-semibold text-slate-700">종목 수<InfoTip label="종목 수">{HOLDINGS.info}</InfoTip></p>
                 <div className="grid grid-cols-3 gap-3">
                   {([["min", "최소"], ["target", "목표"], ["max", "최대"]] as const).map(([k, l]) => (
-                    <label key={k} className="block"><span className="mb-1 block text-xs text-slate-500">{l}</span><NumberInput className={inputClass} min={1} value={c.num_holdings[k]} onChange={(v) => upd((f) => { f.constraints.num_holdings[k] = v })} /></label>
+                    <label key={k} className="block"><span className="mb-1 block text-xs text-slate-500">{l}</span><NumberInput className={inputClass} min={HOLDINGS.min} max={HOLDINGS.max} value={c.num_holdings[k]} onChange={(v) => upd((f) => { f.constraints.num_holdings[k] = v })} /></label>
                   ))}
                 </div>
                 {err("constraints.num_holdings") && <p className="mt-1.5 text-xs font-medium text-red-600">{err("constraints.num_holdings")}</p>}
@@ -355,30 +354,21 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
             <PartDisclosure title="빼거나 꼭 넣을 종목·분야" tag="선택" summary={listCount ? `${listCount}개 설정됨` : "설정 없음"} open={openLists || hasKey(errors, LIST_KEYS)} onToggle={setOpenLists}>
               <div className="space-y-5">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {svc.searchStocks ? (  // 제안 기능: 회사 이름으로 찾기 (서비스에 searchStocks 가 있을 때만)
-                    <>
-                      <StockPicker label="제외할 종목" values={c.exclude_tickers} error={err("constraints.exclude_tickers")} other={{ label: "반드시 포함할 종목", values: c.must_include_tickers }} onChange={(v) => upd((f) => { f.constraints.exclude_tickers = v })} />
-                      <StockPicker label="반드시 포함할 종목" values={c.must_include_tickers} error={err("constraints.must_include_tickers")} other={{ label: "제외할 종목", values: c.exclude_tickers }} onChange={(v) => upd((f) => { f.constraints.must_include_tickers = v })} />
-                    </>
-                  ) : (
-                    <>
-                      <TagInput label="제외할 종목" values={c.exclude_tickers} normalize={upperTicker} placeholder="예: TSLA, 005930 · Enter로 추가" info={TICKER_INFO} error={err("constraints.exclude_tickers")} onChange={(v) => upd((f) => { f.constraints.exclude_tickers = v })} />
-                      <TagInput label="반드시 포함할 종목" values={c.must_include_tickers} normalize={upperTicker} placeholder="예: AAPL · Enter로 추가" info={TICKER_INFO} error={err("constraints.must_include_tickers")} onChange={(v) => upd((f) => { f.constraints.must_include_tickers = v })} />
-                    </>
-                  )}
+                  {/* 회사 이름 검색(제안 기능, searchStocks)이 있으면 검색, 없으면 티커 칩 — 홈 상세 조건 창과 같은 부품 */}
+                  <TickerListField label={LABEL.exclude_tickers} values={c.exclude_tickers} placeholder={TICKER_PLACEHOLDER.exclude} error={err("constraints.exclude_tickers")} other={{ label: LABEL.must_include_tickers, values: c.must_include_tickers }} onChange={(v) => upd((f) => { f.constraints.exclude_tickers = v })} />
+                  <TickerListField label={LABEL.must_include_tickers} values={c.must_include_tickers} placeholder={TICKER_PLACEHOLDER.include} error={err("constraints.must_include_tickers")} other={{ label: LABEL.exclude_tickers, values: c.exclude_tickers }} onChange={(v) => upd((f) => { f.constraints.must_include_tickers = v })} />
                 </div>
                 <SectorPicker values={c.exclude_sectors} onChange={(v) => upd((f) => { f.constraints.exclude_sectors = v })} />
-                <TagInput label="제외할 테마" values={c.exclude_themes ?? []} normalize={(s) => s.trim().toLowerCase()} placeholder="예: 담배, 도박 · Enter로 추가" error={err("constraints.exclude_themes")} onChange={(v) => upd((f) => { f.constraints.exclude_themes = v })}
-                  info="섹터보다 좁은 분야를 뺄 때 씁니다. 적은 표현을 분석 모델(AI)이 산업 분류·키워드 규칙으로 바꿔 해당 기업을 후보에서 뺍니다. 정해진 목록은 없으며, 실제로 빠진 기업은 리포트에서 확인할 수 있습니다." />
+                <TagInput {...THEME_FIELD} values={c.exclude_themes ?? []} error={err("constraints.exclude_themes")} onChange={(v) => upd((f) => { f.constraints.exclude_themes = v })} />
               </div>
             </PartDisclosure>
             <PartDisclosure title="세부 제약 조건" tag="고급" summary={<span className="hidden sm:inline">종목당 {pctText(c.max_weight_per_stock)} · 섹터당 {pctText(c.max_weight_per_sector)} · {c.rebalance.count === 0 ? "리밸런싱 없음" : `${c.rebalance.count}×${ko(c.rebalance.unit)}마다 리밸런싱`}</span>} open={openAdvanced || hasKey(errors, ADVANCED_KEYS)} onToggle={setOpenAdvanced}>
               <div className="space-y-6">
                 <p className="text-xs text-slate-500">대부분 기본값 그대로 두어도 됩니다.</p>
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-                  <PercentSlider label="종목당 상한" value={c.max_weight_per_stock} min={0.05} max={1} step={0.01} onChange={(v) => upd((f) => { f.constraints.max_weight_per_stock = v })} error={err("constraints.max_weight_per_stock")} info="한 종목에 넣을 수 있는 최대 비율" />
-                  <PercentSlider label="섹터당 상한" value={c.max_weight_per_sector} min={0.1} max={1} step={0.05} onChange={(v) => upd((f) => { f.constraints.max_weight_per_sector = v })} error={err("constraints.max_weight_per_sector")} info="같은 업종(섹터)에 넣을 수 있는 최대 비율" />
-                  <PercentSlider label="최소 현금 비율" value={c.min_cash_ratio} min={0} max={0.5} step={0.05} onChange={(v) => upd((f) => { f.constraints.min_cash_ratio = v })} error={err("constraints.min_cash_ratio")} info="주식에 넣지 않고 현금으로 남길 최소 비율" />
+                  <PercentSlider {...PCT["constraints.max_weight_per_stock"]} value={c.max_weight_per_stock} onChange={(v) => upd((f) => { f.constraints.max_weight_per_stock = v })} error={err("constraints.max_weight_per_stock")} />
+                  <PercentSlider {...PCT["constraints.max_weight_per_sector"]} value={c.max_weight_per_sector} onChange={(v) => upd((f) => { f.constraints.max_weight_per_sector = v })} error={err("constraints.max_weight_per_sector")} />
+                  <PercentSlider {...PCT["constraints.min_cash_ratio"]} value={c.min_cash_ratio} onChange={(v) => upd((f) => { f.constraints.min_cash_ratio = v })} error={err("constraints.min_cash_ratio")} />
                 </div>
                 <div>
                   <p className="mb-2 flex items-center gap-1 text-sm font-semibold text-slate-700">리밸런싱 주기 (간격 × 단위)<InfoTip label="리밸런싱 주기">정해진 주기마다 그 시점까지의 자료로 투자 비중을 다시 계산해 맞춥니다. 0이면 처음 산 뒤 그대로 보유합니다. 매월 추가 투자금과는 별개입니다.</InfoTip></p>
@@ -438,7 +428,7 @@ function ZeroStartSchedule({ capital, years, today = new Date() }: { capital: Pr
   const dates = [0, 1, 2].map((i) => new Date(first.getFullYear(), first.getMonth() + i, day))
   const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
   return (
-    <div role="note" aria-label="예상 투자 일정" className="space-y-3 rounded-xl border border-blue-200 bg-blue-50/60 p-4 text-sm text-slate-700">
+    <div role="note" aria-label="예상 투자 일정" className={`space-y-3 rounded-box p-4 text-14 text-body ${NOTICE_BOX.info}`}>
       <p className="flex items-center font-semibold text-slate-900">예상 투자 일정</p>
       <p className="text-xs leading-5">처음 투자금 없이 시작합니다. 매월 {day}일에 {money(m, cur)}씩 넣어 그때 정해진 비중으로 삽니다. 첫 투자 전까지는 투자한 금액이 없습니다.</p>
       <ol className="grid grid-cols-1 gap-2 sm:grid-cols-3">

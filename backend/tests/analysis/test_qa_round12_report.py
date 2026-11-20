@@ -36,9 +36,9 @@ def test_forward_news_note_does_not_claim_moves_when_every_set_equals_baseline(m
     monkeypatch.setattr(RP.B, "current_composition", lambda R, c: ({"A": 0.5}, 0.5, "낙폭 맞춤안"))
     flat = {"portfolio": {"forward": {"portfolios": [{"id": "fwd_bl_01", "weights": {"A": 0.1}, "delta_vs_baseline": {"A": 1e-6}}]}}}
     note = RP._chosen_news_use(flat, "dd_match_equal_weight", {"id": "dd_match_equal_weight", "kind": "matched", "base_id": "equal_weight"})["chosen_news_note_ko"]
-    assert "비중만 바꿨습니다" not in note and "뷰가 비중을 바꾸지 못해 기준 비중과 같습니다" in note
+    assert "비중만 바꿨습니다" not in note and "투자 의견이 비중을 바꾸지 못해 기준 비중과 같습니다" in note  # 2026-11-16 문구
     moved = {"portfolio": {"forward": {"portfolios": [{"id": "fwd_bl_01", "weights": {"A": 0.15}, "delta_vs_baseline": {"A": 0.05}}]}}}
-    assert "뷰는 그 대안의 비중만 바꿨습니다." in RP._chosen_news_use(moved, "equal_weight", {"id": "equal_weight", "kind": "template"})["chosen_news_note_ko"]
+    assert "투자 의견은 그 참고 구성의 비중만 바꿨습니다." in RP._chosen_news_use(moved, "equal_weight", {"id": "equal_weight", "kind": "template"})["chosen_news_note_ko"]  # 2026-11-16 문구
 
 
 def test_display_strings_for_matched_and_benchmark_gaps():

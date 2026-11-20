@@ -12,17 +12,19 @@ import { HOLDING_PALETTE, holdingColor } from "./colors"
 
 const o = { short: false }
 
-describe("핵심 판단 이유", () => {
+describe("이 전략을 고른 이유", () => {
   it("서버 판단 이유 조각을 제목 + 설명으로 풀고, 숫자는 원문 그대로 쓴다", () => {
-    expect(explainReason("후보 16개 중 1위.", o)).toMatchObject({ title: "비교한 투자 구성안 중 1위", desc: expect.stringContaining("16개 투자 구성안") })
+    expect(explainReason("후보 16개 중 1위.", o)).toMatchObject({ title: "비교한 16개 포트폴리오 중 가장 앞선 구성", desc: expect.stringContaining("16개 투자 구성안") })
     expect(explainReason("목표수익(연 8.0%) 충족", o)).toMatchObject({ title: "목표 수익률 충족", tone: "good", desc: expect.stringContaining("연 8.0%") })
+    expect(explainReason("목표수익은 창이 짧아 참고만", o)).toMatchObject({ title: "목표 수익률 판정 보류", desc: "과거 성과를 살펴본 기간이 짧아, 이번 분석에서는 연간 목표 수익률의 달성 여부를 판정하지 않았습니다.", annual: true })
     expect(explainReason("SPY 대비 초과 CAGR +65.1%p", o).desc).toBe("같은 기간 SPY의 연평균 수익률(CAGR)보다 +65.1%p 높았습니다.")
     expect(explainReason("SPY 대비 초과 CAGR -3.2%p", o)).toMatchObject({ title: "SPY보다 낮은 연평균 수익률", tone: "warn" })
-    expect(explainReason("최대낙폭 29.9% vs 허용 30.0% (여유 0.1%p)", o)).toMatchObject({ title: "허용 손실 범위 안", desc: expect.stringContaining("0.1%p 작았습니다") })
-    expect(explainReason("최대낙폭 30.7% vs 허용 20.0% (10.7%p 초과)", o)).toMatchObject({ title: "허용 손실 범위 초과", tone: "warn" })
-    expect(explainReason("Sharpe 1.44로 가장 높음", o).title).toBe("위험 대비 수익성 1위")
+    expect(explainReason("최대낙폭 29.9% vs 허용 30.0% (여유 0.1%p)", o)).toMatchObject({ title: "최대낙폭은 허용 범위 이내", desc: expect.stringContaining("0.1%p 작았습니다") })
+    expect(explainReason("최대낙폭 30.7% vs 허용 20.0% (10.7%p 초과)", o)).toMatchObject({ title: "최대낙폭은 허용 범위 초과", tone: "warn" })
+    expect(explainReason("Sharpe 1.44로 가장 높음", o).title).toBe("가장 높은 샤프 비율")
     expect(explainReason("Sharpe 1.61", o).desc).toMatch(/가장 높은 구성안은 아니었지만/)  // '가장 높음'이 없으면 1위라고 하지 않는다
     expect(explainReason("시가총액비중의 주식 비중을 79%로 줄여 과거 최대낙폭을 목표 30.0% 안에 맞춘 구성", o).desc).toMatch(/주식 비중을 79%로 줄이고/)
+    expect(explainReason("시가총액비중의 주식 비중을 42.7%로 줄여 과거 최대낙폭을 목표 15.0% 안에 맞춘 구성", o).title).toBe("주식 비중을 줄인 구성")  // 소수 주식 비중 (2026-11-20)
     expect(explainReason("CAGR 77.4%, 최종 평가금액 29,746 USD.", { short: true })).toMatchObject({ desc: "연평균 수익률(CAGR) 77.4% (연 환산, 참고용), 백테스트 기간 끝의 평가금액 29,746 USD입니다.", annual: true })
   })
   it("모르는 문장은 제목을 만들지 않고 원문 그대로 둔다", () => {
@@ -47,7 +49,7 @@ describe("지표·제목 이름", () => {
     expect(kpiName({ id: "excess", label_ko: "비교지수(SPY) 대비 (기간)" }).name).toBe("SPY 대비 전체 기간 수익률 차이")
     expect(kpiName({ id: "excess", label_ko: "비교지수(SPY) 대비" }).name).toBe("SPY 대비 연평균 수익률(CAGR) 차이")
     expect(kpiName({ id: "x", label_ko: "모르는 지표" }).name).toBe("모르는 지표")
-    expect(pairCagr("CAGR 47.0% vs 목표 8.0% (전체 CAGR 로 판정)")).toBe("연평균 수익률(CAGR) 47.0% vs 목표 8.0% (전체 연평균 수익률(CAGR) 로 판정)")
+    expect(pairCagr("CAGR 47.0% vs 목표 8.0% (전체 CAGR 로 판정)")).toBe("연평균 수익률(CAGR) 47.0% vs 목표 8.0% (전체 연평균 수익률로 판정)")
     expect(pairCagr("연평균 수익률 (CAGR)")).toBe("연평균 수익률 (CAGR)")
   })
   it("리밸런싱 제목의 중첩 괄호를 구분 기호로 바꾸고, 전략명·비율은 그대로 둔다", () => {
@@ -93,7 +95,7 @@ describe("조건 검증·선정 과정·시장 원문", () => {
     const blocks = [{ type: "paragraphs", items: ["아이디어 해석 문단"], src: "14b" }, { type: "table", title_ko: "요청 내용", columns: [{ key: "k", label_ko: "항목" }], rows: [{ k: "투자금" }], group_ko: "요청 조건 확인" }, { type: "paragraphs", items: ["시장 문단 1", "시장 문단 2"], src: "14c" }] as Block[]
     render(<Blocks blocks={blocks} doc={{ sections: [], datasets: { dates: [], series: {} }, kpis: [], header: {} } as unknown as ReportDoc} sec="market" />)
     fireEvent.click(screen.getByRole("button", { name: /아이디어 해석/ }))
-    fireEvent.click(screen.getByRole("button", { name: /시장·뉴스 분석 원문/ }))
+    fireEvent.click(screen.getByRole("button", { name: /주요 뉴스와 공시/ }))
     expect(screen.queryByRole("button", { name: /^시장 분석 원문/ })).toBeNull()
     for (const t of ["아이디어 해석 문단", "시장 문단 1", "시장 문단 2"]) expect(screen.getByText(t)).toBeInTheDocument()
   })
@@ -104,5 +106,15 @@ describe("조건 검증·선정 과정·시장 원문", () => {
     fireEvent.click(screen.getByRole("button", { name: "설명 닫기" })); expect(screen.queryByRole("dialog")).toBeNull()
     fireEvent.click(btn); fireEvent.keyDown(window, { key: "Escape" }); expect(screen.queryByRole("dialog")).toBeNull()
     fireEvent.click(btn); fireEvent.pointerDown(screen.getByRole("button", { name: "바깥" })); expect(screen.queryByRole("dialog")).toBeNull()
+  })
+})
+
+describe("백테스트 가정 ~니다체 (2026-11-16)", () => {
+  it("저장된 문장 틀을 모두 ~니다로, 틀이 다른 문장은 그대로", async () => {
+    const { politeAssumptions } = await import("./wording")
+    const a = "기간 2025-11-10 ~ 2026-11-10 (252거래일). 초기 투자금 13,755 USD, 매월 343.88 USD 적립 11회. 매월 첫 거래일에 목표 비중으로 리밸런싱. 리밸런싱일 t 의 비중은 t−1 까지의 가격·뉴스로 계산하고 t 종가로 체결한다. 거래비용 거래대금의 0.05%, 배당 재투자, 소수 주식 허용. 투자하지 않은 현금은 이자 없이 0%로 계산했고, 무위험수익률 연 4%는 Sharpe 계산에만 씁니다. 과거 성과는 미래 성과를 보장하지 않습니다."
+    expect(politeAssumptions(a)).toBe("백테스트 기간은 2025-11-10부터 2026-11-10까지 252거래일입니다. 초기 투자금은 13,755 USD이고, 매월 343.88 USD씩 11회 적립했습니다. 매월 첫 거래일에 목표 비중으로 리밸런싱했습니다. 리밸런싱하는 날(t)의 포트폴리오 비중은 전 거래일(t−1)까지의 가격·뉴스로 계산하고, 그날(t) 종가로 체결합니다. 거래비용은 거래대금의 0.05%로 계산했고, 배당은 재투자했으며, 소수 주식 매수를 허용했습니다. 투자하지 않은 현금은 이자 없이 0%로 계산했고, 무위험수익률 연 4%는 Sharpe 계산에만 씁니다. 과거 성과는 미래 성과를 보장하지 않습니다.")
+    expect(politeAssumptions("거래비용 거래대금의 0.05%, 배당 재투자, 소수 주식 허용, 무위험수익률 연 4%. 한국 종목은 거래일 환율로 USD 환산.")).toBe("거래비용은 거래대금의 0.05%로 계산했고, 배당은 재투자했으며, 소수 주식 매수를 허용했습니다. 무위험수익률은 연 4%로 가정했습니다. 한국 종목은 거래일 환율로 USD로 환산했습니다.")
+    expect(politeAssumptions("초기 투자금 0 USD (첫 적립일에 처음 매수하고, 수익률은 그날부터 계산), 매월 500 USD 적립 36회.")).toBe("초기 투자금은 0 USD이고, 매월 500 USD씩 36회 적립했습니다. 첫 적립일에 처음 매수했고, 수익률은 그날부터 계산했습니다.")
   })
 })

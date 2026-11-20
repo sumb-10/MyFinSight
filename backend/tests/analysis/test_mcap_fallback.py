@@ -224,16 +224,16 @@ def test_mcap_notices_plain_dated_shortened_and_kept_apart():
 
 
 @pytest.mark.parametrize(("detail", "expect"), [
-    ("roe_ttm=-0.1572, 범위 >0 ≤10", "ROE -15.7%, 자격선 0% 초과 1,000% 이하"),
-    ("dividend_yield_ttm=0.3512, 범위 >0 ≤0.3", "배당수익률 35.12%, 자격선 0% 초과 30% 이하"),
-    ("pe_ttm=73.4, 범위 >0 ≤50", "PER 73.4배, 자격선 0배 초과 50배 이하"),
+    ("roe_ttm=-0.1572, 범위 >0 ≤10", "ROE -15.7%, 기준 0% 초과 1,000% 이하"),
+    ("dividend_yield_ttm=0.3512, 범위 >0 ≤0.3", "배당수익률 35.12%, 기준 0% 초과 30% 이하"),
+    ("pe_ttm=73.4, 범위 >0 ≤50", "PER 73.4배, 기준 0배 초과 50배 이하"),
     ("vol_60d=0.5, 범위 >0", "vol_60d 0.5, 범위 >0"),  # 자격선이 없는 지표(원래 나오지 않음)는 예전처럼 이름만 바꾼다
 ])  # fmt: skip
 def test_must_include_out_of_range_detail_is_readable(detail, expect):
     """009 리포트 결함의 형제: 필수 포함 공지가 'ROE -0.1572, 범위 >0 ≤10' 처럼 원문 소수를 보여 줬다."""
     w = from_text("05_selection", f"must_include PG: metric_out_of_range({detail}), kept")
     assert w.code == "must_include_out_of_range"
-    assert w.message_ko == f"필수 포함 종목 PG은(는) 선정 지표가 자격선 밖({expect})이지만 요청에 따라 포함했습니다."
+    assert w.message_ko == f"필수 포함으로 넣은 PG 종목은 선정 지표가 기준 밖({expect})이지만 요청에 따라 포함했습니다."
 
 
 def test_estimate_age_is_measured_from_the_share_count_date(gap):

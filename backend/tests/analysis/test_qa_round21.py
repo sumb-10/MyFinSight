@@ -98,7 +98,7 @@ def test_sector_cap_squeeze_is_explained_without_sector_preference(monkeypatch):
     monkeypatch.setattr(B, "chosen_portfolio_id", lambda R: ("dd_match_equal_weight", True))
     monkeypatch.setattr(B, "find", lambda R, pid: {"id": pid, "kind": "matched", "base_id": "equal_weight"})
     c = B.infeasibility_callout(R)
-    assert c["title_ko"] == "섹터 상한이 비중을 누른 부분" and c["text_ko"].startswith("분석 기준일(2025-05-27) 구성(동일비중): 산업재 종목이 10개라 섹터 상한 35%를 나눠 가져(종목당 약 3.5%)")
+    assert c["title_ko"] == "섹터 상한에 걸린 비중" and c["text_ko"].startswith("분석 기준일(2025-05-27) 구성(동일비중): 산업재 종목이 10개라 섹터 상한 35%를 나눠 가져(종목당 약 3.5%)")
     assert c["text_ko"].endswith("낙폭 맞춤안은 이 비중을 주식 비율만큼 함께 줄입니다.")
 
 

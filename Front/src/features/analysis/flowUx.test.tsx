@@ -52,13 +52,13 @@ describe("조건 확인 화면", () => {
     keepPendingNote("mock_req_ready", "종목은 8개만")
     show(mock(), <ConfirmScreen requestId="mock_req_ready" />)
     expect(await screen.findByRole("textbox", { name: "말로 조건 보태기" }, { timeout: 5000 })).toHaveValue("종목은 8개만")
-    fireEvent.click(screen.getByRole("button", { name: /분석 시작/ }))
-    // 고정된 「분석 시작」 줄 안에 뜬다 (화면 위쪽에서 눌러도 바로 보인다)
+    fireEvent.click(screen.getByRole("button", { name: /이 조건으로 분석 실행/ }))
+    // 고정된 「이 조건으로 분석 실행」 줄 안에 뜬다 (화면 위쪽에서 눌러도 바로 보인다)
     expect(screen.getByRole("alertdialog", { name: "반영하지 않은 추가 요청" }).closest("div.sticky")).not.toBeNull()
   })
-  it("「분석 시작」 줄은 화면 아래에 고정되고, 그동안 main 이 스크롤 컨테이너가 되지 않게 한다", async () => {
+  it("「이 조건으로 분석 실행」 줄은 화면 아래에 고정되고, 그동안 main 이 스크롤 컨테이너가 되지 않게 한다", async () => {
     const { unmount } = show(mock(), <main><ConfirmScreen requestId="mock_req_ready" /></main>)
-    const start = await screen.findByRole("button", { name: /분석 시작/ }, { timeout: 5000 })
+    const start = await screen.findByRole("button", { name: /이 조건으로 분석 실행/ }, { timeout: 5000 })
     expect(start.closest("div.sticky")).not.toBeNull()
     expect(document.querySelector("main")!.style.overflowX).toBe("clip")  // overflow-x-auto 그대로면 sticky 가 창 스크롤에 붙지 않는다
     unmount()
@@ -167,14 +167,14 @@ describe("흐름: 잃지 않기 · 막다른 길 없애기", () => {
     const s = mock()
     const { unmount } = show(s, <HomeScreen />)
     expect(await screen.findByText(/이번 분석에만 적용/, {}, { timeout: 5000 })).toBeInTheDocument()  // 다른 메뉴에 다녀와도 그대로
-    fireEvent.click(screen.getByRole("button", { name: /투자조건 확인하기/ }))
+    fireEvent.click(screen.getByRole("button", { name: /분석 시작하기/ }))
     await waitFor(() => expect(window.location.hash).toMatch(/^#\/analysis\//))
     expect(loadUi()).toMatchObject({ draftIdea: "", draftOverrides: {} })
     unmount()
   })
 })
 
-// 홈 「투자조건 확인하기」 뒤 기다림: 서버가 아이디어를 해석하는 동안(실제 서버 수 초~1분) 돌아가는지 알 수 있게.
+// 홈 「분석 시작하기」 뒤 기다림: 서버가 아이디어를 해석하는 동안(실제 서버 수 초~1분) 돌아가는지 알 수 있게.
 describe("홈: 아이디어 해석을 기다리는 동안", () => {
   const IDEA = "배당을 꾸준히 주는 미국 대형주에 나눠 투자하고 싶어요"
   it("누르면 서버가 번호를 줄 때까지 「아이디어를 해석하고 있습니다」와 하는 일이 보이고 입력이 잠기며, 번호를 받으면 그 질문 화면 주소로 간다", async () => {
@@ -183,7 +183,7 @@ describe("홈: 아이디어 해석을 기다리는 동안", () => {
     const slow = Object.assign(Object.create(s), { createRequest: () => new Promise<DialogState>((r) => { answer = r }) }) as AnalysisService  // 응답을 직접 풀어 준다
     show(slow, <HomeScreen />)
     fireEvent.change(await screen.findByPlaceholderText(/예: 미국과 한국의 반도체/, {}, { timeout: 5000 }), { target: { value: IDEA } })
-    fireEvent.click(screen.getByRole("button", { name: /투자조건 확인하기/ }))
+    fireEvent.click(screen.getByRole("button", { name: /분석 시작하기/ }))
     expect(await screen.findByText("아이디어를 해석하고 있습니다")).toBeInTheDocument()
     expect(screen.getByText("꼭 필요한 질문 고르기")).toBeInTheDocument()
     expect(screen.getByDisplayValue(IDEA)).toHaveAttribute("readonly")
@@ -199,7 +199,7 @@ describe("홈: 아이디어 해석을 기다리는 동안", () => {
     const failing = Object.assign(Object.create(s), { createRequest: () => { calls++; return Promise.reject(new Error("서버에 연결할 수 없습니다.")) } }) as AnalysisService
     show(failing, <HomeScreen />)
     fireEvent.change(await screen.findByPlaceholderText(/예: 미국과 한국의 반도체/, {}, { timeout: 5000 }), { target: { value: IDEA } })
-    fireEvent.click(screen.getByRole("button", { name: /투자조건 확인하기/ }))
+    fireEvent.click(screen.getByRole("button", { name: /분석 시작하기/ }))
     expect(await screen.findByText("아이디어를 해석하지 못했습니다")).toBeInTheDocument()
     expect(screen.getByDisplayValue(IDEA)).not.toHaveAttribute("readonly")
     fireEvent.click(screen.getByRole("button", { name: "다시 시도" }))

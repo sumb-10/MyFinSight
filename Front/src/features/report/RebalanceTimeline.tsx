@@ -126,13 +126,13 @@ function Holdings({ d }: { d: CheckpointDetail }) {
   return (
     <div className="space-y-3">
       <div>
-        <h4 className="text-sm font-semibold text-slate-900">이날 비중 변화</h4>
+        <h4 className="text-sm font-semibold text-slate-900">이날 포트폴리오 비중 변화</h4>
         {moved.length ? <ul className="mt-1.5 flex flex-wrap gap-1.5" aria-label="크게 바뀐 종목">{moved.map(({ h, dw }) => <li key={h.ticker} className={`rounded-md border px-2 py-1 text-xs tabular-nums ${dw! > 0 ? "border-blue-200 bg-blue-50 text-blue-900" : "border-slate-300 bg-slate-50 text-slate-800"}`}><b>{h.ticker}</b> {dw! > 0 ? "▲ 늘림" : "▼ 줄임"} {fmt(h.weight_before, "pct1")} → {fmt(h.weight_after, "pct1")} ({fmt(dw, "pp")})</li>)}</ul>
-          : <p className="mt-1 text-xs text-slate-500">{cp.holdings.every((h) => h.weight_before === null) ? "처음 구성한 날이라 직전 비중이 없습니다." : "0.5%p 이상 바뀐 종목이 없습니다."}</p>}
+          : <p className="mt-1 text-xs text-slate-500">{cp.holdings.every((h) => h.weight_before === null) ? "처음 구성한 날이라 직전 포트폴리오 비중이 없습니다." : "0.5%p 이상 바뀐 종목이 없습니다."}</p>}
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px] text-xs">
-          <thead><tr className="border-b border-slate-200 text-left text-slate-500"><th className="px-1 py-1">종목</th><th className="px-1 py-1 text-right">직전 비중</th><th className="px-1 py-1 text-right">목표</th><th className="px-1 py-1 text-right">조정 후</th><th className="px-1 py-1 text-right">변화 (조정 후 − 직전)</th><th className="px-1 py-1 text-right">구간 수익률</th><th className="px-1 py-1 text-right">구간 기여</th><th className="px-1 py-1 text-right">평가액</th></tr></thead>
+          <thead><tr className="border-b border-slate-200 text-left text-slate-500"><th className="px-1 py-1">종목</th><th className="px-1 py-1 text-right">직전 포트폴리오 비중</th><th className="px-1 py-1 text-right">목표</th><th className="px-1 py-1 text-right">조정 후</th><th className="px-1 py-1 text-right">변화 (조정 후 − 직전)</th><th className="px-1 py-1 text-right">구간 수익률</th><th className="px-1 py-1 text-right">구간 기여</th><th className="px-1 py-1 text-right">평가액</th></tr></thead>
           <tbody>{cp.holdings.map((h) => { const dw = delta(h); const big = dw !== null && Math.abs(dw) >= BIG; return <tr key={h.ticker} className={`border-b border-slate-100 ${big ? "bg-blue-50/40 font-semibold" : ""}`}><td className="px-1 py-1 font-medium" title={d.names[h.ticker]}>{h.ticker}</td><td className="px-1 py-1 text-right tabular-nums">{fmt(h.weight_before, "pct1")}</td><td className="px-1 py-1 text-right tabular-nums">{fmt(cp.weights.target[h.ticker], "pct1")}</td><td className="px-1 py-1 text-right tabular-nums">{fmt(h.weight_after, "pct1")}</td><td className="px-1 py-1 text-right tabular-nums">{dw === null ? "–" : fmt(dw, "pp")}</td><td className="px-1 py-1 text-right tabular-nums">{fmt(h.period_return, "pct")}</td><td className="px-1 py-1 text-right tabular-nums">{fmt(h.period_contribution, "pp")}</td><td className="px-1 py-1 text-right tabular-nums">{fmt(h.value_usd, "usd")}</td></tr> })}</tbody>
         </table>
       </div>

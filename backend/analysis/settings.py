@@ -173,6 +173,7 @@ class LlmSettings:
             "06_explain": {"max_output_tokens": 12000},
             "14a_interpret": {"max_output_tokens": 12000},
             "14b_narrate": {"max_output_tokens": 12000},
+            "14c_market": {"max_output_tokens": 12000},  # 2026-11-18: 문체 지침을 붙인 뒤 8,000 에서 잘려 두 번 불렀다
         }
     )
     max_output_tokens_ceiling: int = 16000  # 잘린 응답 재시도 때 올릴 수 있는 상한

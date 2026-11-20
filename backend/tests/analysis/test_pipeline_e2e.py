@@ -119,7 +119,9 @@ def test_selection_mixed_market_and_facts(e2e):
     cand = ctx.outputs["03_candidates"]
     assert "GOOG" not in {c["ticker"] for c in cand["candidates"]} or "GOOGL" not in {c["ticker"] for c in cand["candidates"]}
     expl = ctx.outputs["06_selection_explained"]
-    assert {r["ticker"] for r in expl["per_ticker"]} == set(tickers)
+    # 2026-11-19: 기업별 근거는 실제로 담는 종목 = 백테스트 시작일에 고른 종목(분석 기준일까지 유지)으로
+    held = ctx.outputs["07_backtest_spec"]["selection"]["tickers"]
+    assert {r["ticker"] for r in expl["per_ticker"]} == set(held)
 
 
 def test_targets_constraints(e2e):
@@ -139,10 +141,18 @@ def test_targets_constraints(e2e):
     views = ctx.outputs["09_views"]
     # 합성 뉴스는 2025-12 에만 있어 백테스트 시작일(2024년) 에는 뷰가 없고 기준 비중 fallback 이 정상 (K6)
     assert views["fallback"] and "뉴스" in views["fallback_reason_ko"] and views["sets"] == []
+    # 2026-11-19: 분석 기준일 구성은 백테스트에서 꺼낸다 — 분석 기준일 뉴스로 투자 의견을 다시 만들지 않는다(AI 호출 없음)
     fwd = ctx.outputs["10f_forward_portfolios"]
-    assert not fwd["fallback"] and fwd["portfolios"] and all(v["evidence_ids"] for v in fwd["portfolios"][0]["views_applied"])
-    tilt = fwd["parameters"]["max_tilt_per_stock"]
-    assert max(abs(fwd["portfolios"][0]["weights"][t] - fwd["baseline"]["weights"][t]) for t in fwd["baseline"]["weights"]) <= tilt + 1e-6
+    assert fwd["derived_from_backtest"] and fwd["portfolios"] == [] and fwd["holdings_now"]
+    bt = {p["id"]: p for p in ctx.outputs["11_backtest_results"]["portfolios"]}
+    for pid, h in fwd["holdings_now"].items():
+        p = bt[pid]
+        if p.get("weights_by_date"):  # 워크포워드: 분석 기준일 이하 마지막 리밸런싱일의 목표 비중
+            last = max(d for d in p["weights_by_date"] if d <= fwd["as_of"])
+            assert h["rebalance_date"] == last and h["weights"] == pytest.approx({t: w for t, w in p["weights_by_date"][last].items() if w > 1e-9})
+        else:  # 정적: 시작일 목표 비중 그대로
+            assert h["weights"] == pytest.approx({t: w for t, w in p["target_weights"].items() if w > 1e-9})
+        assert set(h["weights"]) <= set(ctx.outputs["07_backtest_spec"]["selection"]["tickers"])  # 종목은 시작일 종목 안에서
 
 
 def test_backtest_invariants(e2e):
@@ -190,7 +200,7 @@ def test_validation_and_bundle(e2e):
     assert bundle.data_quality and bundle.sources[0]["name"].startswith("팀 데이터베이스")
     json.dumps(ctx.outputs["13_results"])  # 직렬화 가능
     fwd = ctx.outputs["10f_forward_portfolios"]
-    assert fwd["as_of"] == "2025-12-31" and 0.79 < sum(fwd["chosen_weights"].values()) <= 1.0001  # 상한 용량만큼만 투자 (나머지 현금)
+    assert fwd["as_of"] == "2025-12-31" and all(0.79 < sum(h["weights"].values()) <= 1.0001 for h in fwd["holdings_now"].values() if h.get("kind") != "matched")  # 상한 용량만큼만 투자 (나머지 현금)
     assert all(x["krw"] > 0 for x in fwd["templates"][0]["allocation"])
     wf = ctx.outputs["10w_target_paths"]
     assert len(wf["dates"]) >= 4 and set(wf["portfolios"][-1]["weights_by_date"]) == set(wf["dates"])
@@ -220,7 +230,7 @@ def test_disclosures_flow_into_results_and_report(e2e):
     # 리포트: 근거 색인에 공시 레코드, 14c 사실에 공시 목록·90일 사건 요약
     doc = ReportDoc.model_validate(ctx.outputs["14_report"])
     dc_docs = [e for e in doc.evidence if e.kind == "disclosure"]
-    assert dc_docs and all(e.event_label_ko and e.available_on for e in dc_docs)
+    assert all(e.event_label_ko and e.available_on for e in dc_docs)  # 2026-11-19: 분석 기준일 뉴스 투자 의견이 없어져 인용된 공시가 없을 수 있다
     facts = facts_for_market(R)
     assert facts["disclosures"] and facts["event_summary"] and "[dc45]" in facts["citation_rule"]
     assert all(set(d) >= {"id", "ticker", "date", "event", "form"} for d in facts["disclosures"])  # 날짜는 하나(접수일, 071)
@@ -330,7 +340,7 @@ def test_candidates_funnel_label_names_actual_reasons(e2e):
     ctx, _ = e2e
     R = ctx.outputs["13_results"]
     lab = next(f["label_ko"] for f in R["selection"]["funnel"] if f["stage"] == "candidates")
-    assert lab.startswith("후보 조건 통과 (")
+    assert lab.startswith("기본 조건 통과 (")
     if ctx.outputs["03_candidates"].get("filtered_out"):
         assert "빠짐: " in lab
 
@@ -341,7 +351,10 @@ def test_backtest_start_removed_names_carry_that_day_reasons(e2e):
     diff = ctx.outputs["07_backtest_spec"]["selection"]["diff_vs_original"]
     assert set(diff["removed_reasons"]) == set(diff["removed"])
     ko = ctx.outputs["13_results"]["selection"]["backtest_as_of"]["removed_reasons_ko"]
-    assert [x["ticker"] for x in ko] == list(diff["removed_reasons"]) and all(x["reason_ko"] for x in ko)
+    if ctx.outputs["13_results"]["selection"].get("holdings_fixed"):  # 2026-11-19: 담는 목록이 하나라 두 목록의 차이는 리포트에 넘기지 않는다
+        assert ko == []
+    else:
+        assert [x["ticker"] for x in ko] == list(diff["removed_reasons"]) and all(x["reason_ko"] for x in ko)
 
 
 def test_delta_cap_note_reaches_parameters_table(e2e):
@@ -355,6 +368,7 @@ def test_delta_cap_note_reaches_parameters_table(e2e):
     mm = R["portfolio"]["market_model"]
     assert "delta_capped" in mm
     mm.update(delta=8.0, delta_capped=True)
+    R["portfolio"]["targets"]["portfolios"] = [*R["portfolio"]["targets"]["portfolios"], {"id": "bl_x", "kind": "black_litterman"}]  # δ 는 BL 을 만든 리포트에만 적는다
     assert any("→ 상한 8 적용 = 8.0" in str(r["v"]) for r in parameters_table(R)["rows"])
 
 
@@ -370,6 +384,10 @@ def test_evidence_window_label_prefers_the_as_of_window(e2e):
 def test_selected_funnel_label_mentions_sector_spreading_only_when_it_changed_the_list(e2e):
     """015·017: 섹터 상한 100%·한 섹터 종목뿐인데 깔때기가 '섹터 분산 적용' 이라고 했다 → 섹터 선호로 순위가 바뀐 경우에만 적는다."""
     ctx, _ = e2e
-    lab = next(f["label_ko"] for f in ctx.outputs["13_results"]["selection"]["funnel"] if f["stage"] == "selected_now")
+    funnel = ctx.outputs["13_results"]["selection"]["funnel"]
+    if ctx.outputs["13_results"]["selection"].get("holdings_fixed"):  # 2026-11-19: 담는 목록은 시작일에 고른 하나 — 분석 기준일 선정 줄은 없다
+        assert not any(f["stage"] == "selected_now" for f in funnel) and "분석 기준일까지 그대로 유지" in funnel[-1]["label_ko"]
+        return
+    lab = next(f["label_ko"] for f in funnel if f["stage"] == "selected_now")
     changed = any(r.get("reason") == "sector_preference" for r in ctx.outputs["05_selection"].get("rejected") or [])
     assert lab.startswith("최종 선정 (") and ("섹터 분산" in lab) == changed

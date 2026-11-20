@@ -69,7 +69,11 @@ export function r1Text(msg: string): { main: string; bench: string } | null {
 }
 
 /** 서버 문장 안의 단독 「CAGR」을 「연평균 수익률(CAGR)」로. 이미 함께 쓴 곳은 그대로. */
-export const pairCagr = (t: string) => t.replace(/(?<![(A-Za-z가-힣])CAGR(?![)A-Za-z])/g, "연평균 수익률(CAGR)")
+/** 문장 속 CAGR 을 쉬운 말로: 처음 한 번만 「연평균 수익률(CAGR)」, 그다음은 「연평균 수익률」. 「CAGR 로」 처럼 띄운 조사는 붙인다 (2026-11-18: 한 문장에 두 번 풀고 「(CAGR) 로」 가 남았다). */
+export const pairCagr = (t: string) => {
+  let first = true
+  return t.replace(/(?<![(A-Za-z가-힣])CAGR(?![)A-Za-z])( (?=[로으이가은는을를의와과도]))?/g, () => { const s = first ? "연평균 수익률(CAGR)" : "연평균 수익률"; first = false; return s })
+}
 
 /** 비교지수 이름 (SPY 등). 서버 KPI 이름 「비교지수(SPY) 대비」에서 읽는다. */
 export function benchName(sm?: ReportSummary | null): string {
@@ -87,9 +91,9 @@ export const benchTicker = (label?: string | null) => (label ? /^(.+?) 매수보
 
 const TEMPLATE: Record<string, [string, string]> = {
   equal_weight: ["선정한 종목에 같은 비율로 나눠 투자하는 방식입니다.", "종목이 N개면 종목마다 1/N씩 투자합니다. 종목·섹터 상한이 있으면 그 안에서 조정합니다."],
-  market_cap: ["기업 규모(시가총액)가 클수록 더 많이 투자하는 방식입니다.", "시가총액에 비례해 비중을 정합니다. 주가지수와 같은 방식이며, 종목 상한을 넘는 비중은 다른 종목으로 나눌 수 있습니다."],
-  inverse_volatility: ["주가가 덜 흔들린 종목에 더 많이 투자하는 방식입니다.", "과거 변동성이 낮은 종목일수록 비중을 크게 둡니다 (변동성의 역수에 비례)."],
-  min_variance: ["포트폴리오 전체의 흔들림이 가장 작아지도록 비중을 정하는 방식입니다.", "과거 자료로 추정한 분산(흔들림)이 가장 작아지는 비중을 종목·섹터 상한 안에서 최적화로 찾습니다."],
+  market_cap: ["기업 규모(시가총액)가 클수록 더 많이 투자하는 방식입니다.", "시가총액에 비례해 포트폴리오 비중을 정합니다. 주가지수와 같은 방식이며, 종목 상한을 넘는 포트폴리오 비중은 다른 종목으로 나눌 수 있습니다."],
+  inverse_volatility: ["주가가 덜 흔들린 종목에 더 많이 투자하는 방식입니다.", "과거 변동성이 낮은 종목일수록 포트폴리오 비중을 크게 둡니다 (변동성의 역수에 비례)."],
+  min_variance: ["포트폴리오 전체의 흔들림이 가장 작아지도록 포트폴리오 비중을 정하는 방식입니다.", "과거 자료로 추정한 분산(흔들림)이 가장 작아지는 포트폴리오 비중을 종목·섹터 상한 안에서 최적화로 찾습니다."],
 }
 const DD_MATCH: [string, string] = ["주식과 현금 비중을 조절해 과거 손실 위험을 관리하려는 전략입니다.", "기준 구성의 주식 비중을 줄이고 나머지를 현금으로 두어, 과거 최대 하락폭을 사용자의 손실 감내 수준(목표)에 맞추려는 투자 방식입니다. 미래 손실이 해당 수준 이하로 제한된다는 의미는 아닙니다."]
 
@@ -100,11 +104,11 @@ export function strategyInfo(id?: string | null): StrategyInfo | null {
   let m = /^benchmark_(.+)$/.exec(id)
   if (m) { const e = etfDesc(m[1]); return { short: `비교를 위해 같은 날, 같은 금액을 ${m[1]}에 넣고 팔지 않고 보유했다고 가정한 결과입니다.`, help: `${e ? `${m[1]}는 ${e}입니다. ` : ""}내 전략과 같은 기간·같은 적립 조건으로 계산한 비교 기준이며, 투자 후보는 아닙니다.` } }
   if (id.startsWith("dd_match_")) return { short: DD_MATCH[0], help: DD_MATCH[1] }
-  if (id === "wf_bl_news") return { short: "리밸런싱할 때마다 그때까지의 뉴스·공시로 투자 의견을 새로 만들어 비중을 조정하는 방식입니다.", help: "기준 비중에 Black-Litterman 방식으로 투자 의견(뷰)을 제한적으로 반영합니다. 근거가 부족한 시점에는 기준 비중을 그대로 씁니다. 종목은 바꾸지 않습니다." }
+  if (id === "wf_bl_news") return { short: "리밸런싱할 때마다 그때까지의 뉴스·공시로 투자 의견을 새로 만들어 포트폴리오 비중을 조정하는 방식입니다.", help: "기준 비중에 Black-Litterman 방식으로 투자 의견(뷰)을 제한적으로 반영합니다. 근거가 부족한 시점에는 기준 비중을 그대로 씁니다. 종목은 바꾸지 않습니다." }
   m = /^wf_(.+)$/.exec(id)
-  if (m && TEMPLATE[m[1]]) return { short: TEMPLATE[m[1]][0], help: `${TEMPLATE[m[1]][1]} 이 구성은 리밸런싱할 때마다 그 시점까지의 자료로 비중을 다시 계산합니다 (walk-forward, 종목은 고정).` }
+  if (m && TEMPLATE[m[1]]) return { short: TEMPLATE[m[1]][0], help: `${TEMPLATE[m[1]][1]} 이 구성은 리밸런싱할 때마다 그 시점까지의 자료로 포트폴리오 비중을 다시 계산합니다 (walk-forward, 종목은 고정).` }
   if (/^bl_\d+$/.test(id)) return { short: "뉴스·공시로 만든 투자 의견(뷰)을 기준 비중에 제한적으로 반영한 방식입니다.", help: "백테스트 시작일까지의 뉴스·공시로 만든 투자 의견을 Black-Litterman 방식으로 기준 비중에 반영했습니다. 종목별로 비중을 움직일 수 있는 폭에는 한도가 있습니다." }
-  if (TEMPLATE[id]) return { short: TEMPLATE[id][0], help: `${TEMPLATE[id][1]} 백테스트 시작일에 정한 비중을 목표로 리밸런싱합니다.` }
+  if (TEMPLATE[id]) return { short: TEMPLATE[id][0], help: `${TEMPLATE[id][1]} 백테스트 시작일에 정한 포트폴리오 비중을 목표로 리밸런싱합니다.` }
   return null
 }
 
@@ -130,26 +134,35 @@ export function timelineTitle(t: string): string[] | null {
 export interface Reason { title: string | null; desc: string; tone?: "good" | "warn"; annual?: boolean }  // annual: 연 환산 값이 들어 있어 짧은 창에서는 참고용
 /** 판단 이유 한 조각 → 제목 + 한두 문장. 숫자는 원문에서만 가져온다. 틀에 맞지 않으면 제목 없이 원문 그대로.
  *  짧은 창이면 연 환산 값이 든 문장 끝에 「(연 환산, 참고용)」만 붙이고, 긴 안내는 목록 아래에 한 번만 둔다. */
+/** 서버 판단 이유 중 '낙폭 맞춤안이 어떤 구성인지' 설명하는 항목 ('시가총액비중의 주식 비중을 42.7%로 줄여 …'). 주식 비중은 소수일 수 있다. */
+const MATCHED_RE = /^(.+)의 주식 비중을 ([\d.]+%)로 줄여 과거 최대낙폭을 목표 ([\d.]+%) 안에 맞춘 구성$/
+
+/** 그 항목이면 '선택 전략' 이름 아래 붙일 설명 한 문장, 아니면 null (2026-11-20 사용자 요청: 고른 이유가 아니라 선택 전략의 설명이다). */
+export function matchedDesc(text: string): string | null {
+  const m = MATCHED_RE.exec(text.trim())
+  return m ? `${m[1]} 구성에서 주식 비중을 ${m[2]}로 줄이고 나머지를 현금으로 두어, 과거 최대 하락폭을 목표 ${m[3]} 안에 맞춘 구성입니다.` : null
+}
+
 export function explainReason(text: string, o: { short: boolean }): Reason {
   const ref = o.short ? " (연 환산, 참고용)" : ""
   const t = text.trim().replace(/\.$/, "")
   let m: RegExpExecArray | null
-  if ((m = /^후보 (\d+)개 중 1위$/.exec(t))) return { title: "비교한 투자 구성안 중 1위", desc: `${m[1]}개 투자 구성안을 정해진 순서대로 비교했을 때 가장 앞선 구성안입니다.` }
+  if ((m = /^후보 (\d+)개 중 1위$/.exec(t))) return { title: `비교한 ${m[1]}개 포트폴리오 중 가장 앞선 구성`, desc: `${m[1]}개 투자 구성안을 정해진 순서대로 비교했을 때 가장 앞선 구성안입니다.` }
   if ((m = /^목표수익\(연 ([\d.]+%)\) 충족$/.exec(t))) return { title: "목표 수익률 충족", tone: "good", desc: `과거 연평균 수익률(CAGR)이 목표로 정한 연 ${m[1]}에 도달했습니다.` }
   if ((m = /^목표수익\(연 ([\d.]+%)\) 미달$/.exec(t))) return { title: "목표 수익률 미달", tone: "warn", desc: `과거 연평균 수익률(CAGR)이 목표로 정한 연 ${m[1]}에 미치지 못했습니다.` }
-  if (t === "목표수익은 창이 짧아 참고만") return { title: "목표 수익률은 참고만", desc: "과거 성과 계산 기간이 짧아 목표 수익률 달성 여부는 참고로만 봤습니다.", annual: true }
+  if (t === "목표수익은 창이 짧아 참고만") return { title: "목표 수익률 판정 보류", desc: "과거 성과를 살펴본 기간이 짧아, 이번 분석에서는 연간 목표 수익률의 달성 여부를 판정하지 않았습니다.", annual: true }
   if ((m = /^(\S+) 대비 초과 CAGR ([+\-−]?)([\d.]+%p)$/.exec(t))) {
     const up = m[2] !== "-" && m[2] !== "−"
     return { title: `${m[1]}보다 ${up ? "높은" : "낮은"} 연평균 수익률`, tone: up ? "good" : "warn", desc: `같은 기간 ${m[1]}의 연평균 수익률(CAGR)보다 ${m[2]}${m[3]} ${up ? "높았습니다" : "낮았습니다"}${ref}.`, annual: true }
   }
-  if ((m = /^최대낙폭 ([\d.]+%) vs 허용 ([\d.]+%) \(여유 ([\d.]+%p)\)$/.exec(t))) return { title: "허용 손실 범위 안", tone: "good", desc: `과거 최대 하락폭(최대낙폭)은 ${m[1]}로, 내가 정한 허용 손실 ${m[2]}보다 ${m[3]} 작았습니다.` }
-  if ((m = /^최대낙폭 ([\d.]+%) vs 허용 ([\d.]+%) \(([\d.]+%p) 초과\)$/.exec(t))) return { title: "허용 손실 범위 초과", tone: "warn", desc: `과거 최대 하락폭(최대낙폭)은 ${m[1]}로, 내가 정한 허용 손실 ${m[2]}보다 ${m[3]} 컸습니다.` }
-  if ((m = /^Sharpe (-?[\d.]+)로 가장 높음$/.exec(t))) return { title: "위험 대비 수익성 1위", tone: "good", desc: `위험 대비 수익성을 나타내는 Sharpe 비율이 ${m[1]}로, 비교한 구성안 중 가장 높았습니다.` }
-  if ((m = /^Sharpe (-?[\d.]+) \(음수, 가장 덜 나쁨\)$/.exec(t))) return { title: "위험 대비 수익성", tone: "warn", desc: `Sharpe 비율이 ${m[1]}로 음수였지만, 비교한 구성안 중에서는 가장 덜 나빴습니다.` }
-  if ((m = /^Sharpe (-?[\d.]+)$/.exec(t))) return { title: "위험 대비 수익성", desc: `Sharpe 비율은 ${m[1]}입니다. 이 값이 가장 높은 구성안은 아니었지만, 앞선 기준(목표 수익률·비교지수·허용 손실)에서 앞서 선택됐습니다.` }
-  if ((m = /^(.+)의 주식 비중을 (\d+%)로 줄여 과거 최대낙폭을 목표 ([\d.]+%) 안에 맞춘 구성$/.exec(t))) return { title: "주식·현금 비중 조절", desc: `${m[1]} 구성에서 주식 비중을 ${m[2]}로 줄이고 나머지를 현금으로 두어, 과거 최대 하락폭을 목표 ${m[3]} 안에 맞췄습니다.` }
-  if (t === "손실 시 매도·투자 경험 없음 성향이라 같은 조건이면 낙폭 맞춤안을 우선했습니다") return { title: "투자 성향 반영", desc: `${t}.` }
-  if ((m = /^CAGR ([+\-−]?[\d.]+%), 최종 평가금액 (.+)$/.exec(t))) return { title: "과거 성과 요약", desc: `연평균 수익률(CAGR) ${m[1]}${ref}, 백테스트 기간 끝의 평가금액 ${m[2]}입니다.`, annual: true }
+  if ((m = /^최대낙폭 ([\d.]+%) vs 허용 ([\d.]+%) \(여유 ([\d.]+%p)\)$/.exec(t))) return { title: "최대낙폭은 허용 범위 이내", tone: "good", desc: `과거 최대 하락폭(최대낙폭)은 ${m[1]}로, 내가 정한 허용 손실 ${m[2]}보다 ${m[3]} 작았습니다.` }
+  if ((m = /^최대낙폭 ([\d.]+%) vs 허용 ([\d.]+%) \(([\d.]+%p) 초과\)$/.exec(t))) return { title: "최대낙폭은 허용 범위 초과", tone: "warn", desc: `과거 최대 하락폭(최대낙폭)은 ${m[1]}로, 내가 정한 허용 손실 ${m[2]}보다 ${m[3]} 컸습니다.` }
+  if ((m = /^Sharpe (-?[\d.]+)로 가장 높음$/.exec(t))) return { title: "가장 높은 샤프 비율", tone: "good", desc: `위험 대비 수익을 보는 샤프 비율이 ${m[1]}로, 비교한 구성안 중 가장 높았습니다.` }
+  if ((m = /^Sharpe (-?[\d.]+) \(음수, 가장 덜 나쁨\)$/.exec(t))) return { title: "샤프 비율", tone: "warn", desc: `샤프 비율이 ${m[1]}로 음수였지만, 비교한 구성안 중에서는 가장 덜 나빴습니다.` }
+  if ((m = /^Sharpe (-?[\d.]+)$/.exec(t))) return { title: "샤프 비율", desc: `샤프 비율은 ${m[1]}입니다. 이 값이 가장 높은 구성안은 아니었지만, 앞선 기준(목표 수익률·비교지수·허용 손실)에서 앞서 선택됐습니다.` }
+  if ((m = MATCHED_RE.exec(t))) return { title: "주식 비중을 줄인 구성", desc: `${m[1]} 구성에서 주식 비중을 ${m[2]}로 줄이고 나머지를 현금으로 두어, 과거 최대 하락폭을 목표 ${m[3]} 안에 맞췄습니다.` }
+  if (t === "손실 시 매도·투자 경험 없음 성향이라 같은 조건이면 낙폭 맞춤안을 우선했습니다") return { title: "낙폭 맞춤안 우선 선택", desc: `${t}.` }
+  if ((m = /^CAGR ([+\-−]?[\d.]+%), 최종 평가금액 (.+)$/.exec(t))) return { title: "수익률과 최종 평가금액", desc: `연평균 수익률(CAGR) ${m[1]}${ref}, 백테스트 기간 끝의 평가금액 ${m[2]}입니다.`, annual: true }
   return { title: null, desc: text }
 }
 
@@ -201,4 +214,27 @@ export function volObserved(c: VolCheck): "above" | "within" | null {
   if (!c.band) return null
   const a = parseFloat(c.vol), b = parseFloat(c.band)
   return a > b ? "above" : a < b ? "within" : null
+}
+
+
+/** 「백테스트 가정」 상자의 서버 문장(report_blocks.assumptions_callout · 체결 규칙)을 ~니다체로 (2026-11-16 사용자 요청: '~한다'·명사로 끝나는 문장이 섞임).
+ *  저장된 리포트의 문장 틀을 하나씩 바꾼다. 틀이 다른 문장은 그대로 둔다(뜻을 바꾸지 않게). */
+export function politeAssumptions(text: string): string {
+  const one = (raw: string): string => {
+    const s = raw.trim().replace(/\.$/, "")
+    let m: RegExpExecArray | null
+    if ((m = /^기간 (\S+) ~ (\S+) \((\d+)거래일\)$/.exec(s))) return `백테스트 기간은 ${m[1]}부터 ${m[2]}까지 ${m[3]}거래일입니다.`
+    if ((m = /^초기 투자금 (.+? USD)( \(첫 적립일에 처음 매수하고, 수익률은 그날부터 계산\))?, (?:매월 (.+? USD) 적립 (\d+)회|적립 없음)$/.exec(s))) {
+      const zero = m[2] ? " 첫 적립일에 처음 매수했고, 수익률은 그날부터 계산했습니다." : ""
+      return m[3] ? `초기 투자금은 ${m[1]}이고, 매월 ${m[3]}씩 ${m[4]}회 적립했습니다.${zero}` : `초기 투자금은 ${m[1]}이고, 적립은 하지 않았습니다.${zero}`
+    }
+    if ((m = /^(.+)에 목표 비중으로 리밸런싱$/.exec(s))) return `${m[1]}에 목표 비중으로 리밸런싱했습니다.`
+    if (/^리밸런싱일 t 의 비중은 t−1 까지의 가격·뉴스로 계산하고 t 종가로 체결한다$/.test(s)) return "리밸런싱하는 날(t)의 포트폴리오 비중은 전 거래일(t−1)까지의 가격·뉴스로 계산하고, 그날(t) 종가로 체결합니다."
+    if ((m = /^거래비용 거래대금의 ([\d.]+%), 배당 재투자, 소수 주식 허용(?:, 무위험수익률 연 ([\d.]+%))?$/.exec(s)))
+      return `거래비용은 거래대금의 ${m[1]}로 계산했고, 배당은 재투자했으며, 소수 주식 매수를 허용했습니다.${m[2] ? ` 무위험수익률은 연 ${m[2]}로 가정했습니다.` : ""}`
+    if (s === "한국 종목은 거래일 환율로 USD 환산") return "한국 종목은 거래일 환율로 USD로 환산했습니다."
+    const t = s.replace(/한다$/, "합니다").replace(/된다$/, "됩니다").replace(/이다$/, "입니다")
+    return t ? `${t}.` : ""
+  }
+  return text.split(/(?<=\.)\s+/).map(one).filter(Boolean).join(" ")
 }

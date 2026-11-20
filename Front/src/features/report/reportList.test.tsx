@@ -21,7 +21,7 @@ describe("분석 리포트 목록", () => {
     await row("mock_rep_normal")
     expect(Array.from(document.querySelectorAll("thead th")).map((th) => th.textContent)).toEqual(["리포트 · 요청 요약", "리포트 만든 날짜", "메뉴"])
     expect(screen.queryByText(/완료된 분석의 리포트입니다/)).toBeNull()
-    expect(screen.queryByText("분석 기준일")).toBeNull()
+    expect(screen.queryByText("분석한 날")).toBeNull()
     expect(screen.queryByText("상태")).toBeNull()
     expect(screen.queryByText("예시")).toBeNull()
     expect(screen.queryByRole("button", { name: /예시 리포트 다시 보이기/ })).toBeNull()

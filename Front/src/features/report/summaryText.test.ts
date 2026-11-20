@@ -29,14 +29,14 @@ describe("조건 결과 한 문장", () => {
 })
 
 describe("표기 도우미", () => {
-  it("내부 구성 번호 BL n 을 지운다", () => { expect(stripInternalCodes("분석 기준일 구성 (현재 구성 BL 1: 실적 전망)")).toBe("분석 기준일 구성 (현재 구성: 실적 전망)") })
+  it("내부 구성 번호 BL n 을 지운다", () => { expect(stripInternalCodes("분석한 날의 구성 (현재 구성 BL 1: 실적 전망)")).toBe("분석한 날의 구성 (현재 구성: 실적 전망)") })
   it("지수 끝값을 누적 수익률로", () => { expect(indexReturn(266)).toBe("+166.0%"); expect(indexReturn(92.5)).toBe("−7.5%"); expect(indexReturn(undefined)).toBe("—") })
 })
 
 describe("상단 탭 묶음", () => {
   it("섹션을 5개 묶음으로, 모르는 섹션은 뒤에 따로", () => {
     const doc = { summary: {}, nav: [{ id: "x_new", title_ko: "새 섹션" }], sections: ["verdict", "construction", "companies", "market", "performance", "assumptions", "references", "x_new"].map((id) => ({ id, title_ko: id, blocks: [] })) }
-    expect(groupsFor(doc as never).map((g) => g.label)).toEqual(["개요", "종목 선정", "과거 성과", "시장·뉴스", "요청·주의·자료", "새 섹션"])
+    expect(groupsFor(doc as never).map((g) => g.label)).toEqual(["개요", "종목 선정", "과거 성과", "시장·뉴스", "요청·주의사항·자료", "새 섹션"])
     expect(groupOf("companies")).toBe("selection")
     expect(groupOf("history")).toBe("notes")
   })

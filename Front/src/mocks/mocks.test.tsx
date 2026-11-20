@@ -158,9 +158,9 @@ describe("목업 자료의 일관성 (같은 값이 화면마다 같다)", () =>
       // 최종 평가금액 ↔ 리밸런싱 마지막 시점
       const tl = d.sections.flatMap((x) => x.blocks).find((b) => b.type === "timeline")
       if (tl && tl.type === "timeline") expect(tl.items[tl.items.length - 1].value_usd).toBeCloseTo(sm.kpis.find((k) => k.id === "final_value")!.value!, 1)
-      // 기업 카드의 비중 = 선택 전략 비중
+      // 기업 카드의 비중 = 요약 배분(분석 기준일 구성) 비중 — 서버도 분석 기준일 구성을 넣는다 (2026-11-16)
       const comp = d.sections.flatMap((x) => x.blocks).find((b) => b.type === "companies")
-      if (comp && comp.type === "companies") for (const c of comp.items) expect(c.weight).toBeCloseTo(p.chosen_vs_baseline!.rows.find((r) => r.ticker === c.ticker)!.chosen, 10)
+      if (comp && comp.type === "companies") for (const c of comp.items) expect(c.weight ?? null).toBe(sm.allocation!.items.find((x) => x.ticker === c.ticker)?.weight ?? null)
       // 요약 배분: 원화 = USD × 환율, 합계 = 투자금 × (1 − 현금)
       const a = sm.allocation!
       for (const it of a.items) expect(Math.abs(it.krw - it.usd * a.fx_rate)).toBeLessThan(a.fx_rate)

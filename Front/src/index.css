@@ -1,12 +1,9 @@
 @import url("https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap");
 @import "tailwindcss";
+@import "./styles/tokens.css"; /* 색 · 글자 · 둥글기 토큰과 기존 slate 연결 */
 
 @theme inline {
   --font-sans: "Noto Sans KR", ui-sans-serif, system-ui, sans-serif;
-  --color-brand-50: #eff6ff;
-  --color-brand-600: #2563eb;
-  --color-brand-700: #1d4ed8;
-  --color-brand-800: #1e40af;
 }
 
 * {
@@ -21,8 +18,8 @@ html {
 body {
   margin: 0;
   min-width: 1180px;
-  background: #f8fafc;
-  color: #0f172a;
+  background: var(--color-canvas);
+  color: var(--color-main);
   font-family: "Noto Sans KR", ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
@@ -46,7 +43,7 @@ select {
 }
 
 :focus-visible {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -129,4 +126,49 @@ html.report-wide [role="dialog"][aria-modal="true"] > aside {
   0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
   40% { opacity: 1; transform: translateY(-3px); }
 }
-.chat-dot { animation: chat-dot 1s ease-in-out infinite; }
+.chat-dot { animation: chat-dot 1.4s ease-in-out infinite; }  /* 2026-11-18: 1s 는 너무 빠르다는 의견으로 1.4s */
+
+/* 진행 단계 표시(features/analysis/FlowStepper): 지금 단계 동그라미 둘레로 연한 파란 물결이 천천히 퍼졌다 사라진다 (2.4초마다).
+   동그라미의 연한 고리(ring = box-shadow)와 겹치지 않게 ::after 에 따로 그린다. 움직임 줄이기 설정이면 위 prefers-reduced-motion 규칙이 멈춘다. */
+.step-now { position: relative; }
+.step-now::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  pointer-events: none;
+  animation: step-pulse 2.4s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+}
+@keyframes step-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 35%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--color-accent) 0%, transparent); }
+}
+
+/* 홈 대화창 기다림 문구(features/home/chatParts Typing 의 점 말풍선 아래 글씨): ChatGPT·Claude 의 "Thinking" 처럼 회색 글자 위로 밝은 띠가
+   왼쪽 → 오른쪽으로 계속 지나간다. 점 말풍선과 떨어진 글씨에만 써서 움직임이 한 말풍선 안에서 겹치지 않게 한다 (2026-11-18).
+   글자 색(sub)은 그대로, 띠만 움직인다(background-clip: text). 움직임 줄이기 설정이면 위 prefers-reduced-motion 규칙이 멈춰 회색 글자만 남는다. */
+.chat-shimmer {
+  background: linear-gradient(90deg, var(--color-sub) 0%, var(--color-sub) 38%, #c4cad2 50%, var(--color-sub) 62%, var(--color-sub) 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: chat-shimmer 1.4s linear infinite;  /* 점(.chat-dot 1.4s)과 같은 주기로 맞춰 한 박자로 움직이게 */
+}
+@keyframes chat-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: 0% 0; }
+}
+
+/* 투자조건 대화(features/profile/chat, .profile-chat): 홈 대화창과 같은 모양이라, 홈(.home-redesign, home/home.css)처럼
+   위쪽 button·input { font: inherit } 규칙을 이 안에서만 되돌려 버튼·입력창의 글자 크기 클래스(text-12·14)가 먹게 한다. 한국어는 낱말 단위로 줄바꿈. */
+.profile-chat button,
+.profile-chat input {
+  font-size: revert-layer;
+  font-weight: revert-layer;
+  line-height: revert-layer;
+}
+.profile-chat {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}

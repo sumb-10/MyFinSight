@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from backend.analysis.api.routers import services
 from backend.analysis.common.store import ComparisonStore
 from backend.analysis.errors import NotFound
+from backend.analysis.m5_backtest_report import text_overrides
 from backend.analysis.m5_backtest_report.report import present_doc
 from backend.analysis.m5_backtest_report.report_meta import ReportMetaStore, auto_name, name_view
 from backend.analysis.m5_backtest_report.request_log import on_read as request_log_on_read
@@ -61,6 +62,7 @@ def get_report(report_id: str, request: Request) -> dict[str, Any]:
     doc = row["doc"] if isinstance(row, dict) and "doc" in row else row
     if doc.get("doc_version", 1) < 2:
         doc = present_doc(doc, sv.results(report_id))  # 라운드 3 이전 문서: 읽을 때 근거 슬림·요약 보강 (저장 문서는 그대로)
+    doc = text_overrides.apply(doc, text_overrides.load(sv.store, report_id))  # 종합 판단 본문을 새 규칙으로 다시 쓴 글이 있으면 그 두 문단만 (저장 문서는 그대로, 2026-11-16)
     return request_log_on_read(sv.store, sv.with_orders(report_id, doc))  # 「내 요청」 기록이 없는 예전 리포트는 요청 문서에서 만들어 붙인다
 
 

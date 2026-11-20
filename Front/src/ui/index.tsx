@@ -6,8 +6,9 @@ import { ko } from "../lib/format"
 
 export const inputClass = "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
 
-export function Button({ children, variant = "primary", className = "", disabled, onClick, type = "button" }: { children: React.ReactNode; variant?: "primary" | "secondary" | "neutral" | "ghost" | "danger" | "destructive"; className?: string; disabled?: boolean; onClick?: () => void; type?: "button" | "submit" }) {
-  const variants = { primary: "bg-blue-700 text-white border-blue-700 hover:bg-blue-800", secondary: "bg-white text-blue-700 border-blue-200 hover:bg-blue-50", neutral: "bg-white text-slate-700 border-slate-300 hover:bg-slate-50", ghost: "bg-transparent text-slate-600 border-transparent hover:bg-slate-100", danger: "bg-white text-red-700 border-red-200 hover:bg-red-50", destructive: "bg-red-600 text-white border-red-600 hover:bg-red-700" }
+/** 버튼. 알림 상자(Alert·NOTICE_BOX) 안에서는 테두리 없는 soft, 확인 상자의 되돌릴 수 없는 동작은 destructive(꽉 찬 빨강) */
+export function Button({ children, variant = "primary", className = "", disabled, onClick, type = "button" }: { children: React.ReactNode; variant?: "primary" | "secondary" | "soft" | "neutral" | "ghost" | "danger" | "destructive"; className?: string; disabled?: boolean; onClick?: () => void; type?: "button" | "submit" }) {
+  const variants = { primary: "bg-blue-700 text-white border-blue-700 hover:bg-blue-800", secondary: "bg-white text-blue-700 border-blue-200 hover:bg-blue-50", soft: "bg-surface text-main border-transparent hover:bg-sunken-hover", neutral: "bg-white text-slate-700 border-slate-300 hover:bg-slate-50", ghost: "bg-transparent text-slate-600 border-transparent hover:bg-slate-100", danger: "bg-white text-red-700 border-red-200 hover:bg-red-50", destructive: "bg-danger text-on-accent border-danger hover:bg-danger/90" }
   return (
     <button type={type} disabled={disabled} onClick={onClick} className={`inline-flex min-h-10 items-center justify-center gap-2 whitespace-nowrap rounded-xl border px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]} ${className}`}>
       {children}
@@ -24,15 +25,28 @@ export function Badge({ children, tone = "blue" }: { children: React.ReactNode; 
   return <span className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold ${tones[tone]}`}>{children}</span>
 }
 
-export function Alert({ title, children, tone = "info" }: { title: string; children?: React.ReactNode; tone?: "info" | "warning" | "error" | "success" }) {
-  const tones = { info: "border-blue-200 bg-blue-50 text-blue-950", warning: "border-amber-200 bg-amber-50 text-amber-950", error: "border-red-200 bg-red-50 text-red-950", success: "border-emerald-200 bg-emerald-50 text-emerald-950" }
-  const Icon = tone === "error" ? AlertCircle : tone === "success" ? ShieldCheck : tone === "warning" ? AlertTriangle : Info
+/** 알림 상자 공통 모양 (2026-11-18 통일): 테두리 없음 · 면은 연한 토큰 색 · 제목은 기본 글자색(main) · 본문 body · 색은 아이콘에만.
+ *  예전 방식(색 테두리 + 색 면 + 진한 색 글자)은 쓰지 않는다. 화면에서 상자를 직접 만들 때도 NOTICE_BOX · NOTICE_ICON 을 쓴다. */
+export type NoticeTone = "info" | "warning" | "error" | "success" | "neutral"
+export const NOTICE_BOX: Record<NoticeTone, string> = { info: "bg-tint", warning: "bg-warning-tint", error: "bg-danger-tint", success: "bg-success-tint", neutral: "bg-sunken" }
+export const NOTICE_ICON: Record<NoticeTone, string> = { info: "text-accent", warning: "text-warning", error: "text-danger", success: "text-success", neutral: "text-sub" }
+const NOTICE_ICONS: Record<NoticeTone, React.ElementType> = { info: Info, warning: AlertTriangle, error: AlertCircle, success: ShieldCheck, neutral: Info }
+
+export function Alert({ title, children, tone = "info", icon = true, role, className = "" }: {
+  title: React.ReactNode; children?: React.ReactNode; tone?: NoticeTone
+  /** false = 아이콘 없이 (상자 안에 다른 표시가 이미 있을 때) */
+  icon?: boolean | React.ElementType
+  /** 기본: 오류는 alert, 나머지는 status. 확인 대화상자는 "alertdialog", 안내문은 "note" */
+  role?: "alert" | "status" | "note" | "alertdialog"
+  className?: string
+}) {
+  const Icon = typeof icon === "boolean" ? NOTICE_ICONS[tone] : icon
   return (
-    <div className={`flex gap-3 rounded-xl border p-4 ${tones[tone]}`} role={tone === "error" ? "alert" : "status"}>
-      <Icon className="mt-0.5 size-5 shrink-0" />
-      <div className="min-w-0">
-        <p className="text-sm font-semibold">{title}</p>
-        {children && <div className="mt-1 text-sm leading-6 opacity-80">{children}</div>}
+    <div className={`flex gap-3 rounded-box p-4 text-14 leading-6 text-body ${NOTICE_BOX[tone]} ${className}`} role={role ?? (tone === "error" ? "alert" : "status")}>
+      {icon !== false && <Icon className={`mt-0.5 size-5 shrink-0 ${NOTICE_ICON[tone]}`} aria-hidden="true" />}
+      <div className="min-w-0 flex-1">
+        <div className="font-semibold text-main">{title}</div>
+        {children && <div className="mt-1">{children}</div>}
       </div>
     </div>
   )
@@ -64,12 +78,13 @@ export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?:
 
 export function EmptyState({ title, description, action }: { title: string; description: string; action?: React.ReactNode }) {
   return (
-    <Card className="flex min-h-72 flex-col items-center justify-center p-8 text-center">
-      <FileSearch className="size-10 text-slate-300" />
-      <h2 className="mt-4 text-lg font-bold text-slate-900">{title}</h2>
-      <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">{description}</p>
+    // 빈 화면: 공용 Card(테두리 있음) 대신 테두리 없는 흰 카드 (홈 카드와 같은 방식, 2026-11-18). 늘 회색 페이지 배경 위에 놓인다
+    <section className="flex min-h-72 flex-col items-center justify-center rounded-card bg-surface p-8 text-center">
+      <FileSearch className="size-10 text-hint" aria-hidden="true" />
+      <h2 className="mt-4 text-18 font-bold text-main">{title}</h2>
+      <p className="mt-2 max-w-md text-14 leading-6 text-sub">{description}</p>
       {action && <div className="mt-5">{action}</div>}
-    </Card>
+    </section>
   )
 }
 
@@ -81,7 +96,7 @@ export function ErrorState({ title = "불러오지 못했습니다", message, re
   return (
     <Alert title={title} tone="error">
       <p>{message}</p>
-      {retry && <div className="mt-3"><Button variant="secondary" onClick={retry}>다시 시도</Button></div>}
+      {retry && <div className="mt-3"><Button variant="soft" onClick={retry}>다시 시도</Button></div>}
     </Alert>
   )
 }
@@ -175,7 +190,7 @@ export function Disclosure({ title, summary, open: openProp, defaultOpen = false
   return (
     <div className={`rounded-xl border border-slate-200 bg-white ${className}`}>
       <button type="button" aria-expanded={open} aria-controls={id} onClick={toggle} className={`flex w-full items-center justify-between gap-3 text-left ${size === "sm" ? "px-4 py-2.5 text-sm" : "px-5 py-3.5"} font-semibold text-slate-800 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-xl`}>
-        <span className="min-w-0 truncate">{title}</span>
+        <span className="min-w-0 truncate font-semibold">{title}</span>{/* 전역 CSS 「button { font: inherit }」가 버튼의 font-semibold 를 덮어써서 제목 글자에 직접 준다 */}
         <span className="flex shrink-0 items-center gap-3 text-xs font-normal text-slate-500">{summary}<ChevronDown className={`size-4 transition-transform ${open ? "rotate-180" : ""}`} /></span>
       </button>
       <div id={id} hidden={!open} className={open ? `border-t border-slate-100 ${size === "sm" ? "p-4" : "p-5"}` : ""}>{mounted ? children : null}</div>

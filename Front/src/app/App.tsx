@@ -1,13 +1,13 @@
-import { Activity, FileText, Home, SlidersHorizontal, TrendingUp, WifiOff } from "lucide-react"
+import { Activity, AlertCircle, AlertTriangle, FileText, Home, SlidersHorizontal, TrendingUp, WifiOff } from "lucide-react"
 import { useHealth, useProfile, useService } from "./providers"
 import { lazy, Suspense } from "react"
 import { navigate, useHashRoute, type Route } from "./router"
 import { useResource } from "../state/useResource"
-import { Badge, Button, EmptyState, Loading } from "../ui"
+import { Alert, Button, EmptyState, Loading, NOTICE_BOX, NOTICE_ICON, type NoticeTone } from "../ui"
 import { HomeScreen } from "../features/home/HomeScreen"
 import { ProfileScreen } from "../features/profile/ProfileScreen"
 import { ProfileChatScreen } from "../features/profile/chat/ProfileChatScreen"
-import { ClarifyScreen } from "../features/analysis/ClarifyScreen"
+import { ClarifyRoute } from "../features/analysis/ClarifyRoute"
 import { ConfirmScreen } from "../features/analysis/ConfirmScreen"
 import { RunScreen } from "../features/run/RunScreen"
 import { ReportList } from "../features/report/ReportList"
@@ -28,7 +28,7 @@ const ReportDetail = lazy(() => import("../features/report/ReportDetail").then((
 const ComparisonScreen = lazy(() => import("../features/report/ComparisonScreen").then((m) => ({ default: m.ComparisonScreen })))
 // 목업 모드 표시·개발용 패널: 개발 환경 + ?mock=1 일 때만 불러온다. 환경 조건을 그대로 써야 운영 빌드에서 import 가 빠진다 (mocks/mode.ts 참고).
 const MockChrome = import.meta.env.DEV || import.meta.env.VITE_ENABLE_MOCK === "1" ? lazy(() => import("../mocks/MockChrome")) : null
-const TutorialScreen = lazy(() => import("../features/tutorial/TutorialScreen").then((m) => ({ default: m.TutorialScreen })))  // 리포트 보는 법 둘러보기 (예시 리포트, 운영 빌드에서도 동작)
+const TutorialScreen = lazy(() => import("../features/tutorial/TutorialScreen").then((m) => ({ default: m.TutorialScreen })))  // 예시 리포트 둘러보기 (예시 리포트, 운영 빌드에서도 동작)
 const PaperScreen = lazy(() => import("../features/paper/PaperScreen").then((m) => ({ default: m.PaperScreen })))
 
 export function Sidebar({ route }: { route: Route }) {
@@ -74,12 +74,23 @@ export function Sidebar({ route }: { route: Route }) {
         </div>
       </div>
       <div className="mt-auto space-y-2 px-1 text-[11px] leading-5 text-slate-500">
-        {!reachable && <Badge tone="red"><WifiOff className="size-3" />서버 연결 끊김</Badge>}
-        {health?.llm_mode === "stub" && <Badge tone="amber">연습 모드 (LLM 없음)</Badge>}
-        {health && reachable && !health.worker.alive && <Badge tone="red">분석 일꾼 꺼짐 — 새 분석이 시작되지 않습니다</Badge>}
+        {!reachable && <SideNote tone="error" icon={WifiOff}>서버 연결 끊김</SideNote>}
+        {health?.llm_mode === "stub" && <SideNote tone="warning" icon={AlertTriangle}>연습 모드 (LLM 없음)</SideNote>}
+        {health && reachable && !health.worker.alive && <SideNote tone="error" icon={AlertCircle} detail="실행해 두면 기다렸다가 다시 켜지면 자동으로 시작돼요">분석 실행이 멈춰 있어요</SideNote>}
       </div>
       {gate.dialog}
     </aside>
+  )
+}
+
+/** 사이드바 아래 서버 상태 안내: 알림 상자와 같은 모양(테두리 없음 · 연한 면 · 색은 아이콘에만, 2026-11-18) */
+function SideNote({ tone, icon: Icon, children, detail }: { tone: NoticeTone; icon: React.ElementType; children: React.ReactNode; detail?: string }) {
+  // 제목 한 줄 + 설명 한 줄로 나눠 문장 중간에서 줄이 끊기지 않게 한다 (사이드바 폭 240px)
+  return (
+    <p className={`flex items-start gap-1.5 break-keep rounded-control px-2.5 py-1.5 text-12 leading-5 ${NOTICE_BOX[tone]}`}>
+      <Icon className={`mt-0.5 size-3.5 shrink-0 ${NOTICE_ICON[tone]}`} aria-hidden="true" />
+      <span><b className="block font-semibold text-main">{children}</b>{detail && <span className="block text-body">{detail}</span>}</span>
+    </p>
   )
 }
 
@@ -88,7 +99,7 @@ function Screen({ route }: { route: Route }) {
   switch (route.page) {
     case "home": return <HomeScreen />
     case "profile": return route.mode === "chat" ? <ProfileChatScreen /> : <ProfileScreen mode={route.mode ?? (profile ? "view" : "setup")} />
-    case "clarify": return <ClarifyScreen requestId={route.requestId} />
+    case "clarify": return <ClarifyRoute key={route.requestId} requestId={route.requestId} />  // 새 분석은 홈 대화창, 재분석·수정 요청은 질문 화면
     case "confirm": return <ConfirmScreen requestId={route.requestId} />
     case "run": return <RunScreen runId={route.runId} />
     case "reports": return <ReportList />
@@ -108,10 +119,10 @@ function ModeBanner() {
   const { health, reachable } = useHealth()
   if (!reachable || health?.llm_mode !== "stub") return null
   return (
-    <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-      <b>연습 모드로 켜져 있습니다.</b> 서버가 실제 분석 모델을 부르지 않고 미리 만들어 둔 답을 쓰기 때문에, 아이디어 해석·질문·리포트 문장이 입력과 맞지 않습니다.
+    <Alert tone="warning" className="mb-6" title="연습 모드로 켜져 있습니다.">
+      서버가 실제 분석 모델을 부르지 않고 미리 만들어 둔 답을 쓰기 때문에, 아이디어 해석·질문·리포트 문장이 입력과 맞지 않습니다.
       실제로 쓰려면 서버 관리자가 분석 모델 연결 설정으로 서버를 다시 켜야 합니다.
-    </div>
+    </Alert>
   )
 }
 
@@ -132,7 +143,8 @@ export default function App() {
     <div className="flex min-h-screen min-w-[1180px] bg-slate-50">
       <Sidebar route={route} />
       <main className="min-w-0 flex-1 overflow-x-auto">
-        <div className="mx-auto w-full max-w-[1180px] px-10 py-9"><ModeBanner /><Screen route={route} /></div>
+        {/* 홈·질문 대화(clarify)는 넓게: 오른쪽 「내게 맞는 정보」 패널을 고정 폭으로 두고 남는 폭을 대화창에 (2026-11-18 회의). 나머지 화면은 1180px */}
+        <div className={`mx-auto w-full py-9 ${route.page === "home" || route.page === "clarify" ? "max-w-[1600px] px-8" : "max-w-[1180px] px-10"}`}><ModeBanner /><Screen route={route} /></div>
       </main>
     </div>
     </>

@@ -256,8 +256,17 @@ class PaperService:
     # ── 비중 ──
     @staticmethod
     def _report_weights(strategy: Strategy, results: dict[str, Any]) -> tuple[dict[str, float], float]:
-        """리포트 기준일의 현재 구성(10f)에서 전략의 비중을 꺼낸다."""
+        """리포트 기준일의 현재 구성(10f)에서 전략의 비중을 꺼낸다.
+        2026-11-19: 새 리포트는 10f 가 백테스트에서 꺼낸 구성 id 별 비중(holdings_now: 시작일 종목 유지 · 직전 리밸런싱 목표 비중)을 둔다 — 있으면 그대로 쓴다
+        (현금을 섞은 낙폭 맞춤안도 이미 주식 + 현금이라 다시 섞지 않는다)."""
         fw = results["portfolio"]["forward"]
+        hn = fw.get("holdings_now") or {}
+        h = hn.get(strategy.id)
+        if h is None and strategy.kind == "black_litterman" and hn:  # 백테스트에 그 뉴스 반영 구성이 없으면(뷰가 한 번도 없음) 기준 비중 — 리포트 current_composition 과 같은 규칙
+            h = hn.get(str((fw.get("baseline") or {}).get("id") or ""))
+        if h:
+            w = {t: float(x) for t, x in h["weights"].items()}
+            return w, max(0.0, 1.0 - sum(w.values()))
         if strategy.kind == "black_litterman" or (strategy.kind == "cash_blend" and strategy.template is None):
             w = dict(fw.get("chosen_weights") or {})
             cash = 0.0
