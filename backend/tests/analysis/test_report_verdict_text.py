@@ -138,7 +138,6 @@ def test_selection_changes_are_dated_paragraphs():
     ③ 백테스트 시작일에 뽑히지 않은 종목. 후보를 추리는 단계와 순위로 고르는 단계가 문장에서 구분되고, 순위·비교 수치는 기록이 있을 때만."""
     from backend.analysis.m5_backtest_report.report import (
         ensure_selection_changes,
-        selection_change_gaps,
         selection_changes_paragraphs,
     )
 
@@ -159,7 +158,7 @@ def test_selection_changes_are_dated_paragraphs():
                                           "diff_vs_original": {"removed_reasons": {"DELL": "rank_beyond_n", "MRNA": "metric_out_of_range(return_12m_1m=-0.4834, 범위 >0)", "SNDK": "insufficient_price_history"}}}}}
     p = selection_changes_paragraphs(R)
     assert len(p) == 3
-    assert p[0] == ("백테스트 시작일과 분석 기준일에 각각 4종목을 골랐습니다. 두 날짜 모두 1종목은 필수 포함으로 처리했고, "
+    assert p[0] == ("백테스트 시작일과 분석 기준일에 각각 **4종목**을 골랐습니다. 두 날짜 모두 1종목은 필수 포함으로 처리했고, "
                     "나머지 3종목은 각 날짜를 기준으로 약 12개월 전부터 약 1개월 전까지 주가가 많이 오른 순으로 골랐습니다.")
     assert p[1].startswith("2026년 11월 10일 분석 기준일에 빠진 종목\n")
     assert "Robinhood Markets, AppLovin는" not in p[1] and "Robinhood Markets와 AppLovin은 주가 상승률을 기준으로 처음 검토할 종목을 120개로 추리는 단계에서 빠졌습니다." in p[1]
@@ -168,16 +167,40 @@ def test_selection_changes_are_dated_paragraphs():
     assert "Dell Technologies는 순위로 뽑힌 3종목 중 상승률이 가장 낮은 EchoStar(210.8%)보다 낮았습니다." in p[2]
     assert "Moderna는 해당 기간에 주가가 48.3% 내려 선정 조건을 충족하지 못했습니다." in p[2]
     assert "Sandisk는 당시 주가 상승률을 계산하는 데 필요한 과거 가격 기록이 부족했습니다." in p[2]
-    assert not selection_change_gaps(p, R)
     # 다른 지표: 그 지표로 설명 (배당수익률)
     R2 = {**R, "selection": {**R["selection"], "metric": "dividend_yield_ttm"}}
     p2 = selection_changes_paragraphs(R2)
     assert "최근 12개월 배당수익률이 높은 순으로 골랐습니다" in p2[0] and "배당수익률을 기준으로 처음 검토할 종목을" in p2[1] and "주가 상승률" not in " ".join(p2)
-    # 모델이 목록만 쓰고 이유를 뺐으면 코드 문단 셋으로 바꾼다 (모델을 더 부르지 않음)
-    narr = {"overview_ko": ["결론", "선정 방법", "시작일에는 Robinhood Markets·EchoStar, 기준일에는 Moderna·Sandisk 가 담겼습니다.", "겹친 비중"]}
-    assert selection_change_gaps(narr["overview_ko"], R)
-    assert ensure_selection_changes(narr, R) and narr["overview_ko"] == ["결론", "선정 방법", *p, "겹친 비중"]
-    assert ensure_selection_changes(narr, R) is False  # 이미 있으면 그대로
+    # 2026-11-19: 종합 판단에는 날짜별 종목 수 문단(p[0])만. 빠진 종목·뽑히지 않은 종목·겹친 비중·빠진 종목의 수익 기여 문단은 뺀다
+    narr = {"overview_ko": ["결론", "선정 방법", *p,
+                            "분석 기준일 구성에서 백테스트에도 담았던 종목의 비중 합은 89%입니다. 과거 수익률에 6.1%p를 보탠 EchoStar는 이번 분석 기준일 구성에서 빠졌으며, 그 기여도는 백테스트 기간에 계산된 값입니다.",
+                            "백테스트 수익을 이끈 EchoStar(+7.1%p)은 백테스트 기간에는 기여했지만 분석 기준일 구성에는 없습니다.",
+                            "이번 분석의 필수 포함 목록을 과거 계산에도 넣었습니다. 이 조건으로 담은 GOOGL 은 기여분 중 54%를 차지했습니다."]}  # fmt: skip
+    assert ensure_selection_changes(narr, R)
+    assert narr["overview_ko"] == ["결론", "선정 방법", p[0], "이번 분석의 필수 포함 목록을 과거 계산에도 넣었습니다. 이 조건으로 담은 GOOGL 은 기여분 중 54%를 차지했습니다."]
+    assert ensure_selection_changes(narr, R) is False  # 이미 정리됐으면 그대로
+    # 모델이 날짜별 종목 수 문단을 빠뜨렸으면 셋째 자리에 넣는다
+    narr = {"overview_ko": ["결론", "선정 방법", "필수 포함 문단"]}
+    assert ensure_selection_changes(narr, R) and narr["overview_ko"] == ["결론", "선정 방법", p[0], "필수 포함 문단"]
+
+
+def test_modes_paragraph_starts_with_two_rebalancing_methods(monkeypatch):
+    """2026-11-19 사용자 요청: 운용 방식 문단이 '시작일 비중으로 되돌리는 방식은 …' 으로 갑자기 시작했다 → '리밸런싱에는 두 가지 방식이 있습니다' 부터."""
+    from backend.analysis.m5_backtest_report import report_blocks as B
+    from backend.analysis.m5_backtest_report.report import ensure_modes_intro
+
+    R = {"backtest": {"portfolios": [{"id": "equal_weight", "kind": "template"}, {"id": "wf_equal_weight", "kind": "template"}]}}
+    old = ("시작일 비중으로 되돌리는 방식은 비중을 조정하는 날마다 백테스트 시작일에 정한 투자 비율로 다시 맞춥니다. "
+           "워크포워드(walk-forward) 방식은 같은 종목을 담고, 비중을 조정하는 날마다 그때까지의 자료로 투자 비율을 새로 계산합니다. "
+           "이번 분석은 매월 첫 거래일에 비중을 맞췄습니다. 성과가 같아 시작일 비중 방식이 선택됐습니다.")
+    interp = {"risk_fit_ko": ["평가 기간 문단", old]}
+    assert ensure_modes_intro(interp, R, "equal_weight")
+    assert interp["risk_fit_ko"][0] == "평가 기간 문단"
+    assert interp["risk_fit_ko"][1] == B.MODES_INTRO_KO + " 이번 분석은 매월 첫 거래일에 비중을 맞췄습니다. 성과가 같아 시작일 비중 방식이 선택됐습니다."
+    assert B.MODES_INTRO_KO.startswith("리밸런싱(포트폴리오 비중을 다시 맞추는 일)에는 두 가지 방식이 있습니다.")
+    assert "**시작일 비중으로 되돌리는 방식**" in B.MODES_INTRO_KO and "**워크포워드(walk-forward) 방식**" in B.MODES_INTRO_KO  # 두 방식 이름은 굵게 (2026-11-19)
+    assert ensure_modes_intro(interp, R, "equal_weight") is False  # 이미 첫머리가 있으면 그대로
+    assert ensure_modes_intro({"risk_fit_ko": [old]}, {"backtest": {"portfolios": [{"id": "equal_weight", "kind": "template"}]}}, "equal_weight") is False  # 비교할 방식이 없으면 손대지 않음
 
 
 def test_korean_particles_follow_the_name_sound():
@@ -312,7 +335,7 @@ def test_hindsight_note_names_the_rule_and_dates():
          "backtest": {"portfolios": [{"id": "x", "ticker_contribution": {"MU": 0.309, "GOOGL": 0.011, "ECHO": 0.071}}], "benchmark": {"id": "bench"}, "benchmarks": []}, "validation": {"alternatives": []}}
     n = B.hindsight_note(R, "x")
     assert n.startswith("2026년 11월 10일 분석에 적용한 필수 포함 조건을 2025년 11월 10일에 시작한 백테스트에도 적용했습니다.")
-    assert "Micron Technology, Alphabet 종목은 백테스트에서 수익에 플러스로 기여한 종목들의 기여분 중 82%를 차지했습니다" in n and "지금" not in n
+    assert "그 결과 이 조건으로 담은 Micron Technology, Alphabet 종목이 백테스트에서 수익에 플러스로 기여한 종목들의 기여분 중 **82%**를 차지했습니다" in n and "지금" not in n
 
     from backend.analysis.m5_backtest_report.report import ensure_hindsight
 
@@ -424,9 +447,9 @@ def test_plain_info_names_the_withheld_verdicts_and_the_volatility_band(monkeypa
     R, p = _ct_R(checks=[{"rule": "R2", "status": "info", "threshold": 0.25}, {"rule": "R7", "status": "info", "threshold": 0.177}])
     _ct_find(monkeypatch, p)
     info = C.plain_info(R, "mv")
-    assert info[0] == ("2025년 11월 10일부터 2026년 11월 10일까지의 수익률은 23.8%였습니다. 평가 기간이 짧아 연 25% 목표 수익률과 변동성 기준의 충족 여부는 판정하지 않았습니다. "
-                       "참고로 SPY의 변동성을 1년 기준으로 환산한 값은 13.6%였습니다. 여기에 1.3을 곱한 17.7%가 이번 분석에 적용한 중간 변동성 기준이었고, "
-                       "백테스트에서 계산한 전략의 변동성은 33.3%였습니다.")  # fmt: skip
+    # 2026-11-19: 간결하게 — 판정 보류 이유 한 문장 + 숫자 한 문장, 핵심 판정·수익률은 굵게
+    assert info[0] == ("평가 기간(2025년 11월 10일~2026년 11월 10일)이 짧아 연 25% 목표 수익률과 변동성 기준의 충족 여부는 **판정하지 않았습니다**. "
+                       "이 기간 수익률 **23.8%**, 변동성 33.3%(기준: 17.7% = SPY 13.6% × 1.3)였습니다.")  # fmt: skip
     joined = " ".join(info)
     for w in ("전체 CAGR", "창이 짧아", "백테스트 창", "중립 성향"):
         assert w not in joined
@@ -439,18 +462,18 @@ def test_plain_drift_rebalance_and_buy_and_hold(monkeypatch):
     R, p = _ct_R(checks=[{"rule": "R4b", "ok": False}], comp=comp)
     _ct_find(monkeypatch, p)
     t = C.plain_info(R, "mv")[0]
-    assert t.startswith("정해진 날에 목표 비중을 맞춘 뒤, 다음 조정일까지 주가가 움직이면서 한 종목의 비중이 커질 수 있습니다.")
-    assert "Micron Technology의 비중이 한때 전체 포트폴리오 평가금액의 28.9%까지 올랐습니다" in t
-    assert "20%는 비중을 정하는 날 한 종목에 배정하는 최대 비율(상한)이고, 25.0%는 조정일 사이에 비중이 크게 벗어난 날을 세기 위한 별도 점검 기준입니다" in t
-    assert "20%를 넘은 종목이 하나라도 있던 날은 252거래일 중 216일이었고, Micron Technology의 비중이 25.0%를 넘은 날은 16일이었습니다." in t
-    assert t.endswith("비중을 맞추는 간격을 짧게 하면 목표 비중에 더 자주 맞출 수 있습니다. 얼마나 달라지는지는 그 주기로 다시 계산해 확인할 수 있습니다.")
+    # 2026-11-19: 간결하게 — 무엇이 커질 수 있는지 / 이번 최대 비중 / 넘은 날 수 / 고치는 법, 네 문장
+    assert t == ("정해진 날 포트폴리오 비중을 맞춰도, 다음 조정일까지 주가가 움직이면 한 종목의 비중이 커질 수 있습니다. "
+                 "이번에는 **Micron Technology**의 비중이 한때 **28.9%**까지 올랐습니다. "
+                 "종목당 상한 20%를 넘은 날은 252거래일 중 216일, 별도 점검 기준 25.0%를 넘은 날은 16일이었습니다. "
+                 "비중을 맞추는 간격을 줄이면 목표 비중에 더 자주 맞출 수 있습니다.")  # fmt: skip
     assert "리밸런싱 주기를 줄이면" not in t
     # 비중 조정 없이 보유한 리포트: 조정일·주기 이야기 대신 보유 방식에 맞는 말
     R, p = _ct_R(checks=[{"rule": "R4b", "ok": False}], comp=comp, n_rebal=1)
     _ct_find(monkeypatch, p)
     t = C.plain_info(R, "mv")[0]
-    assert t.startswith("처음 정한 비중으로 산 뒤 비중을 다시 맞추지 않아, 보유 기간 동안 주가가 움직이면서 한 종목의 비중이 커질 수 있습니다.")
-    assert "간격을 짧게" not in t and "정해진 날마다 비중을 다시 맞추면(리밸런싱) 목표 비중에 더 가깝게 유지할 수 있습니다" in t
+    assert t.startswith("처음 정한 비중으로 산 뒤 다시 맞추지 않아, 한 종목의 포트폴리오 비중이 커질 수 있습니다.")
+    assert "간격을 줄이면" not in t and t.endswith("정해진 날마다 비중을 다시 맞추면(리밸런싱) 목표 비중에 더 가깝게 유지할 수 있습니다.")
 
 
 def test_plain_drawdown_exceeded_rule_and_caution_share_one_sentence(monkeypatch):
@@ -459,8 +482,8 @@ def test_plain_drawdown_exceeded_rule_and_caution_share_one_sentence(monkeypatch
     R, p = _ct_R(checks=[{"rule": "R1", "ok": False, "status": "flag", "threshold": 0.2}])
     _ct_find(monkeypatch, p)
     r1 = C.plain_rules(R, "mv")["R1"]
-    assert r1 == ("2025년 11월 10일부터 2026년 11월 10일까지 백테스트에서 고점 대비 가장 크게 떨어진 폭(최대낙폭)은 23.2%로, 허용하기로 한 20%보다 3.2%p 컸습니다. "
-                  "같은 기간 같은 날 같은 금액을 SPY에 넣었다면 최대낙폭은 8.9%였습니다. 비슷한 하락이 다시 오면 감내하기로 한 손실보다 더 크게 떨어질 수 있습니다.")  # fmt: skip
+    assert r1 == ("2025년 11월 10일부터 2026년 11월 10일까지 최대낙폭은 **23.2%**로, 허용한 20%보다 **3.2%p 컸습니다**(같은 기간 SPY 8.9%). "
+                  "비슷한 하락이 오면 감내하기로 한 손실보다 더 떨어질 수 있습니다.")  # fmt: skip
     cs = C.plain_cautions(R, "mv", ["허용 낙폭 초과 (3.2%p)", "현금 비중 문장"])
     assert cs[0] == {"key": "허용 낙폭 초과 (3.2%p)", "text": r1}  # 화면은 key 로 R1 과 겹치는 주의를 한 번만 보인다
     assert cs[1]["text"] == "현금 비중 문장."
@@ -483,11 +506,12 @@ def test_holdings_gap_note_separates_total_and_stock_share_when_cash(monkeypatch
     monkeypatch.setattr(B, "find", lambda R, pid: p)
     monkeypatch.setattr(B, "current_composition", lambda R, c: ({"A": 0.16, "B": 0.16, "N": 0.24}, 0.44, "x"))  # 현금 44%
     s = B.holdings_gap_note(R, "c")
-    assert s.startswith("2026년 10월 30일 추천 구성에서는 투자금의 약 32%를 백테스트에도 담았던 종목에 배정합니다(주식에 배정한 금액 중에서는 57%).")
-    assert "과거 수익률에 7.1%p를 보탠 EchoStar는 이번 추천 구성에서 빠졌습니다." in s
+    assert s.startswith("2026년 10월 30일 추천 구성에서는 투자금의 약 **32%**를 백테스트에도 담았던 종목에 배정합니다(주식에 배정한 금액 중에서는 57%).")
+    assert "하지만 과거 수익률에 7.1%p를 보탠 EchoStar는 이번 추천 구성에서 빠졌습니다." in s
+    assert s.endswith("그래서 이번 구성의 투자 결과는 당시 종목으로 계산한 백테스트 수익률 23.8%와 **달라질 수 있습니다**.")
     monkeypatch.setattr(B, "current_composition", lambda R, c: ({"A": 0.34, "B": 0.34, "N": 0.32}, 0.0, "x"))  # 현금 없음 → 한 번만
     s = B.holdings_gap_note(R, "c")
-    assert "투자금의 약 68%를 백테스트에도 담았던 종목에 배정합니다. " in s and "주식에 배정한 금액 중" not in s
+    assert "투자금의 약 **68%**를 백테스트에도 담았던 종목에 배정합니다. " in s and "주식에 배정한 금액 중" not in s
 
 
 def test_override_section7_texts_and_summary_patch():
@@ -578,14 +602,14 @@ def test_selection_sentence_and_chosen_rows(monkeypatch):
 
     R, ports = _vt_R()
     _vt_patch(monkeypatch, ports)
-    assert VT.selection_sentence_ko(R, "min_variance") == "SPY보다 높은 수익률, 최대낙폭 허용 범위(30%) 이내 조건을 모두 맞춘 전략 가운데 샤프 비율이 가장 높은 최소분산 전략을 골랐습니다."
+    assert VT.selection_sentence_ko(R, "min_variance") == "SPY보다 높은 수익률, 최대낙폭 허용 범위(30%) 이내 조건을 모두 맞춘 전략 가운데 샤프 비율이 가장 높은 **최소분산 전략**을 골랐습니다."
     rows = {r["rule"]: r for r in VT.chosen_rows(R, "min_variance")}
     assert [rows[k]["name"] for k in ("R1", "R2", "R3", "R7", "R4b", "R9")] == ["최대낙폭과 허용 한도", "목표 수익률 달성 여부", "비교지수와 수익률 비교", "변동성 기준 충족 여부", "조정일 사이 종목 비중 변화", "주식과 현금 비중"]
-    assert [rows[k]["status"] for k in ("R1", "R2", "R3", "R7", "R4b", "R9")] == ["충족", "판정 보류", "충족", "판정 보류", "측정 결과", "측정 결과"]
+    assert [rows[k]["status"] for k in ("R1", "R2", "R3", "R7", "R4b", "R9")] == ["충족", "판정 보류", "충족", "판정 보류", "참고(판정 없음)", "참고(판정 없음)"]
     assert rows["R2"]["msg"] == "기준: 연 25% 목표 수익률. 측정값: 이 기간 수익률 23.8%. 평가 기간이 짧아 판정 보류."
     assert "전체 CAGR" not in rows["R2"]["msg"] and "중립 성향" not in rows["R7"]["msg"]
     assert rows["R7"]["msg"].startswith("기준: 이번 분석에 적용한 중간 변동성 기준 — SPY의 연변동성 13.6%에 1.3을 곱한 17.7% 이하. 측정값: 이 전략의 백테스트 연변동성 33.3%.")
-    assert ("비중을 맞추는 날의 종목당 목표 비중 한도 20%, 조정일 사이에 비중이 크게 벗어났는지 보는 별도 점검 기준 25.0%" in rows["R4b"]["msg"]
+    assert ("포트폴리오 비중을 맞추는 날의 종목당 목표 비중 한도 20%, 조정일 사이에 비중이 크게 벗어났는지 보는 별도 점검 기준 25.0%" in rows["R4b"]["msg"]
             and "20%를 넘은 종목이 하나라도 있던 날 252거래일 중 216일, 25.0%를 넘은 날 16일." in rows["R4b"]["msg"])  # fmt: skip
 
 
@@ -596,14 +620,14 @@ def test_strategy_rows_tell_selection_pass_warn_and_fail_reasons(monkeypatch):
     _vt_patch(monkeypatch, ports)
     rows = {r["name"]: r for r in VT.strategy_rows(R, "min_variance")}
     assert rows["최소분산"]["status"] == "통과 · 최종 선택"
-    assert rows["최소분산"]["reason"] == ("비중을 맞추는 날마다 백테스트 시작일에 정한 목표 비중으로 되돌리는 방식입니다. "
+    assert rows["최소분산"]["reason"] == ("포트폴리오 비중을 맞추는 날마다 백테스트 시작일에 정한 목표 비중으로 되돌리는 방식입니다. "
                                       "SPY보다 높은 수익률, 최대낙폭 허용 범위(30%) 이내 조건을 모두 맞춘 전략 가운데 샤프 비율이 가장 높아 골랐습니다.")  # fmt: skip
     assert rows["최소분산 (walk-forward)"]["status"] == "통과"
-    assert rows["최소분산 (walk-forward)"]["reason"] == ("비중을 맞추는 날마다(매월) 그때까지의 자료로 목표 비중을 새로 계산하는 방식입니다. "
+    assert rows["최소분산 (walk-forward)"]["reason"] == ("포트폴리오 비중을 맞추는 날마다(매월) 그때까지의 자료로 목표 비중을 새로 계산하는 방식입니다. "
                                                       "샤프 비율 0.48이 최소분산의 0.59보다 낮아 선택하지 않았습니다.")  # fmt: skip
     assert rows["동일비중"] == {"name": "동일비중", "status": "주의", "reason": "동일비중 전략의 같은 기간 수익률은 8.9%로 SPY의 11.2%보다 낮았습니다."}
     assert rows["시가총액비중"]["status"] == "미통과"
-    assert rows["시가총액비중"]["reason"] == "비중을 맞추는 날 한 종목의 비중이 최대 26.3%로, 종목당 한도 20%를 넘었습니다. 가격 자료가 180일치로, 백테스트 기간에 필요한 252일보다 짧았습니다."
+    assert rows["시가총액비중"]["reason"] == "포트폴리오 비중을 맞추는 날 한 종목의 포트폴리오 비중이 최대 26.3%로, 종목당 한도 20%를 넘었습니다. 가격 자료가 180일치로, 백테스트 기간에 필요한 252일보다 짧았습니다."
 
 
 def test_ensure_validation_text_drops_screen_caution_and_table_repeats(monkeypatch):
@@ -614,7 +638,7 @@ def test_ensure_validation_text_drops_screen_caution_and_table_repeats(monkeypat
     interp = {"validation_ko": ["검증은 추천: 최소분산으로 표시됐습니다. 추천은 후보들 사이의 순위에 따른 선택이며, 목표 달성이나 미래 성과를 뜻하지 않습니다. 평가 기간이 짧아 목표 수익률은 판정을 보류했습니다.",
                                 "화면 주의는 EchoStar(+7.1%p)가 현재 구성에 없고 비중 합이 68%라는 뜻입니다. 검증에서는 연변동성 33.3%가 중립 성향 기준보다 높았습니다."]}  # fmt: skip
     assert ensure_validation_text(interp, R, "min_variance")
-    assert interp["validation_ko"] == ["SPY보다 높은 수익률, 최대낙폭 허용 범위(30%) 이내 조건을 모두 맞춘 전략 가운데 샤프 비율이 가장 높은 최소분산 전략을 골랐습니다. 평가 기간이 짧아 목표 수익률은 판정을 보류했습니다."]
+    assert interp["validation_ko"] == ["SPY보다 높은 수익률, 최대낙폭 허용 범위(30%) 이내 조건을 모두 맞춘 전략 가운데 샤프 비율이 가장 높은 **최소분산 전략**을 골랐습니다. 평가 기간이 짧아 목표 수익률은 판정을 보류했습니다."]
     assert not ensure_validation_text(interp, R, "min_variance")
 
 
@@ -631,3 +655,14 @@ def test_override_replaces_validation_text_and_tables():
     assert bl[0]["items"] == ["성과 해석"] and bl[1]["items"] == ["새 문단"]
     assert [bl[2]["title_ko"], bl[3]["title_ko"]] == ["선택 전략의 조건별 결과 (최소분산)", "전략별 점검 결과"] and bl[2]["group_ko"] == "검증 상세"
     assert bl[4]["type"] == "callout" and out["text_override"]["sections"] == ["validation", "validation_tables"]
+
+
+def test_plain_cash_capacity_reason_ends_with_period(monkeypatch):
+    """검증 메시지에서 꺼낸 '…투자 비율이 올라갑니다' 뒤에 마침표가 없어 다음 문장과 붙던 것 (2026-11-19 검증에서 발견)."""
+    from backend.analysis.m5_backtest_report import caution_text as C
+
+    msg = "투자 80%, 현금 20% — 백테스트 시작일 구성은 섹터 상한 80% 때문에 80%까지만 담겨 20%를 더 넣지 못했습니다. 섹터 상한을 올리거나 테마를 넓히면 투자 비율이 올라갑니다"
+    R, p = _ct_R(checks=[{"rule": "R9", "ok": False, "status": "info", "value": 0.8, "message_ko": msg}])
+    _ct_find(monkeypatch, p)
+    t = " ".join(C.plain_info(R, "mv"))
+    assert "투자 비율이 올라갑니다. 현금은 이자 없이 계산해" in t

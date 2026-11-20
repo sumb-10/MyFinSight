@@ -8,7 +8,7 @@ import { useReport } from "./context"
 import { MockTag, proposed } from "./proposedView"
 
 /** 종목 카드의 비중이 어느 날짜 기준인지. 서버는 분석 기준일 구성을 만들 수 있으면 그 비중을, 못 만들면 백테스트 시작일 목표 비중을 넣는다
- *  (2026-10-30 리포트처럼 예전 리포트는 항상 백테스트 시작일 비중). 요약 배분(분석 기준일 구성)과 모든 종목 값이 같으면 분석 기준일 비중이다.
+ *  (2026-10-30 리포트처럼 예전 리포트는 항상 백테스트 시작일 포트폴리오 비중). 요약 배분(분석 기준일 구성)과 모든 종목 값이 같으면 분석 기준일 포트폴리오 비중이다.
  *  2026-11-16: 같은 숫자가 「추천안 비중 (백테스트)」·「분석 기준일 구성 비중」 두 줄로 나와 이름이 틀렸다. */
 export function weightBasis(items: Pick<CompanyItem, "ticker" | "weight">[], alloc: ReportSummary["allocation"] | undefined): "now" | "bt" {
   if (alloc?.basis !== "forward") return "bt"
@@ -41,7 +41,7 @@ export function CompanyList({ b }: { b: CompaniesBlock }) {
         <h3 className="text-base font-semibold text-slate-900">{b.title_ko} <span className="text-sm font-normal text-slate-500">{b.items.length}개</span></h3>
         <button type="button" onClick={() => setOpen(open.length === b.items.length ? [] : b.items.map((x) => x.ticker))} className="text-xs font-semibold text-blue-700 hover:underline">{open.length === b.items.length ? "모두 접기" : "모든 기업 펼치기"}</button>
       </div>
-      <p className="text-xs leading-5 text-slate-500">선정 지표 {b.metric_ko}{metricName(b.metric) ? ` (${metricName(b.metric)})` : ""} · {dir} 우선 · 분석 기준일 {b.as_of_now} 선정 {nNow}개 / 백테스트 시작일 {b.as_of_bt} 선정 {nBt}개</p>
+      <p className="text-xs leading-5 text-slate-500">선정 지표 {b.metric_ko}{metricName(b.metric) ? ` (${metricName(b.metric)})` : ""} · {dir} 우선 · {b.holdings_fixed ? `백테스트 시작일 ${b.as_of_bt}에 ${nBt}개를 골라 분석한 날 ${b.as_of_now}까지 유지` : `분석한 날 ${b.as_of_now} 선정 ${nNow}개 / 백테스트 시작일 ${b.as_of_bt} 선정 ${nBt}개`}</p>
       <ul className="space-y-2" aria-label="기업 목록">{b.items.map((it) => <CompanyCard key={it.ticker} it={it} b={b} basis={basis} open={open.includes(it.ticker)} onToggle={() => toggle(it.ticker)} />)}</ul>
       {b.note_ko && <p className="text-xs text-slate-500">{b.note_ko}</p>}
     </div>
@@ -51,8 +51,8 @@ export function CompanyList({ b }: { b: CompaniesBlock }) {
 /** 선정 시점 상태. in_selection_now = 분석 기준일에 선정, in_backtest = 백테스트 시작일에 선정 (서버 표의 뜻 그대로). */
 export function selectionStatus(it: Pick<CompanyItem, "in_selection_now" | "in_backtest">): string | null {
   if (it.in_selection_now && it.in_backtest) return null
-  if (it.in_selection_now) return "분석 기준일에만 선정 · 과거 성과 계산에는 포함되지 않음"
-  if (it.in_backtest) return "백테스트 시작일에만 선정 · 분석 기준일에는 선정되지 않음"
+  if (it.in_selection_now) return "분석한 날에만 선정 · 과거 성과 계산에는 포함되지 않음"
+  if (it.in_backtest) return "백테스트 시작일에만 선정 · 분석한 날에는 선정되지 않음"
   return "두 기준일 모두 선정되지 않음"
 }
 
@@ -66,23 +66,33 @@ function CompanyCard({ it, b, basis, open, onToggle }: { it: CompanyItem; b: Com
   const now = it.in_selection_now && it.rank_now !== null  // 분석 기준일 순위가 있으면 그것, 없으면 백테스트 시작일 순위 (날짜를 함께 적어 섞이지 않게)
   const rank = now ? `${it.rank_now}위 (${b.as_of_now})` : it.rank_bt !== null ? `${it.rank_bt}위 (${b.as_of_bt})` : null
   const raw = now ? it.metric_now : it.metric_bt
+  const wLabel = basis === "now" ? "분석한 날의 포트폴리오 비중" : "백테스트 시작일 포트폴리오 비중"
+  const wValue = <span className={`block text-sm font-bold tabular-nums ${it.weight !== null ? "text-slate-950" : "text-slate-400"}`}>{it.weight !== null ? fmt(it.weight, "pct1") : "담지 않음"}</span>
   const value = raw !== null ? metricValue(b.metric, raw) : null
   return (
     <li id={`acc-${it.ticker}`} className={`scroll-mt-16 rounded-xl border bg-white ${open ? "border-slate-300 shadow-sm" : "border-slate-200"}`}>
       <button type="button" aria-expanded={open} aria-controls={bodyId} onClick={onToggle} className="w-full rounded-xl px-4 py-3 text-left hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 sm:px-5">
         {/* 섹터 줄은 펼친 상세(섹터 · 세부산업)에만: 이름 줄을 오른쪽 비중(두 줄)과 가운데 맞춰 빈 공간이 생기지 않게 */}
+        {/* 넓은 화면: 이름 | 비중(두 줄) | 펼침 표시. 좁은 화면(2026-11-20): 비중을 이름 아래 한 줄로 내려 회사 이름이 'Broadc/om' 처럼 글자 단위로 끊기지 않게 */}
         <span className="flex items-center justify-between gap-3">
-          <span className="flex min-w-0 flex-wrap items-baseline gap-x-2"><span className="font-bold text-slate-950">{it.ticker}</span><span className="min-w-0 break-words text-sm text-slate-700">{it.name}</span></span>
+          <span className="min-w-0">
+            <span className="flex flex-wrap items-baseline gap-x-2"><span className="font-bold text-slate-950">{it.ticker}</span><span className="text-sm text-slate-700">{it.name}</span></span>
+            <span className="mt-0.5 flex items-baseline gap-1.5 sm:hidden"><span className="text-[11px] text-slate-500">{wLabel}</span>{wValue}</span>
+          </span>
           <span className="flex shrink-0 items-center gap-2 text-right">
-            <span><span className="block text-[11px] text-slate-500">{basis === "now" ? "분석 기준일 비중" : "백테스트 시작일 비중"}</span><span className={`block text-sm font-bold tabular-nums ${it.weight !== null ? "text-slate-950" : "text-slate-400"}`}>{it.weight !== null ? fmt(it.weight, "pct1") : "담지 않음"}</span></span>
+            <span className="hidden sm:block"><span className="block text-[11px] text-slate-500">{wLabel}</span>{wValue}</span>
             <ChevronDown className={`size-4 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
           </span>
         </span>
-        <span className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
-          {st ? <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-semibold text-slate-600">{st}</span> : <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-semibold text-slate-600">분석 기준일·백테스트 시작일 모두 선정</span>}
-          {rank && <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-700">{b.metric_ko} {value ?? "–"} · {rank}</span>}
-          {view && <span className={`rounded-md border px-1.5 py-0.5 font-semibold ${VIEW_TAG[view.status]?.[1] ?? ""}`}>{VIEW_TAG[view.status]?.[0] ?? view.status}{view.status === "generated" ? ` ${view.n_views}개` : ""}</span>}{view && <MockTag />}
-        </span>
+        {/* 모든 종목에 같은 「백테스트 시작일 선정 · 분석한 날까지 유지」 표시는 뺐다 (2026-11-20 사용자 요청). 두 날짜의 선정이 다른 예전 리포트의 종목만 상태 표시를 남긴다.
+            표시할 것이 없으면 줄 자체를 그리지 않아 빈 간격이 생기지 않게 한다. */}
+        {(st || rank || view) && (
+          <span className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+            {st && <span className="rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-semibold text-slate-600">{st}</span>}
+            {rank && <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-700">{b.metric_ko} {value ?? "–"} · {rank}</span>}
+            {view && <span className={`rounded-md border px-1.5 py-0.5 font-semibold ${VIEW_TAG[view.status]?.[1] ?? ""}`}>{VIEW_TAG[view.status]?.[0] ?? view.status}{view.status === "generated" ? ` ${view.n_views}개` : ""}</span>}{view && <MockTag />}
+          </span>
+        )}
         <span className="mt-3 block rounded-lg bg-slate-50 px-3 py-2.5">
           <span className="block text-sm font-bold text-slate-900">테마 관련성</span>
           <span className="mt-1.5 block text-sm leading-6 text-slate-700">{it.theme_reason_ko || "설명이 제공되지 않았습니다"}</span>
@@ -96,16 +106,16 @@ function CompanyCard({ it, b, basis, open, onToggle }: { it: CompanyItem; b: Com
 function CompanyBody({ it, b, basis }: { it: CompanyItem; b: CompaniesBlock; basis: "now" | "bt" }) {
   const rep = useReport()
   const alloc = rep?.doc.summary?.allocation
-  const nowW = (w: number | null | undefined): [string, React.ReactNode] => [`분석 기준일 비중 (${b.as_of_now})`, w != null ? fmt(w, "pct1") : "없음 (분석 기준일 구성에 담지 않음)"]
+  const nowW = (w: number | null | undefined): [string, React.ReactNode] => [`분석한 날의 포트폴리오 비중 (${b.as_of_now})`, w != null ? fmt(w, "pct1") : "없음 (분석한 날의 구성에 담지 않음)"]
   // 두 값이 같으면 한 줄(분석 기준일), 다르면 백테스트 시작일·분석 기준일 두 줄로 날짜를 나눠 적는다
   const weightRows: [string, React.ReactNode][] = basis === "now" ? [nowW(it.weight)]
-    : [[`백테스트 시작일 비중 (${b.as_of_bt})`, it.weight !== null ? fmt(it.weight, "pct1") : "없음 (백테스트 시작일 구성에 담지 않음)"],
+    : [[`백테스트 시작일 포트폴리오 비중 (${b.as_of_bt})`, it.weight !== null ? fmt(it.weight, "pct1") : "없음 (백테스트 시작일 구성에 담지 않음)"],
        ...(alloc?.basis === "forward" ? [nowW(alloc.items.find((x) => x.ticker === it.ticker)?.weight)] : [])]
   const p = proposed(rep?.doc)
   const view = p?.company_views?.[it.ticker]
   const reasons = p?.company_reasons?.[it.ticker]
   const facts: [string, React.ReactNode][] = [
-    ["선정 상태", selectionStatus(it) ?? "분석 기준일·백테스트 시작일 모두 선정"],
+    ["선정 상태", selectionStatus(it) ?? (b.holdings_fixed ? "백테스트 시작일 선정 · 분석한 날까지 유지" : "분석한 날·백테스트 시작일 모두 선정")],
     ["섹터 · 세부산업", `${it.sector}${it.sub_industry ? ` · ${it.sub_industry}` : ""}${it.market ? ` · ${it.market}` : ""}`],
     ...weightRows,
     [`${b.metric_ko} (${b.as_of_now})`, it.metric_now !== null ? <>{metricValue(b.metric, it.metric_now)} · 순위 {it.rank_now ?? "–"}{it.fact_id && rep && <button type="button" onClick={() => rep.openEvidence(it.fact_id!)} className="ml-1 align-super text-[11px] font-bold text-blue-700 hover:underline" aria-label={`지표 근거 ${it.fact_id} 보기`}>[{rep.numberOf(it.fact_id)}]</button>}</> : "–"],
@@ -135,7 +145,7 @@ function CompanyBody({ it, b, basis }: { it: CompanyItem; b: CompaniesBlock; bas
         )}
         <h4 className="text-sm font-bold text-slate-900">{reasons?.length ? "선정 근거 원문" : "선정 근거"}</h4>
         {it.summary && <p className="text-sm text-slate-500"><span className="font-semibold">회사 소개 </span>{it.summary}</p>}
-        {it.rationale_ko.length ? it.rationale_ko.map((t, i) => <p key={i} className="whitespace-pre-line"><CitedText text={t} /></p>) : <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{it.in_selection_now ? "선정 이유 설명이 없습니다." : "분석 기준일 선정 종목이 아니어서 선정 이유 설명이 없습니다."}</p>}
+        {it.rationale_ko.length ? it.rationale_ko.map((t, i) => <p key={i} className="whitespace-pre-line"><CitedText text={t} /></p>) : <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{it.in_selection_now ? "선정 이유 설명이 없습니다." : "분석한 날의 선정 종목이 아니어서 선정 이유 설명이 없습니다."}</p>}
       </div>
       <dl className="h-fit space-y-2 rounded-lg bg-slate-50 p-3 text-xs">{facts.map(([k, v]) => <div key={k}><dt className="font-semibold text-slate-500">{k}</dt><dd className="mt-0.5 text-slate-800">{v}</dd></div>)}</dl>
     </div>

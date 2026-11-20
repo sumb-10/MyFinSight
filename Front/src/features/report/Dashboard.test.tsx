@@ -116,7 +116,7 @@ describe("카드 1·4: 결과와 조건", () => {
     expect(volStandardHelp({ ...base, kind: "nocap", bench: "13.6%", mult: null, band: null, pref: "high" })).toBe("수익률이 얼마나 흔들렸는지는 보여주며, 변동성 상한을 정해 충족 여부를 판단하는 절차는 없습니다.")
     expect(volStandardHelp({ ...base, kind: "absolute", bench: null, mult: null, band: "20.0%", pref: "medium" })).toMatch(/고정된 기준값을 적용했습니다\. 이 분석에서는 연변동성 20\.0% 이하를 기준으로 정했습니다\.$/)
   })
-  it("조건별 근거 보기: 예전 리포트의 두 표도 규칙 번호·수준 열 없이, 참고는 판정 보류·측정 결과로 (2026-11-16)", () => {
+  it("조건별 근거 보기: 예전 리포트의 두 표도 규칙 번호·수준 열 없이, 참고는 판정 보류·참고(판정 없음)으로 (2026-11-16, 이름 2026-11-20)", () => {
     const t1 = validationTableView({ type: "table", title_ko: "검증 규칙 (최소분산)", columns: ["rule", "name", "level", "msg", "status"].map((key) => ({ key, label_ko: key, format: "text" as const })), rows: [
       { rule: "R2", name: "목표수익", level: "참고", msg: "CAGR 23.8% vs 목표 25.0% (기간 수익률 +23.8%; 창이 짧아 참고만)", status: "참고" },
       { rule: "R9", name: "투자 비율", level: "참고", msg: "투자 100%, 현금 0%", status: "참고" },
@@ -124,7 +124,14 @@ describe("카드 1·4: 결과와 조건", () => {
     if (t1.type !== "table") throw new Error()
     expect(t1.title_ko).toBe("선택 전략의 조건별 결과 (최소분산)")
     expect(t1.columns.map((c) => c.label_ko)).toEqual(["점검 항목", "기준과 측정값", "결과"])
-    expect(t1.rows.map((r) => [r.name, r.status])).toEqual([["목표 수익률 달성 여부", "판정 보류"], ["주식과 현금 비중", "측정 결과"], ["최대낙폭과 허용 한도", "충족"]])
+    expect(t1.rows.map((r) => [r.name, r.status])).toEqual([["목표 수익률 달성 여부", "판정 보류"], ["주식과 현금 비중", "참고(판정 없음)"], ["최대낙폭과 허용 한도", "충족"]])
+    // 저장된 새 리포트의 표(서버가 '측정 결과' 로 만든 것)도 화면에서는 '참고(판정 없음)' (2026-11-20)
+    const t3 = validationTableView({ type: "table", title_ko: "선택 전략의 조건별 결과 (낙폭 맞춤안)", note_ko: "측정값은 …까지 백테스트 결과입니다. 판정 보류는 평가 기간이 짧아 기준 충족 여부를 판단하지 않은 항목, 측정 결과는 기준 충족 여부를 따지지 않고 값을 알려 주는 항목입니다.",
+      columns: ["name", "msg", "status"].map((key) => ({ key, label_ko: key, format: "text" as const })), rows: [{ name: "비교지수와 최대낙폭 비교", msg: "x", status: "측정 결과" }, { name: "최대낙폭과 허용 한도", msg: "y", status: "충족" }] })
+    if (t3.type !== "table") throw new Error()
+    expect(t3.rows.map((r) => r.status)).toEqual(["참고(판정 없음)", "충족"])
+    expect(t3.note_ko).toContain("참고(판정 없음)는 기준 충족 여부를 판정하지 않고 값만 알려 주는 항목입니다.")
+    expect(t3.note_ko).not.toContain("측정 결과")
     const t2 = validationTableView({ type: "table", title_ko: "전체 포트폴리오 검증 요약", columns: ["name", "status", "fails", "warns"].map((key) => ({ key, label_ko: key, format: "text" as const })), rows: [
       { name: "동일비중", status: "주의", fails: "-", warns: "R3 비교지수 대비" }, { name: "최소분산", status: "통과", fails: "-", warns: "-" }] }, "최소분산")
     if (t2.type !== "table") throw new Error()
@@ -259,7 +266,7 @@ describe("카드 3과 KPI 전체", () => {
     expect(krwFromNote("투입 원금 18,258 USD")).toBeNull()
     const { unmount } = render(<KpiRow kpis={[{ id: "final_value", label_ko: "최종 평가금액", value: 22028.25, format: "usd", note_ko: "약 29,473,358원 · 투입 원금 18,258 USD" }]} />)
     expect(screen.getByText("약 2,947만 3,358원")).toBeInTheDocument()
-    expect(screen.getByText(/22,028.25 USD · 분석 기준일 환율 기준/)).toBeInTheDocument()
+    expect(screen.getByText(/22,028.25 USD · 분석한 날의 환율 기준/)).toBeInTheDocument()
     unmount()
     render(<KpiRow kpis={[{ id: "final_value", label_ko: "최종 평가금액", value: 100, format: "usd", note_ko: "투입 원금 90 USD" }]} />)
     expect(screen.getByText("100.00 USD")).toBeInTheDocument()

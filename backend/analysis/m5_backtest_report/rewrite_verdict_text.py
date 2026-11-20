@@ -38,15 +38,16 @@ from backend.analysis.m5_backtest_report.report import (
     call_interpret,
     call_market,
     call_narrate,
+    ensure_contribution_sentence,
     ensure_drawdown_story,
     ensure_forward_text,
     ensure_hindsight,
+    ensure_modes_intro,
     ensure_request_followups,
     ensure_selection_changes,
     ensure_validation_text,
     facts_for_interpret,
     facts_for_narrate,
-    selection_change_gaps,
 )
 from backend.analysis.m5_backtest_report.report_check import check
 from backend.analysis.paths import output_root
@@ -74,11 +75,10 @@ def _ids(db: Path) -> list[str]:
 
 def _verdict_errors(doc: dict[str, Any], R: dict[str, Any], settings: AnalysisSettings) -> tuple[list[str], list[str]]:
     """덧씌우는 문단(종합 판단·비중 결정 설명)에서 난 오류·메모만 (다른 섹션은 저장된 글 그대로라 여기서 고칠 수 없다).
-    종목이 빠진 이유를 날짜·사유와 함께 쓰지 않았으면 그것도 다시 받을 오류로 본다 (2026-11-16)."""
+    2026-11-19: 종합 판단에 종목이 빠진 이유를 더는 쓰지 않으므로 그 누락 검사는 없앴다."""
     res = check(doc, R, settings)
-    texts = next((b["items"] for s in doc["sections"] if s["id"] == "verdict" for b in s["blocks"] if b.get("src") == "14b"), [])
     mine = ("verdict:", "construction:", "performance:", "market:")
-    return [e for e in res.errors if e.startswith(mine)] + selection_change_gaps(texts, R), [w for w in res.warnings if w.startswith(mine)]
+    return [e for e in res.errors if e.startswith(mine)], [w for w in res.warnings if w.startswith(mine)]
 
 
 def rewrite_one(report_id: str, *, db: Path, store: JsonStore, settings: AnalysisSettings, llm: Any, log=print) -> dict[str, Any]:
@@ -112,6 +112,8 @@ def rewrite_one(report_id: str, *, db: Path, store: JsonStore, settings: Analysi
             _drop_matched_suggestions(a, ("performance_ko", "risk_fit_ko", "validation_ko", "next_actions_ko"))
         ensure_drawdown_story(a, R, chosen)
         ensure_hindsight(a, R, chosen)
+        ensure_modes_intro(a, R, chosen)
+        ensure_contribution_sentence(a, R, chosen)
         ensure_request_followups(a, R)
         interp = split_grouped_in(a)
         system, user = load_prompts("14b_narrate", facts_json=json.dumps(facts_for_narrate(R, chosen, interp), ensure_ascii=False, indent=1, default=str),
@@ -126,10 +128,12 @@ def rewrite_one(report_id: str, *, db: Path, store: JsonStore, settings: Analysi
         errs, warns = _verdict_errors(trial, R, settings)
     if errs or "text_override" not in trial:
         return {"report_id": report_id, "status": "failed", "reason": "검사 오류: " + "; ".join(errs[:5]) if errs else "문서 모양이 달라 덧씌울 수 없음"}
-    T.save(store, report_id, {"created_at": dt.datetime.now().isoformat(timespec="seconds"), "chosen_portfolio_id": chosen, "tries": tries,
+    prev = store.read(T.rel(report_id), None)  # 다른 옵션으로 덮어 둔 글(조건별 근거 보기 등)은 그대로 두고 이 함수가 쓰는 항목만 바꾼다 (2026-11-19)
+    keep = {k: v for k, v in (prev if isinstance(prev, dict) else {}).items() if k in ("validation_ko", "validation_tables", "validation_updated_at", "validation_check_warnings")}
+    T.save(store, report_id, {**keep, "created_at": dt.datetime.now().isoformat(timespec="seconds"), "chosen_portfolio_id": chosen, "tries": tries,
                               "limitations": B.limitation_items(R),  # 「확인한 한계」 (코드로 만든 글)
                               "summary_patch": C.summary_patch(R, chosen), "assumptions_ko": narr.get("assumptions_ko") or [], "reconsideration_ko": narr.get("reconsideration_ko") or [],
-                              "next_actions_ko": interp.get("next_actions_ko") or [],  # 7. 주의 사항과 전제 (2026-11-16)
+                              "next_actions_ko": interp.get("next_actions_ko") or [], "next_action_titles_ko": interp.get("next_action_titles_ko") or [],  # 7. 주의 사항과 전제 (2026-11-16)
                               "overview_ko": narr["overview_ko"], "risk_fit_ko": interp["risk_fit_ko"], "construction_ko": narr.get("construction_ko") or [], "performance_ko": interp.get("performance_ko") or [], "forward_ko": narr.get("forward_ko") or [], "market_ko": market.get("market_ko") or [], "check_warnings": warns,
                               # 다시 쓰기 전 글 (비교·되돌리기용 기록 — 화면은 원본 DB 문서를 쓰므로 파일을 지우면 원래 글)
                               "original": {"overview_ko": next(b["items"] for s in doc["sections"] if s["id"] == "verdict" for b in s["blocks"] if b.get("src") == "14b"),
@@ -207,7 +211,7 @@ def rewrite_section7(report_id: str, *, db: Path, store: JsonStore, settings: An
         return {"report_id": report_id, "status": "failed", "reason": f"{type(e).__name__}: {str(e)[:300]}"}
 
     def part() -> dict[str, Any]:
-        return {"assumptions_ko": narr.get("assumptions_ko") or [], "reconsideration_ko": narr.get("reconsideration_ko") or [], "next_actions_ko": interp.get("next_actions_ko") or []}
+        return {"assumptions_ko": narr.get("assumptions_ko") or [], "reconsideration_ko": narr.get("reconsideration_ko") or [], "next_actions_ko": interp.get("next_actions_ko") or [], "next_action_titles_ko": interp.get("next_action_titles_ko") or []}
 
     errs, warns = _s7_errors(T.apply(base, {**code_part, **part()}), R, settings)
     tries = 1
@@ -236,6 +240,54 @@ def rewrite_section7(report_id: str, *, db: Path, store: JsonStore, settings: An
     T.save(store, report_id, {**prev, **code_part, **part(), "created_at": prev.get("created_at") or dt.datetime.now().isoformat(timespec="seconds"),
                               "section7_updated_at": dt.datetime.now().isoformat(timespec="seconds"), "section7_tries": tries, "section7_check_warnings": warns, "original": original})  # fmt: skip
     return {"report_id": report_id, "status": "saved", "tries": tries, "warnings": warns}
+
+
+def _verdict_texts(doc: dict[str, Any], prev: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """지금 화면에 보이는 「선택 근거 자세히 보기」 두 문단 묶음 (덧씌운 글이 있으면 그것, 없으면 저장된 문서)."""
+    sec = next((s for s in doc["sections"] if s["id"] == "verdict"), {"blocks": []})
+    b14 = next((b["items"] for b in sec["blocks"] if b.get("type") == "paragraphs" and b.get("src") == "14b"), [])
+    a14 = next((b["items"] for b in sec["blocks"] if b.get("type") == "paragraphs" and b.get("src") == "14a"), [])
+    return list(prev.get("overview_ko") or b14), list(prev.get("risk_fit_ko") or a14)
+
+
+def _performance_texts(doc: dict[str, Any], prev: dict[str, Any]) -> list[str]:
+    """지금 화면에 보이는 「성과 해석」 문단 (덧씌운 글이 있으면 그것, 없으면 저장된 문서의 묶음 밖 14a 문단)."""
+    sec = next((s for s in doc["sections"] if s["id"] == "performance"), {"blocks": []})
+    p14 = next((b["items"] for b in sec["blocks"] if b.get("type") == "paragraphs" and b.get("src") == "14a" and not b.get("group_ko")), [])
+    return list(prev.get("performance_ko") or p14)
+
+
+def rewrite_verdict_trim(report_id: str, *, db: Path, store: JsonStore) -> dict[str, Any]:
+    """「선택 근거 자세히 보기」를 코드로만 다듬는다 (모델 호출 없음, 2026-11-19 사용자 요청):
+    빠진 종목·뽑히지 않은 종목·겹친 비중 문단을 빼고, 운용 방식 문단을 '리밸런싱에는 두 가지 방식이 있습니다' 로 시작하게. 나머지 글은 그대로."""
+    doc = _doc(db, report_id)
+    if doc is None:
+        return {"report_id": report_id, "status": "skipped", "reason": "결과 DB 에 리포트가 없음"}
+    rp = output_root() / report_id / "13_results.json"
+    if not rp.exists():
+        return {"report_id": report_id, "status": "skipped", "reason": "13_results.json 없음"}
+    R = json.loads(rp.read_text())
+    chosen = (doc.get("header") or {}).get("chosen_portfolio_id") or B.chosen_portfolio_id(R)[0]
+    prev = store.read(T.rel(report_id), None)
+    prev = prev if isinstance(prev, dict) else {}
+    ov, rf = _verdict_texts(doc, prev)
+    narr, interp = {"overview_ko": ov}, {"risk_fit_ko": rf, "performance_ko": _performance_texts(doc, prev)}
+    c1, c2 = ensure_selection_changes(narr, R), ensure_modes_intro(interp, R, chosen)
+    c3 = ensure_contribution_sentence(interp, R, chosen)  # 「성과 해석」 수익 기여 문장 (2026-11-19)
+    if not (c1 or c2 or c3):
+        return {"report_id": report_id, "status": "unchanged"}
+    original = prev.get("original") if isinstance(prev.get("original"), dict) else {}
+    if "overview_ko" not in original:
+        original = {**original, "overview_ko": ov, "risk_fit_ko": rf}
+    if c3 and "performance_ko" not in original:
+        original = {**original, "performance_ko": _performance_texts(doc, prev)}
+    prev.pop("report_id", None)
+    prev.pop("version", None)
+    T.save(store, report_id, {**prev, "overview_ko": narr["overview_ko"], "risk_fit_ko": interp["risk_fit_ko"], "original": original,
+                              **({"performance_ko": interp["performance_ko"]} if c3 else {}),
+                              "created_at": prev.get("created_at") or dt.datetime.now().isoformat(timespec="seconds"),
+                              "verdict_trimmed_at": dt.datetime.now().isoformat(timespec="seconds")})  # fmt: skip
+    return {"report_id": report_id, "status": "saved", "overview_paragraphs": f"{len(ov)} → {len(narr['overview_ko'])}", "modes_intro": c2, "contribution": c3}
 
 
 def rewrite_validation(report_id: str, *, db: Path, store: JsonStore, settings: AnalysisSettings, llm: Any, log=print) -> dict[str, Any]:
@@ -282,9 +334,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
     ap.add_argument("--limitations-only", action="store_true", help="「확인한 한계」 카드만 코드로 다시 만든다 (모델 호출 없음)")
     ap.add_argument("--code-only", action="store_true", help="코드로 만드는 7번 글(확인한 한계·중요한 주의 사항·참고)만 다시 만든다 (모델 호출 없음)")
+    ap.add_argument("--verdict-trim", action="store_true", help="선택 근거 자세히 보기를 코드로만 다듬는다 (빠진 종목·겹친 비중 문단 빼기, 운용 방식 첫머리)")
     ap.add_argument("--validation", action="store_true", help="4. 조건별 근거 보기만 다시 쓴다 (두 표는 코드, 문단은 모델)")
     ap.add_argument("--section7", action="store_true", help="7. 주의 사항과 전제만 다시 쓴다 (주의·한계는 코드, 전제·다음 조건은 모델)")
     a = ap.parse_args(argv)
+    if a.verdict_trim:
+        store = JsonStore()
+        res = [rewrite_verdict_trim(rid, db=a.db, store=store) for rid in (_ids(a.db) if a.all else a.ids)]
+        print(json.dumps(res, ensure_ascii=False, indent=1))
+        return 0
     if a.limitations_only or a.code_only:
         store = JsonStore()
         res = [rewrite_limitations(rid, db=a.db, store=store, with_cautions=a.code_only) for rid in (_ids(a.db) if a.all else a.ids)]

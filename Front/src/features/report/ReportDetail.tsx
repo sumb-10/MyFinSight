@@ -7,7 +7,7 @@ import type { EvidenceRecord, ReportDoc } from "../../api/types"
 import { useResource } from "../../state/useResource"
 import { Alert, Badge, Button, EmptyState, Loading, Menu } from "../../ui"
 import { citationNumbers } from "../../lib/citations"
-import { hideCodeIds, normalizeDoc } from "../../lib/reportNormalize"
+import { easyAsOfWords, hideCodeIds, normalizeDoc, stripStrayBold } from "../../lib/reportNormalize"
 import { markReportSeen } from "../../lib/seen"
 import { CitationContext } from "./blocks/citationContext"
 import { StartPaperDialog } from "../paper/StartPaperDialog"
@@ -62,7 +62,7 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
     document.documentElement.classList.add("report-wide")
     return () => document.documentElement.classList.remove("report-wide")
   }, [])
-  const doc = useMemo(() => (res.data ? reorder(plainSummary(hideCodeIds(normalizeDoc(res.data)))) : null), [res.data])  // 화면 문장의 지표 ID 괄호와 요약의 내부 약어(BL 1 등)는 지운다
+  const doc = useMemo(() => (res.data ? reorder(plainSummary(easyAsOfWords(stripStrayBold(hideCodeIds(normalizeDoc(res.data)))))) : null), [res.data])  // 화면 문장의 지표 ID 괄호와 요약의 내부 약어(BL 1 등)는 지운다
   useEffect(() => {  // 열어 본 리포트는 사이드바 「새 리포트」 배지에서 뺀다 (이 브라우저의 확인 기록)
     if (!res.data) return
     for (const k of new Set([reportId, res.data.run_id, (res.data as { report_id?: string }).report_id].filter(Boolean) as string[])) markReportSeen(svc.mode, k)

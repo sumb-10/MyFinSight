@@ -10,9 +10,9 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from backend.analysis.common.citations import CITE_RE  # 인용 ID 정규식은 한 곳에서
 from backend.analysis.settings import AnalysisSettings
 
-from backend.analysis.common.citations import CITE_RE  # 인용 ID 정규식은 한 곳에서
 NUM_RE = re.compile(r"(?:\$\s?)?(-?[\d,]+(?:\.\d+)?)\s*(%p|%|USD|원|달러|일|개|회(?!계)|종목|배)?")  # 036: '2026 회계연도' 를 2026회로 셌다
 DEV_WORDS = ["샘플", "stub", "mock", "JSON", "파이프라인 내부"]
 
@@ -112,7 +112,13 @@ def _code_strings(R: dict[str, Any]) -> list[Any]:
 
 
 def paragraphs_src(doc: dict[str, Any]) -> list[tuple[str, str, str]]:
-    """(섹션 id, 문장, 출처) — paragraphs 블록과 cards 의 text_ko. 출처는 블록의 `src`(14a/14b/14c/code), 없으면 "code"."""
+    """(섹션 id, 문장, 출처) — paragraphs 블록과 cards 의 text_ko. 출처는 블록의 `src`(14a/14b/14c/code), 없으면 "code".
+    강조 표시(**)는 빼고 돌려준다 (2026-11-19: 본문에 굵은 글씨를 쓰기 시작 — 숫자·금지 표현 검사는 글자만 본다)."""
+    out = _raw_paragraphs_src(doc)
+    return [(sid, str(t).replace("**", ""), src) for sid, t, src in out]
+
+
+def _raw_paragraphs_src(doc: dict[str, Any]) -> list[tuple[str, str, str]]:
     out = []
     for sec in doc["sections"]:
         for b in sec["blocks"]:

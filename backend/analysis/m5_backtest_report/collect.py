@@ -133,6 +133,9 @@ def build_results(
     # 시작일 재선정을 하지 않았으면(대화에서 '지금 목록으로 과거를 평가') 시작일 표의 지표·순위·인용은 분석 기준일 값의 복사본이다 → 시작일 값처럼 보이지 않게 비운다
     # (054: 2022-09-26 칸에 2025-09-24 PER·순위·인용이 그대로 있어 서술이 '두 날짜의 PER 이 같다' 고 썼다)
     reselected = spec["selection"].get("source") != "original"
+    # 2026-11-19 사용자 결정: 백테스트 시작일에 고른 종목을 분석 기준일까지 유지 (분석 기준일 구성은 백테스트에서 꺼냄, 10f derived_from_backtest).
+    # 이때 sel.selected 는 시작일 종목이고(stages.st_results), 분석 기준일 순위·지표는 없다 → 표의 '분석 기준일' 칸은 비우고 시작일 순위·지표만 둔다
+    fixed = bool((forward or {}).get("derived_from_backtest")) and reselected
     asc = sel["summary"].get("direction") == "asc"
 
     forced_now = {s["ticker"] for s in sel["selected"] if s.get("forced")}
@@ -150,8 +153,9 @@ def build_results(
                       "sector": g.sector.name if g else "", "sub_industry": g.sub_industry.name if g else "",
                       "summary": e.get("intro", ""), "summary_source": e.get("intro_source"),
                       "themes": r.get("themes", []), "theme_confidence": r.get("confidence"), "theme_reason_ko": r.get("reason_ko"),
-                      "in_selection_now": t in rank_now, "rank_now": mr_now.get(t), "forced": t in forced_now, "metric_now": rank_now.get(t, {}).get("metric_value"),
-                      "metric_fact_id": rank_now.get(t, {}).get("metric_fact_id"),
+                      "in_selection_now": t in rank_now, "rank_now": None if fixed else mr_now.get(t), "forced": t in forced_now,
+                      "metric_now": None if fixed else rank_now.get(t, {}).get("metric_value"),
+                      "metric_fact_id": None if fixed else rank_now.get(t, {}).get("metric_fact_id"),
                       "in_backtest": t in rank_bt, "rank_backtest": mr_bt.get(t) if reselected else None,
                       "metric_backtest": rank_bt.get(t, {}).get("metric_value") if reselected else None,
                       "metric_backtest_fact_id": rank_bt.get(t, {}).get("metric_fact_id") if reselected else None})  # fmt: skip
@@ -269,11 +273,15 @@ def build_results(
         {"stage": "selected_now", "label_ko": f"최종 선정 ({sel['summary']['as_of']}"
                                               + (", 섹터 분산으로 순위 일부 조정" if any(r.get("reason") in ("sector_preference", "sector_preference_lower") for r in sel.get("rejected") or []) else "") + ")",
          "count": sel["summary"]["n_selected"]},  # fmt: skip
-        {"stage": "selected_backtest", "label_ko": (f"백테스트 시작일에 다시 고른 종목 ({spec['period']['as_of']}" + (", 넓은 테마라 그날 후보 전체에서" if not tag.get("theme_filter_applied", True) else "") + ")" if reselected
+        {"stage": "selected_backtest", "label_ko": (f"백테스트 시작일에 고른 종목 ({spec['period']['as_of']}" + (", 넓은 테마라 그날 후보 전체에서" if not tag.get("theme_filter_applied", True) else "")
+                                                     + (", 분석 기준일까지 그대로 유지" if fixed else "") + ")" if fixed
+                                                     else f"백테스트 시작일에 다시 고른 종목 ({spec['period']['as_of']}" + (", 넓은 테마라 그날 후보 전체에서" if not tag.get("theme_filter_applied", True) else "") + ")" if reselected
                                                      else f"백테스트에 쓴 목록 ({spec['period']['as_of']}부터, 지금 목록 그대로 · 시작일에 다시 고르지 않음)"),
          "count": len(spec["selection"]["tickers"])},  # fmt: skip
     ]  # fmt: skip
-    selection = {"funnel": funnel, "metric": sel["summary"]["metric"], "direction": sel["summary"]["direction"], "candidates_summary": cand["stats"],
+    if fixed:  # 담는 종목은 시작일에 고른 목록 하나 — 분석 기준일 선정 줄은 두지 않는다 (2026-11-19)
+        funnel = [x for x in funnel if x.get("stage") != "selected_now"]
+    selection = {"funnel": funnel, "holdings_fixed": fixed, "metric": sel["summary"]["metric"], "direction": sel["summary"]["direction"], "candidates_summary": cand["stats"],
                  "backtest_reselected": reselected,
                  "candidates_filtered": filtered_summary,
                  "excluded_by_theme": ex_theme,
@@ -284,7 +292,9 @@ def build_results(
                                "warnings": sel["warnings"], "infeasibility": sel.get("infeasibility"), "sector_overflow": sel["summary"].get("sector_overflow")},
                  "explained": expl,
                  "backtest_as_of": {"as_of": spec["period"]["as_of"], "source": spec["selection"]["source"], "table": spec["selection"]["table"],
-                                    "diff_vs_original": spec["selection"]["diff_vs_original"], "removed_reasons_ko": removed_ko, "backtest_only_reasons_ko": bt_only_ko,
+                                    # 시작일 종목을 유지하면(fixed) 분석 기준일 목록과의 차이는 쓰지 않는다 — 담는 목록이 하나 (2026-11-19)
+                                    "diff_vs_original": ({"added": [], "removed": [], "removed_reasons": {}} if fixed else spec["selection"]["diff_vs_original"]),
+                                    "removed_reasons_ko": [] if fixed else removed_ko, "backtest_only_reasons_ko": [] if fixed else bt_only_ko,
                                     "infeasibility": spec["selection"].get("infeasibility"),
                                     "sector_overflow": spec["selection"].get("sector_overflow")},
                  "table": table}  # fmt: skip

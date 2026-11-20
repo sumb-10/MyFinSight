@@ -121,7 +121,9 @@ def apply(doc: dict[str, Any], ov: dict[str, Any] | None) -> dict[str, Any]:
         as14["items"] = ov_as + (_texts(ov.get("reconsideration_ko")) or [])
         secs.append("assumptions")
     if (ov_n := _texts(ov.get("next_actions_ko"))) and (nx := _cards_block(out, "assumptions", "다음에 검토할 수 있는 선택지")) is not None:
-        nx["items"] = [{"title_ko": f"선택지 {i + 1}", "text_ko": t, "meta": []} for i, t in enumerate(ov_n)]
+        tl = [str(t).strip() for t in ov.get("next_action_titles_ko") or []]
+        ok = len(tl) == len(ov_n) and all(tl)
+        nx["items"] = [{"title_ko": tl[i] if ok else f"선택지 {i + 1}", "text_ko": t, "meta": []} for i, t in enumerate(ov_n)]  # 조건의 뜻을 담은 제목 (2026-11-19)
         if isinstance(out.get("summary"), dict):
             out["summary"]["next_actions_ko"] = ov_n
         secs.append("next_actions")

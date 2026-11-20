@@ -75,9 +75,9 @@ export function keyAlerts(sm: ReportSummary): KeyAlert[] {
 export function AlertList({ items, label = "중요한 주의 사항" }: { items: KeyAlert[]; label?: string }) {
   if (!items.length) return null
   return (
-    <ul aria-label={label} className="space-y-2">
+    <ul aria-label={label} className="space-y-3.5">{/* 항목 사이를 넓게 (2026-11-19 사용자 요청: 글이 많아 덜 직관적) */}
       {/* 표시(주의·미충족 등) 아래에 문장 — 「참고」 상자와 같은 위→아래 배치 (2026-11-14 사용자 요청). 상자는 테두리 없는 알림 스타일 (2026-11-18 main) */}
-      {items.map((a, i) => <li key={i} className={`flex flex-col items-start gap-1.5 rounded-control px-3 py-2.5 text-sm leading-6 ${TONE_BOX[a.tone]}`}><StatusPill tone={a.tone}>{a.tag}</StatusPill><span className="min-w-0 break-words"><CitedText text={a.text} /></span></li>)}
+      {items.map((a, i) => <li key={i} className={`flex flex-col items-start gap-2 rounded-control px-4 py-3.5 text-sm leading-6 ${TONE_BOX[a.tone]}`}><StatusPill tone={a.tone}>{a.tag}</StatusPill><span className="min-w-0 break-words"><CitedText text={a.text} /></span></li>)}
     </ul>
   )
 }
@@ -169,8 +169,8 @@ export function AllocationCard({ a, doc, onMore }: { a: NonNullable<ReportSummar
           막대는 가장 큰 비중을 꽉 찬 길이로 둔 하나의 기준이라 종목끼리 비율이 그대로 보인다. 비중(%)은 이름 바로 옆, 금액만 오른쪽 끝. */}
       <div>
         {/* 카드가 좁으면(48rem 미만, 모바일 등) 한 종목을 두 줄로: 이름 … 금액 / 비중·막대 … 주식 수. 넓으면 한 줄 표 */}
-        <div aria-hidden className="flex justify-between border-b border-slate-200 pb-2 text-xs font-semibold text-slate-500 @3xl:hidden"><span>종목 · 비중</span><span>{ex ? "목표 배분액 · 주식 수" : "목표 배분액"}</span></div>
-        <div aria-hidden className={`hidden ${grid} border-b border-slate-200 pb-2 text-xs font-semibold text-slate-500`}><span>종목</span><span className="text-right">비중</span><span /><span className="text-right">목표 배분액</span>{ex && <span className="inline-flex items-center justify-end">주식 수<MockTag /></span>}</div>
+        <div aria-hidden className="flex justify-between border-b border-slate-200 pb-2 text-xs font-semibold text-slate-500 @3xl:hidden"><span>종목 · 투자 비중</span><span>{ex ? "목표 배분액 · 주식 수" : "목표 배분액"}</span></div>
+        <div aria-hidden className={`hidden ${grid} border-b border-slate-200 pb-2 text-xs font-semibold text-slate-500`}><span>종목</span><span className="text-right">투자 비중</span><span /><span className="text-right">목표 배분액</span>{ex && <span className="inline-flex items-center justify-end">주식 수<MockTag /></span>}</div>
         <ul aria-label="종목별 목표 배분액" className={`${grid} divide-y divide-slate-100`}>
           {shown.map((x) => (
             <AllocRow key={x.ticker} color={holdingColor(x.ticker, order)} weight={x.weight} max={maxW} shares={ex ? sharesText(shares.get(x.ticker)) : undefined}
@@ -586,7 +586,7 @@ export function NewsEffect({ n }: { n: NonNullable<ReportSummary["news_effect"]>
       <p className="mt-3 text-sm text-slate-800"><b>{retKo} 차이</b> <span className="text-base font-bold tabular-nums">{n.diff_cagr == null ? "–" : fmt(n.diff_cagr, "pp")}</span> <span className="text-xs text-slate-500">(뉴스 반영 − 기준 비중)</span></p>
       <Disclosure size="sm" className="mt-3" title="뉴스 분석 자세히 보기">
         <dl className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
-          <div><dt className="flex items-center gap-1 text-slate-500">투자 의견 적중률 (다음 리밸런싱까지)<Term t="투자 의견(뷰)" /></dt><dd className="mt-0.5 text-base font-semibold tabular-nums">{n.hit_next_rb == null ? "–" : fmt(n.hit_next_rb, "pct1")}</dd><dd className="text-[11px] text-slate-500">투자 의견으로 비중을 바꾼 기간 안에서</dd></div>
+          <div><dt className="flex items-center gap-1 text-slate-500">투자 의견 적중률 (다음 리밸런싱까지)<Term t="투자 의견(뷰)" /></dt><dd className="mt-0.5 text-base font-semibold tabular-nums">{n.hit_next_rb == null ? "–" : fmt(n.hit_next_rb, "pct1")}</dd><dd className="text-[11px] text-slate-500">투자 의견으로 포트폴리오 비중을 바꾼 기간 안에서</dd></div>
           <div><dt className="text-slate-500">투자 의견 적중률 (12개월)</dt><dd className="mt-0.5 text-base font-semibold tabular-nums">{n.hit_365 == null ? "–" : fmt(n.hit_365, "pct1")}</dd><dd className="text-[11px] text-slate-500">구성 뒤 12개월 기준</dd></div>
           <div><dt className="text-slate-500">투자 의견 수</dt><dd className="mt-0.5 text-base font-semibold tabular-nums">{n.n_views ?? 0}개</dd></div>
           <div><dt className="text-slate-500">리밸런싱 중 뉴스 적용</dt><dd className="mt-0.5 text-base font-semibold tabular-nums">{n.n_rebalances ?? 0}회 중 {n.n_dates ?? 0}회</dd><dd className="text-[11px] text-slate-500">근거가 부족해 기준 비중을 유지한 횟수 {n.n_fallback ?? 0}회</dd></div>
@@ -656,7 +656,7 @@ export function KpiTable({ kpis, doc }: { kpis: SummaryKpi[]; doc?: ReportDoc })
             const exHere = foldEx && k === ret ? ex! : null
             const empty = k.value == null && !won && !!note  // 값이 없으면 「–」 대신 서버 이유 문장(예: 이 포트폴리오에는 뷰가 없습니다)을 칸에 그대로
             const benchKrw = won && fx && k.benchmark_value != null ? Math.round(k.benchmark_value * fx) : null
-            const help = [KPI_HELP[k.id], n.sub, note && !principal && !empty ? note : principal ? won!.rest : null, exHere ? `${KPI_HELP.excess}${exHere.note_ko ? ` (${exHere.note_ko})` : ""}` : null, benchKrw != null ? `비교지수 원화 금액은 분석 기준일 환율(1 USD = ${fx!.toLocaleString("en-US", { maximumFractionDigits: 2 })}원)로 환산한 값입니다.` : null].filter(Boolean)
+            const help = [KPI_HELP[k.id], n.sub, note && !principal && !empty ? note : principal ? won!.rest : null, exHere ? `${KPI_HELP.excess}${exHere.note_ko ? ` (${exHere.note_ko})` : ""}` : null, benchKrw != null ? `비교지수 원화 금액은 분석한 날의 환율(1 USD = ${fx!.toLocaleString("en-US", { maximumFractionDigits: 2 })}원)로 환산한 값입니다.` : null].filter(Boolean)
             return (
               <tr key={k.id} className={`grid align-top sm:table-row ${hasBench ? "grid-cols-2" : "grid-cols-1"}`}>
                 <th scope="row" className={`px-4 pb-1 pt-3 text-left font-medium text-slate-800 sm:table-cell sm:pb-3 ${hasBench ? "col-span-2" : ""}`}>
@@ -692,7 +692,7 @@ export function KpiRow({ kpis, doc }: { kpis: SummaryKpi[]; doc?: ReportDoc }) {
             <div className="flex items-center gap-1 text-xs font-semibold text-slate-600"><span className="min-w-0">{n.name}</span>{(proposed(doc)?.structured?.kpi_meta?.[k.id] || (k.id === "final_value" && fv)) && <MockTag />}{t ? <Term t={t} label={n.name} /> : KPI_HELP[k.id] && <HelpTip label={n.name}>{KPI_HELP[k.id]}</HelpTip>}</div>
             {n.sub && <div className="text-xs text-slate-500">{n.sub}</div>}
             <div className="mt-1 break-words text-xl font-semibold tabular-nums text-slate-900">{won ? `약 ${money(won.krw, "KRW")}` : fmt(k.value, k.format)}</div>
-            {won && <div className="mt-1 text-xs tabular-nums text-slate-500">{fmt(k.value, k.format)} · 분석 기준일 환율 기준</div>}
+            {won && <div className="mt-1 text-xs tabular-nums text-slate-500">{fmt(k.value, k.format)} · 분석한 날의 환율 기준</div>}
             {k.benchmark_value !== undefined && k.benchmark_value !== null && <div className="mt-1 text-xs text-slate-500">{k.benchmark_label_ko ?? "비교지수"} {fmt(k.benchmark_value, k.format)}</div>}
             {(won ? won.rest : k.note_ko) && <div className="mt-1 text-[13px] leading-5 text-slate-600">{won ? won.rest : kpiNote(k.note_ko, doc)}</div>}
           </div>

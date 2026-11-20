@@ -32,13 +32,21 @@ describe("소제목 줄 (「선택 근거 자세히 보기」 종목 변경 문�
   })
 })
 
-describe("비중 결정 설명 정리 (2026-11-16)", () => {
+describe("포트폴리오 비중 결정 설명 정리 (2026-11-16)", () => {
   it("'(뷰 없음, 재배분)'·'(그날 뷰 없음, 재배분)' 은 화면에서 새 이름으로, 저장된 글은 그대로 읽는다", async () => {
     const { relabelNoView } = await import("./blocks")
-    expect(relabelNoView("NOW +0.2%p (뷰 없음, 재배분), MU (그날 뷰 없음, 재배분)")).toBe("NOW +0.2%p (다른 종목 조정에 따른 비중 변화), MU (다른 종목 조정에 따른 비중 변화)")
+    expect(relabelNoView("NOW +0.2%p (뷰 없음, 재배분), MU (그날 뷰 없음, 재배분)")).toBe("NOW +0.2%p (다른 종목 조정에 따른 포트폴리오 비중 변화), MU (다른 종목 조정에 따른 포트폴리오 비중 변화)")
   })
   it("tight 문단은 줄 앞 공백·탭과 연속 공백을 하나로 (같은 왼쪽 기준선), 줄바꿈은 그대로", async () => {
     const { tidySpaces } = await import("./blocks")
     expect(tidySpaces("첫 줄입니다.\n\t  둘째 줄   입니다.  ")).toBe("첫 줄입니다.\n둘째 줄 입니다.")
+  })
+})
+
+describe("굵은 글씨 (2026-11-19)", () => {
+  it("**강조** 는 굵게, 짝이 없는 ** 는 지우고, 출처 번호와 함께 써도 된다", () => {
+    const { container } = render(<p><CitedText text="**최소분산 전략**을 골랐습니다 [calc:x]. 최대낙폭은 **23.2%**였습니다. 남은 ** 표시" /></p>)
+    expect([...container.querySelectorAll("strong")].map((e) => e.textContent)).toEqual(["최소분산 전략", "23.2%"])
+    expect(container.textContent).not.toContain("**")
   })
 })

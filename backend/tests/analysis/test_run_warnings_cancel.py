@@ -263,7 +263,8 @@ def test_wait_cancellable_for_long_blocking_calls():
 
 
 def test_portfolio_construct_stage_stops_soon_after_cancel(monkeypatch):
-    """10f·10·10w 의 construct(뉴스 조회 DB·LLM 뷰·최적화)를 기다리는 중에도 취소면 바로 멈춘다."""
+    """10·10w 의 construct(뉴스 조회 DB·LLM 뷰·최적화)를 기다리는 중에도 취소면 바로 멈춘다.
+    2026-11-19: 10f(분석 기준일 구성)는 백테스트에서 비중을 꺼내 construct 를 부르지 않는다 → 시작일 구성(10)으로 확인한다."""
     from backend.analysis.executor import stages as S
 
     finished = threading.Event()
@@ -274,12 +275,13 @@ def test_portfolio_construct_stage_stops_soon_after_cancel(monkeypatch):
 
     monkeypatch.setattr(S, "construct", slow_construct)
     flag = threading.Event()
-    ctx = SimpleNamespace(out=lambda k: {"selected": [{"ticker": "MU"}]} if k == "05_selection" else {}, request={"derived": {"as_of": "2026-11-06"}},
+    spec = {"period": {"as_of": "2026-11-06"}, "selection": {"tickers": ["MU"]}}
+    ctx = SimpleNamespace(out=lambda k: spec if k == "07_backtest_spec" else {}, request={"derived": {"as_of": "2026-11-06"}}, outputs={},
                           md=SimpleNamespace(view=lambda d: None), settings=None, llm=None, desc=None, cancel_check=flag.is_set)  # fmt: skip
     threading.Timer(0.2, flag.set).start()
     t0 = time.monotonic()
     with pytest.raises(CancelRequested):
-        S.st_forward(ctx)  # type: ignore[arg-type]
+        S.st_targets(ctx)  # type: ignore[arg-type]
     assert time.monotonic() - t0 < 0.8 and not finished.is_set()
 
 

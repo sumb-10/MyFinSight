@@ -276,6 +276,8 @@ LOOKAHEAD_KO = "분석 기준일 선정 목록을 과거에도 그대로 썼습�
 
 
 def diff_table(R):
+    if R["selection"].get("holdings_fixed"):  # 2026-11-19: 시작일 종목을 분석 기준일까지 유지 — 두 목록의 차이 표는 두지 않는다
+        return None
     d = R["selection"]["backtest_as_of"]["diff_vs_original"]
     if R["selection"].get("backtest_reselected") is False:  # 재선정을 하지 않았다 — '같은 규칙을 다시 적용' 메모는 거짓 (054)
         return table("백테스트에 쓴 종목 목록", [("k", "구분", "text"), ("v", "종목", "text")],
@@ -567,7 +569,7 @@ def view_table(R, chosen):
 
 def validation_tables(R, chosen):
     """「조건별 근거 보기」의 두 표 (2026-11-16 사용자 요청: 초보 투자자가 읽기 쉽게).
-    1) 선택 전략의 조건별 결과: 점검 항목 / 기준과 측정값 / 결과 (규칙 번호는 행 자료 rule 에만, 수준 열 없음, 참고 → 판정 보류·측정 결과)
+    1) 선택 전략의 조건별 결과: 점검 항목 / 기준과 측정값 / 결과 (규칙 번호는 행 자료 rule 에만, 수준 열 없음, 참고 → 판정 보류·참고(판정 없음))
     2) 전략별 점검 결과: 전략 / 결과 / 이유 (주의·미통과는 실제 이유, 통과는 최종 선택 여부와 이유)"""
     from backend.analysis.m5_backtest_report import validation_text as VT
 
@@ -780,8 +782,8 @@ def invested_gap_note(R, chosen: str) -> str | None:
         return None
 
     # 쉬운 말로: 무엇을·언제·무엇과 비교했고 왜 알아야 하는지 (2026-11-16 사용자 요청)
-    return (f"백테스트는 투자금의 {bt_inv:.0%}만 주식에 넣고 {1 - bt_inv:.0%}를 현금으로 둔 채 시작해, 최대낙폭과 변동성이 그 현금만큼 낮게 나왔습니다. "
-            f"{_now_label(R)} 추천 구성은 투자금의 {now_inv:.0%}를 주식에 넣어, 같은 흐름이라면 손실 폭이 백테스트보다 클 수 있습니다")
+    return (f"백테스트는 투자금의 {bt_inv:.0%}만 주식에 넣고 {1 - bt_inv:.0%}를 현금으로 둔 채 시작해서, 최대낙폭과 변동성이 그 현금만큼 낮게 나왔습니다. "
+            f"반면 {_now_label(R)} 추천 구성은 주식 투자 비중이 **{now_inv:.0%}**라, 같은 흐름이라면 **손실 폭이 백테스트보다 클 수 있습니다**.")
 
 
 def current_ex_ante_vol(R, chosen: str) -> float | None:
@@ -824,9 +826,10 @@ def risk_gap_note(R, chosen: str) -> str | None:
 
     per = (R.get("backtest") or {}).get("period") or {}
     span = f"{_d(per.get('start'))}부터 {_d(per.get('end'))}까지 " if per.get("start") and per.get("end") else ""
-    return (f"{_now_label(R)} 추천 구성을 최근 주가 기록으로 추정한 변동성(1년 기준)은 {now:.1%}로, "
+    return (f"{_now_label(R)} 추천 구성을 최근 주가 기록으로 추정한 변동성(1년 기준)은 **{now:.1%}**로, "
             f"{span}백테스트에서 계산한 변동성 {float(bt):.1%}보다 크게 높습니다. "
-            "담은 종목이 달라져, 과거 최대낙폭과 변동성보다 실제 위험이 클 수 있습니다")
+            + ("최근 주가가 더 크게 움직였기 때문에" if holdings_rule(R, chosen).get("fixed") else "담은 종목이 달라졌기 때문에")
+            + ", 과거 최대낙폭과 변동성보다 **실제 위험이 클 수 있습니다**.")
 
 
 def holdings_gap_note(R, chosen: str) -> str | None:
@@ -864,7 +867,7 @@ def holdings_gap_note(R, chosen: str) -> str | None:
     # 백테스트 수익률이 무엇으로 계산한 결과인지. 예전 기준(전체·주식 부분)을 밝히는 이유는 그대로 (2026-11 평가 007·009·022)
     total = sum(w for t, w in now_w.items() if t in held_bt)
     now_k = _now_label(R)
-    s = f"{now_k} 추천 구성에서는 투자금의 약 {total:.0%}를 백테스트에도 담았던 종목에 배정합니다"
+    s = f"{now_k} 추천 구성에서는 투자금의 약 **{total:.0%}**를 백테스트에도 담았던 종목에 배정합니다"
     s += (f"(주식에 배정한 금액 중에서는 {share:.0%})." if f"{total:.0%}" != f"{share:.0%}" else ".")
     def each(xs: list[tuple[str, float]], josa: str) -> str:
         """'13.5%p를 보탠 Astera Labs, Inc.와 8.4%p를 보탠 Nebius Group N.V.는' — 이름에 쉼표가 있어도 종목마다 숫자가 붙어 헷갈리지 않게."""
@@ -875,18 +878,19 @@ def holdings_gap_note(R, chosen: str) -> str | None:
         return ", ".join(head[:-1] + [_josa(head[-1], "과와")]) + " " + _josa(parts[-1], josa)
 
     if absent:  # '없음' 과 '2% 미만' 을 나눠 쓴다 (072)
-        s += f" 과거 수익률에 {each(absent, '은는')} 이번 추천 구성에서 빠졌습니다."
+        s += f" 하지만 과거 수익률에 {each(absent, '은는')} 이번 추천 구성에서 빠졌습니다."
     if tiny:
-        s += (f" 과거 수익률에 {each(tiny, '은는')} 이번 추천 구성에서 비중이 "
+        s += (f" {'또한' if absent else '하지만'} 과거 수익률에 {each(tiny, '은는')} 이번 추천 구성에서 포트폴리오 비중이 "
               + ", ".join(f"{now_w[t]:.1%}" for t, _ in tiny) + ("로" if len(tiny) == 1 else "로 각각") + " 2%에 못 미칩니다.")
         kept = [(t, v) for t, v in contrib if (t, v) not in gone]
         if kept:  # 수익을 가장 많이 낸 종목이 지금도 있으면 함께 (001)
             s += f" 과거 수익률에 가장 많이 보탠 {', '.join(names.get(t, t) for t, _ in kept)} 종목은 이번 구성에도 {', '.join(f'{now_w[t]:.0%}' for t, _ in kept)} 들어 있습니다."
     if away >= 0.5:
-        s += f" 백테스트에서 수익에 플러스로 기여한 종목들의 기여분 중 {away:.0%}는 이번 추천 구성에 없거나 비중이 2% 미만인 종목이 냈습니다."
+        s += f" 즉 백테스트에서 수익에 플러스로 기여한 종목들의 기여분 중 {away:.0%}는 이번 추천 구성에 없거나 포트폴리오 비중이 2% 미만인 종목이 냈습니다."
     tr = ((p.get("metrics") or {}).get("return") or {}).get("total_return")
-    s += (f" 백테스트 수익률 {float(tr):.1%}는 당시 종목과 비중으로 계산한 결과입니다." if tr is not None else " 백테스트 수익률은 당시 종목과 비중으로 계산한 결과입니다.")
-    return s + " 이번 구성은 담은 종목과 비중이 달라 투자 결과도 달라질 수 있습니다"
+    # 2026-11-19: 간결하게 — 백테스트 수익률이 무엇으로 계산한 값인지와 그 뜻을 한 문장으로
+    return s + (f" 그래서 이번 구성의 투자 결과는 당시 종목으로 계산한 백테스트 수익률 {float(tr):.1%}와 **달라질 수 있습니다**." if tr is not None
+                else " 그래서 이번 구성의 투자 결과는 당시 종목으로 계산한 백테스트 결과와 **달라질 수 있습니다**.")
 
 
 def condition_check(R, chosen: str) -> dict[str, Any]:
@@ -944,6 +948,21 @@ JUDGEMENTS_NOTE_KO = ("judgements 는 검증 결과 그대로의 판정입니다
                       "no_criterion = 이 조건에는 기준을 두지 않음(예: 적극 성향은 변동성 상한 없음). "
                       "target_return_met·target_gap_pp 는 목표 수익률을 판정한 경우에만 값이 있습니다")
 ANNUALIZED_NOTE_KO = "백테스트 수익률을 1년 기준으로 환산한 값입니다. 평가 기간이 짧아 목표 달성 여부의 판정에 쓰지 않았습니다"
+# 「선택 근거 자세히 보기」의 운용 방식 문단 첫머리: 리밸런싱에 두 방식이 있다는 말부터 (2026-11-19 사용자 요청: 방식 설명이 갑자기 튀어나왔다)
+MODES_INTRO_KO = ("리밸런싱(포트폴리오 비중을 다시 맞추는 일)에는 두 가지 방식이 있습니다. "
+                  "하나는 **시작일 비중으로 되돌리는 방식**으로, 포트폴리오 비중을 조정하는 날마다 백테스트 시작일에 정한 투자 비율로 다시 맞춥니다. "
+                  "다른 하나는 **워크포워드(walk-forward) 방식**으로, 같은 종목을 담되 포트폴리오 비중을 조정하는 날마다 그때까지의 자료로 투자 비율을 새로 계산합니다.")
+
+
+def mode_twin_id(R, chosen: str) -> str | None:
+    """같은 비중 규칙을 다른 방식(정적 ↔ 워크포워드)으로 운용한 구성이 있으면 그 id."""
+    p = next((x for x in R["backtest"]["portfolios"] if x["id"] == chosen), None)
+    if p is None or p.get("kind") == "matched":
+        return None
+    twin_id = chosen[3:] if chosen.startswith("wf_") else f"wf_{chosen}"
+    return twin_id if any(x["id"] == twin_id for x in R["backtest"]["portfolios"]) else None
+
+
 STATIC_MODE_KO = "시작일 비중으로 되돌리는 방식: 비중을 조정하는 날마다 백테스트 시작일에 정한 투자 비율로 다시 맞춤"
 WF_MODE_KO = "워크포워드(walk-forward) 방식: 같은 종목을 담고, 비중을 조정하는 날마다 그때까지의 자료로 투자 비율을 새로 계산함"
 
@@ -1104,11 +1123,14 @@ def request_followups_ko(R) -> list[dict[str, Any]]:
     for g in stock_request_gaps(R):
         nm = g["names"]
         who = _josa(nm[0], "을를") if len(nm) == 1 else ", ".join(nm[:-2] + [_josa(nm[-2], "과와")]) + " " + _josa(nm[-1], "을를")
+        short = "·".join(nm)
         if g["kind"] == "drop_must":
             text = f"{who} 필수 포함 목록에서 빼고, 다른 종목과 같은 기준으로 다시 골라볼 수 있습니다. {_NEXT_TAIL}"
+            title = f"{short}를 필수 포함에서 빼고 다시 고르기"  # 카드 제목 (2026-11-19)
         else:
             text = f"{who} 투자 대상에서 제외하고, 나머지 후보에서 같은 기준으로 다시 골라볼 수 있습니다. {_NEXT_TAIL}"
-        out.append({**g, "text": text})
+            title = f"{short}를 투자 대상에서 빼고 다시 고르기"
+        out.append({**g, "text": text, "title": title})
     return out
 
 
@@ -1258,7 +1280,8 @@ def _risk_now_facts(R, chosen: str, p: dict[str, Any], tol: float, target: float
             return None if v is None else f"{float(v):.1%}"
 
         # 짧은 기간에는 기간 수익률과 최대낙폭으로 같은 지표끼리 비교한다 (2026-11-16: 연 환산 CAGR 만 넘겨 '19.2%' 를 썼고, 차이가 3%p 미만이면 아예 빠졌다)
-        out["same_rule_other_mode"] = {"id": twin_id, "label": pf_label(twin), "mode_ko": mode_ko(twin), "cagr": f"{float(th.get('cagr') or 0):.1%}",
+        out["same_rule_other_mode"] = {"modes_intro_ko": MODES_INTRO_KO,  # 문단 첫머리에 그대로 (2026-11-19)
+                                       "id": twin_id, "label": pf_label(twin), "mode_ko": mode_ko(twin), "cagr": f"{float(th.get('cagr') or 0):.1%}",
                                        "total_return": _tr(twin), "max_drawdown": f"{abs(float(th.get('max_drawdown') or 0)):.1%}", "cagr_vs_chosen_pp": round(diff, 1),
                                        "sharpe": _sharpe_pair(th.get("sharpe"), h.get("sharpe"))[0],
                                        "chosen_label": pf_label(p), "chosen_mode_ko": mode_ko(p), "chosen_total_return": _tr(p), "chosen_max_drawdown": f"{mdd:.1%}",
@@ -1351,8 +1374,33 @@ def hindsight_note(R, chosen: str) -> str | None:
     head = (f"{_date_ko(now_d)} 분석에 적용한 필수 포함 조건을 {_date_ko(bt_d)}에 시작한 백테스트에도 적용했습니다. " if now_d and bt_d
             else "이번 분석에 적용한 필수 포함 조건을 백테스트에도 적용했습니다. ")
     # 영문 이름 뒤 조사는 발음으로 갈려(Alphabet → 알파벳은) 틀리기 쉬워 '… 종목은' 으로 받는다
-    return (head + f"이 조건으로 담은 {', '.join(top)} 종목은 백테스트에서 수익에 플러스로 기여한 종목들의 기여분 중 {share:.0%}를 차지했습니다. "
-            "필수 포함 조건 없이 백테스트 시작일에 알 수 있었던 자료로 종목을 골랐다면, 담긴 종목과 수익률이 달라졌을 수 있습니다")
+    return (head + f"그 결과 이 조건으로 담은 {', '.join(top)} 종목이 백테스트에서 수익에 플러스로 기여한 종목들의 기여분 중 **{share:.0%}**를 차지했습니다. "
+            "따라서 필수 포함 조건 없이 백테스트 시작일에 알 수 있었던 자료로 종목을 골랐다면, 담긴 종목과 수익률이 **달라졌을 수 있습니다**")
+
+
+def holdings_rule(R, chosen: str) -> dict[str, Any]:
+    """분석 기준일 구성을 어떻게 정했는지 (2026-11-19 사용자 결정: 시작일 종목 유지 · 직전 리밸런싱 목표 비중). 10f 가 백테스트에서 꺼낸 리포트만 fixed=True.
+    text_ko 는 리포트 글이 그대로 옮기는 문장."""
+    from backend.analysis.m5_backtest_report.caution_text import _d
+
+    h = ((R["portfolio"].get("forward") or {}).get("holdings_now") or {}).get(chosen)
+    if not h:
+        return {"fixed": False}
+    sel = R.get("selection") or {}
+    start = str((sel.get("backtest_as_of") or {}).get("as_of") or R["backtest"]["period"].get("start"))[:10]
+    as_of = str((sel.get("as_of_now") or {}).get("as_of") or R["backtest"]["period"].get("end"))[:10]
+    rb = str(h.get("rebalance_date") or start)[:10]
+    if sel.get("backtest_reselected", True) is not False:
+        s = f"백테스트 시작일인 {_d(start)}에 고른 종목을 분석 기준일인 {_d(as_of)}까지 **그대로 유지**했습니다."
+    else:
+        s = f"분석 기준일인 {_d(as_of)}에 고른 종목 목록을 백테스트 시작일({_d(start)})부터 그대로 썼습니다."
+    if h.get("mode") == "static":
+        s += " 분석 기준일의 포트폴리오 비중은 리밸런싱 때마다 되돌리는 **백테스트 시작일의 목표 비중**입니다."
+    elif rb == as_of:
+        s += " 분석 기준일이 리밸런싱일이라, 그날 다시 계산한 **목표 비중**을 씁니다."
+    else:
+        s += f" 분석 기준일의 포트폴리오 비중은 직전 리밸런싱일인 **{_d(rb)}에 정한 목표 비중**입니다."
+    return {"fixed": True, "rebalance_date": rb, "mode": h.get("mode"), "text_ko": s}
 
 
 def current_composition(R, chosen: str) -> tuple[dict[str, float], float, str] | None:
@@ -1367,6 +1415,15 @@ def current_composition(R, chosen: str) -> tuple[dict[str, float], float, str] |
     (시작일 BL 세트 k 와 분석 기준일 세트 k 는 서로 다른 LLM 시나리오라 번호로 잇지 않는다.)
     """
     f = R["portfolio"].get("forward") or {}
+    hn = f.get("holdings_now") or {}
+    if chosen in hn:  # 2026-11-19: 백테스트에서 꺼낸 분석 기준일 비중(시작일 종목 유지 · 직전 리밸런싱 목표 비중) — 구성 id 그대로
+        h = hn[chosen]
+        try:
+            name = find(R, chosen).get("name_ko") or h.get("name_ko") or chosen
+        except StopIteration:
+            name = h.get("name_ko") or chosen
+        w = {t: float(x) for t, x in h["weights"].items()}
+        return w, max(0.0, 1 - sum(w.values())), name
     if not f or not (f.get("templates") or f.get("portfolios")):
         return None
     tmpl = {t["id"]: t for t in f.get("templates") or []}
@@ -1416,7 +1473,11 @@ def forward_blocks(R, chosen: str | None = None):
         return []
     blocks = []
     nw = f.get("news_window")
-    blocks.append({"type": "callout", "tone": "info", "title_ko": f"현재 구성 (분석 기준일 {f['as_of']})",
+    hr = holdings_rule(R, chosen) if chosen else {"fixed": False}
+    if hr.get("fixed"):  # 2026-11-19: 백테스트에서 꺼낸 구성 — 새로 만든 구성이 아니다
+        blocks.append({"type": "callout", "tone": "info", "title_ko": f"현재 구성 (분석 기준일 {f['as_of']})", "text_ko": hr["text_ko"].replace("**", "")})
+    else:
+        blocks.append({"type": "callout", "tone": "info", "title_ko": f"현재 구성 (분석 기준일 {f['as_of']})",
                    "text_ko": ((f"뉴스는 {' ~ '.join(shown_window(nw['window']))} 기사 {nw['n_articles']}건을 봤습니다(뉴스가 있는 종목 {nw['n_tickers_with_news']}개). " if nw else "")
                                # 위험회피 δ 는 뉴스 뷰 BL 에만 쓴다 — 규칙 4개만 만들었는데 δ 를 적었다 (070: 뉴스 끔)
                                + "분석 기준일까지의 주가 움직임(변동성·함께 움직인 정도)으로 비중 방식 4가지"
@@ -1582,7 +1643,7 @@ def _mcap_limitation(R) -> str:
     if "min_mcap_missing" in codes:
         s += " 그래도 시가총액을 알 수 없는 종목은 최소 시가총액 조건을 확인할 수 없어 후보에서 뺐습니다."
     if "market_cap_missing" in codes:
-        s += " 필수 포함이라 남긴 종목 중 시가총액을 알 수 없는 종목은 시가총액 비중 구성에서 실제 회사 크기보다 작은 비중을 받았습니다."
+        s += " 또한 필수 포함이라 남긴 종목 중 시가총액을 알 수 없는 종목은 시가총액비중 구성에서 실제 회사 크기보다 작은 포트폴리오 비중을 받았습니다."
     return s
 
 
@@ -1839,6 +1900,7 @@ def companies(R, chosen) -> dict[str, Any]:
     m = R["selection"]["metric"]
     return {"type": "companies", "title_ko": "선정 종목과 기업별 근거", "metric": m, "metric_ko": METRIC_SHORT_KO.get(m, m), "direction": R["selection"]["direction"],
             "as_of_now": R["selection"]["as_of_now"]["as_of"], "as_of_bt": R["selection"]["backtest_as_of"]["as_of"], "portfolio_id": chosen, "items": items,
+            "holdings_fixed": bool(R["selection"].get("holdings_fixed")),  # 2026-11-19: 시작일에 고른 종목을 분석 기준일까지 유지
             # 지표 없는 필수 포함 종목도 순위가 비어 있다 (036: COST 가 시작일에 담겼는데 '선정되지 않은 종목' 으로 읽혔다 — Q-120 부작용)
             "note_ko": f"{w_note} 순위는 꼭 담기로 한 종목을 뺀 나머지 안에서 선정 지표로 매긴 순위입니다. 비어 있으면 그날 뽑히지 않았거나 꼭 담기로 한 종목입니다."}  # fmt: skip
 

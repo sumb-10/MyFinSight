@@ -636,6 +636,7 @@ def test_collect_keeps_delta_floor_for_formula(e2e_results):
     assert "delta_base" in mm or mm.get("delta_source") != "market_implied"
     if mm.get("delta_source") == "market_implied":
         mm["delta_market"], mm["delta_base"] = 0.1965, 1.5
+        R["portfolio"]["targets"]["portfolios"] = [*R["portfolio"]["targets"]["portfolios"], {"id": "bl_x", "kind": "black_litterman"}]  # δ 는 BL 을 만든 리포트에만 (2026-11-19: 분석 기준일 BL 이 없어짐)
         txt = json_dumps(RB.parameters_table(R))
         assert "하한" in txt
 
@@ -1592,7 +1593,7 @@ def test_dashboard_notices_skip_the_period_note_sentence():
                      {"code": "weight_capacity", "message_ko": "현금 50% 원인", "level": "user"},
                      {"code": "must_include_not_in_universe", "message_ko": "필수 포함 X 없음", "level": "user"}]}  # fmt: skip
     # 2026-11-16: 기간 메모는 처음 투자하는 사람도 읽을 수 있는 문장으로 (원래 시작일 → 옮긴 날짜 · 이유)
-    assert "처음 정한 백테스트 시작일 2023년 10월 10일에는 조건에 맞는 종목이 1개뿐이라, 시작일을 5개월 뒤인 2024년 3월 5일로 옮겼습니다" in period_note(R)
+    assert "처음 정한 백테스트 시작일 2023년 10월 10일에는 조건에 맞는 종목이 1개뿐이라, 시작일을 5개월 뒤인 **2024년 3월 5일**로 옮겼습니다" in period_note(R)
     assert dashboard_notices(R) == ["필수 포함 X 없음", "시작일 2종목", "현금 50% 원인"]
 
 
