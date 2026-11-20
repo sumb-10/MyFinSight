@@ -67,15 +67,21 @@ function leftCardHeight(steps: TourStep[], w: number): number {
   return 156 + lines * 24
 }
 
-/** 설명 카드를 본문 왼쪽 빈 곳(사이드바 자리)에 고정한다. 강조 테두리만 단계마다 움직인다. 창이 좁아 공간이 없으면 null */
-function dockStyle(steps: TourStep[]): { side: "dock-left"; css: React.CSSProperties } | null {
+/** 설명 카드를 본문 왼쪽 빈 곳(사이드바 자리)에 고정한다. 강조 테두리만 단계마다 움직인다. 창이 좁아 공간이 없으면 null.
+ *  fitHeight: 실제로 그려 잰 카드 높이 (가장 긴 설명이 딱 들어가는 높이). 아직 못 쟀으면 글자 수로 어림한다 */
+function dockStyle(steps: TourStep[], fitHeight?: number | null): { side: "dock-left"; css: React.CSSProperties } | null {
   // 단계마다 크기·자리가 바뀌지 않게 대상이 아니라 본문 내용의 왼쪽 끝(강조 테두리 바깥 끝 = 내용 - PAD - 4px) 기준으로 잰다.
   // 화면 왼쪽 끝 ~ 그 끝 사이 빈 곳의 가운데에 두어 카드 좌우 여백을 같게 한다 (폭은 최대 300px)
   const wrap = document.querySelector<HTMLElement>("main > div")
   const contentLeft = wrap ? wrap.getBoundingClientRect().left + parseFloat(getComputedStyle(wrap).paddingLeft || "0") - PAD - 4 : 0
-  const w = Math.min(300, contentLeft - 16 * 2)  // 좌우 여백 16px씩
+  // 넓은 창에서 본문이 가운데로 모여 사이드바와 본문 사이에 빈 곳이 넉넉하면, 사이드바 오른쪽 끝 ~ 본문 왼쪽 끝 사이 정가운데에 둔다
+  const side = document.querySelector<HTMLElement>("aside")?.getBoundingClientRect().right ?? 0
+  const gapW = Math.min(300, contentLeft - side - 16 * 2)
+  const inGap = side > 0 && gapW >= LEFT_MIN_W
+  const from = inGap ? side : 0
+  const w = inGap ? gapW : Math.min(300, contentLeft - 16 * 2)  // 좌우 여백 16px씩
   if (w < LEFT_MIN_W) return null  // 창이 좁아 사이드바가 없을 때
-  const left = (contentLeft - w) / 2, height = leftCardHeight(steps, w)
+  const left = from + (contentLeft - from - w) / 2, height = fitHeight ?? leftCardHeight(steps, w)
   // 홈 둘러보기는 1단계에서 왼쪽 메뉴를 비추므로, 카드를 처음부터 끝까지 메뉴 아래 같은 자리에 둔다 (가능한 한 세로 가운데)
   if (steps.some((s) => s.target === "home-menu")) {
     const menuBottom = findTarget("home-menu")?.getBoundingClientRect().bottom ?? 0
@@ -317,13 +323,18 @@ export function Coachmark({ steps, index, onPrev, onNext, onClose }: { steps: To
         if (tall) window.scrollTo?.({ top: window.scrollY + el.getBoundingClientRect().top - TOP_GAP, behavior: "instant" })
         else el.scrollIntoView?.({ block: "center", behavior: "instant" })
         measure(); timer = window.setTimeout(measure, 120)
+        // 탭이 바뀌며 대상 크기가 달라지는 경우(홈 오른쪽 탭): 정해진 시간을 기다리지 않고 크기가 바뀌는 즉시 다시 잰다
+        if (typeof ResizeObserver !== "undefined") { ro?.disconnect(); ro = new ResizeObserver(() => measure()); ro.observe(el) }
         if (toggles) startCycle()
       }
-      else if (tries++ < 20) timer = window.setTimeout(go, 150)
+      // 대상이 아직 없으면(홈 오른쪽 탭이 바뀌는 중) 한 프레임 뒤 다시 찾는다 (예전 150ms 간격은 탭 전환보다 강조가 늦게 따라와 보였다)
+      else if (tries++ < 190) timer = window.setTimeout(go, 16)
       else setBox(null)
     }
+    let ro: ResizeObserver | null = null
     go()
     return () => {
+      ro?.disconnect()
       window.clearTimeout(timer)
       findTarget(step.target)?.removeAttribute("data-tour-measuring")
       lockBox.current = null
@@ -356,7 +367,18 @@ export function Coachmark({ steps, index, onPrev, onNext, onClose }: { steps: To
     return () => window.removeEventListener("keydown", key)
   }, [onClose])
 
-  const docked = dockStyle(steps)
+  // 카드 높이 재기: 모든 단계의 카드를 보이지 않게 같은 폭으로 그려, 가장 긴 것의 높이를 쓴다 (글자 수 어림은 아래 빈 곳이 생겼다)
+  const ghosts = useRef<HTMLDivElement>(null)
+  const [fit, setFit] = useState<{ w: number; h: number } | null>(null)
+  const guess = dockStyle(steps)
+  const dockW = guess ? Number(guess.css.width) : 0
+  useLayoutEffect(() => {
+    const g = ghosts.current
+    if (!g || !dockW) return
+    const h = Math.max(...Array.from(g.children).map((c) => (c as HTMLElement).offsetHeight))
+    if (h > 0 && (fit?.w !== dockW || fit?.h !== h)) setFit({ w: dockW, h })
+  }, [dockW, steps, fit])
+  const docked = guess && fit?.w === dockW ? dockStyle(steps, fit.h) : guess
   const style = docked ?? popoverStyle(box, step.placement, window.innerWidth, window.innerHeight)
 
   return (
@@ -375,6 +397,18 @@ export function Coachmark({ steps, index, onPrev, onNext, onClose }: { steps: To
         : <div aria-hidden className="pointer-events-none absolute inset-0 bg-slate-900/55" />}
       <style>{TOUR_CSS}</style>
       <Demo step={step} box={box} />
+      {guess && (
+        <div ref={ghosts} aria-hidden className="pointer-events-none invisible absolute left-0 top-0">
+          {steps.map((s, i) => (
+            <div key={i} className="rounded-2xl border border-slate-200 p-5" style={{ width: dockW }}>
+              <div className="flex items-start justify-between gap-3"><p className="text-xs font-bold tracking-wider">{i + 1}/{steps.length}</p><span className="-m-1 p-1"><X className="size-4" /></span></div>
+              <h2 className="mt-1 text-base font-bold">{s.title}</h2>
+              <p className="mt-2 text-sm leading-6">{s.body}</p>
+              <div className="flex items-center justify-between gap-2 pt-4"><span className="rounded-lg px-1.5 py-1.5 text-sm font-semibold">건너뛰기</span><span className="rounded-lg border px-3 py-1.5 text-sm font-semibold">이전</span></div>
+            </div>
+          ))}
+        </div>
+      )}
       <div ref={pop} role="dialog" aria-modal="true" aria-labelledby="tour-title" aria-describedby="tour-body" data-placement={style.side} className={`absolute rounded-2xl border border-slate-200 bg-white p-5 ${docked ? "flex flex-col shadow-2xl" : "shadow-xl"}`} style={{ ...style.css, maxWidth: "calc(100vw - 32px)" }}>
         <div className="flex items-start justify-between gap-3">
           <p className="text-xs font-bold tracking-wider text-blue-700"><span className="sr-only">단계 </span>{index + 1}/{steps.length}</p>
