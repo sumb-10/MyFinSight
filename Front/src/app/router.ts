@@ -83,6 +83,7 @@ export function useHashRoute(): Route {
   useEffect(() => {
     const onHash = () => setRoute(parseRoute())
     window.addEventListener("hashchange", onHash)
+    onHash()  // 듣기 시작하기 전에 주소가 바뀌었으면(첫 화면에서 바로 넘긴 경우) 그 변경을 놓치지 않게 한 번 맞춘다
     return () => window.removeEventListener("hashchange", onHash)
   }, [])
   return route
