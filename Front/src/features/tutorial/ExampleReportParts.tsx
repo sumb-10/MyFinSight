@@ -17,7 +17,7 @@ export function DeleteExampleDialog({ close, onDeleted }: { close: () => void; o
     <Dialog title="예시 리포트를 목록에서 지울까요?" close={close}>
       <div className="space-y-2 px-6 py-5 text-sm leading-6 text-slate-700">
         <p><b className="text-slate-950">「{exampleName()}」</b> 예시 리포트를 리포트 목록에서 지웁니다.</p>
-        <p className="text-slate-600">홈의 「리포트 보는 법 둘러보기」로 언제든 다시 볼 수 있고, 리포트 목록 아래 「예시 리포트 다시 보이기」로 되돌릴 수 있어요.</p>
+        <p className="text-slate-600">홈의 「사용 안내」 메뉴에서 언제든 다시 볼 수 있고, 리포트 목록 아래 「예시 리포트 다시 보이기」로 되돌릴 수 있어요.</p>
       </div>
       <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
         <Button variant="neutral" onClick={close}>취소</Button>

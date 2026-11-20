@@ -61,13 +61,13 @@ export function StartPaperDialog({ reportId, close }: { reportId: string; close:
     <Dialog title="모의투자 시작" close={close}>
       <div className="space-y-5 p-4 text-sm text-slate-700 sm:p-6">
         <p>이 리포트의 전략을 가상 자본으로 따라갑니다. 실제 매매는 하지 않습니다. 시작하면 서버가 거래일마다 평가하고, 정해진 날에 비중을 다시 맞춥니다.</p>
-        {error && <Alert tone="error" title="진행할 수 없습니다">{error}<div className="mt-2 flex gap-2"><Button variant="secondary" onClick={() => void load(form)} disabled={busy !== ""}>다시 시도</Button><Button variant="ghost" onClick={close}>닫기</Button></div></Alert>}
+        {error && <Alert tone="error" title="진행할 수 없습니다">{error}<div className="mt-2 flex gap-2"><Button variant="soft" onClick={() => void load(form)} disabled={busy !== ""}>다시 시도</Button><Button variant="ghost" onClick={close}>닫기</Button></div></Alert>}
         {!preview && busy === "preview" && <Loading label="시작 조건을 계산하는 중…" />}
         {preview && stage === "form" && (
           <>
             {existing.length > 0 && (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                <p className="font-semibold text-slate-800">이 리포트로 이미 시작한 모의투자 {existing.length}개</p>
+              <div className="rounded-box bg-sunken p-3 text-12 text-body">
+                <p className="font-semibold text-main">이 리포트로 이미 시작한 모의투자 {existing.length}개</p>
                 <ul className="mt-1 space-y-0.5">{existing.map((x) => <li key={x.paper_id} className="break-words">{paperBasis(x)}{x.status === "stopped" ? " · 중지됨" : ""}</li>)}</ul>
                 <p className="mt-1 text-slate-500">전략·시작일·초기 투자금을 다르게 하면 목록에서 구분하기 쉽습니다.</p>
               </div>

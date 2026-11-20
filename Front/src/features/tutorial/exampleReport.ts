@@ -7,7 +7,7 @@ import { isMockMode } from "../../mocks/mode"
 export const EXAMPLE_REPORT_ID = "example"
 /** 목록에 보이는 기본 이름·날짜 (예시 자료 = 목업 「정상 추천」 시나리오와 같은 값. 목록 화면이 목업 자료를 불러오지 않게 여기 적어 둔다).
  *  「예시」는 이름에 넣지 않고 배지로만 보여 준다. */
-export const EXAMPLE_ROW = { name: "미국 반도체 장비·메모리 분산 투자", summary: "리포트 보는 법을 익히는 예시 리포트입니다. 실제 분석 결과가 아닙니다.", as_of: "2026-10-30", created_at: "2026-10-31" }
+export const EXAMPLE_ROW = { name: "미국 반도체 장비·메모리 분산 투자", summary: "리포트 읽는 법을 익히는 예시 리포트입니다. 실제 분석 결과가 아닙니다.", as_of: "2026-10-30", created_at: "2026-10-31" }
 export const EXAMPLE_NAME_MAX = 60
 
 const KEY = () => (isMockMode() ? "myfinsight.mock.exampleReport.v1" : "myfinsight.exampleReport.v1")

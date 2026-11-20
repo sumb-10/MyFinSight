@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { useService } from "../../app/providers"
 import { errorMessage } from "../../api/client"
 import type { ProfileFields, ProfileVersion, ProfileView } from "../../api/types"
-import { Alert, Disclosure, inputClass } from "../../ui"
+import { Alert, Disclosure, NOTICE_BOX, inputClass } from "../../ui"
 import { ko } from "../../lib/format"
 import { tendencyLabel } from "../../lib/tendency"
 import { reactionText } from "./diagnosis"
@@ -91,7 +91,7 @@ export function VersionCompare({ view, to, setTo }: { view: ProfileView; to: num
         <>
           <p className="text-sm text-slate-700">버전 {from} → 버전 {to}: <b>바뀐 항목 {changed.length}개</b> · 그대로인 항목 {same.length}개{from > to && <span className="text-slate-500"> (최근 버전에서 예전 버전으로 거꾸로 비교 중)</span>}</p>
           {changed.length ? (
-            <ul aria-label="바뀐 항목" className="divide-y divide-amber-100 overflow-hidden rounded-xl border border-amber-200 bg-amber-50/60">
+            <ul aria-label="바뀐 항목" className={`divide-y divide-surface overflow-hidden rounded-box ${NOTICE_BOX.warning}`}>
               {changed.map((r) => (
                 <li key={r.key} className="flex flex-col gap-1 px-4 py-2.5 sm:flex-row sm:items-baseline sm:gap-4">
                   <span className="shrink-0 text-sm font-semibold text-slate-900 sm:w-44">{r.label}<span className="block text-[11px] font-normal text-slate-500">{r.group}</span></span>

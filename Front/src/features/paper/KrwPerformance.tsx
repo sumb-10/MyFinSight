@@ -1,5 +1,5 @@
 import type { ProposedFxDay, ProposedPaperKrw } from "../../api/proposed"
-import { Disclosure } from "../../ui"
+import { Alert, Disclosure } from "../../ui"
 import { fmt, pct, usd } from "../../lib/format"
 import { MockTag } from "../report/proposedView"
 import { Part } from "../profile/parts"
@@ -30,7 +30,7 @@ export function KrwPerformance({ k }: { k: ProposedPaperKrw }) {
         <div className="min-w-0"><p className="text-xs font-semibold text-slate-500">원화 수익률 (넣은 원금 대비)</p><p className={`mt-1 text-2xl font-bold tabular-nums ${tone(k.return_krw)}`}>{k.return_krw == null ? "계산 불가" : pct(k.return_krw)}</p></div>
         <div className="min-w-0"><p className="text-xs font-semibold text-slate-500">원화 손익 금액</p><p className={`mt-1 text-2xl font-bold tabular-nums ${tone(k.gain_krw)}`}>{k.gain_krw == null ? "계산 불가" : signedWon(k.gain_krw)}</p></div>
       </div>
-      {k.unavailable_reason_ko && <p role="note" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><b>원화 수익률을 계산하지 않았습니다.</b> {k.unavailable_reason_ko} 마지막 날 환율로 과거 원금을 거꾸로 환산하지 않습니다.</p>}
+      {k.unavailable_reason_ko && <Alert tone="warning" role="note" title="원화 수익률을 계산하지 않았습니다.">{k.unavailable_reason_ko} 마지막 날 환율로 과거 원금을 거꾸로 환산하지 않습니다.</Alert>}
 
       <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full min-w-[480px] text-sm" aria-label="원화와 USD 기준 비교">

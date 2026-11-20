@@ -37,7 +37,7 @@ def test_too_few_with_metric_counts_must_include_separately(monkeypatch):
     assert raw == "only 1 tickers have dividend_yield_ttm (+2 must_include); target 7 -> selecting 3"
     w = from_text("07_backtest_spec", f"screen@2023-07-17: {raw}")
     assert w.code == "too_few_with_metric" and w.message_ko.startswith(
-        "백테스트 시작일(2023-07-17) 기준: 후보 조건(시가총액·거래대금 등)과 테마 판정을 통과하고 선정 지표(배당수익률) 자료가 있는 종목이 1개(필수 포함 2개 별도)로 "
+        "백테스트 시작일(2023-07-17) 기준: 기본 조건(시가총액·거래대금 등)을 채우고 테마에 맞으며 선정 지표(배당수익률) 자료가 있는 종목이 1개(필수 포함 2개 별도)로 "
         "목표 7개보다 적어 3개만 선정했습니다.")  # fmt: skip
     assert sel.summary["n_forced"] == 2 and sel.summary["n_with_metric"] == 3  # 선정 깔때기 수(n_with_metric)는 예전 그대로
     # 필수 포함이 없으면 예전 문장 그대로 (예전 원문도 읽는다)
@@ -55,17 +55,17 @@ def test_too_few_eligible_lists_five_with_more_count_and_visible_tiny_values(mon
     raw = next(w for w in sel.warnings if w.startswith("only "))
     assert "excluded 7 out of range: AMD -0.045%, DDOG -5.8%, INTC -0.9%, MRVL -2.4%, MU -6.1%)" in raw
     w = from_text("07_backtest_spec", f"screen@2023-09-15: {raw}")
-    assert w.message_ko == ("백테스트 시작일(2023-09-15) 기준: 선정 지표가 자격선 안에 드는 종목이 2개라 목표 3개를 다 채우지 못했습니다 "
-                            "(자격선 밖 7개 제외: AMD -0.045%, DDOG -5.8%, INTC -0.9%, MRVL -2.4%, MU -6.1% 외 2개). 선정한 2종목에 투자금을 나눠 담습니다.")  # fmt: skip
+    assert w.message_ko == ("백테스트 시작일(2023-09-15) 기준: 선정 지표가 기준 안에 드는 종목이 2개라 목표 3개를 다 채우지 못했습니다 "
+                            "(기준 밖 7개 제외: AMD -0.045%, DDOG -5.8%, INTC -0.9%, MRVL -2.4%, MU -6.1% 외 2개). 선정한 2종목에 투자금을 나눠 담습니다.")  # fmt: skip
     # 예전 원문(예시 4개)도 '외 N개' 를 붙인다
     old = from_text("05_selection", "only 19 tickers within eligibility for roe_ttm; target 20 (excluded 7 out of range: AMD -0.0%, DDOG -5.8%, INTC -0.9%, MRVL -2.4%) [capacity 1.00 of 1.00]")
     assert "MRVL -2.4% 외 3개)" in old.message_ko
     # 필수 포함 AMD 는 자격선 밖이어도 남고(앞의 수에 넣지 않음), 그 공지도 부호가 보인다
     sel2 = _screen(monkeypatch, "roe_ttm", dict(ROE_019), {**cons, "num_holdings": {"min": 1, "target": 4, "max": 4}, "must_include_tickers": ["AMD"]})
     msgs = [from_text("05_selection", x).message_ko for x in sel2.warnings]
-    assert any(m.startswith("선정 지표가 자격선 안에 드는 종목이 2개(필수 포함 1개 별도)라 목표 4개를") and "자격선 밖 6개 제외: DDOG -5.8%" in m
+    assert any(m.startswith("선정 지표가 기준 안에 드는 종목이 2개(필수 포함 1개 별도)라 목표 4개를") and "기준 밖 6개 제외: DDOG -5.8%" in m
                and "PLTR -1.8% 외 1개)" in m and m.endswith("선정한 3종목에 투자금을 나눠 담습니다.") for m in msgs)  # fmt: skip
-    assert any("선정 지표가 자격선 밖(ROE -0.045%, 자격선 0% 초과" in m for m in msgs)
+    assert any("선정 지표가 기준 밖(ROE -0.045%, 기준 0% 초과" in m for m in msgs)
 
 
 def test_metric_value_ko_keeps_sign_of_tiny_values():
@@ -91,7 +91,7 @@ def test_forced_names_below_candidate_filters_get_a_notice():
                      "must_include X: below candidate filters (market cap n/a < 10000000000 USD; avg daily volume 5000000 < 10000000 USD), kept"]  # fmt: skip
     w = from_text("07_backtest_spec", f"screen@2023-07-17: {notes[0]}")
     assert w.code == "must_include_below_filters" and w.level == "user" and w.details["key"] == "033780.KS"
-    assert w.message_ko == "백테스트 시작일(2023-07-17) 기준: 필수 포함 종목 033780.KS은(는) 후보 조건을 채우지 못했지만(시가총액 76억 달러, 최소 100억 달러) 요청에 따라 포함했습니다."
+    assert w.message_ko == "백테스트 시작일(2023-07-17) 기준: 필수 포함으로 넣은 033780.KS 종목은 기본 조건을 채우지 못했지만(시가총액 76억 달러, 최소 100억 달러) 요청에 따라 포함했습니다."
     assert "(시가총액 자료 없음, 최소 100억 달러 · 하루 평균 거래대금 500만 달러, 최소 1,000만 달러)" in from_text("05_selection", notes[1]).message_ko
     assert _forced_filter_notes(cand, {}, {"033780.KS", "X"}) == []  # 조건을 정하지 않았으면 알릴 것도 없다
 
@@ -112,7 +112,7 @@ def test_selection_and_start_spec_stages_emit_forced_filter_notices(monkeypatch,
     stages.st_selection(ctx)
     assert ctx.out("05_selection")["warnings"] == ["must_include F: below candidate filters (market cap 9000000000 < 10000000000 USD), kept"]
     w5 = next(w for w in ctx.warnings if w.code == "must_include_below_filters")
-    assert w5.stage == "05_selection" and w5.message_ko.startswith("필수 포함 종목 F은(는) 후보 조건을 채우지 못했지만(시가총액 90억 달러, 최소 100억 달러)")
+    assert w5.stage == "05_selection" and w5.message_ko.startswith("필수 포함으로 넣은 F 종목은 기본 조건을 채우지 못했지만(시가총액 90억 달러, 최소 100억 달러)")
 
     spec = {"period": {"start": "2023-07-17", "end": "2026-07-16", "as_of": "2023-07-17"}, "selection": {"tickers": ["F"]}, "benchmark": "SPY", "warnings": []}
     extras = {"candidates_bt": {"candidates": [{"ticker": "F", "forced": True, "market_cap_usd": 7.6e9, "adv_usd": 5e6}]}}
@@ -120,7 +120,7 @@ def test_selection_and_start_spec_stages_emit_forced_filter_notices(monkeypatch,
     stages.st_backtest_spec(ctx)
     w7 = [w for w in ctx.warnings if w.stage == "07_backtest_spec"]
     assert [w.code for w in w7] == ["must_include_below_filters"] and w7[0].message_ko == (
-        "백테스트 시작일(2023-07-17) 기준: 필수 포함 종목 F은(는) 후보 조건을 채우지 못했지만(시가총액 76억 달러, 최소 100억 달러 · 하루 평균 거래대금 500만 달러, "
+        "백테스트 시작일(2023-07-17) 기준: 필수 포함으로 넣은 F 종목은 기본 조건을 채우지 못했지만(시가총액 76억 달러, 최소 100억 달러 · 하루 평균 거래대금 500만 달러, "
         "최소 1,000만 달러) 요청에 따라 포함했습니다.")  # fmt: skip
     assert ctx.out("07_backtest_spec")["warnings"][0].startswith("screen@2023-07-17: must_include F: below candidate filters")
 
@@ -241,18 +241,21 @@ def test_walkforward_news_bl_label_says_walkforward(monkeypatch, tmp_path):
 
 
 def test_forward_market_model_exports_how_delta_was_set(monkeypatch, tmp_path):
-    """020: 기준일(10f) δ=3.375 는 시장 추정치가 음수라 하한 1.5 × 성향 1.5 × 낙폭 1.5 였는데, 10f 가 delta_market·delta_base 를 빼서 리포트가 설명할 수 없었다."""
+    """020: 기준일(10f) δ=3.375 는 시장 추정치가 음수라 하한 1.5 × 성향 1.5 × 낙폭 1.5 였는데, 10f 가 delta_market·delta_base 를 빼서 리포트가 설명할 수 없었다.
+    2026-11-19: 10f 는 백테스트에서 비중을 꺼내고 시장모형(build_market_model)만 분석 기준일로 계산한다 — δ 설명 값은 그대로 내보낸다."""
     from backend.analysis.executor import stages
     from backend.analysis.executor.context import RunContext
+    from backend.analysis.m4_portfolio import market_model as MM
 
     mm = {"as_of": "2025-01-14", "lookback": {}, "tickers": ["A"], "ann_vol": {"A": 0.2}, "cap_weights": {"A": 1.0}, "delta": 3.375, "delta_source": "market_implied",
-          "tau": 0.05, "implied_returns": {"A": 0.05}, "delta_capped": False, "delta_market": -0.4213, "delta_base": 1.5, "delta_multiplier": 1.5, "delta_dd_multiplier": 1.5}  # fmt: skip
-    res = SimpleNamespace(market_model=mm, evidence=None, baselines={"chosen_baseline": "equal_weight", "portfolios": []}, applied_bl=[], baseline_weights={"A": 1.0},
-                          view_sets=[], chosen_weights={"A": 1.0}, fallback=True, fallback_reason_ko="", params=None, warnings=[], bl_portfolios=[])  # fmt: skip
-    monkeypatch.setattr(stages, "construct", lambda *a, **k: res)
+          "tau": 0.05, "implied_returns": {"A": 0.05}, "delta_capped": False, "delta_market": -0.4213, "delta_base": 1.5, "delta_multiplier": 1.5, "delta_dd_multiplier": 1.5,
+          "cov": [[0.04]], "notes": []}  # fmt: skip
+    monkeypatch.setattr(MM, "build_market_model", lambda *a, **k: (mm, {}))
     req = {"request_id": "r", "derived": {"as_of": "2025-01-14", "initial_amount_usd": 10_000, "fx_rate": 1.0, "fx_date": "2025-01-14"}}
     ctx = RunContext("run_t", req, None, SimpleNamespace(view=lambda x: SimpleNamespace(as_of=x)), None, AnalysisSettings(), tmp_path)
-    ctx.outputs.update({"05_selection": {"selected": [{"ticker": "A"}]}, "02_intent": {}})
+    ctx.outputs.update({"07_backtest_spec": {"selection": {"tickers": ["A"]}, "period": {"as_of": "2024-01-02"}},
+                        "10_target_portfolios": {"templates": [], "baseline": {"id": "equal_weight", "weights": {"A": 1.0}}},
+                        "11_backtest_results": {"portfolios": [{"id": "equal_weight", "kind": "template", "target_weights": {"A": 1.0}}]}})  # fmt: skip
     stages.st_forward(ctx)
     out = ctx.out("10f_forward_portfolios")["market_model"]
     assert {k: out[k] for k in ("delta", "delta_market", "delta_base", "delta_multiplier", "delta_dd_multiplier", "delta_capped")} == {

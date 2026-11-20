@@ -636,6 +636,7 @@ def test_collect_keeps_delta_floor_for_formula(e2e_results):
     assert "delta_base" in mm or mm.get("delta_source") != "market_implied"
     if mm.get("delta_source") == "market_implied":
         mm["delta_market"], mm["delta_base"] = 0.1965, 1.5
+        R["portfolio"]["targets"]["portfolios"] = [*R["portfolio"]["targets"]["portfolios"], {"id": "bl_x", "kind": "black_litterman"}]  # δ 는 BL 을 만든 리포트에만 (2026-11-19: 분석 기준일 BL 이 없어짐)
         txt = json_dumps(RB.parameters_table(R))
         assert "하한" in txt
 
@@ -1591,7 +1592,8 @@ def test_dashboard_notices_skip_the_period_note_sentence():
                      {"code": "fewer_holdings_at_start", "message_ko": "시작일 2종목", "level": "user"},
                      {"code": "weight_capacity", "message_ko": "현금 50% 원인", "level": "user"},
                      {"code": "must_include_not_in_universe", "message_ko": "필수 포함 X 없음", "level": "user"}]}  # fmt: skip
-    assert shifted in period_note(R)
+    # 2026-11-16: 기간 메모는 처음 투자하는 사람도 읽을 수 있는 문장으로 (원래 시작일 → 옮긴 날짜 · 이유)
+    assert "처음 정한 백테스트 시작일 2023년 10월 10일에는 조건에 맞는 종목이 1개뿐이라, 시작일을 5개월 뒤인 **2024년 3월 5일**로 옮겼습니다" in period_note(R)
     assert dashboard_notices(R) == ["필수 포함 X 없음", "시작일 2종목", "현금 50% 원인"]
 
 
@@ -1755,7 +1757,9 @@ def test_rebalance_targets_tell_static_from_walkforward():
 
     assert _rebalance_targets_ko({"mode": "static"}).startswith("정적 구성") and "다시 계산하지 않음" in _rebalance_targets_ko({"mode": "static"})
     assert _rebalance_targets_ko({"mode": "walkforward"}).startswith("walk-forward 방식이라") and ": " not in _rebalance_targets_ko({"mode": "walkforward"})
-    assert "최대 2년 전 기준" in _mcap_limitation({"parameters": {"market": {"mcap_fallback_max_days": 730}}})
+    # 2026-11-16: 「확인한 한계」는 쉬운 짧은 문장 (유통주식수·괄호 부연 없음)
+    assert _mcap_limitation({"parameters": {"market": {"mcap_fallback_max_days": 730}}}) == (
+        "회사의 주식 수에 그날 장 마감 가격을 곱해 시가총액을 계산했습니다. 당일 시가총액 자료가 없을 때는 이전에 확인한 주식 수로 추정했습니다.")
 
 
 def test_round9_report_facts_windows_news_use_and_numbers():
@@ -1788,7 +1792,7 @@ def test_chosen_current_composition_news_use_is_stated(monkeypatch):
     R = {"portfolio": {"forward": {"chosen_weights": {"A": 0.6, "B": 0.4}, "portfolios": [{"id": "fwd_bl_01", "title_ko": "임상·제품 파이프라인 촉매", "weights": {"A": 0.6, "B": 0.4}},
                                                                                          {"id": "fwd_bl_03", "weights": {"A": 0.3, "B": 0.7}}]}}}  # fmt: skip
     no = RP._chosen_news_use(R, "market_cap", {"id": "market_cap", "kind": "template"})
-    assert no["chosen_uses_news_views"] is False and "뉴스 뷰를 쓰지 않습니다" in no["chosen_news_note_ko"]
+    assert no["chosen_uses_news_views"] is False and "투자 의견을 반영하지 않았습니다" in no["chosen_news_note_ko"]  # 2026-11-16: '뉴스 뷰' → '투자 의견'
     yes = RP._chosen_news_use(R, "bl_01", {"id": "bl_01", "kind": "black_litterman"})
     # 021: 추천 현재 구성이 어느 세트인지 밝혀 다른 세트의 뷰를 반영됐다고 쓰지 않게
     assert yes["chosen_uses_news_views"] is True and yes["recommended_forward_id"] == "fwd_bl_01"
@@ -1880,7 +1884,7 @@ def test_round10_report_notes_and_facts(monkeypatch):
     note = RP._chosen_note(R, {"id": "market_cap", "kind": "template"}, True)
     assert note.startswith("백테스트 시작일 구성은 선정 종목이 3개뿐이라") and "지금 구성(분석 기준일)은 7종목·투자 94%" in note
     off = RP._chosen_news_use(R, "market_cap", {"id": "market_cap", "kind": "template"})
-    assert "뉴스 뷰 구성은 만들지 않았습니다" in off["chosen_news_note_ko"]
+    assert "투자 의견을 반영한 구성은 만들지 않았습니다" in off["chosen_news_note_ko"]  # 2026-11-16 문구
     mR = {"backtest": {"portfolios": [{"id": "inverse_volatility", "kind": "template", "name_ko": "역변동성비중", "headline": {"max_drawdown": -0.111}},
                                       {"id": "wf_bl_news", "kind": "black_litterman", "name_ko": "뉴스 뷰 Black-Litterman (walk-forward)", "headline": {"max_drawdown": -0.118}}]},
           "intent": {"risk_params": {"effective_max_drawdown": 0.12}}, "request": {"risk": {"max_drawdown_tolerance": 0.12}},
@@ -2033,7 +2037,7 @@ def test_round11_collect_and_report_texts(monkeypatch):
     rows = {"FANG": {"metric_value": 0.05}, "CVX": {"metric_value": float("nan")}, "XOM": {"metric_value": None}, "KMI": {"metric_value": 0.06}}
     assert C.metric_rank(rows, asc=False) == {"KMI": 1, "FANG": 2}
     ex = [{"ticker": t, "name": n, "theme_ko": "화석연료"} for t, n in [("AEE", "Ameren"), ("ATO", "Atmos"), ("CMS", "CMS"), ("CNP", "CenterPoint"), ("D", "Dominion"), ("DTE", "DTE")]]
-    assert C._ex_theme_ko(ex) == " · 제외 테마(화석연료)로 뺌 6개: Ameren, Atmos, CMS, CenterPoint, Dominion 외 1개" and C._ex_theme_ko([]) == ""
+    assert C._ex_theme_ko(ex) == " · 빼 달라고 하신 테마(화석연료)라 뺀 6개: Ameren, Atmos, CMS, CenterPoint, Dominion 외 1개" and C._ex_theme_ko([]) == ""
     nw = RP._shown_news_window({"window": ["2023-07-17", "2023-07-31"], "by_source": {"GOOGLE_RSS": 62, "NAVER_NEWS": 3}, "by_event_type": {"buyback": 4}})
     assert nw["article_sources"] == {"구글 뉴스": 62, "네이버 뉴스": 3} and "by_source" not in nw and "DART" in nw["disclosure_source_note"]  # 038: 기사 출처라고 밝힘 and nw["by_event_type"] == {"자사주 취득·처분 결정": 4} and nw["window"] == ["2023-07-17", "2023-07-30"]
     R = {"intent": {"interpretation": {"summary_ko": "투자 비율 85%를 배분합니다."}}, "request": {"constraints": {"min_cash_ratio": 0.15, "num_holdings": {"target": 10, "min": 7}}}}

@@ -6,7 +6,7 @@ import { errorMessage } from "../../api/client"
 import type { ProposedBatchAnswer, ProposedQuestionBatch } from "../../api/proposed"
 import type { DialogState } from "../../api/types"
 import { useResource } from "../../state/useResource"
-import { Badge, Button, inputClass, Loading } from "../../ui"
+import { Alert, Badge, Button, inputClass, Loading } from "../../ui"
 import { MockTag } from "../report/proposedView"
 import { Part } from "../profile/parts"
 import { ActionError, Pending, type RowChange } from "./flow"
@@ -104,12 +104,11 @@ export function BatchResult({ requestId, sent, changes, more = false }: { reques
       </ol>
       {/* 질문별 줄에 이미 나온 변경은 다시 적지 않는다 (아래 「이번 분석에서 달라진 조건」 카드에도 같은 내용이 있다). 답변 때문에 함께 바뀐 항목만 따로 알린다. */}
       {extra.length > 0 && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
-          <p className="font-semibold">답변에 따라 함께 바뀐 항목 {extra.length}개</p>
-          <ul className="mt-1.5 space-y-0.5">{extra.map((c) => <li key={c.label}>{c.label}: {c.before} → <b>{c.after}</b></li>)}</ul>
-        </div>
+        <Alert tone="success" title={`답변에 따라 함께 바뀐 항목 ${extra.length}개`}>
+          <ul className="space-y-0.5">{extra.map((c) => <li key={c.label}>{c.label}: {c.before} → <b className="text-main">{c.after}</b></li>)}</ul>
+        </Alert>
       )}
-      {changes.length === 0 && <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">답변으로 바뀐 조건 값은 없습니다.</p>}
+      {changes.length === 0 && <Alert tone="neutral" title="답변으로 바뀐 조건 값은 없습니다." />}
       {!more && <div className="flex justify-end"><Button onClick={() => navigate({ page: "confirm", requestId })}>조건 최종 확인으로<ArrowRight className="size-4" /></Button></div>}
     </Part>
   )

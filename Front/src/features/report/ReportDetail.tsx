@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Activity, ArrowLeft, BookOpenText, ChevronDown, GitCompareArrows, ListChecks, Pencil, PencilLine, RefreshCw, Sigma, Trash2 } from "lucide-react"
+import { Activity, ArrowLeft, BookOpenText, GitCompareArrows, ListChecks, Pencil, PencilLine, RefreshCw, Sigma, Trash2 } from "lucide-react"
 import { useService } from "../../app/providers"
 import { navigate as routerNavigate } from "../../app/router"
 import { errorMessage } from "../../api/client"
@@ -7,9 +7,9 @@ import type { EvidenceRecord, ReportDoc } from "../../api/types"
 import { useResource } from "../../state/useResource"
 import { Alert, Badge, Button, EmptyState, Loading, Menu } from "../../ui"
 import { citationNumbers } from "../../lib/citations"
-import { hideCodeIds, normalizeDoc } from "../../lib/reportNormalize"
+import { easyAsOfWords, hideCodeIds, normalizeDoc, stripStrayBold } from "../../lib/reportNormalize"
 import { markReportSeen } from "../../lib/seen"
-import { CitationContext } from "./blocks/blocks"
+import { CitationContext } from "./blocks/citationContext"
 import { StartPaperDialog } from "../paper/StartPaperDialog"
 import { RevisionPanel } from "./RevisionPanel"
 import { Dashboard } from "./Dashboard"
@@ -29,7 +29,7 @@ import { findReportRow, reportName } from "../../lib/reportName"
 import { groupOf, groupsFor, SECTION_SEQUENCE } from "./navGroups"
 import { plainSummary } from "./summaryText"
 
-// 읽는 순서는 상단 탭 묶음(navGroups) 순서: 종목 선정(판단 → 포트폴리오 → 종목 근거) → 과거 성과 → 시장·뉴스 → 요청·주의·자료.
+// 읽는 순서는 상단 탭 묶음(navGroups) 순서: 종목 선정(판단 → 포트폴리오 → 종목 근거) → 과거 성과 → 시장·뉴스 → 요청·주의사항·자료.
 // 서버가 주는 내용은 그대로이고 순서만 바꾼다 (모르는 섹션은 뒤로).
 const SECTION_ORDER = SECTION_SEQUENCE.filter((s) => s !== "history")
 const rank = (id: string) => { const i = SECTION_ORDER.indexOf(id); return i < 0 ? SECTION_ORDER.length : i }
@@ -46,8 +46,8 @@ type Props = { reportId: string; sec?: string; company?: string; rb?: number; re
 const TAB_OFFSET = 110  // 상단 고정 탭(49px) 아래 이 선을 지난 마지막 섹션을 「지금 보는 섹션」으로 친다 (섹션은 scroll-mt-16 = 64px 에 멈춘다)
 const STOP = 64  // scroll-mt-16
 
-/** 리포트 화면: 상단 고정 탭 + 「개요」(선택 전략·백테스트 핵심 성과·종목 구성·종목별 투자 금액) + 「자세한 분석」(통째로 접힌 채 시작, 안의 섹션도 접힘), 근거는 드로어·패널로.
- *  주소 ?sec=&company=&rb= 를 읽고 쓴다 (가리키는 곳이 있으면 자세한 분석을 펼친다).
+/** 리포트 화면: 상단 고정 탭 + 「개요」(결론 요약·백테스트 핵심 성과·종목 구성과 투자 금액) + 「자세한 분석」(제목 아래 섹션 카드가 늘 보이고, 카드는 접힌 채 시작), 근거는 드로어·패널로.
+ *  주소 ?sec=&company=&rb= 를 읽고 쓴다 (가리키는 섹션 카드를 펼친다).
  *  App 이 리포트가 바뀌어도 같은 컴포넌트를 다시 쓰므로, 리포트마다 새로 만들어 앞 리포트의 펼침·선택이 남지 않게 한다. */
 export function ReportDetail(props: Props) {
   return <ReportView key={props.reportId} {...props} />
@@ -62,7 +62,7 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
     document.documentElement.classList.add("report-wide")
     return () => document.documentElement.classList.remove("report-wide")
   }, [])
-  const doc = useMemo(() => (res.data ? reorder(plainSummary(hideCodeIds(normalizeDoc(res.data)))) : null), [res.data])  // 화면 문장의 지표 ID 괄호와 요약의 내부 약어(BL 1 등)는 지운다
+  const doc = useMemo(() => (res.data ? reorder(plainSummary(easyAsOfWords(stripStrayBold(hideCodeIds(normalizeDoc(res.data)))))) : null), [res.data])  // 화면 문장의 지표 ID 괄호와 요약의 내부 약어(BL 1 등)는 지운다
   useEffect(() => {  // 열어 본 리포트는 사이드바 「새 리포트」 배지에서 뺀다 (이 브라우저의 확인 기록)
     if (!res.data) return
     for (const k of new Set([reportId, res.data.run_id, (res.data as { report_id?: string }).report_id].filter(Boolean) as string[])) markReportSeen(svc.mode, k)
@@ -78,8 +78,7 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
   const [startPaper, setStartPaper] = useState(false)
   const [revise, setRevise] = useState(false)
   const [openSecs, setOpenSecs] = useState<Record<string, boolean>>({})
-  // 자세한 분석 전체: 처음에는 통째로 접어 둔다 (2026-11-11 사용자 결정, 초보 투자자는 개요만 봐도 된다). 주소가 섹션·기업·시점을 가리키면 펼친 채 시작
-  const [detailsOpen, setDetailsOpen] = useState(() => (!!sec && sec !== "summary") || !!company || rb !== undefined)
+  // 자세한 분석: 바깥 접기는 없다 (2026-11-14 사용자 요청 — 두 번 눌러야 내용이 보이던 이중 접기를 없앰). 안의 섹션 카드만 접혀서 시작하고 한 번 눌러 펼친다
   const [selectedRb, setSelectedRb] = useState<number | null>(rb ?? null)
   const [openCompany, setOpenCompany] = useState<string | null>(company ?? null)
   const cmp = useResource(() => svc.getReportComparison(reportId), [svc, reportId])
@@ -92,13 +91,18 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
   const evidenceById = useMemo(() => new Map((doc?.evidence ?? []).map((e) => [e.id, e])), [doc])
   const numbers = useMemo(() => (doc ? citationNumbers(doc) : new Map<string, number>()), [doc])
   const numberOf = useCallback((id: string) => String(numbers.get(id) ?? id), [numbers])
-  const openEvidence = useCallback((id: string) => { setSource(evidenceById.get(id) ?? { id }) }, [evidenceById])
+  // 근거 번호([40] 등)를 누르면: 원문 주소가 있는 자료(뉴스·공시)는 원문을 새 탭으로 바로 연다. 주소가 없는 자료(계산·재무 값 등)는 지금처럼 상세 패널
+  const openEvidence = useCallback((id: string) => {
+    const e = evidenceById.get(id)
+    if (e?.url) { window.open(e.url, "_blank", "noopener,noreferrer"); return }
+    setSource(e ?? { id })
+  }, [evidenceById])
   const cite = useMemo(() => ({ onCite: openEvidence, label: numberOf }), [openEvidence, numberOf])
   const jumped = useRef(false)
 
   // 섹션을 펼치고 그 자리(또는 섹션 안 anchor 요소)로 스크롤. 펼친 다음 렌더에서 내용이 생기므로 조금 기다린다.
   const jump = useCallback((id: string, anchor?: string) => {
-    if (id !== "summary") { setDetailsOpen(true); setOpenSecs((o) => ({ ...o, [id]: true })) }
+    if (id !== "summary") { setOpenSecs((o) => ({ ...o, [id]: true })) }
     setActive(groupOf(id))
     lockActive.current = Date.now() + 900
     const target = () => (anchor && document.getElementById(anchor)) || document.getElementById(`sec-${id}`)
@@ -111,12 +115,12 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
   }, [reportId, openCompany, selectedRb])
 
   useEffect(() => {  // 같은 리포트에서 주소만 바뀐 경우 (링크·뒤로 가기): 가리키는 기업·시점·섹션을 펼친다
-    if (company && company !== openCompany) { setOpenCompany(company); setDetailsOpen(true); setOpenSecs((o) => ({ ...o, companies: true })) }
+    if (company && company !== openCompany) { setOpenCompany(company); setOpenSecs((o) => ({ ...o, companies: true })) }
   }, [company])  // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (rb !== undefined && rb !== selectedRb) { setSelectedRb(rb); setDetailsOpen(true); setOpenSecs((o) => ({ ...o, construction: true })) }
+    if (rb !== undefined && rb !== selectedRb) { setSelectedRb(rb); setOpenSecs((o) => ({ ...o, construction: true })) }
   }, [rb])  // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (sec && sec !== "summary") { setDetailsOpen(true); setOpenSecs((o) => (o[sec] ? o : { ...o, [sec]: true })) } }, [sec])
+  useEffect(() => { if (sec && sec !== "summary") { setOpenSecs((o) => (o[sec] ? o : { ...o, [sec]: true })) } }, [sec])
   useEffect(() => {  // 주소가 가리키는 곳으로 처음 한 번 이동: 기업 카드 > 리밸런싱 타임라인 > 섹션
     if (!doc || jumped.current || (!sec && !company && rb === undefined)) return
     jumped.current = true
@@ -215,26 +219,24 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
             {rename && <RenameReportDialog reportId={reportId} close={() => setRename(false)} />}
             {removing && <DeleteReportDialog reportId={reportId} name={row ? reportName(row) : (name?.display_ko ?? h.title_ko)} close={() => setRemoving(false)} onDeleted={() => navigate({ page: "reports" })} />}
             {doc.summary && <div id="sec-summary" className="scroll-mt-16"><Dashboard summary={doc.summary} doc={doc} onJump={jump} paperReason={doc.tracking.eligible ? null : (doc.tracking.reason_ko ?? "이 리포트로는 모의투자를 시작할 수 없습니다")} /></div>}
-            <section aria-labelledby="h-details" data-tour="details" className="space-y-4">
-              <h2 id="h-details" className="text-xl font-bold text-slate-950">
-                <button type="button" aria-expanded={detailsOpen} aria-controls="details-body" onClick={() => setDetailsOpen((v) => !v)}
-                  className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-300 bg-white px-5 py-4 text-left shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 sm:px-6">
-                  <span>자세한 분석</span>
-                  <span aria-hidden className="flex items-center gap-1 text-sm font-semibold text-slate-500">{detailsOpen ? "접기" : "펼치기"}<ChevronDown className={`size-4 transition-transform ${detailsOpen ? "rotate-180" : ""}`} aria-hidden /></span>
-                </button>
-              </h2>
-              {detailsOpen && <div id="details-body" className="space-y-4">
-              <div className="flex justify-end"><button type="button" onClick={toggleAll} className="shrink-0 rounded-lg px-2 py-1 text-sm font-semibold text-blue-700 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500">{allOpen ? "모두 접기" : "모두 펼치기"}</button></div>
+            {/* 「자세한 분석」: 제목과 아래 분석 카드 전체를 한 카드로 감싼다 (개요 카드와 같은 틀: 옅은 제목 줄 + 본문).
+                제목은 접히지 않고, 안의 분석 카드는 늘 보이며 카드마다 한 번 눌러 펼친다 */}
+            <section aria-labelledby="h-details" data-tour="details" className="rounded-2xl border border-slate-300 bg-white shadow-sm">
+              <div className="flex items-center justify-between gap-3 rounded-t-2xl border-b border-slate-200 bg-slate-50 px-5 py-3 sm:px-6">
+                <h2 id="h-details" className="text-base font-bold text-slate-950">자세한 분석</h2>
+                <button type="button" onClick={toggleAll} className="shrink-0 rounded-md text-xs font-semibold text-blue-700 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500">{allOpen ? "모두 접기" : "모두 펼치기"}</button>
+              </div>
+              <div id="details-body" className="space-y-4 px-5 py-5 sm:px-6 sm:py-6">
               {parts.map((x, i) => {
                 const g = groupStart.get(x.id)  // 묶음의 첫 섹션 앞에 묶음 소제목 (상단 탭과 같은 이름)
                 return (
                   <Fragment key={x.id}>
-                    {g && <h3 id={`grp-${g.id}`} className="pt-2 text-sm font-bold tracking-wide text-slate-600">{g.heading}</h3>}
+                    {g && <h3 id={`grp-${g.id}`} className={`${i === 0 ? "" : "pt-2 "}text-sm font-bold tracking-wide text-slate-600`}>{g.heading}</h3>}
                     <SectionShell id={x.id} index={i + 1} title={x.title} open={isOpen(x.id)} onToggle={() => setOpenSecs((o) => ({ ...o, [x.id]: !isOpen(x.id) }))}>{x.body}</SectionShell>
                   </Fragment>
                 )
               })}
-              </div>}
+              </div>
             </section>
             <footer className="pb-10 text-xs leading-5 text-slate-500">{h.disclaimer_ko}</footer>
         </div>

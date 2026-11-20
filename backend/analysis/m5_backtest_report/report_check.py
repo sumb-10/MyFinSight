@@ -10,9 +10,9 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from backend.analysis.common.citations import CITE_RE  # 인용 ID 정규식은 한 곳에서
 from backend.analysis.settings import AnalysisSettings
 
-from backend.analysis.common.citations import CITE_RE  # 인용 ID 정규식은 한 곳에서
 NUM_RE = re.compile(r"(?:\$\s?)?(-?[\d,]+(?:\.\d+)?)\s*(%p|%|USD|원|달러|일|개|회(?!계)|종목|배)?")  # 036: '2026 회계연도' 를 2026회로 셌다
 DEV_WORDS = ["샘플", "stub", "mock", "JSON", "파이프라인 내부"]
 
@@ -101,8 +101,24 @@ def _string_numbers(obj: Any, acc: set[float]) -> None:
             acc.update({round(v, 2), round(v, 1), round(v)})
 
 
+def _code_strings(R: dict[str, Any]) -> list[Any]:
+    """숫자를 아는 숫자로 칠 코드 문구: 검증 문구·공지·선정에서 빠진 이유. LLM 이 쓴 기업 설명(06 selection.explained)은 넣지 않는다.
+    2026-11-18: 쉬운 말로 바꾼 서술이 '부채비율 1,712%로 상한을 넘어 빠졌다' 처럼 빠진 이유를 숫자로 옮겼는데, 그 숫자가
+    선정 사유 문구(removed_reasons_ko)에만 있어 '결과에 없는 숫자' 로 셌다 (4489)."""
+    sel = R.get("selection") or {}
+    bt = sel.get("backtest_as_of") or {}
+    return [R.get("validation"), R.get("notices"), sel.get("candidates_filtered"), (sel.get("as_of_now") or {}).get("rejected_examples"),
+            bt.get("removed_reasons_ko"), bt.get("backtest_only_reasons_ko")]
+
+
 def paragraphs_src(doc: dict[str, Any]) -> list[tuple[str, str, str]]:
-    """(섹션 id, 문장, 출처) — paragraphs 블록과 cards 의 text_ko. 출처는 블록의 `src`(14a/14b/14c/code), 없으면 "code"."""
+    """(섹션 id, 문장, 출처) — paragraphs 블록과 cards 의 text_ko. 출처는 블록의 `src`(14a/14b/14c/code), 없으면 "code".
+    강조 표시(**)는 빼고 돌려준다 (2026-11-19: 본문에 굵은 글씨를 쓰기 시작 — 숫자·금지 표현 검사는 글자만 본다)."""
+    out = _raw_paragraphs_src(doc)
+    return [(sid, str(t).replace("**", ""), src) for sid, t, src in out]
+
+
+def _raw_paragraphs_src(doc: dict[str, Any]) -> list[tuple[str, str, str]]:
     out = []
     for sec in doc["sections"]:
         for b in sec["blocks"]:
@@ -215,7 +231,7 @@ def check(doc: dict[str, Any], R: dict[str, Any], settings: AnalysisSettings) ->
     known_numbers({k: v for k, v in R.items() if k not in ("backtest", "evidence_index")}, known)
     known_numbers({k: v for k, v in R["backtest"].items() if k != "series_dates"}, known)
     # 코드가 만든 검증 문구·공지 안의 숫자도 아는 숫자다 (067: R2 의 '과거 1년 구간 517개' 를 서술이 옮겼는데 숫자 칸에 없어 '결과에 없는 숫자' 메모가 보였다)
-    _string_numbers([R.get("validation"), R.get("notices")], known)
+    _string_numbers(_code_strings(R), known)
     for sid, text in paras:
         plain = CITE_RE.sub("", text)
         for m in NUM_RE.finditer(plain):

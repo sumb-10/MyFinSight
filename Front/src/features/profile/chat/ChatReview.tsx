@@ -9,8 +9,8 @@ import { validateProfile } from "../validate"
 
 function Rows({ rows, notes }: { rows: ProfileRow[]; notes?: Record<string, string> }) {
   return (
-    <dl className="grid grid-cols-1 gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
-      {rows.map((r) => <div key={r.key} className="min-w-0"><dt className="text-xs font-semibold text-slate-500">{r.label}</dt><dd className="mt-0.5 break-words font-semibold text-slate-900">{r.value}</dd>{notes?.[r.key] && <dd className="mt-0.5 text-xs leading-5 text-slate-500">{notes[r.key]}</dd>}</div>)}
+    <dl className="grid grid-cols-1 gap-x-8 gap-y-3 text-14 sm:grid-cols-2">
+      {rows.map((r) => <div key={r.key} className="min-w-0"><dt className="text-12 font-semibold text-sub">{r.label}</dt><dd className="mt-0.5 break-words font-semibold text-main">{r.value}</dd>{notes?.[r.key] && <dd className="mt-0.5 text-12 leading-5 text-sub">{notes[r.key]}</dd>}</div>)}
     </dl>
   )
 }
@@ -25,11 +25,11 @@ export function ChatReviewSummary({ chat, allowZero }: { chat: ProposedProfileCh
   const rest = rows.filter((r) => !chat.asked_fields.includes(r.key) && !(r.key in notes))
   const errors = errorsOf(chat, allowZero)
   return (
-    <section aria-labelledby="chat-review-title" className="rounded-2xl rounded-tl-sm border border-blue-200 bg-white p-5 shadow-sm">
-      <h2 id="chat-review-title" className="text-base font-bold text-slate-950">이렇게 정리했어요</h2>
-      <p className="mt-1 text-sm text-slate-600">질문 {chat.progress.done}개에 답하신 내용입니다. 저장하면 기본 투자조건으로 기록됩니다.</p>
+    <section aria-labelledby="chat-review-title" className="rounded-bubble rounded-tl-none bg-bubble p-5">  {/* 도우미 말풍선과 같은 면 (홈 대화창 기준) */}
+      <h2 id="chat-review-title" className="text-15 font-bold text-main">이렇게 정리했어요</h2>
+      <p className="mt-1 text-14 text-body">질문 {chat.progress.done}개에 답하신 내용입니다. 저장하면 기본 투자조건으로 기록됩니다.</p>
       <div className="mt-4"><Rows rows={asked} /></div>
-      {derived.length > 0 && <div className="mt-5 border-t border-slate-100 pt-4"><h3 className="mb-3 text-sm font-bold text-slate-900">답에 맞춰 정한 조건 {derived.length}개</h3><Rows rows={derived} notes={notes} /></div>}
+      {derived.length > 0 && <div className="mt-5 border-t border-surface pt-4"><h3 className="mb-3 text-14 font-bold text-main">답에 맞춰 정한 조건 {derived.length}개</h3><Rows rows={derived} notes={notes} /></div>}
       <Disclosure className="mt-4" size="sm" title="기본값으로 둔 조건" summary={`${rest.length}개 · 저장한 뒤에도 바꿀 수 있습니다`}>
         <div className="pt-3"><Rows rows={rest} /></div>
       </Disclosure>

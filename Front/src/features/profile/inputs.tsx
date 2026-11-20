@@ -50,9 +50,13 @@ export function NumberInput({ value, onChange, className = inputClass, ...rest }
 
 const round1 = (v: number) => Math.round(v * 1000) / 10  // 0.125 → 12.5
 
-/** 슬라이더 + % 숫자 입력. value·min·max·step 은 분수(0.2 = 20%). 범위를 벗어난 숫자는 반영하지 않고 안내한다. */
-export function PercentSlider({ label, value, min, max, step, onChange, info, help, error }: { label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; info?: React.ReactNode; help?: React.ReactNode; error?: string }) {
-  const id = useId()
+/**
+ * 슬라이더 + % 숫자 입력. value·min·max·step 은 분수(0.2 = 20%). 범위를 벗어난 숫자는 반영하지 않고 안내한다.
+ * 범위·이름은 fields.ts 의 PCT 를 펼쳐 넣는다. id·aside: TagInput 과 같다 (상세 조건 창의 오류 포커스·「변경됨」).
+ */
+export function PercentSlider({ id: idProp, label, value, min, max, step, onChange, info, help, error, aside }: { id?: string; label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; info?: React.ReactNode; help?: React.ReactNode; error?: string; aside?: React.ReactNode }) {
+  const autoId = useId()
+  const id = idProp ?? autoId
   const [draft, setDraft] = useState<string | null>(null)  // 입력 중인 글자 (null = 저장 값 그대로 표시)
   const [hint, setHint] = useState("")
   const lo = round1(min), hi = round1(max)
@@ -68,7 +72,7 @@ export function PercentSlider({ label, value, min, max, step, onChange, info, he
   const message = error ?? hint
   return (
     <div>
-      <div className="mb-2 flex items-center gap-1"><label htmlFor={id} className="text-sm font-semibold text-slate-700">{label}</label>{info && <InfoTip label={label}>{info}</InfoTip>}</div>
+      <div className="mb-2 flex items-center gap-1"><label htmlFor={id} className="text-sm font-semibold text-slate-700">{label}</label>{info && <InfoTip label={label}>{info}</InfoTip>}{aside}</div>
       <div className="flex items-center gap-3">
         <input type="range" aria-label={`${label} 슬라이더`} className="min-w-0 flex-1 accent-blue-700" min={min} max={max} step={step} value={value} onChange={(e) => { setDraft(null); setHint(""); onChange(Number(e.target.value)) }} />
         <span className="relative w-24 shrink-0">
@@ -82,9 +86,13 @@ export function PercentSlider({ label, value, min, max, step, onChange, info, he
   )
 }
 
-/** 여러 값을 칩으로 입력. Enter·쉼표로 추가하고, 칸을 벗어나면 적던 값도 추가한다. 한글 조합 중 Enter 는 무시한다. */
-export function TagInput({ label, values, onChange, normalize = (s) => s.trim(), placeholder, info, help, error }: { label: string; values: string[]; onChange: (v: string[]) => void; normalize?: (s: string) => string; placeholder?: string; info?: React.ReactNode; help?: React.ReactNode; error?: string }) {
-  const id = useId()
+/**
+ * 여러 값을 칩으로 입력. Enter·쉼표로 추가하고, 칸을 벗어나면 적던 값도 추가한다. 한글 조합 중 Enter 는 무시한다.
+ * id: 입력 칸 id (홈 상세 조건 창이 오류 칸으로 포커스를 옮길 때). aside: 이름 옆에 붙일 표시 (상세 조건 창의 「변경됨」).
+ */
+export function TagInput({ id: idProp, label, values, onChange, normalize = (s) => s.trim(), placeholder, info, help, error, aside }: { id?: string; label: string; values: string[]; onChange: (v: string[]) => void; normalize?: (s: string) => string; placeholder?: string; info?: React.ReactNode; help?: React.ReactNode; error?: string; aside?: React.ReactNode }) {
+  const autoId = useId()
+  const id = idProp ?? autoId
   const [text, setText] = useState("")
   const add = (raw: string) => {
     const items = raw.split(",").map(normalize).filter(Boolean)
@@ -105,7 +113,7 @@ export function TagInput({ label, values, onChange, normalize = (s) => s.trim(),
   }
   return (
     <div>
-      <div className="mb-2 flex items-center gap-1"><label htmlFor={id} className="text-sm font-semibold text-slate-700">{label}</label>{info && <InfoTip label={label}>{info}</InfoTip>}</div>
+      <div className="mb-2 flex items-center gap-1"><label htmlFor={id} className="text-sm font-semibold text-slate-700">{label}</label>{info && <InfoTip label={label}>{info}</InfoTip>}{aside}</div>
       <div className={`flex flex-wrap items-center gap-1.5 rounded-xl border bg-white px-2 py-1.5 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 ${error ? "border-red-300" : "border-slate-200"}`}>
         {values.map((v) => (
           <span key={v} className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800">
@@ -113,7 +121,7 @@ export function TagInput({ label, values, onChange, normalize = (s) => s.trim(),
             <button type="button" aria-label={`${v} 삭제`} onClick={() => onChange(values.filter((x) => x !== v))} className="rounded p-0.5 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500"><X className="size-3" /></button>
           </span>
         ))}
-        <input id={id} className="min-w-28 flex-1 bg-transparent px-1.5 py-1 text-sm text-slate-900 outline-none placeholder:text-slate-400" value={text} placeholder={values.length ? "" : placeholder} onChange={(e) => change(e.target.value)} onKeyDown={key} onBlur={() => { if (text.trim()) { add(text); setText("") } }} />
+        <input id={id} aria-invalid={error ? true : undefined} className="min-w-28 flex-1 bg-transparent px-1.5 py-1 text-sm text-slate-900 outline-none placeholder:text-slate-400" value={text} placeholder={values.length ? "" : placeholder} onChange={(e) => change(e.target.value)} onKeyDown={key} onBlur={() => { if (text.trim()) { add(text); setText("") } }} />
       </div>
       {error ? <p className="mt-1.5 text-xs font-medium text-red-600">{error}</p> : help && <p className="mt-1.5 text-xs leading-5 text-slate-500">{help}</p>}
     </div>
@@ -130,20 +138,24 @@ export const SECTORS: { code: string; ko: string; en: string }[] = [
 ]
 const aliases = (s: (typeof SECTORS)[number]) => [s.ko, s.en, s.code]
 
-/** 제외 섹터 다중 선택. 저장된 값이 영문 이름·코드여도 같은 섹터로 체크하고, 목록에 없는 값은 지우지 않고 따로 보여 준다. */
-export function SectorPicker({ values, onChange }: { values: string[]; onChange: (v: string[]) => void }) {
+/**
+ * 제외 섹터 다중 선택. 저장된 값이 영문 이름·코드여도 같은 섹터로 체크하고, 목록에 없는 값은 지우지 않고 따로 보여 준다.
+ * 내 투자조건 화면과 홈 상세 조건 창이 같이 쓴다 (서버는 이 이름이 정확히 같을 때만 빼므로 글자로 받지 않는다).
+ * id: 첫 체크 칸 id (오류 칸 포커스용). aside: 이름 옆 표시 (상세 조건 창의 「변경됨」).
+ */
+export function SectorPicker({ id, values, onChange, aside }: { id?: string; values: string[]; onChange: (v: string[]) => void; aside?: React.ReactNode }) {
   const known = new Set(SECTORS.flatMap(aliases))
   const unknown = values.filter((v) => !known.has(v))
   const toggle = (s: (typeof SECTORS)[number], on: boolean) => onChange(on ? [...values, s.ko] : values.filter((v) => !aliases(s).includes(v)))
   return (
     <fieldset>
-      <legend className="mb-2 block text-sm font-semibold text-slate-700">제외할 섹터 <span className="font-normal text-slate-400">(여러 개 선택 가능)</span></legend>
+      <legend className="mb-2 block text-sm font-semibold text-slate-700">제외할 섹터 <span className="font-normal text-slate-400">(여러 개 선택 가능)</span>{aside}</legend>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {SECTORS.map((s) => {
+        {SECTORS.map((s, i) => {
           const on = values.some((v) => aliases(s).includes(v))
           return (
             <label key={s.code} className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm transition focus-within:ring-2 focus-within:ring-blue-500 ${on ? "border-blue-400 bg-blue-50 text-blue-900" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}>
-              <input type="checkbox" className="accent-blue-700" checked={on} onChange={(e) => toggle(s, e.target.checked)} />
+              <input id={i === 0 ? id : undefined} type="checkbox" className="accent-blue-700" checked={on} onChange={(e) => toggle(s, e.target.checked)} />
               <span className="min-w-0"><span className="block font-semibold">{s.ko}</span><span className="block truncate text-[11px] text-slate-400">{s.en}</span></span>
             </label>
           )

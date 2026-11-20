@@ -35,28 +35,28 @@ class Warning:
 # code → (level, 한국어 템플릿). {…} 는 make() 의 키워드.
 CATALOG: dict[str, tuple[Level, str]] = {
     # 행동 필요
-    "must_include_not_in_universe": ("user", "필수 포함 종목 {tickers}은(는) 선택한 유니버스에 없어 반영하지 못했습니다."),
+    "must_include_not_in_universe": ("user", "필수 포함으로 요청하신 {tickers} 종목은 고르신 지수 종목에 없어 반영하지 못했습니다."),
     "exclude_sector_unknown": ("user", "제외 섹터 '{names}'은(는) GICS 섹터 이름과 맞지 않아 적용하지 못했습니다."),
     "too_few_candidates": ("user", "테마 후보가 {n}개로 목표 종목 수 {target}개보다 적습니다. 테마를 넓히거나 목표 종목 수를 줄여 보세요."),
     # '후보 조건' 을 함께 적는다: 시작일 재선정에서는 그날 거래대금·상장일 조건에서 먼저 빠진다 (011: 9개 모두 테마 판정은 통과했는데 거래대금으로 7개가 빠졌다)
     # 필수 포함 종목은 그 검사를 건너뛰므로 {n} 에 넣지 않고 따로 적는다 (018: 3개 중 2개가 지표 자료가 없거나 시가총액 미달인 필수 포함 종목이었다)
-    "too_few_with_metric": ("user", "후보 조건(시가총액·거래대금 등)과 테마 판정을 통과하고 선정 지표({metric}) 자료가 있는 종목이 {n}개{forced_note}로 목표 {target}개보다 적어 {selected}개만 선정했습니다."),  # 조건 문장('최소에 못 미치면 … 종목 수 부족') 은 뺀다 — 기업 설명(06)이 최소 이상인데도 그 라벨이라고 옮겼다 (066)
+    "too_few_with_metric": ("user", "기본 조건(시가총액·거래대금 등)을 채우고 테마에 맞으며 선정 지표({metric}) 자료가 있는 종목이 {n}개{forced_note}로 목표 {target}개보다 적어 {selected}개만 선정했습니다."),  # 조건 문장('최소에 못 미치면 … 종목 수 부족') 은 뺀다 — 기업 설명(06)이 최소 이상인데도 그 라벨이라고 옮겼다 (066)
     # 원인·해결을 사실대로 (2026-11 QA 002: 2종목 × 종목당 25% 라 섹터 상한과 무관한데 '섹터 상한을 올리면 해소' 라고 했다).
     # 현금은 최소 현금까지 더한 전체 비율 (F19: 예전에는 상한 때문에 남는 몫만 적어 최소 현금 15% 를 빼고 말했다)
     "weight_capacity": ("user", "{who}로는 투자금의 {cap}까지만 배분할 수 있어 현금이 {cash} 남습니다{mc_note}. {fix}"),
-    "must_include_forced": ("user", "필수 포함 종목 {tickers}은(는) 테마 판정 또는 선정 지표 기준에 맞지 않지만 요청에 따라 포함했습니다."),
+    "must_include_forced": ("user", "필수 포함으로 넣은 {tickers} 종목은 테마나 선정 지표 기준에 맞지 않지만 요청에 따라 포함했습니다."),
     "sector_preference_skipped": ("user", "섹터 상한({cap}) 안에서 투자금을 다 배분하려고 한 섹터에서는 {pref}종목까지만 먼저 골라, 선정 지표 순위가 더 높은 {tickers}(섹터별 {sector})은(는) 빼고 다른 섹터 종목{subs}으로 채웠습니다. 섹터 상한을 올리면 순위대로 고를 수 있습니다."),
     # 필수 포함 사유를 사실대로 (2026-11 QA: 지표 자료가 없을 뿐인데 '기준에 맞지 않지만' 이라고 써서 리포트가 '고배당 기준에 못 미친다' 고 오해)
-    "must_include_out_of_range": ("user", "필수 포함 종목 {tickers}은(는) 선정 지표가 자격선 밖({detail})이지만 요청에 따라 포함했습니다."),
-    "too_few_eligible": ("user", "선정 지표가 자격선 안에 드는 종목이 {n}개{forced_note}라 목표 {target}개를 다 채우지 못했습니다 (자격선 밖 {n_out}개 제외: {examples}). {cash_clause}"),
-    "must_include_no_metric": ("user", "필수 포함 종목 {tickers}은(는) 선정 지표 자료가 없어{why} 순위를 매기지 못했지만 요청에 따라 포함했습니다."),
-    "must_include_off_theme": ("user", "필수 포함 종목 {tickers}은(는) 테마 판정을 통과하지 못했지만 요청에 따라 포함했습니다."),
-    "must_include_excluded_theme": ("user", "필수 포함 종목 {tickers}은(는) 제외 테마({theme})에 해당하지만 요청에 따라 포함했습니다."),
-    "broad_start_pool": ("user", "넓은 테마라 그날 후보 {n}개 전체에서 그날 지표로 다시 골랐습니다. 분석 모델이 판정하지 않은 종목은 제외 테마를 키워드로만 걸렀습니다{dropped}."),
-    "utility_not_fossil": ("user", "화석연료 제외는 석유·가스·석탄을 생산·정제·운송하는 회사에 적용했습니다. 전기·가스를 공급하는 유틸리티 {tickers}은(는) 빼지 않았습니다."),
+    "must_include_out_of_range": ("user", "필수 포함으로 넣은 {tickers} 종목은 선정 지표가 기준 밖({detail})이지만 요청에 따라 포함했습니다."),
+    "too_few_eligible": ("user", "선정 지표가 기준 안에 드는 종목이 {n}개{forced_note}라 목표 {target}개를 다 채우지 못했습니다 (기준 밖 {n_out}개 제외: {examples}). {cash_clause}"),
+    "must_include_no_metric": ("user", "필수 포함으로 넣은 {tickers} 종목은 선정 지표 자료가 없어{why} 순위를 매기지 못했지만 요청에 따라 포함했습니다."),
+    "must_include_off_theme": ("user", "필수 포함으로 넣은 {tickers} 종목은 테마에 맞지 않는다고 봤지만 요청에 따라 포함했습니다."),
+    "must_include_excluded_theme": ("user", "필수 포함으로 넣은 {tickers} 종목은 제외 테마({theme})에 해당하지만 요청에 따라 포함했습니다."),
+    "broad_start_pool": ("user", "넓은 테마라 그날 후보 {n}개 전체에서 그날 지표로 다시 골랐습니다. 테마를 따져 보지 않은 종목은 빼 달라고 하신 테마를 낱말로만 걸렀습니다{dropped}."),
+    "utility_not_fossil": ("user", "화석연료 제외는 석유·가스·석탄을 생산·정제·운송하는 회사에 적용했습니다. 전기·가스를 공급하는 유틸리티 {tickers} 종목은 빼지 않았습니다."),
     # 필수 포함은 후보 단계의 최소 시가총액·거래대금 필터를 건너뛴다(정책) — 건너뛴 사실은 알린다 (018: 시작일 033780.KS 시가총액 76억 달러 < 최소 100억 달러인데 공지가 없었다)
-    "must_include_guard": ("user", "필수 포함 종목 {tickers}은(는) {detail}이지만 요청에 따라 포함했습니다."),
-    "must_include_below_filters": ("user", "필수 포함 종목 {tickers}은(는) 후보 조건을 채우지 못했지만({detail}) 요청에 따라 포함했습니다."),
+    "must_include_guard": ("user", "필수 포함으로 넣은 {tickers} 종목은 {detail}이지만 요청에 따라 포함했습니다."),
+    "must_include_below_filters": ("user", "필수 포함으로 넣은 {tickers} 종목은 기본 조건을 채우지 못했지만({detail}) 요청에 따라 포함했습니다."),
     # 최소 시가총액은 하드 필터 (2026-11 사용자 정책): 확인할 수 없는 종목은 뺀다. 팀 DB 는 XOM·BLK 같은 대형주도 과거 시가총액이 비어 있어 과거 시점에 빠지므로 알린다
     "min_mcap_missing": ("user", "시가총액 자료가 없어 최소 시가총액({min})을 확인할 수 없는 {n}개 종목({tickers})은 후보에서 뺐습니다."),
     "mcap_estimated": ("user", "시가총액 자료가 빈 {n}개 종목({tickers})은 직전에 알려진 주식수(최대 {days} 전)에 그날 종가를 곱해 시가총액을 추정했습니다."),
@@ -64,20 +64,20 @@ CATALOG: dict[str, tuple[Level, str]] = {
     # (025: 필수 포함 XOM 이 시가총액비중 1.4~1.7%, 더 작은 CVX 는 상한 25%)
     "market_cap_missing": ("user", "시가총액 자료가 없는 {n}개 종목({tickers})은 시가총액비중 구성에서 시가총액을 0으로 계산했습니다. 그래서 회사 크기와 상관없이 "
                                    "최소 비중(상한 때문에 남은 비중이 있으면 그 일부를 더함)만 받았고, 이 구성의 해당 종목 비중은 실제 회사 규모를 반영하지 않습니다."),
-    "must_include_short_history": ("user", "필수 포함 종목 {tickers}은(는) 기준일 이전 가격 이력이 1년이 안 되지만 요청에 따라 포함했습니다 (이력이 모자라면 비중을 줄 수 없을 수 있습니다)."),
+    "must_include_short_history": ("user", "필수 포함으로 넣은 {tickers} 종목은 기준일 이전 가격 이력이 1년이 안 되지만 요청에 따라 포함했습니다 (이력이 모자라면 비중을 줄 수 없을 수 있습니다)."),
     "backtest_start_shifted": ("user", "{text}"),
     "fewer_holdings_at_start": ("user", "{text}"),
     "backtest_start_clamped": ("user", "{text}"),  # 요청한 백테스트 시작이 재무 지표 자료 시작 전이라 뒤로 옮김 (사용자가 기간을 다시 정할 수 있음)
     "selection_lookahead": ("user", "백테스트 시작일에 종목을 다시 고르지 않고 분석 기준일 선정 목록을 과거에도 그대로 썼습니다. 지금 알려진 정보로 고른 목록이라 과거 성과가 실제보다 좋게 보일 수 있습니다."),
-    "ticker_dropped_history": ("user", "{tickers}은(는) 백테스트 시작일 이전 가격 이력이 부족해 백테스트에서 제외했습니다."),
-    "added_tickers_ignored": ("user", "추가 요청 종목 {tickers}은(는) 유니버스에 없어 반영하지 못했습니다."),
-    "model_dropped": ("user", "{tickers}은(는) 추정 창 안 수익률 자료가 부족해 시장모형과 비중에서 제외했습니다."),
-    "optimizer_failed_no_tilt": ("user", "뉴스 뷰 비중 최적화가 수렴하지 않아 해당 시점에는 뷰를 반영하지 않고 기준 비중을 사용했습니다."),
-    "excluded_by_data_quality": ("user", "가격 자료 품질 기준에 미달한 {tickers}을(를) 백테스트에서 제외하고 나머지 비중을 다시 맞췄습니다."),
+    "ticker_dropped_history": ("user", "{tickers} 종목은 백테스트 시작일 이전 가격 이력이 부족해 백테스트에서 제외했습니다."),
+    "added_tickers_ignored": ("user", "추가로 요청하신 {tickers} 종목은 고르신 지수 종목에 없어 반영하지 못했습니다."),
+    "model_dropped": ("user", "{tickers} 종목은 비중을 계산할 기간의 수익률 자료가 부족해 시장모형과 비중에서 제외했습니다."),
+    "optimizer_failed_no_tilt": ("user", "투자 의견을 넣은 비중 계산이 답을 찾지 못해 그 시점에는 투자 의견 없이 기준 비중을 썼습니다."),
+    "excluded_by_data_quality": ("user", "가격 자료가 모자란 {tickers} 종목을 백테스트에서 제외하고 나머지 비중을 다시 맞췄습니다."),
     "no_portfolio_passed": ("user", "모든 포트폴리오가 필수 검증 규칙을 통과하지 못했습니다. 미통과 규칙: {rules}. 허용 낙폭·목표를 조정하거나 현금 혼합안을 검토해 보세요."),
     "alternative_skipped": ("user", "조건을 통과한 포트폴리오가 없고 현금 혼합안도 만들 수 없었습니다 ({reason})."),
     # 어느 구성의 맞춤안인지 밝힌다 (064: 시가총액비중의 맞춤안은 있었는데 walk-forward 뉴스 뷰 BL 의 맞춤안을 못 만든 공지가 '맞춤안을 만들지 않았다' 로만 읽혔다)
-    "no_dividend_dropped": ("user", "배당 기업 테마라 최근 12개월 배당을 확인할 수 없는 종목 {n}개({tickers})는 선정하지 않았습니다 (팀 데이터베이스 배당 자료가 없거나 0이고, 분석 기준일 테마 판정에서도 배당 기업으로 확인되지 않음)."),
+    "no_dividend_dropped": ("user", "배당 기업 테마라 최근 12개월 배당을 확인할 수 없는 종목 {n}개({tickers})는 선정하지 않았습니다 (팀 데이터베이스 배당 자료가 없거나 0이고, 분석 기준일에 테마에 맞는지 따져 볼 때도 배당 기업으로 확인되지 않음)."),
     # 아이디어의 뜻을 지표 하나로 못 담아 더한 보조 조건 (2026-11 평가)
     # 사용자 말을 인용하지 않고 조건 이름으로 (2026-11 평가 012: 아이디어는 '꾸준히 많이 주는' 인데 공지가 "'배당을 꾸준히 늘린' 요청" 이라고 옮겼다)
     "dividend_growth_dropped": ("user", "배당 성장 조건(최근 {years}년 동안 주당배당을 해마다 거의 빠짐없이 늘렸고 한 해도 깎지 않은 종목만)에 맞지 않는 종목 {n}개({tickers})는 선정하지 않았습니다. 아이디어의 '배당을 꾸준히 늘린' 을 담으려고 더한 조건입니다."),
@@ -85,8 +85,8 @@ CATALOG: dict[str, tuple[Level, str]] = {
     "dividend_history_dropped": ("user", "배당 이력 조건(최근 {years}년)을 확인할 수 없는 종목 {n}개({tickers})는 선정하지 않았습니다 (배당을 시작한 지 얼마 안 됐거나 팀 데이터베이스 배당 자료가 빈 경우)."),
     "high_leverage_dropped": ("user", "재무 건전성 조건(부채비율 = 부채총계 ÷ 자본총계 {lim} 이하)에 맞지 않거나 자본이 0 이하인 종목 {n}개({tickers})는 선정하지 않았습니다 (은행·보험 같은 금융업은 부채가 사업 자체라 이 기준을 쓰지 않았습니다)."),
     "leverage_unknown": ("info", "재무상태표 자료가 없어 부채비율을 확인하지 못한 {n}개 종목({tickers})은 후보에 그대로 두었습니다."),
-    "low_margin_dropped": ("user", "이익률 조건(영업이익률이 같은 유니버스 비금융 종목의 중앙값 이상, 최근 4개 분기 기준)에 맞지 않는 종목 {n}개({tickers})는 선정하지 않았습니다 (중앙값 {med}, 금융업은 재지 않음)."),
-    "style_floor_fallback": ("user", "테마 후보 {n}개 모두 {what}이 같은 유니버스 중앙값({med})보다 {worse}, 후보 가운데 {what}이 {better} 절반({tickers})만 골랐습니다."),
+    "low_margin_dropped": ("user", "이익률 조건(영업이익률이 같은 시장 비금융 종목의 중앙값 이상, 최근 4개 분기 기준)에 맞지 않는 종목 {n}개({tickers})는 선정하지 않았습니다 (중앙값 {med}, 금융업은 재지 않음)."),
+    "style_floor_fallback": ("user", "테마 후보 {n}개 모두 {what}이 같은 시장 중앙값({med})보다 {worse}, 후보 가운데 {what}이 {better} 절반({tickers})만 골랐습니다."),
     "foreign_hq_dropped": ("user", "미국 기업 조건(법인 소재지가 미국인 기업만)에 맞지 않는 종목 {n}개({tickers})는 선정하지 않았습니다. 회사 소개의 정식 이름이 plc·N.V.·Ltd 같은 미국 밖 법인 형태인 기업입니다."),
     "margin_unknown": ("info", "손익 자료가 없어 영업이익률을 확인하지 못한 {n}개 종목({tickers})은 후보에 그대로 두었습니다."),
     "user_floor_dropped": ("user", "요청한 {kind}({min}) 조건 때문에 테마 관련 종목 {n}개({tickers})가 후보에서 빠졌습니다."),
@@ -355,14 +355,14 @@ def _out_of_range_ko(detail: str) -> str:
     if m:  # 고배당·저PER 의 유니버스 중앙값 기준선 (screen._style_floor)
         try:
             met, v, med = m.group(1), float(m.group(2)), float(m.group(3))
-            return f"{M.METRIC_SHORT_KO.get(met, met)} {metric_value_ko(met, v)}로 같은 유니버스 중앙값 {metric_value_ko(met, med)} {m.group(4)}"
+            return f"{M.METRIC_SHORT_KO.get(met, met)} {metric_value_ko(met, v)}로 같은 시장 중앙값 {metric_value_ko(met, med)} {m.group(4)}"
         except ValueError:
             pass
     m = re.match(r"^(\w+)=([-+\d.eE]+)", detail)
     if m and m.group(1) in M.ELIGIBLE_RANGE:
         try:
             met, v = m.group(1), float(m.group(2))
-            return f"{M.METRIC_SHORT_KO.get(met, met)} {metric_value_ko(met, v)}, 자격선 {M.eligible_range_ko(met)}"
+            return f"{M.METRIC_SHORT_KO.get(met, met)} {metric_value_ko(met, v)}, 기준 {M.eligible_range_ko(met)}"
         except ValueError:
             pass
     return re.sub(r"^(\w+)=", lambda mm: {"pe_ttm": "PER ", "roe_ttm": "ROE ", "dividend_yield_ttm": "배당수익률 "}.get(mm.group(1), mm.group(1) + " "), detail)

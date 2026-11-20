@@ -5,7 +5,7 @@ import type { ProposedCheck, ProposedReport } from "../../api/proposed"
 import { proposedOf } from "../../api/proposed"
 import type { ReportDoc, SummaryKpi } from "../../api/types"
 import { ServiceContext } from "../../app/providers"
-import { benchTicker, etfDesc, explainReason, kpiName, strategyInfo, type Reason, type StrategyInfo, type VolCheck } from "./wording"
+import { benchTicker, etfDesc, explainReason, kpiName, matchedDesc, strategyInfo, type Reason, type StrategyInfo, type VolCheck } from "./wording"
 
 export const proposed = (doc?: ReportDoc | null): ProposedReport | null => (doc ? proposedOf(doc) : null)
 
@@ -27,7 +27,16 @@ export function kpiDisplay(doc: ReportDoc | null | undefined, k: Pick<SummaryKpi
 export function reasonsOf(doc: ReportDoc, short: boolean): { t: string; r: Reason }[] {
   const rs = proposed(doc)?.structured?.reasons
   if (rs?.length) return rs.map((x) => ({ t: x.text_ko, r: { title: x.title_ko, desc: x.text_ko, tone: x.tone === "neutral" ? undefined : x.tone } }))
-  return (doc.summary?.verdict.reason_ko ?? "").split(" · ").map((t) => t.trim()).filter(Boolean).map((t) => ({ t, r: explainReason(t, { short }) }))
+  // 낙폭 맞춤안 설명('…의 주식 비중을 42.7%로 줄여 …맞춘 구성')은 고른 이유가 아니라 선택 전략의 설명이라 목록에서 빼고 「선택 전략」 아래에 둔다 (chosenDescOf, 2026-11-20 사용자 요청)
+  return reasonParts(doc).filter((t) => !matchedDesc(t)).map((t) => ({ t, r: explainReason(t, { short }) }))
+}
+
+const reasonParts = (doc: ReportDoc) => (doc.summary?.verdict.reason_ko ?? "").split(" · ").map((t) => t.trim()).filter(Boolean)
+
+/** 「선택 전략: …」 아래 붙일 한 문장: 낙폭 맞춤안이면 어떤 구성인지(기준 구성·주식 비중·목표 낙폭). 없으면 null. */
+export function chosenDescOf(doc: ReportDoc): string | null {
+  for (const t of reasonParts(doc)) { const d = matchedDesc(t); if (d) return d }
+  return null
 }
 
 export const checkOf = (doc: ReportDoc | null | undefined, rule: string): ProposedCheck | null => proposed(doc)?.structured?.checks.find((c) => c.rule === rule) ?? null

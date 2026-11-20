@@ -55,37 +55,37 @@ function Chip({ o, pressed, disabled, onClick }: { o: Option; pressed?: boolean;
   const card = !!o.help_ko
   return (
     <button type="button" aria-pressed={pressed} disabled={disabled} onClick={onClick}
-      className={`${card ? "rounded-2xl px-3.5 py-2.5 text-left" : "rounded-full px-4 py-2"} border text-sm shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50 ${pressed ? "border-blue-500 bg-blue-50 text-blue-900" : "border-blue-200 bg-white text-blue-800 hover:border-blue-400 hover:bg-blue-50"}`}>
-      <span className={`flex items-center gap-2 ${card ? "font-semibold text-slate-900" : "font-medium"}`}>
-        {pressed && <Check className="size-4 shrink-0 text-blue-700" aria-hidden />}
+      className={`rounded-control ${card ? "px-3.5 py-2.5 text-left" : "px-4 py-2"} text-14 transition disabled:cursor-not-allowed disabled:opacity-50 ${pressed ? "bg-accent text-on-accent" : "bg-surface text-main enabled:hover:bg-tint"}`}>
+      <span className={`flex items-center gap-2 ${card ? "font-semibold" : "font-semibold"}`}>
+        {pressed && <Check className="size-4 shrink-0" aria-hidden />}
         <span>{o.label_ko}</span>
-        {o.recommended && <span className="shrink-0 rounded-md bg-blue-100 px-1.5 py-px text-[11px] font-bold text-blue-800">추천</span>}
+        {o.recommended && <span className={`shrink-0 rounded-chip px-1.5 py-px text-12 font-bold ${pressed ? "bg-surface text-accent" : "bg-tint text-accent"}`}>추천</span>}
       </span>
-      {card && <span className="mt-1 block text-xs leading-5 text-slate-500">{o.help_ko}</span>}
+      {card && <span className={`mt-1 block text-12 leading-5 ${pressed ? "text-on-accent/85" : "text-sub"}`}>{o.help_ko}</span>}
     </button>
   )
 }
 
 const skipChip = (q: ProposedChatQuestion, busy: boolean, onAnswer: (a: Answer) => void) =>
-  q.allow_skip && <button type="button" disabled={busy} onClick={() => onAnswer({ skip: true })} className="rounded-full px-3 py-2 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">건너뛰기 (기본값 사용)</button>
+  q.allow_skip && <button type="button" disabled={busy} onClick={() => onAnswer({ skip: true })} className="rounded-control px-3 py-2 text-13 text-sub hover:bg-surface hover:text-main disabled:opacity-50">건너뛰기 (기본값 사용)</button>
 
 /** 마지막 질문 아래 내 쪽에 뜨는 보기. */
 export function QuickReplies({ q, busy, onAnswer }: { q: ProposedChatQuestion; busy: boolean; onAnswer: (a: Answer) => void }) {
   const [picked, setPicked] = useState<unknown[]>([])
   const cards = q.options.some((o) => o.help_ko)
-  const wrap = cards ? "grid w-full max-w-[85%] gap-2 sm:grid-cols-2" : "flex max-w-[85%] flex-wrap justify-end gap-2"
+  const wrap = cards ? "grid w-full gap-2 sm:grid-cols-2" : "flex flex-wrap gap-2"  // 질문 말풍선 안에서 가로로 흐른다
   const hint = q.kind === "multi" ? "여러 개 골라도 돼요" : q.kind === "money" || q.kind === "number" ? "골라 주시거나 아래에 직접 적어 주세요" : "골라 주세요"
 
   if (q.kind === "multi") {
     const toggle = (v: unknown) => setPicked((xs) => (xs.includes(v) ? xs.filter((x) => x !== v) : [...xs, v]))
     return (
-      <div role="group" aria-label={`${q.field_label_ko} 보기`} className="chat-in flex flex-col items-end gap-2 pt-1">
-        <p className="text-[11px] font-medium text-slate-400">{hint}</p>
+      <div role="group" aria-label={`${q.field_label_ko} 보기`} className="flex flex-col items-start gap-2">
+        <p className="text-12 text-sub">{hint}</p>
         <div className={wrap}>{q.options.map((o) => <Chip key={String(o.value)} o={o} pressed={picked.includes(o.value)} disabled={busy} onClick={() => toggle(o.value)} />)}</div>
         <div className="flex items-center gap-2">
           {skipChip(q, busy, onAnswer)}
           <button type="button" disabled={busy || picked.length === 0} onClick={() => onAnswer({ option_value: q.options.map((o) => o.value).filter((v) => picked.includes(v)) })}
-            className="inline-flex items-center gap-1.5 rounded-full bg-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40">
+            className="inline-flex items-center gap-1.5 rounded-control bg-accent px-4 py-2 text-14 font-semibold text-on-accent enabled:hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40">
             <Check className="size-4" aria-hidden />선택 완료 ({picked.length})
           </button>
         </div>
@@ -93,8 +93,8 @@ export function QuickReplies({ q, busy, onAnswer }: { q: ProposedChatQuestion; b
     )
   }
   return (
-    <div role="group" aria-label={`${q.field_label_ko} 보기`} className="chat-in flex flex-col items-end gap-2 pt-1">
-      <p className="text-[11px] font-medium text-slate-400">{hint}</p>
+    <div role="group" aria-label={`${q.field_label_ko} 보기`} className="flex flex-col items-start gap-2">
+      <p className="text-12 text-sub">{hint}</p>
       <div className={wrap}>{q.options.map((o) => <Chip key={String(o.value)} o={o} disabled={busy} onClick={() => onAnswer({ option_value: o.value })} />)}</div>
       {skipChip(q, busy, onAnswer)}
     </div>
@@ -118,15 +118,15 @@ export function Composer({ q, busy, waitingText, onAnswer }: { q: ProposedChatQu
       <label className="relative min-w-0 flex-1">
         <input aria-label={q && typed ? `${q.field_label_ko} 직접 입력` : "답 입력"} inputMode={isMoney ? "text" : "decimal"} autoComplete="off" disabled={off} placeholder={placeholder}
           value={text} onChange={(e) => setText(e.target.value)} aria-invalid={unreadable || undefined}
-          className="h-11 w-full rounded-full border border-slate-300 bg-slate-50 pl-4 pr-24 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:bg-slate-100" />
-        <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center gap-2 text-xs text-slate-500">
-          {unreadable ? <span className="font-semibold text-amber-700">숫자로 적어 주세요</span>
-            : n !== null && <span className="font-semibold text-blue-700">{isMoney ? money(n, "KRW") : n}</span>}
+          className="h-11 w-full rounded-control bg-sunken pl-4 pr-24 text-14 text-main placeholder:text-hint disabled:cursor-not-allowed disabled:opacity-70" />
+        <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center gap-2 text-12 text-sub">
+          {unreadable ? <span className="font-semibold text-warning">숫자로 적어 주세요</span>
+            : n !== null && <span className="font-semibold text-accent">{isMoney ? money(n, "KRW") : n}</span>}
           {typed && unit}
         </span>
       </label>
       <button type="submit" aria-label="보내기" disabled={off || n === null}
-        className="grid size-11 shrink-0 place-items-center rounded-full bg-blue-700 text-white shadow-sm transition hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300">
+        className="grid size-11 shrink-0 place-items-center rounded-control bg-accent text-on-accent transition enabled:hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40">
         <SendHorizontal className="size-4" aria-hidden />
       </button>
     </form>

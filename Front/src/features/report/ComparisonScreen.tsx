@@ -68,7 +68,7 @@ export function ComparisonScreen({ comparisonId }: { comparisonId: string }) {
         </Card>
       </div>
       <Card className="p-5 text-sm">
-        <h2 className="mb-2 text-base font-semibold text-slate-900">비중 변화 (선택안 목표 비중)</h2>
+        <h2 className="mb-2 text-base font-semibold text-slate-900">포트폴리오 비중 변화 (선택안 목표 비중)</h2>
         <div className="max-h-80 overflow-auto"><table className="w-full"><thead className="text-left text-xs font-semibold text-slate-500"><tr><th className="py-1">종목</th><th className="py-1 text-right">원안</th><th className="py-1 text-right">수정안</th><th className="py-1 text-right">차이</th></tr></thead>
           <tbody>{d.weight_changes.map((w) => <tr key={w.ticker} className="border-t border-slate-100"><td className="py-1 font-medium">{w.ticker}</td><td className="py-1 text-right text-slate-500">{weight(w.base)}</td><td className="py-1 text-right">{weight(w.revised)}</td><td className={`py-1 text-right ${Math.abs(w.delta) > 0.0005 ? (w.delta > 0 ? "text-emerald-700" : "text-red-700") : "text-slate-400"}`}>{(w.delta >= 0 ? "+" : "") + weight(w.delta)}</td></tr>)}</tbody></table></div>
       </Card>

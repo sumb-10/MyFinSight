@@ -17,7 +17,7 @@ export function introSeen(): boolean {
 export function recordIntro() {
   try { window.localStorage.setItem(INTRO_KEY, "seen") } catch { /* ignore */ }
 }
-/** 소개 마지막 장에서 「화면 둘러보기」를 고르면 홈이 열리자마자 홈 둘러보기를 시작한다 (한 번만) */
+/** 소개 마지막 장에서 「홈 화면 둘러보기」를 고르면 홈이 열리자마자 홈 둘러보기를 시작한다 (한 번만) */
 export function hasHomeTourFlag(): boolean {
   try { return window.sessionStorage.getItem(HOME_TOUR_FLAG) === "1" } catch { return false }
 }
@@ -31,7 +31,7 @@ interface Step { no: number; kicker: string; title: string; body: string }
 const STEPS: Step[] = [
   { no: 1, kicker: "아이디어 입력", title: "투자하고 싶은 내용을\n평소 말로 적어 보세요", body: "관심 있는 산업, 종목, 기간을 한 줄로 적으면 됩니다.\n적지 않은 조건은 미리 저장해 둔 내 투자조건을 씁니다." },
   { no: 2, kicker: "보충 질문", title: "모자란 조건은\nMyFinSight가 물어봐요", body: "분석에 꼭 필요한데 빠진 조건이 있으면 한 번에 하나씩 묻습니다.\n보기 중에서 고르기만 하면 됩니다." },
-  { no: 3, kicker: "조건 확인", title: "최종 조건을 확인하고\n분석을 시작해요", body: "이번 분석에서 달라진 조건을 한눈에 보여 줍니다.\n확인하고 「분석 시작」을 눌러야 분석이 실행됩니다." },
+  { no: 3, kicker: "조건 확인", title: "최종 조건을 확인하고\n분석을 시작해요", body: "이번 분석에서 달라진 조건을 한눈에 보여 줍니다.\n확인하고 「이 조건으로 분석 실행」을 눌러야 분석이 실행됩니다." },
   { no: 4, kicker: "분석·검증", title: "종목을 고르고,\n과거 데이터로 검증해요", body: "조건에 맞는 종목을 고르고, LLM의 투자 의견을 반영해 비중을 계산합니다.\n과거에 이 구성을 따랐다면 어땠을지 계산합니다." },
   { no: 5, kicker: "리포트·모의투자", title: "리포트로 확인하고,\n모의투자로 지켜봐요", body: "추천 구성, 과거 성과와 위험, 내 조건을 지켰는지가 리포트에 정리됩니다. 마음에 들면 실제 돈 없이 모의투자로 따라가 볼 수 있습니다." },
 ]
@@ -155,7 +155,7 @@ function SceneIdea() {
       <div className="mt-6 w-full rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <p className="min-h-24 text-[15px] leading-7 text-slate-800">{typed}<span className="ml-0.5 inline-block h-5 w-0.5 translate-y-1 animate-pulse bg-blue-600" /></p>
         <div className="flex justify-end border-t border-slate-100 pt-3">
-          <span className={`inline-flex items-center gap-1 rounded-xl px-4 py-2 text-sm font-bold text-white transition-all duration-300 ${btn ? "scale-95 bg-blue-800 ring-4 ring-blue-200" : "bg-blue-700"}`}>투자조건 확인하기<ChevronRight className="size-4" /></span>
+          <span className={`inline-flex items-center gap-1 rounded-xl px-4 py-2 text-sm font-bold text-white transition-all duration-300 ${btn ? "scale-95 bg-blue-800 ring-4 ring-blue-200" : "bg-blue-700"}`}>분석 시작하기<ChevronRight className="size-4" /></span>
         </div>
       </div>
     </div>
@@ -208,7 +208,7 @@ function SceneConfirm() {
           ))}
         </div>
       </div>
-      <span className={`mt-4 inline-flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white transition-all duration-300 ${press ? "scale-[0.97] bg-blue-800 ring-4 ring-blue-200" : "bg-blue-700"}`}><Play className="size-4" />분석 시작</span>
+      <span className={`mt-4 inline-flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white transition-all duration-300 ${press ? "scale-[0.97] bg-blue-800 ring-4 ring-blue-200" : "bg-blue-700"}`}><Play className="size-4" />이 조건으로 분석 실행</span>
     </div>
   )
 }
@@ -379,13 +379,13 @@ export function IntroScroll() {
             <span className="flex items-center justify-center gap-2"><Play className="size-5 shrink-0" /><span className="text-lg font-extrabold">바로 시작하기</span></span><p className="mt-1.5 text-sm md:whitespace-nowrap text-blue-100">내 투자 아이디어를 입력합니다</p>
           </button>
           <button onClick={() => go("example")} className="rounded-2xl border border-slate-200 bg-white px-5 py-4 text-slate-900 transition hover:border-blue-300 hover:shadow-md">
-            <span className="flex items-center justify-center gap-2"><FileText className="size-5 shrink-0 text-blue-700" /><span className="text-lg font-extrabold">예시 리포트 먼저 보기</span></span><p className="mt-1.5 text-sm md:whitespace-nowrap text-slate-500">리포트 읽는 법을 단계별로 안내합니다</p>
+            <span className="flex items-center justify-center gap-2"><FileText className="size-5 shrink-0 text-blue-700" /><span className="text-lg font-extrabold">예시 리포트 둘러보기</span></span><p className="mt-1.5 text-sm md:whitespace-nowrap text-slate-500">리포트 읽는 법을 단계별로 안내합니다</p>
           </button>
           <button onClick={() => go("tour")} className="rounded-2xl border border-slate-200 bg-white px-5 py-4 text-slate-900 transition hover:border-blue-300 hover:shadow-md">
-            <span className="flex items-center justify-center gap-2"><Compass className="size-5 shrink-0 text-blue-700" /><span className="text-lg font-extrabold">화면 둘러보기</span></span><p className="mt-1.5 text-sm md:whitespace-nowrap text-slate-500">홈 화면의 각 부분을 짚어 줍니다</p>
+            <span className="flex items-center justify-center gap-2"><Compass className="size-5 shrink-0 text-blue-700" /><span className="text-lg font-extrabold">홈 화면 둘러보기</span></span><p className="mt-1.5 text-sm md:whitespace-nowrap text-slate-500">홈 화면의 각 부분을 짚어 줍니다</p>
           </button>
         </div>
-        <p className="mt-10 text-sm text-slate-400">이 소개는 홈의 「MyFinSight 소개」에서 언제든 다시 볼 수 있습니다.</p>
+        <p className="mt-10 text-sm text-slate-400">이 소개는 홈의 「사용 안내」 메뉴에서 언제든 다시 볼 수 있습니다.</p>
       </section>
     </div>
   )

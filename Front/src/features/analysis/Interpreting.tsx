@@ -1,3 +1,4 @@
+import { FlowStepper } from "./FlowStepper"
 import { useEffect, useState } from "react"
 import { useService } from "../../app/providers"
 import { navigate } from "../../app/router"
@@ -7,7 +8,7 @@ import { usePolling } from "../../state/usePolling"
 import { saveUi } from "../../state/uiStorage"
 import { Button } from "../../ui"
 import { ko } from "../../lib/format"
-import { ActionError, FlowHeader, FlowSteps, IdeaPart, IdeaPending, LEFT_NOTE, ProgressList, startNewWith } from "./flow"
+import { ActionError, FlowHeader, IdeaPart, IdeaPending, LEFT_NOTE, ProgressList, startNewWith } from "./flow"
 
 /** 서버가 새 요청의 번호만 먼저 돌려주고(state=interpreting) 해석·첫 질문은 뒤에서 할 때의 질문 화면.
  *  2초마다 다시 읽어 서버가 지금 하는 단계(progress)를 보여 주고, 끝나면 onDone 으로 넘긴다 (질문 중이면 질문, 끝났으면 확인 화면으로).
@@ -31,7 +32,7 @@ export function Interpreting({ requestId, st, onDone }: { requestId: string; st:
   return (
     <div className="mx-auto max-w-4xl space-y-8">
       <FlowHeader eyebrow={`${ko(st.mode)} · 조건 확인`} title="부족한 조건을 함께 정합니다" desc="분석 모델이 아이디어를 해석한 뒤, 결과가 달라질 항목만 묻습니다. 해석하는 동안 화면을 닫거나 새로고침해도 이 요청은 이어서 처리됩니다." />
-      <FlowSteps current={0} />
+      <FlowStepper current={2} />
       {waiting ? <IdeaPending steps={(poll.data ?? st).progress} /> : (
         <div className="space-y-3">
           <ActionError title="아이디어를 해석하지 못했습니다" message={st.error_ko ?? "서버에서 요청을 처리하지 못했습니다."} retry={resending ? undefined : () => void resend()} />

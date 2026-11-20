@@ -4,7 +4,7 @@ import { ServiceContext } from "../../app/providers"
 import { ApiError } from "../../api/client"
 import type { AnalysisService } from "../../api/service"
 import type { CompaniesBlock, CompanyItem, DialogState } from "../../api/types"
-import { CompanyList, selectionStatus } from "./CompanyList"
+import { CompanyList, selectionStatus, weightBasis } from "./CompanyList"
 import { metricValue } from "./metrics"
 import { RequestHistory } from "./RequestHistory"
 import { useFluidShell } from "./useFluidShell"
@@ -17,9 +17,16 @@ const block = (items: CompanyItem[], metric = "pe_ttm"): CompaniesBlock => ({ ty
 describe("기업 상태 문구", () => {
   it("선정 상태를 두 기준일의 실제 값으로만 구분한다", () => {
     expect(selectionStatus({ in_selection_now: true, in_backtest: true })).toBeNull()
-    expect(selectionStatus({ in_selection_now: true, in_backtest: false })).toContain("분석 기준일에만 선정")
+    expect(selectionStatus({ in_selection_now: true, in_backtest: false })).toContain("분석한 날에만 선정")
     expect(selectionStatus({ in_selection_now: false, in_backtest: true })).toContain("백테스트 시작일에만 선정")
     expect(selectionStatus({ in_selection_now: false, in_backtest: false })).toBe("두 기준일 모두 선정되지 않음")
+  })
+  it("종목 비중이 분석 기준일 구성과 모두 같으면 분석 기준일 포트폴리오 비중, 다르거나 기준일 구성이 없으면 백테스트 시작일 포트폴리오 비중", () => {
+    const al = (items: { ticker: string; weight: number }[], basis = "forward") => ({ basis, items }) as never
+    expect(weightBasis([{ ticker: "A", weight: 0.2 }, { ticker: "B", weight: null }], al([{ ticker: "A", weight: 0.2 }]))).toBe("now")
+    expect(weightBasis([{ ticker: "A", weight: 0.16 }, { ticker: "B", weight: null }], al([{ ticker: "A", weight: 0.08 }, { ticker: "B", weight: 0.1 }]))).toBe("bt")
+    expect(weightBasis([{ ticker: "A", weight: 0.2 }], al([{ ticker: "A", weight: 0.2 }], "backtest"))).toBe("bt")
+    expect(weightBasis([{ ticker: "A", weight: 0.2 }], undefined)).toBe("bt")
   })
   it("PER 은 배수로, 수익률은 비율로 표시한다 (13.34 가 +1,334% 로 보이지 않는다)", () => {
     expect(metricValue("pe_ttm", 13.34)).toBe("13.34배")
@@ -27,10 +34,11 @@ describe("기업 상태 문구", () => {
   })
   it("설명이 없는 종목은 빈칸으로 두지 않고, 이유를 아는 경우와 모르는 경우를 구분하며, 옛 문구를 쓰지 않는다", () => {
     const { unmount } = render(<CompanyList b={block([company()])} />)
-    expect(screen.queryByText(/이 종목은 분석 기준일에 선정되지 않았습니다/)).toBeNull()  // 카드는 접힌 채 시작
+    expect(screen.queryByText(/이 종목은 분석한 날에 선정되지 않았습니다/)).toBeNull()  // 카드는 접힌 채 시작
     fireEvent.click(screen.getByRole("button", { name: /PLTR/ }))
-    expect(screen.getByText("분석 기준일 선정 종목이 아니어서 선정 이유 설명이 없습니다.")).toBeInTheDocument()
-    expect(screen.getAllByText("추천안 비중 없음").length).toBeGreaterThan(0)
+    expect(screen.getByText("분석한 날의 선정 종목이 아니어서 선정 이유 설명이 없습니다.")).toBeInTheDocument()
+    expect(screen.getAllByText("담지 않음").length).toBeGreaterThan(0)
+    expect(screen.queryByText(/추천안 비중/)).toBeNull()
     expect(screen.queryByText(/미보유|미선정$|백테스트 미포함$/)).toBeNull()
     expect(screen.getAllByText(/13.34배/).length).toBeGreaterThan(0)
     unmount()
@@ -49,6 +57,8 @@ describe("투자 아이디어와 요청 내역", () => {
   it("실제 아이디어·답한 질문·달라진 조건만 시간 순서로 보여 준다", async () => {
     show(svc(() => Promise.resolve(state({}))))
     expect(await screen.findByText("반도체 메모리 기업에 투자하고 싶어")).toBeInTheDocument()
+    const top = screen.getByRole("region", { name: "투자 아이디어와 변경 조건" })  // 큰 제목이 두 카드를 아우르고, 카드 제목은 그대로
+    expect(top).toHaveTextContent("처음 입력한 투자 아이디어"); expect(top).toHaveTextContent("최종 분석에 반영된 변경 조건")
     expect(screen.getByText("섹터당 상한")).toBeInTheDocument()  // 최종 반영 조건은 처음부터 보인다
     expect(screen.queryByRole("list", { name: "요청 기록" })).toBeNull()  // 질문·답변 전체는 접혀 있다
     fireEvent.click(screen.getByRole("button", { name: /추가 질문과 답변/ }))

@@ -31,11 +31,11 @@ describe("상세 조건 창", () => {
   it("탭을 옮겨도 값이 남고, 입력·탭 이동만으로는 onApply 를 부르지 않으며, 적용 때만 실제 overrides 를 넘긴다", () => {
     const { onApply, close } = setup()
     expect(screen.getByText("변경 없음")).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText("투자금"), { target: { value: "20000000" } })
+    fireEvent.change(screen.getByLabelText("처음 투자할 금액"), { target: { value: "20000000" } })
     fireEvent.click(tab(/전략/))
-    fireEvent.change(screen.getByLabelText(/어떤 기업에 투자할까요/), { target: { value: "low_per" } })
+    fireEvent.change(screen.getByLabelText(/어떤 기업에 투자하고 싶나요/), { target: { value: "low_per" } })
     fireEvent.click(tab(/자금·기간/))
-    expect(screen.getByLabelText(/^투자금/)).toHaveValue("20,000,000")
+    expect(screen.getByLabelText(/^처음 투자할 금액/)).toHaveValue("20,000,000")
     expect(tab(/자금·기간/)).toHaveAccessibleName(/변경 1개/)
     expect(tab(/전략/)).toHaveAccessibleName(/변경 1개/)
     expect(onApply).not.toHaveBeenCalled()
@@ -53,7 +53,7 @@ describe("상세 조건 창", () => {
 
   it("값을 기본값으로 돌리면 변경 표시가 사라진다", () => {
     setup()
-    const amount = screen.getByLabelText("투자금")
+    const amount = screen.getByLabelText("처음 투자할 금액")
     fireEvent.change(amount, { target: { value: "20000000" } })
     expect(screen.getByText("변경됨")).toBeInTheDocument()
     fireEvent.change(amount, { target: { value: "10000000" } })
@@ -70,9 +70,9 @@ describe("상세 조건 창", () => {
 
   it("취소·닫기·Esc 는 적용하지 않고, 되돌리기는 창을 유지한 채 값만 초기화한다", () => {
     const { onApply, close } = setup({ initial: { "capital.initial_amount": 30_000_000 } })
-    expect(screen.getByLabelText(/^투자금/)).toHaveValue("30,000,000")
+    expect(screen.getByLabelText(/^처음 투자할 금액/)).toHaveValue("30,000,000")
     fireEvent.click(screen.getByRole("button", { name: "기본 투자조건으로 되돌리기" }))
-    expect(screen.getByLabelText(/^투자금/)).toHaveValue("10,000,000")
+    expect(screen.getByLabelText(/^처음 투자할 금액/)).toHaveValue("10,000,000")
     expect(onApply).not.toHaveBeenCalled()
     expect(close).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole("button", { name: "취소" }))
@@ -122,12 +122,37 @@ describe("상세 조건 창", () => {
   it("이미 바꾼 값이 있는 고급 영역은 처음부터 펼치고, 접힌 영역은 현재 설정을 요약한다", () => {
     setup({ initial: { "constraints.exclude_tickers": ["TSLA"] } })
     fireEvent.click(tab(/종목·배분/))
-    expect(screen.getByRole("button", { name: /제외 조건/ })).toHaveAttribute("aria-expanded", "true")
-    expect(screen.getByLabelText(/제외 종목/)).toHaveValue("TSLA")
+    expect(screen.getByRole("button", { name: /빼거나 꼭 넣을 종목·분야/ })).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByRole("button", { name: "TSLA 삭제" })).toBeInTheDocument()  // 저장된 제외 종목이 칩으로
     const floor = screen.getByRole("button", { name: /종목 규모 하한/ })
     expect(floor).toHaveAttribute("aria-expanded", "false")
     expect(floor).toHaveTextContent("시가총액 제한 없음 · 거래대금 제한 없음")
     expect(screen.getByRole("button", { name: /현금·리밸런싱/ })).toHaveTextContent("현금 0% · 분기마다 1회")
+  })
+
+  it("제외 섹터는 내 투자조건 화면과 같은 목록에서 고르고(서버가 아는 이름으로), 반드시 포함할 종목도 이번 분석만 바꿀 수 있다", () => {
+    const { onApply } = setup()
+    fireEvent.click(tab(/종목·배분/))
+    fireEvent.click(screen.getByRole("button", { name: /빼거나 꼭 넣을 종목·분야/ }))
+    fireEvent.click(screen.getByRole("checkbox", { name: /금융/ }))
+    const must = screen.getByLabelText("반드시 포함할 종목")
+    fireEvent.change(must, { target: { value: "nvda" } })
+    fireEvent.keyDown(must, { key: "Enter" })
+    expect(screen.getAllByText("변경됨")).toHaveLength(2)
+    fireEvent.click(applyBtn())
+    expect(onApply).toHaveBeenCalledWith({ "constraints.exclude_sectors": ["금융"], "constraints.must_include_tickers": ["NVDA"] })
+  })
+
+  it("같은 종목을 제외와 반드시 포함에 함께 넣으면 적용하지 않고 그 칸에 오류를 보여 준다", async () => {
+    const { onApply } = setup({ initial: { "constraints.exclude_tickers": ["TSLA"] } })
+    fireEvent.click(tab(/종목·배분/))
+    const must = screen.getByLabelText("반드시 포함할 종목")
+    fireEvent.change(must, { target: { value: "TSLA" } })
+    fireEvent.keyDown(must, { key: "Enter" })
+    fireEvent.click(applyBtn())
+    expect(onApply).not.toHaveBeenCalled()
+    expect(screen.getByText("같은 종목이 반드시 포함과 제외에 함께 있습니다: TSLA")).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByLabelText("제외할 종목")).toHaveFocus())
   })
 
   it("백테스트: 고른 방식의 입력만 보이고, 기존 변환 규칙대로 overrides 를 만든다", () => {
@@ -153,9 +178,9 @@ describe("상세 조건 창", () => {
     expect(screen.getByText("안내 문구")).toBeInTheDocument()
     expect(screen.getByText("저장된 기본 투자조건은 바뀌지 않고 이번 요청에만 적용됩니다.")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "이 조건으로 다시 확인" })).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText("투자금"), { target: { value: "20000000" } })
+    fireEvent.change(screen.getByLabelText("처음 투자할 금액"), { target: { value: "20000000" } })
     fireEvent.click(screen.getByText("다시 그리기"))
-    expect(screen.getByLabelText(/^투자금/)).toHaveValue("20,000,000")
+    expect(screen.getByLabelText(/^처음 투자할 금액/)).toHaveValue("20,000,000")
     const first = tab(/자금·기간/)
     first.focus()
     fireEvent.keyDown(first, { key: "ArrowLeft" })

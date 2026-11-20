@@ -7,7 +7,7 @@ import { navigate } from "../../app/router"
 import { errorMessage } from "../../api/client"
 import type { PaperDetail, PaperPortfolio, PaperRebalance, PaperSummary, ReportRow } from "../../api/types"
 import { useResource } from "../../state/useResource"
-import { Alert, Badge, Button, Card, Dialog, EmptyState, ErrorState, Loading, Menu, PageHeader } from "../../ui"
+import { Alert, Badge, Button, Card, Dialog, EmptyState, ErrorState, Loading, Menu, NOTICE_BOX, PageHeader } from "../../ui"
 import { datetime, fmt, ko, PALETTE, pct, usd, weight } from "../../lib/format"
 import { FlowHeader } from "../analysis/flow"
 import { Part, PartDisclosure } from "../profile/parts"
@@ -401,9 +401,9 @@ function PaperDetailScreen({ paperId }: { paperId: string }) {
       {popup && <RebalancePopup r={popup} count={due.length} cur={cur} fx={fx} names={names} close={() => setPopupClosed(true)}
         onAck={() => { markRebalanceSeen(svc.mode, paperId, popup.seq); setPopupClosed(true) }} onShow={() => { setPopupClosed(true); scrollTo("paper-rebalance") }} />}
       {askStop && (
-        <div role="alertdialog" aria-label="모의투자 중지 확인" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-950">
+        <div role="alertdialog" aria-label="모의투자 중지 확인" className={`rounded-box p-4 text-14 leading-6 text-body ${NOTICE_BOX.error}`}>
           <p>보유 종목을 매도하지 않고 평가와 리밸런싱 기록을 중지합니다. 재개 시 중지 기간의 기록은 소급해서 채우지 않습니다. 중지 기간의 적립도 진행되지 않습니다.</p>
-          <div className="mt-3 flex flex-wrap gap-2"><Button variant="danger" onClick={() => act("stop")} disabled={busy !== ""}>{busy === "stop" ? "중지하는 중…" : "중지 확정"}</Button><Button variant="ghost" onClick={() => setAskStop(false)}>계속 운용</Button></div>
+          <div className="mt-3 flex flex-wrap gap-2"><Button variant="destructive" onClick={() => act("stop")} disabled={busy !== ""}>{busy === "stop" ? "중지하는 중…" : "중지 확정"}</Button><Button variant="ghost" onClick={() => setAskStop(false)}>계속 운용</Button></div>
         </div>
       )}
       {err && <Alert tone="error" title="처리하지 못했습니다">{err}</Alert>}

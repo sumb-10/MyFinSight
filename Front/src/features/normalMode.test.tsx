@@ -50,9 +50,10 @@ describe("10-3 리포트 이름 표시 기준", () => {
     expect(reportName({ run_id: "run_1", idea: "", request_summary: null, strategy_name: null })).toBe("run_1")
     expect(reportName({ ...row, proposed_name: { display_ko: "내 이름" } } as never)).toBe("내 이름")
   })
-  it("홈 「최근 분석 리포트」도 같은 이름", async () => {
+  it("홈 「최근 리포트」 탭도 같은 이름", async () => {
     show(normal(), <HomeScreen />)
-    const card = (await screen.findByRole("heading", { name: "최근 분석 리포트" }, { timeout: 5000 })).parentElement!.parentElement!
+    fireEvent.click(await screen.findByRole("tab", { name: "최근 리포트" }, { timeout: 5000 }))
+    const card = screen.getByRole("tabpanel")
     expect((await within(card).findAllByText(mockTitleOf(REPORTS[0]))).length).toBeGreaterThan(0)  // 서버가 싣는 짧은 제목 (같은 테마·전략의 수정안 리포트도 같은 이름으로 함께 보일 수 있다)
   })
 })

@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest"
-import { render, screen, within } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import type { ReportDoc, ReportSummary } from "../../api/types"
 import { ko } from "../../lib/format"
 import { prefTerms, RISK_TOLERANCE_RANGE, tendencyLabel } from "../../lib/tendency"
@@ -66,7 +66,12 @@ describe("변동성 적합 표시", () => {
     expect(within(b).getByText("분석 기간이 짧아, 이번에는 변동성 적합 여부를 판정하지 않고 참고 정보로 표시합니다.")).toBeInTheDocument()
     expect(b).not.toHaveTextContent(/ vs |창이 짧아|중립 성향/)
     expect(within(b).getByRole("button", { name: "연변동성 설명 보기" })).toBeInTheDocument()
-    expect(screen.getByText("비교지수보다 낙폭이 큼 (29.9% vs 8.9%)")).toBeInTheDocument()  // 다른 참고 문장은 그대로
+    // 기준 이름 옆 ? — 이 리포트에서 적용한 기준만, 판정은 쓰지 않음 (판정 보류여도 기준을 볼 수 있다, 2026-11-16)
+    fireEvent.click(within(b).getByRole("button", { name: "중간 변동성 기준 설명 보기" }))
+    const tip = screen.getByRole("dialog", { name: "중간 변동성 기준 설명" })
+    expect(tip).toHaveTextContent("이 분석에서는 비교지수의 연변동성 12.8%에 1.3을 곱해 16.6%를 기준으로 정했습니다.")
+    expect(tip).not.toHaveTextContent(/판정|보류|높았습니다|이내였습니다/)
+    expect(screen.queryByText("비교지수보다 낙폭이 큼 (29.9% vs 8.9%)")).toBeNull()  // 다른 참고 문장은 4번에 두지 않는다 (7번 「참고」, 2026-11-16)
   })
   it("충분한 기간: 서버의 주의·충족 판정을 따르고, 반올림한 표시값으로 다시 판정하지 않는다", () => {
     const { unmount } = render(<ConditionRules v={val({ rules_ko: [r7("warn", "연변동성 29.8% vs 비교지수 15.0%의 1배(안정 성향) = 15.0%")] })} doc={rdoc("conservative", "low")} />)
