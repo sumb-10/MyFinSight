@@ -14,12 +14,15 @@ function useAfter(ms: number) {
 const appear = (on: boolean) => `transition-all duration-500 ease-out ${on ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"}`
 
 interface Feature { kicker: string; title: string; body: string }
-export const FEATURES: Feature[] = [
+// 「포트폴리오 구성」 다음 장: 이 프로젝트에서 Black-Litterman 이 하는 일 (자세한 계산은 README)
+const BL_FEATURE: Feature = { kicker: "Black-Litterman", title: "공시·뉴스 근거만큼만,\n기준 비중에서 조금씩", body: "과거 데이터로 정한 기준 비중을 출발점으로, 최근 공시와 뉴스에서 나온 의견을 근거가 분명할수록 더 크게 반영합니다. 관련 공시·뉴스가 없거나 근거가 약한 종목은 기준 비중 근처에 머물고, 한 종목이 움직이는 폭에도 한도가 있습니다.\n계산 방식은 README에서 자세히 볼 수 있어요." }
+const BASE_FEATURES: Feature[] = [
   { kicker: "아이디어 해석", title: "당신의 요청을 적으면\nLLM이 분석합니다", body: "문장 속 지역, 산업, 기간, 원하는 점을 LLM이 읽어 분석 조건으로 바꿉니다.\n애매한 부분은 짐작하지 않고 되묻습니다." },
   { kicker: "종목 선정", title: "LLM이 조건을 확인하고\n종목 후보를 골라요", body: "종목 사전에서 후보를 찾은 뒤, 기업의 투자 가치가 아이디어에 맞는지 LLM이 분류합니다. 남은 종목은 지표로 순위를 매기고 종목별 근거를 남깁니다." },
   { kicker: "포트폴리오 구성", title: "공시와 뉴스를 근거로\n비중을 조정해요", body: "LLM이 최근 공시와 뉴스를 읽고 종목별 의견을 냅니다. 공시를 주 근거로 삼고, Black-Litterman 방식으로 기본 비중에 반영합니다." },
   { kicker: "검증", title: "숫자는 코드가 계산하고\n근거는 다시 대조해요", body: "수익률과 비중은 모두 코드가 계산하고, LLM은 해석과 설명만 맡습니다. 리포트 속 숫자와 인용이 실제 결과·DB와 맞는지 확인한 뒤에야 보여 줍니다." },
 ]
+export const FEATURES: Feature[] = [...BASE_FEATURES.slice(0, 3), BL_FEATURE, BASE_FEATURES[3]]
 
 // ─── 장면들 ─────────────────────────────────────────
 
@@ -107,6 +110,45 @@ function SceneBuild() {
   )
 }
 
+/** Black-Litterman 장: 기준 비중 → 공시·뉴스 의견과 근거의 강도 → 조정 결과. 근거만큼 반영하고, 근거 없는 종목은 그대로, 한도 안에서 */
+function SceneBL() {
+  const s1 = useAfter(300), s2 = useAfter(1200), s3 = useAfter(2400), s4 = useAfter(3600)
+  const rows: [string, string, string, number, string, number][] = [["TSM", "공시 긍정", "bg-emerald-100 text-emerald-700", 0.85, "근거 분명", 4], ["MU", "뉴스 신중", "bg-amber-100 text-amber-700", 0.6, "근거 보통", -6], ["ASML", "관련 없음", "bg-slate-100 text-slate-500", 0, "—", 0]]
+  return (
+    <div className="flex h-full flex-col justify-center gap-3 px-8">
+      <div className={`rounded-2xl border border-slate-200 bg-white p-3 ${appear(s1)}`}>
+        <p className="text-[11px] font-bold text-slate-500">① 출발점: 기준 비중</p>
+        <p className="mt-1 text-sm text-slate-700">과거 데이터로 정한 비중 <span className="font-bold">각 25%</span></p>
+      </div>
+      <div className={`rounded-2xl border border-slate-200 bg-white p-3 ${appear(s2)}`}>
+        <p className="text-[11px] font-bold text-slate-500">② 공시·뉴스 의견과 근거의 강도</p>
+        <div className="mt-2 space-y-2">
+          {rows.map(([t, op, c, conf, lv]) => (
+            <div key={t} className="flex items-center gap-2 text-xs">
+              <span className="w-10 font-bold text-slate-700">{t}</span>
+              <span className={`w-[4.5rem] whitespace-nowrap rounded px-1.5 py-0.5 text-center text-[11px] font-bold ${c}`}>{op}</span>
+              <div className="h-2 flex-1 rounded-full bg-slate-100"><div className="h-full rounded-full bg-violet-500 transition-all duration-1000 ease-out" style={{ width: s2 ? `${conf * 100}%` : "0%" }} /></div>
+              <span className="w-14 text-right text-[11px] text-slate-500">{lv}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className={`rounded-2xl border border-slate-200 bg-white p-3 ${appear(s3)}`}>
+        <p className="text-[11px] font-bold text-slate-500">③ 근거만큼 반영해 비중 조정</p>
+        <div className="mt-2 flex gap-2">
+          {rows.map(([t, , , , , d]) => (
+            <div key={t} className="flex-1 rounded-xl bg-slate-50 px-2 py-2 text-center">
+              <p className="text-[11px] font-bold text-slate-600">{t}</p>
+              <p className={`text-sm font-extrabold tabular-nums ${d > 0 ? "text-emerald-600" : d < 0 ? "text-rose-600" : "text-slate-400"}`}>{d > 0 ? `+${d}` : d === 0 ? "±0" : d}%p</p>
+            </div>
+          ))}
+        </div>
+      </div>
+      <p className={`text-center text-[11px] text-slate-500 ${appear(s4)}`}>종목마다 기준 비중에서 움직일 수 있는 폭에 한도가 있어요</p>
+    </div>
+  )
+}
+
 function SceneVerify() {
   const checks = ["18.4% → 백테스트 결과값과 일치", "인용한 공시 → DB 원문과 일치", "기준일 이후 자료 → 사용하지 않음", "같은 조건 → 같은 결과 (LLM 응답 저장)"]
   const on = [useAfter(1000), useAfter(1600), useAfter(2200), useAfter(2800)]
@@ -129,7 +171,7 @@ function SceneVerify() {
   )
 }
 
-const SCENES = [SceneParse, SceneSelect, SceneBuild, SceneVerify]
+const SCENES = [SceneParse, SceneSelect, SceneBuild, SceneBL, SceneVerify]
 
 function Frame({ i, visit }: { i: number; visit: number }) {
   const Scene = SCENES[i]
