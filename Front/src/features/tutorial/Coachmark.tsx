@@ -139,7 +139,7 @@ const visible = (e: HTMLElement) => e.getClientRects().length > 0
  *  selector·label 을 주지 않으면 대상 안 첫 버튼(없으면 대상 전체), 주었는데 못 찾으면 null (시연 없음) */
 function demoElement(target: HTMLElement, demo: TourDemo): HTMLElement | null {
   if (demo.kind === "type") return target.querySelector<HTMLElement>("textarea, input")
-  if (demo.kind === "hover") return null
+  if (demo.kind === "hover" || demo.kind === "chart") return null
   const all = Array.from(target.querySelectorAll<HTMLElement>(demo.selector ?? "button, a")).filter(visible)
   const hit = demo.label ? all.find((e) => e.textContent?.includes(demo.label!)) : all[0]
   return hit ?? (demo.selector || demo.label ? null : target)
@@ -226,13 +226,46 @@ function HoverDemo({ els, still, tick }: { els: HTMLElement[]; still: boolean; t
   return <Cursor x={x} y={y} style={still ? undefined : { transform: started ? "none" : "translate(44px, 40px)", opacity: started ? 1 : 0, transition: `top ${HOVER_MOVE}ms ease-in-out, left ${HOVER_MOVE}ms ease-in-out, transform ${HOVER_MOVE}ms ease-out, opacity 200ms` }} />
 }
 
+/** 그래프 위 마우스 올림: 커서가 그래프의 한 날짜(가로 at 비율 자리)로 다가가 실제 마우스 이벤트를 보내, 그 날짜의 수치 상자(툴팁)를 띄운다.
+ *  커서는 그 날짜의 선 위 점(active dot)에 맞춘다. 떠날 때 마우스가 나간 것으로 알려 툴팁을 닫는다 */
+function ChartDemo({ chart, at, still }: { chart: HTMLElement; at: number; still: boolean }) {
+  const [pt, setPt] = useState<{ x: number; y: number } | null>(null)
+  const [arrived, setArrived] = useState(still)
+  useEffect(() => {
+    const plot = (chart.querySelector(".recharts-cartesian-grid") ?? chart).getBoundingClientRect()
+    const x = plot.left + plot.width * at, y = plot.top + plot.height / 2
+    const send = () => {
+      chart.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: x, clientY: y }))
+      window.requestAnimationFrame(() => {  // 툴팁이 뜬 뒤 그 날짜의 점 위치로 커서를 맞춘다
+        const dot = chart.querySelector(".recharts-active-dot circle, .recharts-active-dot")?.getBoundingClientRect()
+        setPt(dot && dot.width ? { x: dot.left + dot.width / 2, y: dot.top + dot.height / 2 } : { x, y })
+      })
+    }
+    setPt({ x, y })
+    const t = window.setTimeout(() => { setArrived(true); send() }, still ? 0 : HOVER_MOVE)
+    const keep = window.setInterval(send, 1000)  // 다른 갱신으로 툴팁이 닫혀도 다시 띄운다
+    return () => {
+      window.clearTimeout(t); window.clearInterval(keep)
+      chart.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }))
+      chart.dispatchEvent(new MouseEvent("mouseleave", { bubbles: false }))
+    }
+  }, [chart, at, still])
+  if (!pt) return null
+  return <Cursor x={pt.x} y={pt.y} style={still ? undefined : { transform: arrived ? "none" : "translate(44px, 40px)", opacity: arrived ? 1 : 0, transition: `top 200ms, left 200ms, transform ${HOVER_MOVE}ms ease-out, opacity 200ms` }} />
+}
+
 /** 지금 단계의 시연. 강조 영역(box)을 다시 잴 때마다 위치를 다시 잰다 */
 function Demo({ step, box }: { step: TourStep; box: Box | null }) {
   const [rect, setRect] = useState<DOMRect | null>(null)
   const [els, setEls] = useState<HTMLElement[]>([])
+  const [chart, setChart] = useState<HTMLElement | null>(null)
   const still = reducedMotion()
   useLayoutEffect(() => {
     const el = step.demo && box ? findTarget(step.target) : null
+    if (step.demo?.kind === "chart") {
+      setChart(el?.querySelector<HTMLElement>(".recharts-wrapper") ?? null)
+      setRect(null); return
+    }
     if (step.demo?.kind === "hover") {
       const found = el ? Array.from(el.querySelectorAll<HTMLElement>(step.demo.selector)).filter(visible).slice(0, HOVER_MAX) : []
       setEls((prev) => (prev.length === found.length && prev.every((x, i) => x === found[i]) ? prev : found))
@@ -243,6 +276,7 @@ function Demo({ step, box }: { step: TourStep; box: Box | null }) {
   }, [step, box])
   if (!step.demo) return null
   if (step.demo.kind === "hover") return els.length ? <HoverDemo key={step.target} els={els} still={still} tick={box} /> : null
+  if (step.demo.kind === "chart") return chart ? <ChartDemo key={step.target} chart={chart} at={step.demo.at ?? 0.7} still={still} /> : null
   if (!rect) return null
   return step.demo.kind === "type"
     ? <TypingDemo key={step.target} rect={rect} text={step.demo.text} still={still} />
@@ -292,6 +326,9 @@ export function Coachmark({ steps, index, onPrev, onNext, onClose }: { steps: To
       run(); cycle.push(window.setInterval(run, TOGGLE_LOOP))
     }
     lockBox.current = null
+    // toggles 단계는 늘 「모두 접힌」 상태에서 시작한다 (먼저 펼쳐 둔 것은 접고, 단계를 떠날 때 다시 펼친다)
+    const reopen = toggles ? Array.from(findTarget(step.target)?.querySelectorAll<HTMLButtonElement>('button[aria-expanded="true"]') ?? []) : []
+    reopen.forEach((b) => b.click())
     let locking = toggles
     const unlift = (step.also ?? []).flatMap((t) => { const x = findTarget(t); const undo = x ? liftSticky(x) : null; return undo ? [undo] : [] })
     const go = () => {
@@ -342,6 +379,7 @@ export function Coachmark({ steps, index, onPrev, onNext, onClose }: { steps: To
       unlift.forEach((undo) => undo())
       const b = opened && step.reveal ? revealButton(step.reveal) : null  // 이 단계에서 펼친 것만 원래대로 접는다
       if (b?.getAttribute("aria-expanded") === "true") b.click()
+      reopen.forEach((x) => { if (x.isConnected && x.getAttribute("aria-expanded") === "false") x.click() })
     }
   }, [step.target, step.reveal, step.also, step.demo, measure])
 
@@ -403,7 +441,7 @@ export function Coachmark({ steps, index, onPrev, onNext, onClose }: { steps: To
             <div key={i} className="rounded-2xl border border-slate-200 p-5" style={{ width: dockW }}>
               <div className="flex items-start justify-between gap-3"><p className="text-xs font-bold tracking-wider">{i + 1}/{steps.length}</p><span className="-m-1 p-1"><X className="size-4" /></span></div>
               <h2 className="mt-1 text-base font-bold">{s.title}</h2>
-              <p className="mt-2 text-sm leading-6">{s.body}</p>
+              <p className="mt-2 text-justify text-sm leading-6 [word-break:break-all]">{s.body}</p>
               <div className="flex items-center justify-between gap-2 pt-4"><span className="rounded-lg px-1.5 py-1.5 text-sm font-semibold">건너뛰기</span><span className="rounded-lg border px-3 py-1.5 text-sm font-semibold">이전</span></div>
             </div>
           ))}
@@ -415,7 +453,7 @@ export function Coachmark({ steps, index, onPrev, onNext, onClose }: { steps: To
           <button type="button" onClick={onClose} aria-label="둘러보기 닫기" className="-m-1 rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"><X className="size-4" /></button>
         </div>
         <h2 id="tour-title" className="mt-1 text-base font-bold text-slate-950">{step.title}</h2>
-        <p id="tour-body" className="mt-2 text-sm leading-6 text-slate-700">{step.body}</p>
+        <p id="tour-body" className="mt-2 text-justify text-sm leading-6 text-slate-700 [word-break:break-all]">{step.body}</p>
         <div className={`flex items-center justify-between gap-2 ${docked ? "mt-auto pt-4" : "mt-4"}`}>
           <button type="button" onClick={onClose} className="whitespace-nowrap rounded-lg px-1.5 py-1.5 text-sm font-semibold text-slate-500 hover:text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">건너뛰기</button>
           <div className="flex gap-1.5">
