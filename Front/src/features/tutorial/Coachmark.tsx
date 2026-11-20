@@ -15,13 +15,13 @@ const findTarget = (t: string) => document.querySelector<HTMLElement>(`[data-tou
 const revealButton = (t: string) => findTarget(t)?.querySelector<HTMLButtonElement>("button[aria-expanded]") ?? null
 
 /** 요소의 화면 위치. 안에 열린 도움말(말풍선)이 있으면 함께 감싼다. 화면에 그려지지 않은 요소는 null. */
-function boxOf(el: HTMLElement): Box | null {
+function boxOf(el: HTMLElement, clamp = true): Box | null {
   if (!el.getClientRects().length) return null
   const r = el.getBoundingClientRect()
   const tip = el.querySelector<HTMLElement>('[role="dialog"]')?.getBoundingClientRect()
   const top = Math.min(r.top, tip?.top ?? r.top), left = Math.min(r.left, tip?.left ?? r.left)
   const right = Math.max(r.right, tip?.right ?? r.right), bottom = Math.max(r.bottom, tip?.bottom ?? r.bottom)
-  const boxTop = Math.max(EDGE, top - PAD)  // 테두리가 화면 위 끝에 붙어 잘리지 않게
+  const boxTop = clamp ? Math.max(EDGE, top - PAD) : top - PAD  // 테두리가 화면 위 끝에 붙어 잘리지 않게
   return { top: boxTop, left: left - PAD, width: right - left + PAD * 2, height: bottom + PAD - boxTop }
 }
 
@@ -246,8 +246,9 @@ function ChartDemo({ chart, at, still }: { chart: HTMLElement; at: number; still
     const keep = window.setInterval(send, 1000)  // 다른 갱신으로 툴팁이 닫혀도 다시 띄운다
     return () => {
       window.clearTimeout(t); window.clearInterval(keep)
-      chart.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }))
-      chart.dispatchEvent(new MouseEvent("mouseleave", { bubbles: false }))
+      // 그래프는 마우스 이동을 한 프레임 늦게 처리하므로, 나감을 바로 한 번 알리고 늦게 도착한 이동 뒤에 한 번 더 알린다
+      const leave = () => (chart.querySelector("svg") ?? chart).dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }))
+      leave(); window.setTimeout(leave, 100)
     }
   }, [chart, at, still])
   if (!pt) return null
@@ -295,12 +296,15 @@ export function Coachmark({ steps, index, onPrev, onNext, onClose }: { steps: To
   const primary = useRef<HTMLButtonElement>(null)
 
   // toggles 단계: 도움말이 열렸을 때까지 덮는 강조 영역. 처음에 한 번 재 두고, 열고 닫는 동안 테두리 크기가 바뀌지 않게 이것과 합쳐 쓴다
+  // 화면 좌표가 아니라 대상 요소 기준의 상대 위치로 둔다: 잰 뒤에 스크롤해도 테두리가 어긋나지 않게
   const lockBox = useRef<Box | null>(null)
   const measure = useCallback(() => {
     const el = findTarget(step.target)
     setExtra((step.also ?? []).flatMap((t) => { const x = findTarget(t); const b = x ? boxOf(x) : null; return b ? [b] : [] }))
     const b = el ? boxOf(el) : null, l = lockBox.current
-    setBox(b && l ? unionBox(b, l) : b)
+    const r = el && l ? el.getBoundingClientRect() : null
+    const lt = r && l ? r.top + l.top : 0, ct = Math.max(EDGE, lt)  // 화면 위 끝에서 잘리는 만큼 높이를 줄인다
+    setBox(b && l && r ? unionBox(b, { top: ct, left: r.left + l.left, width: l.width, height: l.height - (ct - lt) }) : b)
   }, [step.target, step.also])
 
   useEffect(() => lockScroll(), [])  // 둘러보기 동안 사용자 스크롤을 막아 화면을 고정한다. 닫히면(언마운트) 원래대로
@@ -333,19 +337,21 @@ export function Coachmark({ steps, index, onPrev, onNext, onClose }: { steps: To
     const unlift = (step.also ?? []).flatMap((t) => { const x = findTarget(t); const undo = x ? liftSticky(x) : null; return undo ? [undo] : [] })
     const go = () => {
       const el = findTarget(step.target)
-      if (el && locking) {  // toggles 단계: 도움말을 보이지 않게 잠깐 열어 열린 크기를 재고 닫는다 → 강조 영역을 처음부터 그 크기로 고정
+      if (el && locking) {  // toggles 단계: 보이지 않게 잠깐 열어 열린 크기를 재고 닫는다 → 강조 영역을 처음부터 그 크기로 고정
+        // 화면이 그려지기 전(마이크로태스크)에 열고 재고 닫아, 열린 모습이 한 번 번쩍이거나 스크롤이 두 번 튀지 않게 한다
         locking = false
-        el.scrollIntoView?.({ block: "center", behavior: "instant" })
         const b = revealButton(step.reveal!)
         if (b?.getAttribute("aria-expanded") === "false") {
           el.setAttribute("data-tour-measuring", "")
           b.click()
-          timer = window.setTimeout(() => {
-            lockBox.current = boxOf(el)
+          void Promise.resolve().then(() => Promise.resolve()).then(() => {
+            if (cancelled) return
+            const o = boxOf(el, false), r = el.getBoundingClientRect()
+            lockBox.current = o ? { top: o.top - r.top, left: o.left - r.left, width: o.width, height: o.height } : null
             if (b.getAttribute("aria-expanded") === "true") b.click()
             el.removeAttribute("data-tour-measuring")
             go()
-          }, 80)
+          })
           return
         }
       }
@@ -369,8 +375,10 @@ export function Coachmark({ steps, index, onPrev, onNext, onClose }: { steps: To
       else setBox(null)
     }
     let ro: ResizeObserver | null = null
+    let cancelled = false
     go()
     return () => {
+      cancelled = true
       ro?.disconnect()
       window.clearTimeout(timer)
       findTarget(step.target)?.removeAttribute("data-tour-measuring")
