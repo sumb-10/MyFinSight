@@ -127,7 +127,7 @@ function SceneBL() {
             <div key={t} className="flex items-center gap-2 text-xs">
               <span className="w-10 font-bold text-slate-700">{t}</span>
               <span className={`w-[4.5rem] whitespace-nowrap rounded px-1.5 py-0.5 text-center text-[11px] font-bold ${c}`}>{op}</span>
-              <div className="h-2 flex-1 rounded-full bg-slate-100"><div className="h-full rounded-full bg-violet-500 transition-all duration-1000 ease-out" style={{ width: s2 ? `${conf * 100}%` : "0%" }} /></div>
+              <div className="h-2 flex-1 rounded-full bg-slate-100"><div className="h-full rounded-full bg-blue-600 transition-all duration-1000 ease-out" style={{ width: s2 ? `${conf * 100}%` : "0%" }} /></div>
               <span className="w-14 text-right text-[11px] text-slate-500">{lv}</span>
             </div>
           ))}
@@ -194,14 +194,13 @@ export function FeatureSlides({ active, slide, setSlide, onNext }: { active: boo
   const last = slide === FEATURES.length - 1
   return (
     <div className="flex h-full w-full flex-col justify-center pt-12">
-      <p className={`mx-auto w-full max-w-[1180px] px-10 text-sm font-bold text-slate-400 transition-opacity duration-700 ${active ? "opacity-100" : "opacity-0"}`}>MyFinSight만의 특색은 ·{slide + 1}/{FEATURES.length}</p>
       <div className="overflow-hidden">
         <div className="flex transition-transform duration-500 ease-out" style={{ transform: `translateX(-${slide * 100}%)` }}>
           {FEATURES.map((f, i) => (
             <div key={f.kicker} aria-hidden={i !== slide} className="w-full shrink-0">
               <div className="mx-auto grid w-full max-w-[1180px] grid-cols-[minmax(0,1fr)_520px] items-center gap-16 px-10 py-6">
                 <div className={`transition-all duration-700 ease-out ${active && i === slide ? "translate-x-0 opacity-100" : "translate-x-6 opacity-0"}`}>
-                  <p className="flex items-center gap-2 text-sm font-bold text-violet-700"><span className="flex size-7 items-center justify-center rounded-full bg-violet-600 text-white"><Sparkles className="size-3.5" /></span>{f.kicker}</p>
+                  <p className="flex items-center gap-2 text-sm font-bold text-blue-700"><span className="flex size-7 items-center justify-center rounded-full bg-blue-700 text-white"><Sparkles className="size-3.5" /></span>{f.kicker}</p>
                   <h2 className="mt-4 whitespace-pre-line text-4xl font-extrabold leading-tight tracking-tight text-slate-950">{f.title}</h2>
                   <p className="mt-5 max-w-xl whitespace-pre-line text-[17px] leading-8 text-slate-600">{f.body}</p>
                 </div>
@@ -214,7 +213,7 @@ export function FeatureSlides({ active, slide, setSlide, onNext }: { active: boo
       <div className="mx-auto flex w-full max-w-[1180px] items-center gap-4 px-10">
         <button onClick={() => setSlide(slide - 1)} disabled={slide === 0} aria-label="이전 특징" className="flex size-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-blue-300 hover:text-blue-700 disabled:opacity-30"><ChevronLeft className="size-5" /></button>
         <div className="flex gap-2" role="tablist" aria-label="특징 슬라이드">
-          {FEATURES.map((f, i) => <button key={f.kicker} role="tab" aria-selected={i === slide} aria-label={f.kicker} onClick={() => setSlide(i)} className={`h-2.5 rounded-full transition-all duration-300 ${i === slide ? "w-7 bg-violet-600" : "w-2.5 bg-slate-300 hover:bg-slate-400"}`} />)}
+          {FEATURES.map((f, i) => <button key={f.kicker} role="tab" aria-selected={i === slide} aria-label={f.kicker} onClick={() => setSlide(i)} className={`h-2.5 rounded-full transition-all duration-300 ${i === slide ? "w-7 bg-blue-700" : "w-2.5 bg-slate-300 hover:bg-slate-400"}`} />)}
         </div>
         <button onClick={() => (last ? onNext() : setSlide(slide + 1))} aria-label={last ? "사용 순서 보기" : "다음 특징"} className="flex h-10 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 transition hover:border-blue-300 hover:text-blue-700">
           {last ? <>사용 순서 보기<ArrowRight className="size-4" /></> : <ChevronRight className="size-5" />}

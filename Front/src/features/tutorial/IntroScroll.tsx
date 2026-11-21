@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { ArrowDown, ChevronRight, Compass, FileText, MessageCircle, Play, Sparkles, TrendingUp } from "lucide-react"
+import { ArrowDown, ChevronRight, Compass, FileText, MessageCircle, Play, TrendingUp } from "lucide-react"
 import { navigate } from "../../app/router"
 import { FEATURES, FeatureSlides } from "./FeatureSlides"
 
@@ -254,7 +254,7 @@ function SceneReport() {
   const hold: [string, number][] = [["NVDA", 25], ["AVGO", 20], ["TSM", 18], ["ASML", 15], ["MU", 12], ["AMAT", 10]]
   return (
     <div className="flex h-full flex-col justify-center gap-3 px-8">
-      <div className={`rounded-2xl border border-emerald-200 bg-emerald-50 p-4 ${appear(s1)}`}>
+      <div className={`rounded-2xl bg-emerald-50 p-4 ${appear(s1)}`}>
         <p className="text-xs font-bold text-emerald-700">결과 요약</p>
         <p className="mt-1 text-sm font-semibold leading-6 text-slate-800">반도체 6개 종목을 최대 25%씩 담는 구성이 비교지수보다 높은 수익을 냈습니다.</p>
       </div>
@@ -326,26 +326,37 @@ export function IntroScroll() {
         @keyframes intro-in { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
         .intro-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: intro-draw 2.2s ease-out .3s forwards }
         @keyframes intro-draw { to { stroke-dashoffset: 0 } }
+        .intro-logo { animation: intro-logo .6s ease-out both }
+        @keyframes intro-logo { from { opacity: 0; transform: scale(.9) } to { opacity: 1; transform: none } }
+        .intro-rise { animation: intro-rise .5s ease-out both }
+        @keyframes intro-rise { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
+        @media (prefers-reduced-motion: reduce) { .intro-logo, .intro-rise { animation: none } }
         .intro-bob { animation: intro-bob 1.6s ease-in-out infinite }
         @keyframes intro-bob { 50% { transform: translateY(6px) } }
       `}</style>
 
       {/* 위쪽 고정 막대: 로고, 건너뛰기 */}
       <header className="fixed inset-x-0 top-0 z-30 flex items-center justify-between border-b border-slate-100 bg-white/85 px-10 py-4 backdrop-blur">
-        <span className="flex items-center gap-2.5"><span className="flex size-8 items-center justify-center rounded-lg bg-blue-700 text-white"><TrendingUp className="size-4" /></span><span className="text-base font-extrabold tracking-tight text-slate-950">MyFinSight</span></span>
+        {/* 첫 화면에는 제목 옆에 큰 로고가 있으니 막대 로고는 숨겼다가 넘기면 나타난다 */}
+        <span className={`flex items-center gap-2.5 transition-opacity duration-500 ${page === 0 ? "pointer-events-none opacity-0" : "opacity-100"}`}><span className="flex size-8 items-center justify-center rounded-lg bg-blue-700 text-white"><TrendingUp className="size-4" /></span><span className="text-base font-extrabold tracking-tight text-slate-950">MyFinSight</span></span>
         <button onClick={() => go("home")} className="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-900">건너뛰기</button>
       </header>
 
       {/* 첫 화면 */}
       <section ref={(el) => { pages.current[0] = el }} className="flex h-screen flex-col items-center justify-center px-10 text-center">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700"><Sparkles className="size-3.5" />처음 오셨나요?</span>
-        <h1 className="mt-6 text-5xl font-extrabold leading-tight tracking-tight text-slate-950">투자 아이디어 한 줄이<br />검증된 포트폴리오가 되기까지</h1>
-        <p className="mt-5 max-w-xl text-lg leading-8 text-slate-600">MyFinSight가 어떤 순서로 분석하는지 보여 드릴게요.</p>
+        <div className="flex items-center gap-10">
+          <span className="intro-logo flex flex-col items-center gap-3"><span className="flex size-20 items-center justify-center rounded-2xl bg-blue-700 text-white shadow-lg shadow-blue-200"><TrendingUp className="size-10" /></span><span className="text-2xl font-extrabold tracking-tight text-slate-900">MyFinSight</span></span>
+          <span className="h-40 w-px bg-slate-200" aria-hidden />
+          <div className="text-left">
+            <h1 className="text-5xl font-extrabold leading-tight tracking-tight text-slate-950"><span className="intro-rise block" style={{ animationDelay: "500ms" }}>투자 아이디어 한 줄이<br />검증된 포트폴리오가 되기까지</span></h1>
+            <p className="intro-rise mt-4 text-lg leading-8 text-slate-600" style={{ animationDelay: "900ms" }}>MyFinSight가 어떤 순서로 분석하는지 보여 드릴게요.</p>
+          </div>
+        </div>
         <button onClick={() => goTo(FEAT_PAGE)} className="intro-bob mt-14 flex flex-col items-center gap-2 text-sm font-semibold text-slate-400 hover:text-slate-600">아래로 스크롤<ArrowDown className="size-5" /></button>
       </section>
 
       {/* 특징: 가로로 넘기는 슬라이드 */}
-      <section ref={(el) => { pages.current[FEAT_PAGE] = el }} className="flex h-screen items-center bg-gradient-to-b from-white to-violet-50/40">
+      <section ref={(el) => { pages.current[FEAT_PAGE] = el }} className="flex h-screen items-center bg-gradient-to-b from-white to-blue-50/40">
         <FeatureSlides active={page === FEAT_PAGE} slide={slide} setSlide={setSlide} onNext={() => goTo(FEAT_PAGE + 1)} />
       </section>
 
@@ -375,14 +386,14 @@ export function IntroScroll() {
         <h2 className="text-4xl font-extrabold tracking-tight text-slate-950">이제 직접 해 볼까요?</h2>
         <p className="mt-4 text-lg text-slate-600">처음이라면 예시 리포트를 먼저 보는 것도 좋아요.</p>
         <div className="mt-10 grid w-full max-w-4xl grid-cols-3 gap-4">
-          <button onClick={() => go("home")} className="group rounded-2xl bg-blue-700 px-5 py-4 text-white shadow-lg shadow-blue-200 transition hover:bg-blue-800">
-            <span className="flex items-center justify-center gap-2"><Play className="size-5 shrink-0" /><span className="text-lg font-extrabold">바로 시작하기</span></span><p className="mt-1.5 text-sm md:whitespace-nowrap text-blue-100">내 투자 아이디어를 입력합니다</p>
+          <button onClick={() => go("home")} className="flex min-h-[86px] items-center justify-center gap-2 rounded-2xl bg-blue-700 px-5 py-4 text-white shadow-lg shadow-blue-200 transition hover:bg-blue-800">
+            <Play className="size-5 shrink-0" /><span className="text-lg font-extrabold">바로 시작하기</span>
           </button>
-          <button onClick={() => go("example")} className="rounded-2xl border border-slate-200 bg-white px-5 py-4 text-slate-900 transition hover:border-blue-300 hover:shadow-md">
-            <span className="flex items-center justify-center gap-2"><FileText className="size-5 shrink-0 text-blue-700" /><span className="text-lg font-extrabold">예시 리포트 둘러보기</span></span><p className="mt-1.5 text-sm md:whitespace-nowrap text-slate-500">리포트 읽는 법을 단계별로 안내합니다</p>
+          <button onClick={() => go("example")} className="flex min-h-[86px] items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-slate-900 transition hover:border-blue-300 hover:shadow-md">
+            <FileText className="size-5 shrink-0 text-blue-700" /><span className="text-lg font-extrabold">예시 리포트 둘러보기</span>
           </button>
-          <button onClick={() => go("tour")} className="rounded-2xl border border-slate-200 bg-white px-5 py-4 text-slate-900 transition hover:border-blue-300 hover:shadow-md">
-            <span className="flex items-center justify-center gap-2"><Compass className="size-5 shrink-0 text-blue-700" /><span className="text-lg font-extrabold">홈 화면 둘러보기</span></span><p className="mt-1.5 text-sm md:whitespace-nowrap text-slate-500">홈 화면의 각 부분을 짚어 줍니다</p>
+          <button onClick={() => go("tour")} className="flex min-h-[86px] items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-slate-900 transition hover:border-blue-300 hover:shadow-md">
+            <Compass className="size-5 shrink-0 text-blue-700" /><span className="text-lg font-extrabold">홈 화면 둘러보기</span>
           </button>
         </div>
         <p className="mt-10 text-sm text-slate-400">이 소개는 홈의 「사용 안내」 메뉴에서 언제든 다시 볼 수 있습니다.</p>
