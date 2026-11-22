@@ -6,9 +6,9 @@
     python packaging/build.py --skip-web # 화면을 다시 빌드하지 않는다 (Front/dist 를 그대로 쓴다)
 
 순서: 화면 빌드 → 자료 확인 → 묶기 → 내용 확인 → 켜 보기 → 내놓기.
-결과는 packaging/dist/ 에 건넬 이름으로 나온다. 만드는 동안 쓰는 중간 파일은 packaging/build/ 에 두었다가 끝나면 지운다
+결과는 packaging/dist/<판>/ 에 건넬 이름으로 나온다. 만드는 동안 쓰는 중간 파일은 packaging/build/ 에 두었다가 끝나면 지운다
 (--keep-work 를 주면 남긴다 — 묶인 내용을 들여다볼 때).
-이미 낸 판 번호(v<판> 태그가 있는 번호)로는 만들지 않는다. pyproject.toml 의 version 을 올린 뒤 만든다.
+판 번호는 깃 태그가 정한다: v0.1.1 태그의 커밋에서 만들면 dist/v0.1.1/MyFinSight-0.1.1-…, 그 밖에는 dist/dev/MyFinSight-dev-…
 필요한 것: pip install -e ".[analysis,packaging]", Node (화면 빌드).
 .env · data/ · output/ 은 들어가지 않는다.
 """
@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import shutil
@@ -24,13 +25,13 @@ import subprocess
 import sys
 import tempfile
 import time
-import tomllib
 import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HERE = ROOT / "packaging"
-DIST = HERE / "dist"  # 건넬 파일만 모이는 곳 (GitHub Release 에 올리는 파일)
+DIST = HERE / "dist"  # 건넬 파일만 모이는 곳. 판마다 폴더 하나 (out_dir)
+VERSION_FILE = HERE / "VERSION"  # 건네는 묶음 안에만 있다: 묶음을 만들 때의 판 번호 (저장소에는 없다 — 거기서는 깃 태그를 본다)
 WORK = HERE / "build"  # 만드는 동안만 쓰는 곳. 끝나면 지운다
 EXE_NAME = "MyFinSight.exe" if sys.platform == "win32" else "MyFinSight"
 APP_OUT = WORK / "app"  # PyInstaller 가 묶은 것을 내놓는 곳
@@ -194,46 +195,46 @@ def stop_tree(proc: subprocess.Popen, started: float) -> None:
             break
 
 
-def version() -> str:
-    """판 번호 (pyproject.toml 의 version). 건네는 파일 이름에 넣는다."""
-    return tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
-
-
-def refuse_released_version() -> None:
-    """이미 낸 판 번호로는 만들지 않는다. 파일 이름이 판 번호로 정해지므로, 그대로 만들면 낸 것과 이름은 같고 내용은 다른 파일이 생긴다.
-
-    "냈다"는 기록은 깃 태그 v<판> 이다 (GitHub Release 가 만든다). 태그가 있어도 되는 경우는 하나: 지금 코드가 바로 그 태그의
-    커밋이고 고친 것이 없을 때 — 낸 것과 같은 코드로 다시 만드는 것이다 (태그를 올리면 도는 자동 빌드가 이 경우다).
-    깃이 없는 곳(건네는 묶음 안)에서는 보지 않는다.
-    """
+def _git(*args: str) -> str | None:
+    """깃에 물어본 답. 깃이 없거나 실패하면 None."""
     git = shutil.which("git")
-    if not git or not (ROOT / ".git").exists():
-        return
+    if not git:
+        return None
+    r = subprocess.run([git, *args], cwd=ROOT, capture_output=True, text=True, check=False, timeout=60)  # noqa: S603
+    return r.stdout.strip() if r.returncode == 0 else None
 
-    def ask(*args: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run([git, *args], cwd=ROOT, capture_output=True, text=True, check=False, timeout=60)  # noqa: S603
 
-    tag = f"v{version()}"
-    ask("fetch", "--tags", "--quiet")  # 다른 사람이나 GitHub 에서 낸 태그도 알게. 안 되면(오프라인) 내 컴퓨터에 있는 태그만 본다
-    tagged = ask("rev-list", "-n", "1", f"refs/tags/{tag}")
-    if tagged.returncode != 0:
-        return  # 아직 내지 않은 번호
-    same_commit = ask("rev-parse", "HEAD").stdout.strip() == tagged.stdout.strip()
-    changed = ask("status", "--porcelain", "--untracked-files=no").stdout.strip()
-    if same_commit and not changed:
-        return
-    why = "지금 코드는 그 태그의 커밋이 아닙니다" if not same_commit else "커밋하지 않은 수정이 있습니다"
-    raise SystemExit(f"{tag} 는 이미 낸 판입니다 ({why}).\n  pyproject.toml 의 version 을 올린 뒤 다시 만드세요 — 같은 번호로 만들면 낸 파일과 이름만 같은 다른 파일이 됩니다.")
+@functools.lru_cache(maxsize=1)
+def version() -> str:
+    """배포판의 판 번호. 깃 태그가 정한다 — 손으로 적는 곳이 없다 (pyproject.toml 의 version 은 배포판 번호가 아니다).
+
+    - 지금 코드가 v0.1.1 같은 태그의 커밋 그대로이고 고친 것이 없으면 "0.1.1"
+    - 그 밖에는 "dev": 태그가 없는 커밋이거나 커밋하지 않은 수정이 있을 때.
+      그래서 낸 판과 같은 이름의 파일은 그 판의 코드에서만 나온다 (다른 내용으로 덮어쓸 수 없다)
+    - 깃이 없는 곳(건네는 묶음 안)에서는 묶음을 만들 때 적어 둔 packaging/VERSION
+    """
+    if not (ROOT / ".git").exists():
+        return (VERSION_FILE.read_text(encoding="utf-8").strip() if VERSION_FILE.exists() else "") or "dev"
+    tag = _git("describe", "--tags", "--exact-match", "--match", "v[0-9]*", "HEAD")
+    if not tag or _git("status", "--porcelain", "--untracked-files=no"):
+        return "dev"
+    return tag.removeprefix("v")
+
+
+def out_dir() -> Path:
+    """이 판의 결과가 모이는 곳: dist/v0.1.1/ 또는 dist/dev/. 판마다 폴더가 달라 다른 판의 파일을 건드리지 않는다."""
+    return DIST / ("dev" if version() == "dev" else f"v{version()}")
 
 
 def publish(exe: Path, onefile: bool) -> Path:
-    """만든 것을 dist/ 에 건넬 이름으로 내놓는다: 한 파일형은 그대로, 폴더형은 압축해서. 이름에 판 번호와 운영체제를 넣는다."""
-    DIST.mkdir(parents=True, exist_ok=True)  # 다른 운영체제용·묶음 파일은 그대로 두고 이번에 만든 것만 갈아 끼운다
+    """만든 것을 dist/<판>/ 에 건넬 이름으로 내놓는다: 한 파일형은 그대로, 폴더형은 압축해서. 이름에 판 번호와 운영체제를 넣는다."""
+    out = out_dir()
+    out.mkdir(parents=True, exist_ok=True)  # 다른 운영체제용·묶음 파일은 그대로 두고 이번에 만든 것만 갈아 끼운다
     stem = f"MyFinSight-{version()}-{OS_NAME}"
     if onefile:
-        return Path(shutil.copy2(exe, DIST / f"{stem}{exe.suffix}"))
+        return Path(shutil.copy2(exe, out / f"{stem}{exe.suffix}"))
     kind = "zip" if sys.platform == "win32" else "gztar"  # 맥·리눅스는 실행 권한이 그대로 남는 tar.gz
-    return Path(shutil.make_archive(str(DIST / f"{stem}-folder"), kind, root_dir=APP_OUT, base_dir=APP_DIR.name))
+    return Path(shutil.make_archive(str(out / f"{stem}-folder"), kind, root_dir=APP_OUT, base_dir=APP_DIR.name))
 
 
 def clean_work(*parts: str) -> None:
@@ -256,8 +257,12 @@ def main() -> int:
     shape.add_argument("--folder", action="store_true", help="파일 하나 대신 폴더로 만든다")
     shape.add_argument("--all", action="store_true", help="두 모양을 다 만든다")
     ap.add_argument("--keep-work", action="store_true", help="중간 파일(packaging/build/)을 지우지 않는다")
+    ap.add_argument("--print-version", action="store_true", help="만들지 않고, 지금 만들면 붙을 판 번호만 찍는다")
     a = ap.parse_args()
-    refuse_released_version()
+    if a.print_version:
+        print(version())
+        return 0
+    step(f"판: {version()}  → {out_dir()}")
     if HAS_WEB_SOURCE and not a.skip_web:
         step("화면 빌드")
         build_web()

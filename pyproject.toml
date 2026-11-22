@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "myfinsight"
-version = "0.1.1"
+version = "0.0.0"  # 배포판 번호가 아니다. 배포판 번호는 깃 태그(v0.1.1)가 정한다 (packaging/build.py 의 version) — 여기는 고치지 않는다
 description = "MyFinSight 프로토타입 - 역할 A 데이터 수집·정규화·품질·저장 (M02-01~05)"
 requires-python = ">=3.11"  # PC(백필)는 3.11, GitHub Actions 는 3.13 (명세 C-01)
 dependencies = [
