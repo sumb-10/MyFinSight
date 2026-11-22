@@ -65,7 +65,7 @@ MyFinSight-0.1.0-source.zip             스크립트 버전 + Docker Compose 버
 1. 올릴 코드가 GitHub 에 올라가 있어야 한다 (Release 는 "어느 커밋의 것인지"를 태그로 가리킨다)
 2. 저장소 → 오른쪽 **Releases** → **Draft a new release**
 3. **Choose a tag** 에 새 태그를 적는다 (예: `v0.1.0-beta.1`). **Target** 은 그 코드가 있는 브랜치
-4. 제목을 적고, 설명에는 `packaging/RELEASE_NOTES.md` 의 내용을 붙여 넣고, 아래 상자에 위 파일들을 끌어다 놓는다 (파일 하나에 2GB 까지)
+4. 제목을 적고, 설명에는 `packaging/RELEASE_NOTES.md` 에서 그 판의 절을 붙여 넣고, 아래 상자에 위 파일들을 끌어다 놓는다 (파일 하나에 2GB 까지)
 5. 시험판이면 **Set as a pre-release** 를 켠다 → 목록에 `Pre-release` 표시가 붙고 "최신 판"으로는 잡히지 않는다
 6. **Publish release**. 그 Release 의 주소가 내려받는 곳이 된다
 
@@ -121,7 +121,7 @@ MyFinSight --no-browser       # 브라우저를 열지 않기
 - `release.py` 묶음(`source.zip`) 만들기, `--linux` 로 리눅스 실행 파일까지
 - `source-zip/` 묶음(`source.zip`)에만 들어가는 파일: `run.bat` · `run.sh` · `Dockerfile` · `compose.yaml` · `env.example` · `dockerignore` · `README.md`(받는 사람용)
 - `linux-exe.Dockerfile` 리눅스 실행 파일을 만드는 곳 (오래된 배포판에서도 돌게 glibc 가 낮은 바탕)
-- `RELEASE_NOTES.md` GitHub Release 페이지에 붙여 넣을 글 (이번 판의 것. 새 판을 낼 때 고쳐 쓴다)
+- `RELEASE_NOTES.md` 판별 릴리스 노트. 판마다 절 하나, 새 판을 위에 적는다 (그 절이 GitHub Release 페이지의 설명이 된다)
 - `dist/` 만든 결과 — 올릴 파일만 (깃에 올라가지 않는다)
 
 이 폴더에 `__init__.py` 를 두지 말 것. 같은 이름의 라이브러리(`packaging`)를 pip·pytest·PyInstaller 가 쓴다.
