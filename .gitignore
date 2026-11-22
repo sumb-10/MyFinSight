@@ -40,3 +40,7 @@ scripts/run_overnight.bat
 # 시나리오 QA 실행 기록·자동 점검 요약 (run_scenarios·audit 가 만드는 자료, 로컬에만 둠)
 /docs/mvp/scenario_qa/runs/
 /docs/mvp/scenario_qa/audit/
+
+# 실행 파일 만들기 (packaging/build.py) 의 결과물·중간물
+/packaging/dist/
+/packaging/build/

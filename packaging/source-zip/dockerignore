@@ -1,0 +1,7 @@
+# 이미지에 들어가면 안 되는 것 (묶음 폴더에서 스크립트 버전을 켠 적이 있으면 .venv 가 생겨 있다)
+.env
+.env.*
+!.env.example
+.venv
+**/__pycache__
+*.zip

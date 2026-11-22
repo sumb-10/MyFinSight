@@ -22,6 +22,8 @@ real = ["yfinance>=0.2.50"]  # 진짜 모드에서 yfinance 를 쓸 때만
 postgres = ["psycopg[binary]>=3.2"]
 # 서비스용 데이터 API (backend/api/app.py, docs/인스턴스_API.md)
 api = ["fastapi>=0.110", "uvicorn[standard]>=0.29"]
+# 실행 파일 만들기 (packaging/build.py)
+packaging = ["pyinstaller>=6.10"]
 # 분석 패키지 (backend/analysis: 포트폴리오·백테스트·LLM·서비스 API)
 analysis = [
     "scipy>=1.11",
@@ -65,3 +67,4 @@ ignore = ["UP042"]  # 명세 M00-02 가 (str, Enum) 형태를 지정
 # 분석 패키지: 수식·표 형태의 긴 줄을 허용 (가독성을 위해 한 줄에 둠)
 "backend/analysis/**" = ["E501"]
 "backend/tests/analysis/*" = ["E501"]
+"packaging/*" = ["E501"]  # 런처도 분석 패키지와 같은 줄 길이 기준

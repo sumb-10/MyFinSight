@@ -1,0 +1,28 @@
+# MyFinSight {VERSION} — Docker Compose 버전
+#
+#   1) 이 폴더에 .env 를 만든다:  .env.example 을 복사해 DATABASE_URL 과 OPENAI_API_KEY 를 채운다
+#   2) docker compose up -d --build        (처음에는 라이브러리를 받느라 몇 분 걸린다)
+#   3) 브라우저에서 http://localhost:8765
+#
+#   끄기:        docker compose down            (리포트는 볼륨에 남는다)
+#   로그 보기:   docker compose logs -f
+#   다 지우기:   docker compose down -v         (리포트·실행 기록까지 지운다)
+name: myfinsight
+
+services:
+  app:
+    build: .
+    image: myfinsight:{VERSION}
+    ports:
+      # 이 컴퓨터에서만 열린다. 다른 컴퓨터에서도 열려면 앞의 127.0.0.1: 을 지운다 (로그인 기능이 없으니 믿을 수 있는 망에서만)
+      - "127.0.0.1:${MYFINSIGHT_PORT:-8765}:8765"
+    env_file:
+      - path: .env
+        required: false   # 없어도 켜진다 (연습 모드로 둘러볼 수 있다)
+    volumes:
+      - myfinsight-data:/data
+    init: true
+    restart: unless-stopped
+
+volumes:
+  myfinsight-data:
