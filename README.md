@@ -65,9 +65,7 @@ MyFinSight/
 source ~/.venvs/myfinsight/bin/activate
 pip install -e ".[analysis,dev,postgres]"
 cp .env.example .env            # DB 주소, (실제 LLM을 쓸 때) OPENAI_API_KEY 채우기
-python backend/scripts/build_descriptor.py --universe ALL   # 종목 사전 (한 번)
-
-uvicorn backend.analysis.api.app:app --port 8001            # 창 1 서버
+uvicorn backend.analysis.api.app:app --port 8001            # 창 1 서버 (팀 DB 를 열 때 종목 사전을 스스로 만든다)
 python -m backend.analysis.executor.worker                   # 창 2 일꾼
 cd Front && nvm use && pnpm install && pnpm dev              # 창 3 화면 → http://localhost:5173
 ```

@@ -14,6 +14,7 @@ from backend.analysis.common.llm import LlmClient, make_llm
 from backend.analysis.common.store import JsonStore, ProfileStore, RequestStore
 from backend.analysis.executor.queue import Queue
 from backend.analysis.m1_request.dialog import DialogService
+from backend.analysis.m2_data import descriptor
 from backend.analysis.m2_data.market_data import MarketData
 from backend.analysis.m2_data.price_cache import PriceBarCache
 from backend.analysis.m2_data.sector_trends import SectorTrendsJob, compute_sector_trends
@@ -85,15 +86,23 @@ class Services:
         with self._lock:
             repo = self.repo
             if self._md is None:
-                self._md = MarketData(self._prices.wrap(repo), self.settings)
+                self._md = self._open_market_data(repo)
             else:
                 try:
                     latest = self._md.latest_trading_day()
                     if latest != self._md.ceiling:
-                        self._md = MarketData(self._prices.wrap(repo), self.settings)
+                        self._md = self._open_market_data(repo)
                 except Exception:  # noqa: BLE001
-                    self._md = MarketData(self._prices.wrap(repo), self.settings)
+                    self._md = self._open_market_data(repo)
             return self._md
+
+    def _open_market_data(self, repo: Any) -> MarketData:
+        """시장 자료를 새로 열 때(처음 · 연결이 바뀐 뒤 · 새 거래일) 종목 사전도 그 DB 기준으로 맞춘다.
+        요청 대화와 분석 실행은 이 뒤에 오므로, 일꾼은 따로 맞추지 않고 여기서 쓴 파일을 읽는다."""
+        md = MarketData(self._prices.wrap(repo), self.settings)  # 팀 DB 가 없거나 비어 있으면 여기서 멈춘다 → 사전도 맞추지 않는다
+        if self.repo_factory is default_repo:  # 테스트가 꽂은 저장소로는 사전 파일을 건드리지 않는다
+            descriptor.sync(repo, self.settings.market)
+        return md
 
     def stocks(self) -> list[dict[str, Any]]:
         """종목 찾기·이름 목록 (지원 유니버스 구성종목). 구성종목은 가끔 바뀌므로 하루 한 번만 DB 에서 다시 읽는다."""

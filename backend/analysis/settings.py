@@ -40,7 +40,10 @@ class MarketSettings:
     # 바른 값을 틀린 쪽으로 '고치지' 않게. 2015년 이후 팀 DB 의 주식수 급변 51종목을 모두 대조해 이 범위로 잘못 고치는 경우가 없음을 확인 (2026-11-05)
     mcap_guard_plausible_usd: tuple[float, float] = (2e8, 5e12)
     descriptor_universe: str = "ALL"
-    descriptor_dir: str | None = None  # None -> backend/data/processed (build_descriptor.py 산출물)
+    descriptor_dir: str | None = None  # None -> backend/data/processed
+    # 화면 서버가 팀 DB 를 열 때 사전을 DB 기준으로 다시 맞춘다 (m2_data/descriptor.sync). 끄면 있는 파일만 쓴다 — 사전을 고정해 두고
+    # 여러 번 돌리는 점검(시나리오 QA)이나, backend/scripts/build_descriptor.py 로 직접 만들 때. 환경변수 ANALYSIS_DESCRIPTOR_SYNC=0
+    descriptor_sync: bool = True
     # 재무 지표(PER·ROE·배당) 자료가 시작되는 날 (docs/데이터_현황.md). 저PER·퀄리티·고배당 백테스트는 이 날 이후만 가능
     valuation_data_start: dict[str, str] = field(default_factory=lambda: {"US": "2010-04-01", "KR": "2005-06-01"})  # 자료가 "있는" 날이 아니라 종목 수가 충분해지는 날 (미국 PER 168종목, 한국 97종목)
     valuation_templates: tuple[str, ...] = ("low_per", "quality", "high_dividend")
@@ -333,6 +336,8 @@ class AnalysisSettings:
         ddir = env.get("ANALYSIS_DESCRIPTOR_DIR")
         if ddir:
             s = replace_settings(s, market=replace_settings(s.market, descriptor_dir=ddir))
+        if env.get("ANALYSIS_DESCRIPTOR_SYNC") == "0":
+            s = replace_settings(s, market=replace_settings(s.market, descriptor_sync=False))
         if env.get("ANALYSIS_PARALLEL") == "0":  # 디버깅·결정론 확인용: 전부 순차
             s = replace_settings(s, executor=ExecutorSettings(max_parallel_stages=1, walkforward_workers=1, classify_workers=1, parallel_report_calls=False))
         mps = env.get("ANALYSIS_MAX_PARALLEL_STAGES")

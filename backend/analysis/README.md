@@ -22,8 +22,8 @@ prompts/ stubs/  LLM 프롬프트와 stub 응답 (02_intent 에 questions 계약
 ```bash
 # .env: 팀 DB 주소(DATABASE_URL 또는 NEWS_DB_HOST/USER/PASSWORD), OPENAI_API_KEY (있으면 실제 LLM 이 기본), MYFINSIGHT_LLM=stub 로 연습 모드
 #       결과(run_step·run_artifact·report)는 기본으로 로컬 SQLite data/analysis_results.db 에 쓴다 (ANALYSIS_RESULTS_DB, "main" 이면 팀 DB)
-python backend/scripts/build_descriptor.py --universe ALL          # 종목 사전 (backend/data/processed)
-uvicorn backend.analysis.api.app:app --port 8001                   # 서비스 API (Front 가 /api 로 프록시)
+uvicorn backend.analysis.api.app:app --port 8001                   # 서비스 API (Front 가 /api 로 프록시). 팀 DB 를 열 때 종목 사전(backend/data/processed)을 DB 기준으로 맞춘다
+python backend/scripts/build_descriptor.py --universe ALL          # 종목 사전을 직접 만들 때만: 서버 없이 아래 CLI 로만 돌릴 때, 또는 ANALYSIS_DESCRIPTOR_SYNC=0 으로 자동 맞춤을 껐을 때
 python -m backend.analysis.executor.worker                          # 분석 워커 (단일 프로세스, FIFO)
 python -m backend.analysis.executor.cli run --request module_mockup/input/01_user_request.ai.jsonc --stub   # 개발용 인프로세스 실행
 pytest backend/tests/analysis -q                                    # 합성 sqlite + stub LLM 테스트
