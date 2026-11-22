@@ -39,7 +39,6 @@ MASK = "••••••••"
 DEFAULT_COST_PER_RUN_USD = 0.1  # 실행 기록이 모자랄 때의 사용료 어림 (2026-11-03 시나리오 96건의 중앙값 0.09 를 어림, 2026-11-23 합의)
 MIN_RUNS_FOR_COST = 5  # 이만큼 기록이 쌓인 뒤에 실제 값으로 바꾼다 (한두 건으로는 0.02~0.46달러로 크게 흔들린다)
 COST_SAMPLE = 100  # 최근 이만큼의 실행만 본다
-CONNECT_TIMEOUT_S = 8
 
 _from_store: set[str] = set()  # 이 프로세스에서 보관함에서 꺼내 환경변수에 올린 키 (환경변수로 직접 들어온 것과 구분한다)
 
@@ -233,11 +232,6 @@ def _parts(url: str) -> tuple[str | None, int | None, str | None, str | None]:
         return None, None, None, None
 
 
-def _with_timeout(url: str) -> str:
-    """확인할 때만: 닿지 않는 서버에서 몇 분씩 멈추지 않게 접속 제한 시간을 붙인다 (주소에 이미 적혀 있으면 그대로)."""
-    if url.startswith("sqlite") or "connect_timeout=" in url:
-        return url
-    return f"{url}{'&' if '?' in url else '?'}connect_timeout={CONNECT_TIMEOUT_S}"
 
 
 def _coverage(md: Any) -> dict[str, Any]:
@@ -248,6 +242,7 @@ def _coverage(md: Any) -> dict[str, Any]:
 
 def check_database(url: str, settings: Any) -> dict[str, Any]:
     """접속해서 시장 자료의 범위를 읽어 본다. 되면 {"ok": True, latest_trading_day, data_start, data_start_by_market}."""
+    from backend.analysis.common.dbconn import knock, with_timeout
     from backend.analysis.m2_data.market_data import MarketData
     from backend.db import open_repository
 
@@ -257,7 +252,8 @@ def check_database(url: str, settings: Any) -> dict[str, Any]:
         return _error("database_not_found", url[len("sqlite:///") :], "FileNotFoundError: SQLite 파일이 없습니다")
     repo = None
     try:
-        repo = open_repository(_with_timeout(url))
+        knock(url)  # ① 닿는가 (한 번만, 제한 시간 안에 — 화면 서버가 평소에 여는 것과 같은 규칙: common/dbconn.py)
+        repo = open_repository(with_timeout(url))  # ② 자료가 읽히는가
         md = MarketData(repo, settings)
         return {"ok": True, **_coverage(md)}
     except Exception as exc:  # noqa: BLE001 — 어떤 실패든 원인 코드로 바꿔 돌려준다

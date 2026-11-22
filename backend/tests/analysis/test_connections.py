@@ -200,13 +200,26 @@ def test_save_database_really_connects_and_reads_data_range(api, vault):
     assert r["database"]["connected"] is False and "DATABASE_URL" not in os.environ and vault.values() == {}
 
 
+def test_unreachable_address_fails_after_one_try_without_the_repository_retries(env_file, monkeypatch):
+    """닿지 않는 주소는 한 번 두드려 보고 바로 알린다. 저장소의 "5·20·60초 쉬고 다시"까지 가면 화면이 2분 동안 「확인 중」에 머문다."""
+    from backend.db import sql
+
+    def no_waiting(seconds):
+        raise AssertionError(f"저장소의 재시도 대기({seconds}초)까지 갔다 — 닿는지 먼저 봤어야 한다")
+
+    monkeypatch.setattr(sql, "_sleep", no_waiting)
+    r = C.check_database("postgresql://reader:pw@127.0.0.1:1/myfinsight?connect_timeout=2", AnalysisSettings())
+    assert r["ok"] is False and r["error"]["code"] == "no_response" and r["error"]["value"] == "127.0.0.1:1"
+    assert "pw" not in (r["error"]["raw"] or "")
+
+
 def test_database_failure_reports_cause_and_part_without_password(api, vault, monkeypatch):
     client, _ = api
 
-    def boom(url, **kw):
+    def boom(url):
         raise RuntimeError('connection failed: could not translate host name "db.exampel.com" to address (password=example-pw)')
 
-    monkeypatch.setattr("backend.db.open_repository", boom)
+    monkeypatch.setattr("backend.analysis.common.dbconn.knock", boom)  # 처음 닿는 곳에서 실패하게 한다 (테스트가 실제로 그 이름을 찾으러 나가지 않게)
     r = client.put(f"{P}/connections/database", json={"value": TEAM_URL.replace("example.com", "exampel.com")})
     body = r.json()
     assert body["ok"] is False and body["error"]["code"] == "host_not_found" and body["error"]["value"] == "db.exampel.com"

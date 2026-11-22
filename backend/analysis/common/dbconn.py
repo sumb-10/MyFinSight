@@ -4,18 +4,26 @@
 - 주소: DATABASE_URL → NEWS_DB_URL → NEWS_DB_HOST/USER/PASSWORD 조합 → 없으면 backend.db 기본값(로컬 SQLite).
 - 결과 저장 위치: ANALYSIS_RESULTS_DB. 비우면 팀 DB 가 PostgreSQL 일 때 data/analysis_results.db, SQLite 일 때는 같은 파일.
   "main" 이라고 적으면 팀 DB 에 바로 쓴다(쓰기 계정 필요).
+- 여는 길이 둘이다. 사람이 화면 앞에서 기다리는 쪽(화면 서버 = default_repo, 연결 확인)은 먼저 한 번 두드려 보고(knock) 닿지 않으면
+  바로 알린다. 사람이 기다리지 않는 쪽(일꾼·터미널 명령 = open_analysis_repository)은 저장소의 재시도 규칙대로 오래 기다린다.
 """
 
 from __future__ import annotations
 
+import time
 from functools import lru_cache
 from typing import Any
 from urllib.parse import quote_plus
 
+from sqlalchemy import create_engine
+
 from backend.adapters.crawlers import config
-from backend.db import open_repository
+from backend.db import normalize_db_url, open_repository
+from backend.schemas.errors import RepositoryError
 
 DEFAULT_RESULTS_DB = "sqlite:///data/analysis_results.db"
+CONNECT_TIMEOUT_S = 8  # 접속 한 번에 기다리는 시간. 주소에 적지 않으면 드라이버 기본값(130초)을 기다린다
+FAILURE_MEMO_S = 30  # 닿지 않은 것을 기억해 두는 시간 (화면은 15초마다 상태를 묻는다 — 그때마다 다시 두드려 8초씩 붙들리지 않게)
 
 # 결과 저장소로 보내는 메서드. 나머지는 모두 시장 자료 저장소로.
 RESULT_METHODS = frozenset({
@@ -81,10 +89,63 @@ def open_analysis_repository(market_url: str | None = None) -> Any:
     return SplitRepository(market, open_repository(rurl))
 
 
+# ───────────────────────── 닿는지 먼저 본다 (사람이 기다리는 길) ─────────────────────────
+def with_timeout(url: str) -> str:
+    """접속 제한 시간을 붙인다 (SQLite 이거나 주소에 이미 적혀 있으면 그대로)."""
+    if url.startswith("sqlite") or "connect_timeout=" in url:
+        return url
+    return f"{url}{'&' if '?' in url else '?'}connect_timeout={CONNECT_TIMEOUT_S}"
+
+
+_unreachable: tuple[str, float, BaseException] | None = None  # 마지막으로 닿지 않은 것: (주소, 언제, 오류)
+
+
+def knock(url: str) -> None:
+    """한 번만 접속해 본다 (CONNECT_TIMEOUT_S 안에). 안 되면 그 오류를 그대로 낸다. SQLite 파일은 두드릴 것이 없다.
+
+    저장소(open_repository)는 연결이 끊기면 5·20·60초 쉬고 다시 해 본다 — 밤새 도는 수집 작업에는 맞지만, 화면 앞에서 기다리는
+    사람에게는 닿지 않는 주소 하나가 10분이다 (2026-11-23 측정: 접속 130초 × 4번 + 쉬는 85초). 그래서 저장소를 열기 전에 이것부터 부른다.
+    """
+    global _unreachable  # noqa: PLW0603
+    if url.startswith("sqlite"):
+        return
+    target, connect_args = normalize_db_url(with_timeout(url))
+    engine = create_engine(target, connect_args=connect_args)
+    try:
+        engine.connect().close()
+    except Exception as exc:
+        _unreachable = (url, time.monotonic(), exc)
+        raise
+    finally:
+        engine.dispose()
+    _unreachable = None
+
+
+def _why_unreachable(url: str) -> BaseException | None:
+    """닿지 않으면 그 오류, 닿으면 None. 방금(FAILURE_MEMO_S 안에) 닿지 않았으면 다시 두드리지 않고 그때의 오류를 돌려준다."""
+    if _unreachable and _unreachable[0] == url and time.monotonic() - _unreachable[1] < FAILURE_MEMO_S:
+        return _unreachable[2]
+    try:
+        knock(url)
+    except Exception as exc:  # noqa: BLE001 — 어떤 실패든 "닿지 않음"
+        return exc
+    return None
+
+
 @lru_cache(maxsize=1)
 def default_repo() -> Any:
-    """프로세스 안에서 한 번만 연다."""
-    return open_analysis_repository()
+    """화면 서버가 쓰는 저장소. 프로세스 안에서 한 번만 연다 (열지 못하면 다음에 부를 때 다시 해 본다).
+
+    팀 DB 가 닿지 않으면 오래 기다리지 않는다: 한 번 두드려 보고 바로 RepositoryError 를 낸다 (받는 쪽은 그대로 — /health 는 db.ok=false,
+    그 밖의 요청은 503). 열린 뒤의 접속에도 같은 제한 시간이 붙는다.
+    """
+    url = database_url()
+    if url:
+        failed = _why_unreachable(url)
+        if failed is not None:
+            raise RepositoryError(f"팀 DB 에 연결하지 못함: {str(failed).splitlines()[0]}", code="REPO_READ_FAILED") from failed
+        url = with_timeout(url)
+    return open_analysis_repository(url)
 
 
 def _kind(url: str) -> str:
