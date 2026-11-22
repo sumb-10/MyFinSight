@@ -1,8 +1,34 @@
 # MyFinSight
 
+[![최신 버전](https://img.shields.io/github/v/release/sumb-10/MyFinSight?include_prereleases&label=%EC%B5%9C%EC%8B%A0%20%EB%B2%84%EC%A0%84)](https://github.com/sumb-10/MyFinSight/releases)
+
 내 투자 조건과 말로 적은 투자 아이디어를 받아서, 종목을 고르고, 비중을 정하고, 과거 데이터로 성과와 위험을 계산해 리포트로 보여 주는 프로그램입니다. 실제 매매는 하지 않습니다.
 
-**처음 켜는 방법은 [howtouse.md](howtouse.md)를 보세요.** 설계 문서는 `docs/`에 있습니다.
+- 받아서 바로 쓰기: 아래 [받아서 쓰기](#받아서-쓰기)
+- 저장소를 받아 개발하며 켜기: [개발 환경에서 켜기](#개발-환경에서-켜기), 자세한 순서는 [howtouse.md](howtouse.md)
+- 설계 문서는 `docs/`에 있습니다.
+
+## 받아서 쓰기
+
+저장소를 받지 않아도 됩니다. **[Releases 페이지](https://github.com/sumb-10/MyFinSight/releases)** 에서 쓰는 환경에 맞는 파일 하나를 받습니다.
+
+| 쓰는 환경 | 받을 파일 | 켜는 법 | 따로 필요한 것 |
+| --- | --- | --- | --- |
+| Windows | `MyFinSight-<버전>-windows.exe` | 두 번 누르기 | 없음 |
+| Linux (x86_64) | `MyFinSight-<버전>-linux` | `chmod +x` 한 뒤 실행 | 없음 |
+| macOS (Apple Silicon) | `MyFinSight-<버전>-macos` | `chmod +x` 한 뒤 실행 | 없음 |
+| 파이썬이 있는 PC | `MyFinSight-<버전>-source.zip` | 압축을 풀고 `run.bat`(Windows) · `bash run.sh`(macOS · Linux) | 파이썬 3.11 이상 |
+| Docker | `MyFinSight-<버전>-source.zip` | 압축을 풀고 `docker compose up -d --build` | Docker |
+
+- 켜지면 브라우저가 <http://localhost:8765> 로 열립니다. 끄려면 함께 뜬 검은 창(터미널)을 닫습니다.
+- 처음 화면에서 팀 DB 주소와 OpenAI 키를 넣습니다. 넣은 값은 운영체제 보관함에 저장되고 파일로는 남지 않습니다. Docker 는 화면 대신 `.env` 에 적습니다.
+- 리포트와 실행 기록은 프로그램 옆이 아니라 사용자 폴더에 쌓입니다 (Windows `%LOCALAPPDATA%\MyFinSight`). 새 버전으로 바꿔도 남습니다.
+- 이름에 `-folder` 가 붙은 파일은 같은 실행 파일의 폴더형입니다. 압축을 풀어 쓰고 조금 더 빨리 켜집니다.
+- macOS 실행 파일은 v0.1.0 에는 없고 다음 버전부터 올라갑니다. 아직 실제 맥에서 켜 보지 못했습니다.
+- 서명이 없는 프로그램이라 처음 켤 때 경고가 뜹니다. Windows 는 "PC 보호" 창에서 「추가 정보」 → 「실행」을 누릅니다.
+
+버전마다 바뀐 점과 주의사항은 Releases 페이지의 설명에, 켜는 법과 문제 해결은 [packaging/source-zip/README.md](packaging/source-zip/README.md)에 있습니다.
+배포판을 만들고 새 버전을 내는 법은 [packaging/README.md](packaging/README.md).
 
 ## 세 부분
 
@@ -40,6 +66,8 @@ MyFinSight/
 │  ├─ api/                 데이터 조회 API (수집기 쪽, 분석 서비스와 별개)
 │  ├─ schemas/ core/ scripts/ tests/ data/ deploy/
 ├─ Front/                  화면. 구조는 Front/README.md
+├─ packaging/              배포판 만들기 (실행 파일 · 스크립트 · Docker Compose). packaging/README.md
+├─ .github/workflows/      release.yml: 태그를 올리면 세 운영체제에서 빌드해 Release 를 만든다
 ├─ module_mockup/          초기 실험 코드 (동결, 참고용)
 ├─ docs/                   설계보고서, 모듈 명세, DB 설계, 데이터 현황, TODO.md
 ├─ data/                   로컬 저장 (프로필·요청·실행 목록). 깃에 안 올라감
@@ -59,7 +87,9 @@ MyFinSight/
 | 7 화면 | `Front/` | React 화면 |
 | 공통 | `executor/`, `api/`, `common/` | 단계 실행기(의존이 끝난 단계는 동시에)와 줄 세우기, 서버 API, 설정·LLM 호출·저장·경고 카탈로그 |
 
-## 빠른 시작
+## 개발 환경에서 켜기
+
+저장소를 받아 코드를 고치면서 켤 때의 방법입니다. 쓰기만 할 때는 위의 [받아서 쓰기](#받아서-쓰기)가 쉽습니다.
 
 ```bash
 source ~/.venvs/myfinsight/bin/activate
