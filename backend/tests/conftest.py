@@ -15,6 +15,9 @@ def _isolate(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:  # noqa: ANN001
     for key in (*config._KEYS, "MYFINSIGHT_ENV_FILE", "MYFINSIGHT_ENV"):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("MYFINSIGHT_CACHE_DIR", str(tmp_path / "cache"))
+    # 테스트가 내 PC 의 운영체제 보관함(자격 증명 관리자·키체인)을 읽거나 쓰지 않게
+    # (연결 설정 테스트만 가짜 보관함을 꽂아 쓴다)
+    monkeypatch.setenv("MYFINSIGHT_SECRET_STORE", "none")
 
     # 명세 C-11: 테스트에서 실제 네트워크 금지. 실수로 부르면 바로 실패한다.
     def _no_network(self, method, url, *a, **k):  # noqa: ANN001, ANN002, ANN003

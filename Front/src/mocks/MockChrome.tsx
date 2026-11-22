@@ -2,8 +2,9 @@
 // 위쪽 띠: 모든 화면 맨 위에 「목업 데이터 화면입니다」. 오른쪽 아래 버튼: 스크롤해도 늘 보이는 목업 표시이자 시나리오 전환 패널.
 import { useState } from "react"
 import { FlaskConical, RotateCcw, X } from "lucide-react"
-import { useProfile, useService } from "../app/providers"
+import { useHealth, useProfile, useService } from "../app/providers"
 import { navigate, type Route } from "../app/router"
+import { clearConnectSkipped } from "../features/connect/skip"
 import { clearGuideRecord } from "../features/tutorial/guideRecord"
 import { exitMockHref } from "./mode"
 import { PAPERS, REPORTS, RUN_STATES } from "./scenarios"
@@ -14,6 +15,7 @@ const VARIANT_LABEL = { default: "기본 (변경 이력 4개)", zero: "초기 �
 export default function MockChrome() {
   const svc = useService() as unknown as MockService
   const { reload } = useProfile()
+  const { reload: reloadHealth } = useHealth()
   const [open, setOpen] = useState(false)
   const [variant, setVariant] = useState(() => svc.state?.().profileVariant ?? "default")
   const go = (r: Route) => { navigate(r); setOpen(false) }
@@ -55,6 +57,14 @@ export default function MockChrome() {
               ))}
             </div>
             <button type="button" className={link} onClick={() => go({ page: "profile" })}>내 투자조건 열기</button>
+            <p className={head}>연결 설정</p>
+            {/* 처음 켠 것처럼: 연결 전 + 투자조건 없음 + 이번 실행에서 넘긴 적 없음 → 홈으로 가면 연결 흐름부터 뜬다 */}
+            <button type="button" className={link} onClick={() => { svc.setConnections(false); svc.setProfileVariant("none"); setVariant("none"); clearConnectSkipped(); reloadHealth(); void reload(); go({ page: "home" }) }}>▶ 처음 켠 것처럼: 연결 흐름부터 (팀 DB → 분석 모델 → 내 투자조건)</button>
+            <button type="button" className={link} onClick={() => { svc.setConnections(false); reloadHealth(); go({ page: "settings" }) }}>연결 전 상태로 연결 설정 열기 (연습 모드)</button>
+            <button type="button" className={link} onClick={() => { svc.setConnections(true); reloadHealth(); go({ page: "settings" }) }}>둘 다 연결된 상태로 연결 설정 열기</button>
+            <button type="button" className={link} onClick={() => { svc.setConnections(true, { fromEnv: true, noSave: true }); reloadHealth(); go({ page: "settings" }) }}>환경변수로 설정된 상태로 열기 (개발 PC · Docker)</button>
+            <button type="button" className={link} onClick={() => { svc.setConnections(false, { noSave: true }); reloadHealth(); go({ page: "settings" }) }}>저장할 수 없는 환경으로 열기 (Docker, 키 없음)</button>
+            <button type="button" className={link} onClick={() => { svc.setConnections(true, { fromEnv: true, envDown: true, stubPinned: true }); reloadHealth(); go({ page: "settings" }) }}>환경변수 주소가 닿지 않고 연습 모드로 고정된 상태로 열기</button>
             <div className="mt-2 border-t border-slate-100 pt-2">
               <button type="button" className={`${link} text-amber-900`} onClick={clearGuideRecord}>가이드 안내 기록 지우기</button>
               <button type="button" className={`${link} flex items-center gap-1.5 text-amber-900`} onClick={() => { svc.reset(); window.location.reload() }}><RotateCcw className="size-3.5" aria-hidden />목업 데이터 초기화 (바꾼 이름·조건·모의투자 지우기)</button>

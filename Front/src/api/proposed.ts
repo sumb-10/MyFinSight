@@ -179,6 +179,32 @@ export interface ProposedPaperKrw {
 export interface ProposedPaperName { name_ko: string; mode: "linked" | "custom"; report_name_ko: string }
 export type ProposedPaperNameIn = { mode: "linked" } | { mode: "custom"; name_ko: string }   // linked = 리포트 이름을 따라감, custom = 직접 정한 이름
 
+/* ───────── 연결 설정 (팀 DB · 분석 모델) ───────── */
+/** 처음 켰을 때와 사이드바 「연결 설정」에서 넣는 두 가지 연결: 팀 DB 접속 주소, OpenAI API 키.
+ *  서버가 값을 찾는 순서 (backend/analysis/connections.py): ① 환경변수(.env · Docker Compose) → ② 운영체제 보관함(화면에서 저장한 값) → ③ 없음(연습 모드).
+ *  화면에는 가린 표시(masked)만 돌려준다 — 한번 저장한 값은 다시 읽어 올 수 없다. */
+export type ProposedConnectionKind = "database" | "llm"
+/** source: env = 환경변수로 들어옴 (개발 PC 의 .env, Compose) → 화면에서 바꾸거나 지울 수 없다 · saved = 화면에서 저장해 보관함에 있음 · null = 없음.
+ *  masked 예: postgresql://reader:••••••••@db.example.com:5432/myfinsight · sk-••••••••••••a3F9 (서버를 켠 컴퓨터가 아닌 곳에서 물으면 null) */
+export interface ProposedConnection { kind: ProposedConnectionKind; connected: boolean; source: "env" | "saved" | null; masked: string | null }
+export interface ProposedConnections {
+  can_save: boolean               // 화면에서 저장할 수 있나 = 운영체제 보관함을 쓸 수 있나 (Docker 컨테이너에는 없다 → false, 환경변수로만 넣는다)
+  store_label_ko: string | null   // 보관함 이름: 「Windows 자격 증명 관리자」「macOS 키체인」「시스템 키링」 (없으면 null). 뒤에 '에'를 붙여 쓴다
+  // 팀 DB: 주소가 있고 실제로 자료를 읽을 수 있어야 connected. 주소는 있는데 닿지 않으면 connected=false + error (환경변수로 들어온 주소는 화면에서 못 고치니 원인을 보여 준다)
+  // data_start: 모든 시장이 자료를 가진 첫날 (가장 늦게 시작한 시장의 시작일) · data_start_by_market: 시장별 첫날, 예 { US: "1993-01-29", KR: "2002-10-14" } (서버 설정의 시장 순서)
+  database: ProposedConnection & { latest_trading_day: string | null; data_start: string | null; data_start_by_market: Record<string, string> | null; error: ProposedConnectionError | null }
+  // 분석 한 번의 사용료 어림 (USD). 연결 전에도 준다 — 키를 넣는 화면에서 보여 주기 때문.
+  // 정하는 방법 (2026-11-23 합의): 이 컴퓨터에 실행 기록이 없으면 기본값 0.1, 기록이 쌓이면 그 기록의 대푯값(실행별 llm_usage.cost_usd).
+  // null 이면 화면은 숫자 없이 「분석할 때 사용료」로 적는다.
+  // stub_pinned: 환경변수 MYFINSIGHT_LLM=stub 이 연습 모드로 못 박아 둠 → 키가 있어도 connected=false, 화면에서 키를 넣을 수 없다 (그 줄을 지우고 서버를 다시 켜야 한다)
+  llm: ProposedConnection & { cost_per_run_usd: number | null; stub_pinned: boolean }
+}
+/** 실패 원인. 문구는 화면이 원인별로 고른다 (features/connect/copy.ts). 모르는 값이 오면 unknown 으로 다룬다. */
+export type ProposedConnectionErrorCode = "host_not_found" | "no_response" | "auth_failed" | "database_not_found" | "invalid_key" | "quota" | "stub_pinned" | "unknown"  // stub_pinned = 환경변수 MYFINSIGHT_LLM=stub 이 연습 모드로 고정 (키를 넣어도 쓰이지 않아 저장하지 않는다)
+/** value = 문제가 된 부분 (서버 주소 · 서버:포트 · DB 이름, 없으면 null). raw = 원래 오류 문장 (「자세한 오류 보기」). 비밀번호·키 본문은 어느 쪽에도 넣지 않는다. */
+export interface ProposedConnectionError { code: ProposedConnectionErrorCode; value: string | null; raw: string | null }
+export interface ProposedConnectResult { ok: boolean; connections: ProposedConnections; error: ProposedConnectionError | null }
+
 /* ───────── 서비스 확장 (모두 선택). 목업 서비스는 모두 가지고, 실제 서버 서비스(HttpService)는 서버가 구현한 것만 가진다
    (어느 것인지는 mocks/mocks.test.tsx 의 CONNECTED) → 화면은 메서드가 있을 때만 기능을 연다. ───────── */
 export interface ProposedApi {
@@ -200,6 +226,9 @@ export interface ProposedApi {
   getPaperName(paperId: string): Promise<ProposedPaperName>
   setPaperName(paperId: string, input: ProposedPaperNameIn): Promise<ProposedPaperName>
   getSectorTrends(): Promise<ProposedSectorTrends>   // 홈 '요즘엔 뭐가 좋아요?' (계산 중이면 status=loading → 다시 묻는다)
+  getConnections(): Promise<ProposedConnections>     // 연결 설정: 지금 연결 상태
+  saveConnection(kind: ProposedConnectionKind, value: string): Promise<ProposedConnectResult>   // 연결을 확인하고, 되면 보관함에 저장한다 (안 되면 저장하지 않고 ok=false + error). source=env 이거나 can_save=false 면 서버가 409 로 거절
+  clearConnection(kind: ProposedConnectionKind): Promise<ProposedConnections>                  // 저장한 값 지우기 (source=env 면 409)
 }
 
 /** ProposedApi 메서드 이름 전부. 인터페이스에 메서드를 더하고 여기 빠뜨리면 타입 검사가 잡는다 (테스트가 목업·실제 서버 서비스에 무엇이 있는지 볼 때 쓴다). */
@@ -207,6 +236,7 @@ const PROPOSED_ALL: Record<keyof ProposedApi, true> = {
   getReportName: true, renameReport: true, deleteReport: true, searchStocks: true, getStocks: true, getProfileVersion: true, recommendStrategy: true,
   startProfileChat: true, answerProfileChat: true, rewindProfileChat: true, getQuestionBatch: true, answerBatch: true, getMessageResults: true,
   getRunWarnings: true, getPaperKrw: true, getPaperName: true, setPaperName: true, getSectorTrends: true,
+  getConnections: true, saveConnection: true, clearConnection: true,
 }
 export const PROPOSED_METHODS = Object.keys(PROPOSED_ALL) as (keyof ProposedApi)[]
 

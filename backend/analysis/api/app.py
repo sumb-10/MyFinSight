@@ -19,8 +19,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
 from backend.adapters.crawlers import config
+from backend.analysis import connections as stored_connections
 from backend.analysis.api import errors
 from backend.analysis.api.routers import (
+    connections,
     meta,
     paper,
     profile,
@@ -62,6 +64,10 @@ def create_analysis_app(
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        # 화면에서 저장해 둔 연결(운영체제 보관함)을 읽어 온다. 환경변수(.env)가 주는 연결은 그대로 둔다 (backend/analysis/connections.py).
+        # 서버가 실제로 켜질 때만 한다 — 모듈을 불러오는 것만으로(테스트 수집 등) 보관함을 건드리지 않게
+        if stored_connections.load_stored():
+            services.reload_connections()
         if warm:  # 서버를 켜면 홈 섹터 성과를 뒤에서 미리 계산해 둔다 (사용자가 홈을 열 때 기다리지 않게)
             threading.Thread(target=warm_home, args=(services,), name="warm-home", daemon=True).start()
         yield
@@ -72,7 +78,7 @@ def create_analysis_app(
     app.add_middleware(GZipMiddleware, minimum_size=1024)  # 리포트 문서(수백 KB~MB)는 압축해서 보낸다 (라운드 4)
     app.state.services = services
     errors.install(app)
-    for r in (meta.router, profile.router, requests.router, runs.router, reports.router, report_names.router, paper.router, stocks.router):
+    for r in (meta.router, profile.router, requests.router, runs.router, reports.router, report_names.router, paper.router, stocks.router, connections.router):
         app.include_router(r, prefix=API_PREFIX)
     return app
 

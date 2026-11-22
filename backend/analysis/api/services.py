@@ -9,6 +9,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from backend.analysis.common.dbconn import default_repo
 from backend.analysis.common.llm import LlmClient, make_llm
 from backend.analysis.common.store import JsonStore, ProfileStore, RequestStore
 from backend.analysis.executor.queue import Queue
@@ -20,7 +21,7 @@ from backend.analysis.m2_data.stocks import load_stocks, lookup
 from backend.analysis.m5_backtest_report.execution_orders import compute_execution, with_execution
 from backend.analysis.m6_tracking.paper import PaperService
 from backend.analysis.paths import output_root
-from backend.analysis.settings import AnalysisSettings
+from backend.analysis.settings import AnalysisSettings, replace_settings
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +60,25 @@ class Services:
     def llm(self) -> LlmClient:
         # 대화 단계 호출도 비용을 남긴다 (실행 폴더가 없어 예전에는 기록이 없었다 → 시나리오 QA 비용 상한 관리)
         return self.llm_factory() if self.llm_factory else make_llm(self.settings.llm, usage_log=output_root() / "llm_usage_dialog.jsonl")
+
+    def reload_connections(self) -> None:
+        """연결 설정(팀 DB 주소 · 분석 모델 키)이 바뀐 직후: 서버를 다시 켜지 않고 바로 반영한다 (backend/analysis/connections.py).
+
+        분석 모델: 연습 모드 여부를 다시 정한다 (LLM 클라이언트는 부를 때마다 새로 만들어 키를 다시 읽는다).
+        팀 DB: 열어 둔 연결과 그 위에 쌓아 둔 것(시장 자료·가격·종목 이름·섹터 성과·리포트 캐시)을 버려 다음 요청이 새 주소로 다시 연다."""
+        from backend.analysis import connections
+
+        with self._lock:
+            self.settings = replace_settings(self.settings, llm=replace_settings(self.settings.llm, mode=connections.llm_mode()))
+            if self.repo_factory is default_repo:  # 테스트가 꽂은 저장소는 그대로 둔다
+                default_repo.cache_clear()
+            self._md = None
+            self._prices = PriceBarCache()
+            self._stocks = None
+            self._trends = None
+            self._results_cache.clear()
+            self._orders_cache.clear()
+            self._titles.clear()
 
     def market_data(self) -> MarketData:
         """프로세스 안에서 재사용. 새 거래일 자료가 들어오면 다시 만든다."""

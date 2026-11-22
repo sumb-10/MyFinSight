@@ -172,3 +172,18 @@ html.report-wide [role="dialog"][aria-modal="true"] > aside {
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
+
+/* 연결 설정(features/connect, .connect): 위와 같은 이유로 버튼·입력창의 글자 크기·굵기 클래스가 먹게 되돌린다. */
+.connect button,
+.connect input {
+  font-size: revert-layer;
+  font-weight: revert-layer;
+  line-height: revert-layer;
+}
+.connect {
+  word-break: keep-all;
+}
+/* 큰 입력칸(SecretField)은 감싼 상자가 초점 표시(테두리·고리)를 맡는다 → 안쪽 입력창의 기본 초점 선은 끈다 (두 겹으로 보이지 않게) */
+.connect-field input:focus-visible {
+  outline: none;
+}

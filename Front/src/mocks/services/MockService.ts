@@ -15,6 +15,8 @@ import { PROFILE_VERSIONS, profileView, ZERO_CAPITAL_VERSION } from "../data/pro
 import { buildReport, checkpointDetail, mockTitleOf, type MockReportDoc } from "../data/report"
 import { CANCEL_MS, RUN_WARNINGS, STEPS, buckets, cancelInfo, liveStatus, runPartial, runRows, runStatus } from "../data/runs"
 import { STOCKS } from "../data/stocks"
+import { MOCK_COST_PER_RUN_USD, MOCK_DATA_START, MOCK_DATA_START_BY_MARKET, MOCK_DB_MASKED, MOCK_KEY_MASKED, checkConnection } from "../data/connections"
+import type { ProposedConnectResult, ProposedConnectionKind, ProposedConnections } from "../../api/proposed"
 import { localIso } from "../data/util"
 import { clearState, initialState, loadState, saveState, type MockState } from "./store"
 import type { SeenSeed } from "../../lib/seen"
@@ -87,7 +89,40 @@ export class MockService implements AnalysisService {
   }
 
   /* ───────── 메타·프로필 ───────── */
-  health(): Promise<Health> { return this.wait(() => ({ ok: true, api_version: "mock", llm_mode: "api" as const, db: { ok: true, latest_trading_day: MOCK_AS_OF, data_start: "2020-01-02" }, worker: { alive: true, running_run_id: null }, queue_length: 0 })) }
+  // 연결 설정에 맞춰 답한다: 분석 모델 키가 없으면 연습 모드(stub), 팀 DB 가 없으면 db.ok=false
+  health(): Promise<Health> { const c = this.s.connections; return this.wait(() => ({ ok: true, api_version: "mock", llm_mode: c.llm && !c.stubPinned ? "api" as const : "stub" as const, db: c.database && !c.envDown ? { ok: true, latest_trading_day: MOCK_AS_OF, data_start: MOCK_DATA_START } : { ok: false, error: "[목업] 팀 DB 연결 전" }, worker: { alive: true, running_run_id: null }, queue_length: 0 })) }
+
+  /* ───────── 연결 설정 (팀 DB · 분석 모델) ───────── */
+  private connections(): ProposedConnections {
+    const c = this.s.connections
+    const source = (masked: string | null) => (masked ? (c.fromEnv ? "env" as const : "saved" as const) : null)
+    const dbUp = !!c.database && !c.envDown
+    return {
+      can_save: !c.noSave, store_label_ko: c.noSave ? null : "Windows 자격 증명 관리자",
+      database: { kind: "database", connected: dbUp, source: source(c.database), masked: c.database, latest_trading_day: dbUp ? MOCK_AS_OF : null, data_start: dbUp ? MOCK_DATA_START : null, data_start_by_market: dbUp ? MOCK_DATA_START_BY_MARKET : null,
+        error: c.database && c.envDown ? { code: "host_not_found", value: "db.example.com", raw: 'OperationalError: could not translate host name "db.example.com" to address' } : null },
+      llm: { kind: "llm", connected: !!c.llm && !c.stubPinned, source: source(c.llm), masked: c.llm, cost_per_run_usd: MOCK_COST_PER_RUN_USD, stub_pinned: !!c.stubPinned },
+    }
+  }
+  /** 실제 서버처럼: 환경변수로 들어온 연결은 바꿀 수 없고, 보관함이 없는 환경에서는 저장할 수 없다 (409) */
+  private editable(kind: ProposedConnectionKind) {
+    const c = this.s.connections
+    if (c.fromEnv && c[kind]) throw new ApiError("CONNECTION_FROM_ENV", "[목업] 환경변수(.env)로 설정된 연결은 화면에서 바꿀 수 없습니다. 그 파일에서 고쳐 주세요.", 409)
+    if (c.noSave) throw new ApiError("SECRET_STORE_UNAVAILABLE", "[목업] 이 환경에서는 화면에서 저장할 수 없습니다. 환경변수(.env)로 넣어 주세요.", 409)
+  }
+  getConnections(): Promise<ProposedConnections> { return this.wait(() => this.connections()) }
+  /** 확인하고, 되면 저장한다. 실제 접속처럼 조금 걸린다 (「연결을 확인하는 중…」이 보이게). 판정 규칙은 data/connections.ts */
+  async saveConnection(kind: ProposedConnectionKind, value: string): Promise<ProposedConnectResult> {
+    this.editable(kind)
+    const r = checkConnection(kind, value)
+    return this.wait(() => {
+      if (r.ok) { this.s.connections[kind] = r.masked; this.commit() }
+      return { ok: r.ok, connections: this.connections(), error: r.ok ? null : r.error }
+    }, this.latency * 10)
+  }
+  async clearConnection(kind: ProposedConnectionKind): Promise<ProposedConnections> { this.editable(kind); this.s.connections[kind] = null; this.commit(); return this.wait(() => this.connections()) }
+  /** 개발용 패널: 두 연결을 한 번에 연결됨/연결 전으로. fromEnv·noSave 로 「환경변수로 설정됨」「저장할 수 없는 환경(Docker)」도 만든다 */
+  setConnections(on: boolean, opts: { fromEnv?: boolean; noSave?: boolean; envDown?: boolean; stubPinned?: boolean } = {}) { this.s.connections = { ...(on ? { database: MOCK_DB_MASKED, llm: MOCK_KEY_MASKED } : { database: null, llm: null }), ...opts }; this.commit() }
   options(): Promise<Options & ProposedOptionsExt> {
     return this.wait(() => ({ proposed_rules: { allow_zero_initial_amount: true }, universes: ["SP500", "NASDAQ100", "KOSPI200"], templates: ["low_per", "quality", "momentum", "low_volatility", "high_dividend"], weightings: ["equal_weight", "market_cap", "inverse_volatility", "min_variance"], risk_tolerance: ["conservative", "moderate", "aggressive"], rebalance_units: ["2w", "1m", "1q", "6m", "1y"], age_band: ["20s", "30s", "40s", "50s", "60s+"], investment_experience: ["none", "beginner", "intermediate", "advanced"], financial_knowledge: ["basic", "intermediate", "expert"], purpose: ["wealth_growth", "income", "capital_preservation", "retirement"], loss_reaction: ["sell", "hold", "buy_more"], benchmarks: ["SPY", "QQQ"], max_questions: 5, default_backtest_years: 3, markets: ["US", "KR"], labels_ko: {}, data_range: ["2020-01-02", MOCK_AS_OF] as [string, string], latest_trading_day: MOCK_AS_OF }))
   }

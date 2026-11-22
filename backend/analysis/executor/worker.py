@@ -36,6 +36,7 @@ from backend.analysis.m6_tracking.paper import refresh_all_papers
 from backend.analysis.paths import run_dir
 from backend.analysis.schemas.backtest import BacktestRequest
 from backend.analysis.common.dbconn import open_analysis_repository
+from backend.analysis.connections import StoreWatcher, load_stored
 from backend.analysis.settings import AnalysisSettings
 
 log = logging.getLogger(__name__)
@@ -171,10 +172,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if a.verbose else logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    settings = AnalysisSettings.load()
-    repo = open_analysis_repository(a.db)
     store = JsonStore()
     lock_path = Path(store.root) / "worker.lock"
+    load_stored()  # 화면에서 저장해 둔 연결(운영체제 보관함)을 읽어 온다. 환경변수(.env)가 주는 연결은 그대로
+    watcher = StoreWatcher(store)  # 서버가 연결을 바꾸면(팀 DB 주소 · 분석 모델 키) 변경 표시 파일로 알아챈다
     # "a+" 로 열어야 한다: "w" 는 잠금을 얻기 전에 파일을 비우므로, 두 번째 일꾼이 잠금에 실패하고 나가더라도 살아 있는 일꾼의 pid 가 지워져
     # /health 가 '일꾼 꺼짐'으로 잘못 보인다 (라운드 5 재실행에서 발견). 잠금을 얻은 뒤에만 pid 를 다시 쓴다.
     with open(lock_path, "a+") as fh:
@@ -187,26 +188,36 @@ def main(argv: list[str] | None = None) -> int:
         fh.truncate()
         fh.write(str(os.getpid()))
         fh.flush()
-        with repo.job_lock("analysis_worker") as ok:
-            if not ok:
-                print("another worker holds the DB lock; exiting", file=sys.stderr)
-                return 2
-            log.info("[worker] pid %s store=%s llm=%s", os.getpid(), store.root, settings.llm.mode)
-            last_paper = 0.0
-            while True:
-                status = run_once(repo=repo, store=store, settings=settings)
-                if a.once:
-                    return 0
-                if status is None:
-                    if settings.tracking.refresh_on_worker_idle and time.time() - last_paper >= settings.tracking.refresh_interval_s:
-                        last_paper = time.time()
-                        try:
-                            done = refresh_all_papers(repo, store, settings)
-                            if done:
-                                log.info("[worker] paper refreshed: %s", done)
-                        except Exception:  # noqa: BLE001
-                            log.exception("[worker] paper refresh failed")
-                    time.sleep(a.poll_sec)
+        # 바깥 루프: 설정과 저장소를 연다. 연결 설정이 바뀌면 안쪽 루프를 빠져나와 여기서 다시 연다
+        # (일꾼은 따로 도는 프로세스라, 서버가 받은 새 주소·키를 스스로 다시 읽어야 한다. 실행 도중에는 바꾸지 않는다).
+        while True:
+            settings = AnalysisSettings.load()
+            repo = open_analysis_repository(a.db)
+            with repo.job_lock("analysis_worker") as ok:
+                if not ok:
+                    print("another worker holds the DB lock; exiting", file=sys.stderr)
+                    return 2
+                log.info("[worker] pid %s store=%s llm=%s", os.getpid(), store.root, settings.llm.mode)
+                last_paper = 0.0
+                while True:
+                    status = run_once(repo=repo, store=store, settings=settings)
+                    if a.once:
+                        return 0
+                    if status is None:
+                        if settings.tracking.refresh_on_worker_idle and time.time() - last_paper >= settings.tracking.refresh_interval_s:
+                            last_paper = time.time()
+                            try:
+                                done = refresh_all_papers(repo, store, settings)
+                                if done:
+                                    log.info("[worker] paper refreshed: %s", done)
+                            except Exception:  # noqa: BLE001
+                                log.exception("[worker] paper refresh failed")
+                        time.sleep(a.poll_sec)
+                    if watcher.changed():
+                        log.info("[worker] 연결 설정이 바뀌어 설정과 저장소를 다시 엽니다")
+                        global _PRICES  # noqa: PLW0603
+                        _PRICES = PriceBarCache()  # 다른 DB 에서 받아 둔 가격을 새 DB 의 것으로 쓰지 않게
+                        break
     return 0
 
 
