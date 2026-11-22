@@ -8,7 +8,8 @@
 순서: 화면 빌드 → 자료 확인 → 묶기 → 내용 확인 → 켜 보기 → 내놓기.
 결과는 packaging/dist/ 에 건넬 이름으로 나온다. 만드는 동안 쓰는 중간 파일은 packaging/build/ 에 두었다가 끝나면 지운다
 (--keep-work 를 주면 남긴다 — 묶인 내용을 들여다볼 때).
-필요한 것: pip install -e ".[analysis,packaging]", Node (화면 빌드), backend/data/processed 의 종목 사전.
+이미 낸 판 번호(v<판> 태그가 있는 번호)로는 만들지 않는다. pyproject.toml 의 version 을 올린 뒤 만든다.
+필요한 것: pip install -e ".[analysis,packaging]", Node (화면 빌드).
 .env · data/ · output/ 은 들어가지 않는다.
 """
 
@@ -40,6 +41,8 @@ HAS_WEB_SOURCE = (ROOT / "Front" / "src").is_dir()
 SMOKE_PORT = 8791  # 켜 보기에 쓰는 포트 (쓰고 있는 앱의 8765 와 겹치지 않게)
 # 들어가면 안 되는 것 (비밀 값 · 사용자 자료). 묶은 뒤 폴더를 훑어 하나라도 있으면 실패로 본다
 FORBIDDEN = (".env", ".env.local", ".env.backup", "settings.env", "analysis_results.db", "myfinsight.db")
+# pnpm 이 깔려 있지 않을 때 npx 로 불러 쓰는 판. Front/pnpm-lock.yaml 의 형식(lockfileVersion 9.0)을 읽는 판이어야 한다
+PNPM_FALLBACK = "pnpm@9"
 
 
 def step(text: str) -> None:
@@ -58,7 +61,7 @@ def build_web() -> None:
         raise SystemExit("npm 을 찾지 못했습니다. Node 를 설치하거나, 이미 빌드해 둔 것이 있으면 --skip-web 을 주세요.")
     env = {k: v for k, v in os.environ.items() if k != "VITE_ENABLE_MOCK"}
     if not (ROOT / "Front" / "node_modules").exists():
-        run([npm, "ci"], ROOT / "Front", env)
+        install_web_libraries(env)
     # 예전 결과를 여기서 지운다. vite 8 은 이미 있는 dist 를 비우다가, 저장소 경로에 한글이 있으면(Windows) 오류 글 없이
     # 죽는다 (종료 코드 0xC0000409) — 그러면 예전 화면이 그대로 묶인다 (2026-11-23 에 11-07 화면이 묶여 발견).
     dist = ROOT / "Front" / "dist"
@@ -68,18 +71,37 @@ def build_web() -> None:
         raise SystemExit("화면 빌드가 결과를 내지 못했습니다.")
 
 
-def check_inputs() -> None:
+def install_web_libraries(env: dict[str, str]) -> None:
+    """화면 라이브러리를 잠금 파일(Front/pnpm-lock.yaml)에 적힌 판 그대로 받는다. node_modules 가 없을 때만 부른다
+    (처음 받은 저장소, 자동 빌드 서버). 이 프로젝트의 잠금 파일은 pnpm 것이라 npm ci 로는 받을 수 없다."""
+    pnpm = shutil.which("pnpm")
+    if pnpm:
+        cmd = [pnpm, "install", "--frozen-lockfile"]
+    else:  # pnpm 을 따로 깔지 않은 PC: Node 에 딸려 오는 npx 로 한 번 불러 쓴다
+        npx = shutil.which("npx")
+        if not npx:
+            raise SystemExit("pnpm 도 npx 도 찾지 못했습니다. Node 를 설치해 주세요.")
+        cmd = [npx, "--yes", PNPM_FALLBACK, "install", "--frozen-lockfile"]
+    run(cmd, ROOT / "Front", env)
+
+
+def web_problem() -> str | None:
+    """빌드한 화면(Front/dist)을 그대로 써도 되는가. 되면 None, 안 되면 그 이유."""
     web = ROOT / "Front" / "dist" / "index.html"
     if not web.exists():
-        raise SystemExit(f"화면 빌드 결과가 없습니다: {web}")
-    if HAS_WEB_SOURCE:  # --skip-web 으로 예전 화면을 묶지 않게: 화면 소스가 빌드 결과보다 새것이면 멈춘다
+        return f"화면 빌드 결과가 없습니다: {web}"
+    if HAS_WEB_SOURCE:  # 예전 화면을 묶지 않게: 화면 소스가 빌드 결과보다 새것이면 안 된다
         sources = [p for p in (ROOT / "Front" / "src").rglob("*") if p.is_file()] + [ROOT / "Front" / "index.html", ROOT / "Front" / "package.json"]
         newest = max(sources, key=lambda p: p.stat().st_mtime)
         if newest.stat().st_mtime > web.stat().st_mtime:
-            raise SystemExit(f"화면 빌드 결과가 소스보다 오래됐습니다 ({newest.relative_to(ROOT)} 가 더 새것). --skip-web 없이 다시 돌려 주세요.")
-    descriptor = ROOT / "backend" / "data" / "processed" / "all_descriptor.json"
-    if not descriptor.exists():
-        raise SystemExit(f"종목 사전이 없습니다: {descriptor}\n  backend/scripts/build_descriptor.py 로 만들거나 팀에서 받아 넣어 주세요.")
+            return f"화면 빌드 결과가 소스보다 오래됐습니다 ({newest.relative_to(ROOT)} 가 더 새것)"
+    return None
+
+
+def check_inputs() -> None:
+    problem = web_problem()
+    if problem:
+        raise SystemExit(f"{problem}. --skip-web 없이 다시 돌려 주세요.")
 
 
 def bundle(onefile: bool) -> Path:
@@ -177,6 +199,33 @@ def version() -> str:
     return tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
 
 
+def refuse_released_version() -> None:
+    """이미 낸 판 번호로는 만들지 않는다. 파일 이름이 판 번호로 정해지므로, 그대로 만들면 낸 것과 이름은 같고 내용은 다른 파일이 생긴다.
+
+    "냈다"는 기록은 깃 태그 v<판> 이다 (GitHub Release 가 만든다). 태그가 있어도 되는 경우는 하나: 지금 코드가 바로 그 태그의
+    커밋이고 고친 것이 없을 때 — 낸 것과 같은 코드로 다시 만드는 것이다 (태그를 올리면 도는 자동 빌드가 이 경우다).
+    깃이 없는 곳(건네는 묶음 안)에서는 보지 않는다.
+    """
+    git = shutil.which("git")
+    if not git or not (ROOT / ".git").exists():
+        return
+
+    def ask(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run([git, *args], cwd=ROOT, capture_output=True, text=True, check=False, timeout=60)  # noqa: S603
+
+    tag = f"v{version()}"
+    ask("fetch", "--tags", "--quiet")  # 다른 사람이나 GitHub 에서 낸 태그도 알게. 안 되면(오프라인) 내 컴퓨터에 있는 태그만 본다
+    tagged = ask("rev-list", "-n", "1", f"refs/tags/{tag}")
+    if tagged.returncode != 0:
+        return  # 아직 내지 않은 번호
+    same_commit = ask("rev-parse", "HEAD").stdout.strip() == tagged.stdout.strip()
+    changed = ask("status", "--porcelain", "--untracked-files=no").stdout.strip()
+    if same_commit and not changed:
+        return
+    why = "지금 코드는 그 태그의 커밋이 아닙니다" if not same_commit else "커밋하지 않은 수정이 있습니다"
+    raise SystemExit(f"{tag} 는 이미 낸 판입니다 ({why}).\n  pyproject.toml 의 version 을 올린 뒤 다시 만드세요 — 같은 번호로 만들면 낸 파일과 이름만 같은 다른 파일이 됩니다.")
+
+
 def publish(exe: Path, onefile: bool) -> Path:
     """만든 것을 dist/ 에 건넬 이름으로 내놓는다: 한 파일형은 그대로, 폴더형은 압축해서. 이름에 판 번호와 운영체제를 넣는다."""
     DIST.mkdir(parents=True, exist_ok=True)  # 다른 운영체제용·묶음 파일은 그대로 두고 이번에 만든 것만 갈아 끼운다
@@ -208,6 +257,7 @@ def main() -> int:
     shape.add_argument("--all", action="store_true", help="두 모양을 다 만든다")
     ap.add_argument("--keep-work", action="store_true", help="중간 파일(packaging/build/)을 지우지 않는다")
     a = ap.parse_args()
+    refuse_released_version()
     if HAS_WEB_SOURCE and not a.skip_web:
         step("화면 빌드")
         build_web()

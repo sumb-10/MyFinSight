@@ -8,9 +8,10 @@ MyFinSight 를 저장소 없이 켤 수 있게 묶는다. 세 가지로 건넨�
 | 스크립트 | 파이썬 3.11 이상 | `python packaging/release.py` | `MyFinSight-<판>-source.zip` 안의 `run.bat` · `run.sh` |
 | Docker Compose | Docker | (위와 같은 묶음) | `MyFinSight-<판>-source.zip` 안의 `compose.yaml` |
 
-- 스크립트와 Docker 는 묶음 하나(`source.zip`)를 같이 쓴다. 깃에 없는 화면 빌드 결과와 종목 사전을 그 안에 넣어 주므로, 받는 사람은 Node 가 필요 없다
+- 스크립트와 Docker 는 묶음 하나(`source.zip`)를 같이 쓴다. 깃에 없는 화면 빌드 결과를 그 안에 넣어 주므로, 받는 사람은 Node 가 필요 없다
 - 실행 파일은 만든 운영체제용만 나온다. 리눅스용은 `python packaging/release.py --linux` 가 Docker 안에서 만들어 준다. 맥용은 맥에서 `build.py` 를 돌려야 한다
-- 판 번호는 `pyproject.toml` 의 `version`
+- 판 번호는 `pyproject.toml` 의 `version`. 파일 이름에 들어간다
+- 이미 낸 번호(`v<판>` 태그가 있는 번호)로는 빌드가 멈춘다. 판을 낸 뒤 다음 작업을 시작할 때 `version` 을 올린다 — 같은 번호로 다시 만들면 낸 파일과 이름만 같은 다른 파일이 되기 때문이다
 - 묶음에 들어가는 파일의 원본은 `packaging/source-zip/` (받는 사람용 안내문 `README.md` 포함)
 - 결과는 모두 `packaging/dist/` 에 건넬 이름으로 나온다. 만드는 동안 `packaging/build/` 가 잠깐 생겼다가 끝나면 지워진다 (둘 다 깃에 올라가지 않는다)
 
@@ -24,7 +25,7 @@ python packaging/release.py --linux      # 묶음 + 리눅스 실행 파일
 ## 실행 파일 만들기
 
 ```
-pip install -e ".[analysis,packaging]"
+pip install -e ".[analysis,packaging]"      # + Node 22 (화면 빌드)
 python packaging/build.py          # 한 파일형 (기본)
 python packaging/build.py --folder # 폴더형
 python packaging/build.py --all    # 둘 다
@@ -32,8 +33,10 @@ python packaging/build.py --all    # 둘 다
 
 - 순서: 화면 빌드(`Front/dist`) → 자료 확인 → 묶기(PyInstaller) → 내용 확인 → 켜 보기
 - 만든 운영체제용만 나온다. 맥용은 맥에서, Windows 용은 Windows 에서 돌린다
-- `backend/data/processed/all_descriptor.json`(종목 사전)이 있어야 한다. git 에 없는 파일이라 없으면 만들거나 팀에서 받는다
+- 깃에 있는 것만으로 빌드된다. 종목 사전은 넣지 않는다 — 켠 뒤 팀 DB 에 연결되면 서버가 자료 폴더의 `descriptor/` 에 만든다
 - 화면만 그대로일 때는 `--skip-web` 으로 화면 빌드를 건너뛴다
+- 처음 받은 저장소에서도 된다: `Front/node_modules` 가 없으면 잠금 파일(`pnpm-lock.yaml`)대로 받는다. pnpm 이 없으면 `npx` 로 불러 쓴다
+- `release.py` 는 빌드한 화면이 없거나 소스보다 오래됐으면 스스로 빌드한다 (`build.py` 를 먼저 돌렸으면 그 결과를 쓴다). 둘을 동시에 돌리지는 말 것 — 화면 빌드가 겹친다
 - 묶인 내용을 들여다보려면 `--keep-work` 를 준다. 중간 파일이 `packaging/build/` 에 남는다 (풀어 놓은 폴더형은 `build/app/MyFinSight/`)
 
 ## 두 가지 모양
@@ -69,7 +72,7 @@ MyFinSight-0.1.0-source.zip             스크립트 버전 + Docker Compose 버
 5. 시험판이면 **Set as a pre-release** 를 켠다 → 목록에 `Pre-release` 표시가 붙고 "최신 판"으로는 잡히지 않는다
 6. **Publish release**. 그 Release 의 주소가 내려받는 곳이 된다
 
-공개 저장소의 Release 는 누구나 내려받을 수 있다. 올리기 전에 볼 것: 실행 파일에는 코드·프롬프트·종목 사전이 들어 있고,
+공개 저장소의 Release 는 누구나 내려받을 수 있다. 올리기 전에 볼 것: 실행 파일에는 코드와 프롬프트가 들어 있고,
 `.env` 와 내 리포트는 들어 있지 않다 (빌드의 "내용 확인"이 막는다). 팀 DB 주소와 API 키도 들어 있지 않다 — 받는 사람이 화면에서 넣는다.
 
 받는 사람에게 같이 알릴 것
@@ -83,7 +86,8 @@ MyFinSight-0.1.0-source.zip             스크립트 버전 + Docker Compose 버
 |---|---|
 | 서버·일꾼 코드와 라이브러리 | `.env`, `.env.*` (비밀 값) |
 | 화면(`Front/dist`) | `data/`, `output/` (내 리포트·실행 기록) |
-| 프롬프트, 연습 모드 답, 종목 사전 | 수집기용 키 (DART·KIS 등) |
+| 프롬프트, 연습 모드 답 | 수집기용 키 (DART·KIS 등) |
+| | 종목 사전 (팀 DB 에 연결되면 자료 폴더에 만든다) |
 
 팀 DB 주소와 OpenAI 키는 받는 사람이 화면(연결 설정)에서 넣는다. 그 값은 운영체제 보관함
 (Windows 자격 증명 관리자 · macOS 키체인)에 저장되고 파일로는 남지 않는다.
@@ -99,6 +103,7 @@ MyFinSight-0.1.0-source.zip             스크립트 버전 + Docker Compose 버
 | Linux | `~/.local/share/MyFinSight` |
 
 - `store/` 투자조건·요청·모의투자, `output/` 실행별 결과, `analysis_results.db` 리포트, `logs/` 로그
+- `descriptor/` 종목 사전. 서버가 팀 DB 를 열 때마다 DB 기준으로 맞춘다 (지워도 다음에 켜면 다시 생긴다)
 - 새 판으로 바꿀 때는 실행 파일(또는 프로그램 폴더)만 갈아 끼우면 된다. 자료 폴더는 그대로다
 - 지울 때는 실행 파일과 자료 폴더를 지우고, 그 전에 연결 설정에서 「지우기」를 눌러 보관함의 값도 지운다
 

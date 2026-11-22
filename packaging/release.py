@@ -4,9 +4,9 @@
     python packaging/release.py            # 묶음(source.zip): 스크립트 버전 + Docker Compose 버전
     python packaging/release.py --linux    # + 리눅스용 실행 파일 (Docker 안에서 만든다)
 
-묶음(source.zip)에 들어가는 것: 서버·일꾼 코드, 미리 빌드한 화면(Front/dist), 종목 사전, 켜는 스크립트(run.bat · run.sh),
+묶음(source.zip)에 들어가는 것: 서버·일꾼 코드, 미리 빌드한 화면(Front/dist), 켜는 스크립트(run.bat · run.sh),
 Docker 파일(Dockerfile · compose.yaml), 안내문. 받는 사람은 Node 없이 파이썬이나 Docker 만 있으면 된다.
-깃에 없는 두 가지(화면 빌드 결과, 종목 사전)를 여기서 같이 넣어 주기 때문에, 저장소를 그대로 받는 것과 다르다.
+깃에 없는 화면 빌드 결과를 여기서 같이 넣어 주기 때문에, 저장소를 그대로 받는 것과 다르다.
 """
 
 from __future__ import annotations
@@ -21,14 +21,28 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True  # 아래 import 가 packaging/ 에 __pycache__ 를 남기지 않게
 
-from build import DIST, FORBIDDEN, HERE, ROOT, WORK, check_inputs, clean_work, step, version  # noqa: E402
+from build import (  # noqa: E402
+    DIST,
+    FORBIDDEN,
+    HAS_WEB_SOURCE,
+    HERE,
+    ROOT,
+    WORK,
+    build_web,
+    check_inputs,
+    clean_work,
+    refuse_released_version,
+    step,
+    version,
+    web_problem,
+)
 
 BUNDLE = HERE / "source-zip"  # 묶음(source.zip)에만 들어가는 파일의 원본
 STAGE = WORK / "stage"  # 묶음을 차려 놓는 곳 (압축하기 전의 폴더). 끝나면 지운다
 # 묶음에 넣지 않는 backend 의 부분: 테스트와 그 재료, 수집 서버용 배포 설정
 SKIP_BACKEND = ("backend/tests/", "backend/test_scenarios/", "backend/test_scenarios.zip", "backend/deploy/")
 # 깃에 없지만 넣어야 하는 것
-EXTRA_DIRS = ("backend/data/processed", "Front/dist")
+EXTRA_DIRS = ("Front/dist",)
 # 실행 파일을 직접 만들 사람(맥)을 위해 빌드 도구도 넣는다
 PACKAGING_FILES = ("launcher.py", "build.py", "myfinsight.spec")
 # 묶음 원본 → 묶음 안에서의 이름. 점으로 시작하는 이름은 원본에서는 점 없이 둔다 (저장소의 .gitignore · Docker 가 헷갈리지 않게)
@@ -58,7 +72,7 @@ def write_text(path: Path, text: str) -> None:
 
 def stage() -> Path:
     """묶음 폴더를 차린다: packaging/build/stage/MyFinSight-<판>/"""
-    check_inputs()  # 화면 빌드가 최신인지, 종목 사전이 있는지
+    check_inputs()  # 화면 빌드가 있고 최신인지
     top = STAGE / f"MyFinSight-{version()}"
     shutil.rmtree(STAGE, ignore_errors=True)
     top.mkdir(parents=True)
@@ -123,6 +137,11 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--linux", action="store_true", help="리눅스용 실행 파일도 만든다 (Docker 필요, 10분쯤)")
     a = ap.parse_args()
+    refuse_released_version()
+    problem = web_problem()
+    if HAS_WEB_SOURCE and problem:  # 처음 받은 저장소·자동 빌드 서버에는 빌드한 화면이 없다. build.py 를 먼저 돌렸으면 건너뛴다
+        step(f"화면 빌드 ({problem})")
+        build_web()
     step("묶음 차리기")
     top = stage()
     files = sum(1 for p in top.rglob("*") if p.is_file())
