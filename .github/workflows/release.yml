@@ -8,7 +8,13 @@
 # 판 번호는 태그가 정한다 (손으로 적는 곳이 없다). 태그가 없는 커밋에서 만든 것은 이름이 dev 다.
 # 판을 내는 순서: packaging/RELEASE_NOTES.md 에 "## v0.1.1 — 날짜" 절을 적어 main 에 병합
 #                → git switch main && git pull && git tag v0.1.1 && git push origin v0.1.1
-name: release
+#
+# 만드는 파일 (<버전> = 0.1.1 또는 dev):
+#   MyFinSight-<버전>-windows.exe · -windows-folder.zip       Windows 실행 파일 (한 파일형 · 폴더형)
+#   MyFinSight-<버전>-macos · -macos-folder.tar.gz            macOS 실행 파일 (Apple Silicon)
+#   MyFinSight-<버전>-linux · -linux-folder.tar.gz            Linux 실행 파일 (x86_64)
+#   MyFinSight-<버전>-source.zip                              스크립트 버전(run.bat · run.sh) + Docker Compose 버전
+name: 배포판 빌드 · 릴리스
 
 on:
   push:
@@ -34,59 +40,70 @@ env:
   PNPM_VERSION: "9" # Front/pnpm-lock.yaml 의 형식(9.0)을 읽는 판
 
 jobs:
-  # 태그로 시작했으면 오래 걸리는 빌드 전에 먼저 본다: 이 커밋의 판 번호가 그 태그인가, 릴리스 노트에 그 판의 절이 있는가
-  preflight:
-    name: 미리 확인
+  # 몇 초면 끝난다. 태그로 시작했으면 오래 걸리는 빌드 전에 여기서 먼저 걸러 낸다
+  check:
+    name: 1. 버전 번호 · 릴리스 노트 확인
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - name: 저장소 받기
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - name: 파이썬 준비
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - name: 판 번호
-        run: echo "이 커밋에서 만들면 붙는 판 번호 = $(python packaging/build.py --print-version)"
-      - name: 태그와 판 번호 · 릴리스 노트
+      - name: 이번 빌드에 붙을 버전 번호 보기 (태그가 없는 커밋이면 dev)
+        run: echo "버전 번호 = $(python packaging/build.py --print-version)"
+      - name: 태그와 버전 번호가 같은지, 릴리스 노트에 이 버전의 절이 있는지 (태그를 올렸을 때만)
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           test "v$(python packaging/build.py --print-version)" = "$GITHUB_REF_NAME"
           python packaging/release.py --notes "$GITHUB_REF_NAME"
 
   executables:
-    name: 실행 파일 (${{ matrix.name }})
-    needs: preflight
+    name: 2. ${{ matrix.title }}
+    needs: check
     strategy:
       fail-fast: false # 한 운영체제가 실패해도 나머지의 결과는 본다
       matrix:
         include:
-          - { name: windows, os: windows-latest }
-          - { name: macos, os: macos-latest } # Apple Silicon. 인텔 맥용은 만들지 않는다
+          - name: windows
+            os: windows-latest
+            title: Windows 실행 파일 만들기 (windows.exe · windows-folder.zip)
+          - name: macos
+            os: macos-latest # Apple Silicon. 인텔 맥용은 만들지 않는다
+            title: macOS 실행 파일 만들기 (macos · macos-folder.tar.gz)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - name: 저장소 받기
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - name: 파이썬 준비
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
           cache-dependency-path: pyproject.toml
-      - uses: pnpm/action-setup@v6
+      - name: pnpm 준비 (화면 라이브러리를 받는 도구)
+        uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v7
+      - name: Node 준비 (화면 빌드)
+        uses: actions/setup-node@v7
         with:
           node-version-file: Front/.nvmrc
           cache: pnpm
           cache-dependency-path: Front/pnpm-lock.yaml
-      - name: 라이브러리
+      - name: 파이썬 라이브러리 설치
         run: pip install -e ".[analysis,packaging]"
-      - name: 만들기 (화면 빌드 → 묶기 → 켜 보기)
+      - name: 실행 파일 만들기 — 화면 빌드 → 한 파일형 · 폴더형으로 묶기 → 각각 켜 보기
         run: python packaging/build.py --all
-      - uses: actions/upload-artifact@v7
+      - name: 만든 파일 보관 (이 실행 기록의 Artifacts → dist-${{ matrix.name }})
+        uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.name }}
           path: packaging/dist/
@@ -96,28 +113,33 @@ jobs:
   # 리눅스 실행 파일은 오래된 배포판에서도 돌게 Docker 안(glibc 2.31)에서 만든다 → release.py --linux.
   # 묶음(source.zip)과 그 판의 릴리스 노트 사본도 여기서 나온다
   linux-and-source:
-    name: 실행 파일 (linux) + source.zip
-    needs: preflight
+    name: 2. Linux 실행 파일 · source.zip 만들기 (linux · linux-folder.tar.gz · source.zip)
+    needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - name: 저장소 받기
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - name: 파이썬 준비
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - uses: pnpm/action-setup@v6
+      - name: pnpm 준비 (화면 라이브러리를 받는 도구)
+        uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v7
+      - name: Node 준비 (화면 빌드)
+        uses: actions/setup-node@v7
         with:
           node-version-file: Front/.nvmrc
           cache: pnpm
           cache-dependency-path: Front/pnpm-lock.yaml
-      - name: 만들기 (화면 빌드 → 묶음 → Docker 안에서 리눅스 실행 파일)
+      - name: source.zip 과 Linux 실행 파일 만들기 — 화면 빌드 → 묶음 압축 → Docker 안에서 실행 파일 묶고 켜 보기
         run: python packaging/release.py --linux
-      - uses: actions/upload-artifact@v7
+      - name: 만든 파일 보관 (이 실행 기록의 Artifacts → dist-linux-and-source)
+        uses: actions/upload-artifact@v7
         with:
           name: dist-linux-and-source
           path: packaging/dist/
@@ -125,7 +147,7 @@ jobs:
           retention-days: 14
 
   publish:
-    name: Release 만들기
+    name: 3. GitHub Release 게시 (태그를 올렸을 때만)
     needs: [executables, linux-and-source] # 하나라도 실패하면 Release 를 만들지 않는다
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
@@ -133,12 +155,13 @@ jobs:
     permissions:
       contents: write # Release 를 만들고 파일을 붙인다 (이 단계만 쓰기 권한을 갖는다)
     steps:
-      - uses: actions/download-artifact@v8
+      - name: 세 빌드가 만든 파일 모으기
+        uses: actions/download-artifact@v8
         with:
           pattern: dist-*
           path: dist
           merge-multiple: true # 세 빌드의 dist/v0.1.1/ 이 한 폴더로 합쳐진다
-      - name: Release
+      - name: Release 만들고 파일 7개 붙이기 (설명은 릴리스 노트의 이 버전 절)
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
