@@ -12,5 +12,5 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt "pyinstaller>=6.10"
 
 COPY . .
-# 한 파일형 + 폴더형을 만들고 각각 켜 본다. 결과는 /src/packaging/dist/ 에 나온다
+# 한 파일형 + 폴더형을 만들고 각각 켜 본다. 결과는 /src/packaging/dist/<판>/ 에 나온다 (판 번호는 묶음의 packaging/VERSION)
 RUN python packaging/build.py --all

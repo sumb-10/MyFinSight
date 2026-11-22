@@ -15,7 +15,6 @@ datas = [
     (str(ROOT / "backend" / "analysis" / "stubs"), "backend/analysis/stubs"),  # 연습 모드의 미리 만든 답
     (str(ROOT / "backend" / "analysis" / "examples"), "backend/analysis/examples"),
     (str(ROOT / "backend" / "analysis" / "common" / "store_schemas"), "backend/analysis/common/store_schemas"),
-    (str(ROOT / "backend" / "data" / "processed"), "backend/data/processed"),  # 종목 사전 (git 밖, build_descriptor.py 가 만든다)
     (str(ROOT / "backend" / "data" / "reference"), "backend/data/reference"),
     (str(ROOT / "backend" / "data" / "config"), "backend/data/config"),
     (str(ROOT / "Front" / "dist"), "web"),  # 화면 (npm run build)

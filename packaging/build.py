@@ -6,15 +6,17 @@
     python packaging/build.py --skip-web # 화면을 다시 빌드하지 않는다 (Front/dist 를 그대로 쓴다)
 
 순서: 화면 빌드 → 자료 확인 → 묶기 → 내용 확인 → 켜 보기 → 내놓기.
-결과는 packaging/dist/ 에 건넬 이름으로 나온다. 만드는 동안 쓰는 중간 파일은 packaging/build/ 에 두었다가 끝나면 지운다
+결과는 packaging/dist/<판>/ 에 건넬 이름으로 나온다. 만드는 동안 쓰는 중간 파일은 packaging/build/ 에 두었다가 끝나면 지운다
 (--keep-work 를 주면 남긴다 — 묶인 내용을 들여다볼 때).
-필요한 것: pip install -e ".[analysis,packaging]", Node (화면 빌드), backend/data/processed 의 종목 사전.
+판 번호는 깃 태그가 정한다: v0.1.1 태그의 커밋에서 만들면 dist/v0.1.1/MyFinSight-0.1.1-…, 그 밖에는 dist/dev/MyFinSight-dev-…
+필요한 것: pip install -e ".[analysis,packaging]", Node (화면 빌드).
 .env · data/ · output/ 은 들어가지 않는다.
 """
 
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import shutil
@@ -23,13 +25,13 @@ import subprocess
 import sys
 import tempfile
 import time
-import tomllib
 import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HERE = ROOT / "packaging"
-DIST = HERE / "dist"  # 건넬 파일만 모이는 곳 (GitHub Release 에 올리는 파일)
+DIST = HERE / "dist"  # 건넬 파일만 모이는 곳. 판마다 폴더 하나 (out_dir)
+VERSION_FILE = HERE / "VERSION"  # 건네는 묶음 안에만 있다: 묶음을 만들 때의 판 번호 (저장소에는 없다 — 거기서는 깃 태그를 본다)
 WORK = HERE / "build"  # 만드는 동안만 쓰는 곳. 끝나면 지운다
 EXE_NAME = "MyFinSight.exe" if sys.platform == "win32" else "MyFinSight"
 APP_OUT = WORK / "app"  # PyInstaller 가 묶은 것을 내놓는 곳
@@ -40,6 +42,8 @@ HAS_WEB_SOURCE = (ROOT / "Front" / "src").is_dir()
 SMOKE_PORT = 8791  # 켜 보기에 쓰는 포트 (쓰고 있는 앱의 8765 와 겹치지 않게)
 # 들어가면 안 되는 것 (비밀 값 · 사용자 자료). 묶은 뒤 폴더를 훑어 하나라도 있으면 실패로 본다
 FORBIDDEN = (".env", ".env.local", ".env.backup", "settings.env", "analysis_results.db", "myfinsight.db")
+# pnpm 이 깔려 있지 않을 때 npx 로 불러 쓰는 판. Front/pnpm-lock.yaml 의 형식(lockfileVersion 9.0)을 읽는 판이어야 한다
+PNPM_FALLBACK = "pnpm@9"
 
 
 def step(text: str) -> None:
@@ -58,7 +62,7 @@ def build_web() -> None:
         raise SystemExit("npm 을 찾지 못했습니다. Node 를 설치하거나, 이미 빌드해 둔 것이 있으면 --skip-web 을 주세요.")
     env = {k: v for k, v in os.environ.items() if k != "VITE_ENABLE_MOCK"}
     if not (ROOT / "Front" / "node_modules").exists():
-        run([npm, "ci"], ROOT / "Front", env)
+        install_web_libraries(env)
     # 예전 결과를 여기서 지운다. vite 8 은 이미 있는 dist 를 비우다가, 저장소 경로에 한글이 있으면(Windows) 오류 글 없이
     # 죽는다 (종료 코드 0xC0000409) — 그러면 예전 화면이 그대로 묶인다 (2026-11-23 에 11-07 화면이 묶여 발견).
     dist = ROOT / "Front" / "dist"
@@ -68,18 +72,37 @@ def build_web() -> None:
         raise SystemExit("화면 빌드가 결과를 내지 못했습니다.")
 
 
-def check_inputs() -> None:
+def install_web_libraries(env: dict[str, str]) -> None:
+    """화면 라이브러리를 잠금 파일(Front/pnpm-lock.yaml)에 적힌 판 그대로 받는다. node_modules 가 없을 때만 부른다
+    (처음 받은 저장소, 자동 빌드 서버). 이 프로젝트의 잠금 파일은 pnpm 것이라 npm ci 로는 받을 수 없다."""
+    pnpm = shutil.which("pnpm")
+    if pnpm:
+        cmd = [pnpm, "install", "--frozen-lockfile"]
+    else:  # pnpm 을 따로 깔지 않은 PC: Node 에 딸려 오는 npx 로 한 번 불러 쓴다
+        npx = shutil.which("npx")
+        if not npx:
+            raise SystemExit("pnpm 도 npx 도 찾지 못했습니다. Node 를 설치해 주세요.")
+        cmd = [npx, "--yes", PNPM_FALLBACK, "install", "--frozen-lockfile"]
+    run(cmd, ROOT / "Front", env)
+
+
+def web_problem() -> str | None:
+    """빌드한 화면(Front/dist)을 그대로 써도 되는가. 되면 None, 안 되면 그 이유."""
     web = ROOT / "Front" / "dist" / "index.html"
     if not web.exists():
-        raise SystemExit(f"화면 빌드 결과가 없습니다: {web}")
-    if HAS_WEB_SOURCE:  # --skip-web 으로 예전 화면을 묶지 않게: 화면 소스가 빌드 결과보다 새것이면 멈춘다
+        return f"화면 빌드 결과가 없습니다: {web}"
+    if HAS_WEB_SOURCE:  # 예전 화면을 묶지 않게: 화면 소스가 빌드 결과보다 새것이면 안 된다
         sources = [p for p in (ROOT / "Front" / "src").rglob("*") if p.is_file()] + [ROOT / "Front" / "index.html", ROOT / "Front" / "package.json"]
         newest = max(sources, key=lambda p: p.stat().st_mtime)
         if newest.stat().st_mtime > web.stat().st_mtime:
-            raise SystemExit(f"화면 빌드 결과가 소스보다 오래됐습니다 ({newest.relative_to(ROOT)} 가 더 새것). --skip-web 없이 다시 돌려 주세요.")
-    descriptor = ROOT / "backend" / "data" / "processed" / "all_descriptor.json"
-    if not descriptor.exists():
-        raise SystemExit(f"종목 사전이 없습니다: {descriptor}\n  backend/scripts/build_descriptor.py 로 만들거나 팀에서 받아 넣어 주세요.")
+            return f"화면 빌드 결과가 소스보다 오래됐습니다 ({newest.relative_to(ROOT)} 가 더 새것)"
+    return None
+
+
+def check_inputs() -> None:
+    problem = web_problem()
+    if problem:
+        raise SystemExit(f"{problem}. --skip-web 없이 다시 돌려 주세요.")
 
 
 def bundle(onefile: bool) -> Path:
@@ -172,19 +195,46 @@ def stop_tree(proc: subprocess.Popen, started: float) -> None:
             break
 
 
+def _git(*args: str) -> str | None:
+    """깃에 물어본 답. 깃이 없거나 실패하면 None."""
+    git = shutil.which("git")
+    if not git:
+        return None
+    r = subprocess.run([git, *args], cwd=ROOT, capture_output=True, text=True, check=False, timeout=60)  # noqa: S603
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+@functools.lru_cache(maxsize=1)
 def version() -> str:
-    """판 번호 (pyproject.toml 의 version). 건네는 파일 이름에 넣는다."""
-    return tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+    """배포판의 판 번호. 깃 태그가 정한다 — 손으로 적는 곳이 없다 (pyproject.toml 의 version 은 배포판 번호가 아니다).
+
+    - 지금 코드가 v0.1.1 같은 태그의 커밋 그대로이고 고친 것이 없으면 "0.1.1"
+    - 그 밖에는 "dev": 태그가 없는 커밋이거나 커밋하지 않은 수정이 있을 때.
+      그래서 낸 판과 같은 이름의 파일은 그 판의 코드에서만 나온다 (다른 내용으로 덮어쓸 수 없다)
+    - 깃이 없는 곳(건네는 묶음 안)에서는 묶음을 만들 때 적어 둔 packaging/VERSION
+    """
+    if not (ROOT / ".git").exists():
+        return (VERSION_FILE.read_text(encoding="utf-8").strip() if VERSION_FILE.exists() else "") or "dev"
+    tag = _git("describe", "--tags", "--exact-match", "--match", "v[0-9]*", "HEAD")
+    if not tag or _git("status", "--porcelain", "--untracked-files=no"):
+        return "dev"
+    return tag.removeprefix("v")
+
+
+def out_dir() -> Path:
+    """이 판의 결과가 모이는 곳: dist/v0.1.1/ 또는 dist/dev/. 판마다 폴더가 달라 다른 판의 파일을 건드리지 않는다."""
+    return DIST / ("dev" if version() == "dev" else f"v{version()}")
 
 
 def publish(exe: Path, onefile: bool) -> Path:
-    """만든 것을 dist/ 에 건넬 이름으로 내놓는다: 한 파일형은 그대로, 폴더형은 압축해서. 이름에 판 번호와 운영체제를 넣는다."""
-    DIST.mkdir(parents=True, exist_ok=True)  # 다른 운영체제용·묶음 파일은 그대로 두고 이번에 만든 것만 갈아 끼운다
+    """만든 것을 dist/<판>/ 에 건넬 이름으로 내놓는다: 한 파일형은 그대로, 폴더형은 압축해서. 이름에 판 번호와 운영체제를 넣는다."""
+    out = out_dir()
+    out.mkdir(parents=True, exist_ok=True)  # 다른 운영체제용·묶음 파일은 그대로 두고 이번에 만든 것만 갈아 끼운다
     stem = f"MyFinSight-{version()}-{OS_NAME}"
     if onefile:
-        return Path(shutil.copy2(exe, DIST / f"{stem}{exe.suffix}"))
+        return Path(shutil.copy2(exe, out / f"{stem}{exe.suffix}"))
     kind = "zip" if sys.platform == "win32" else "gztar"  # 맥·리눅스는 실행 권한이 그대로 남는 tar.gz
-    return Path(shutil.make_archive(str(DIST / f"{stem}-folder"), kind, root_dir=APP_OUT, base_dir=APP_DIR.name))
+    return Path(shutil.make_archive(str(out / f"{stem}-folder"), kind, root_dir=APP_OUT, base_dir=APP_DIR.name))
 
 
 def clean_work(*parts: str) -> None:
@@ -207,7 +257,12 @@ def main() -> int:
     shape.add_argument("--folder", action="store_true", help="파일 하나 대신 폴더로 만든다")
     shape.add_argument("--all", action="store_true", help="두 모양을 다 만든다")
     ap.add_argument("--keep-work", action="store_true", help="중간 파일(packaging/build/)을 지우지 않는다")
+    ap.add_argument("--print-version", action="store_true", help="만들지 않고, 지금 만들면 붙을 판 번호만 찍는다")
     a = ap.parse_args()
+    if a.print_version:
+        print(version())
+        return 0
+    step(f"판: {version()}  → {out_dir()}")
     if HAS_WEB_SOURCE and not a.skip_web:
         step("화면 빌드")
         build_web()

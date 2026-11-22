@@ -75,12 +75,13 @@ def prepare(home: Path) -> None:
     .env 는 여기서도 읽기 전용이다: home/settings.env 가 있으면 읽고(없어도 된다), 앱이 만들거나 고치지 않는다.
     팀 DB 주소와 API 키는 화면에서 넣어 운영체제 보관함에 둔다 (backend/analysis/secret_store.py).
     """
-    for sub in ("store", "output", "logs"):
+    for sub in ("store", "output", "logs", "descriptor"):
         (home / sub).mkdir(parents=True, exist_ok=True)
     defaults = {
         "MYFINSIGHT_ENV_FILE": str(home / "settings.env"),  # 실행한 폴더에 우연히 있는 .env 를 읽지 않게 자리를 못 박는다
         "ANALYSIS_STORE_DIR": str(home / "store"),
         "ANALYSIS_OUTPUT_DIR": str(home / "output"),
+        "ANALYSIS_DESCRIPTOR_DIR": str(home / "descriptor"),  # 종목 사전: 팀 DB 에 연결되면 서버가 여기에 만든다 (프로그램에는 들어 있지 않다)
         "ANALYSIS_RESULTS_DB": "sqlite:///" + (home / "analysis_results.db").as_posix(),
     }
     for key, value in defaults.items():

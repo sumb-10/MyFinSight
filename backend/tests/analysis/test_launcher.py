@@ -28,7 +28,7 @@ def launcher(tmp_path, monkeypatch):
     spec.loader.exec_module(module)
     monkeypatch.chdir(tmp_path)
     with mock.patch.dict(os.environ):
-        for key in ("MYFINSIGHT_HOME", "MYFINSIGHT_ENV_FILE", "ANALYSIS_STORE_DIR", "ANALYSIS_OUTPUT_DIR", "ANALYSIS_RESULTS_DB", "MYFINSIGHT_WEB_DIR"):
+        for key in ("MYFINSIGHT_HOME", "MYFINSIGHT_ENV_FILE", "ANALYSIS_STORE_DIR", "ANALYSIS_OUTPUT_DIR", "ANALYSIS_RESULTS_DB", "ANALYSIS_DESCRIPTOR_DIR", "MYFINSIGHT_WEB_DIR"):
             os.environ.pop(key, None)
         yield module
 
@@ -52,6 +52,7 @@ def test_prepare_points_everything_the_app_writes_at_the_home_folder(launcher, t
     assert (home / "store").is_dir() and (home / "output").is_dir() and (home / "logs").is_dir()
     assert os.environ["ANALYSIS_STORE_DIR"] == str(home / "store")
     assert os.environ["ANALYSIS_OUTPUT_DIR"] == str(home / "output")
+    assert os.environ["ANALYSIS_DESCRIPTOR_DIR"] == str(home / "descriptor") and (home / "descriptor").is_dir()  # the server builds the descriptor here from the team DB
     assert os.environ["ANALYSIS_RESULTS_DB"] == "sqlite:///" + (home / "analysis_results.db").as_posix()
     # 설정 파일 자리를 못 박는다 (실행한 폴더의 .env 를 읽지 않게). 파일은 만들지 않는다 — 앱은 .env 를 쓰지 않는다
     assert os.environ["MYFINSIGHT_ENV_FILE"] == str(home / "settings.env") and not (home / "settings.env").exists()

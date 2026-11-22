@@ -69,5 +69,5 @@ run.bat --no-browser         브라우저를 열지 않기
 ```
 bash run.sh --help                       # 먼저 한 번 켜서 .venv 에 라이브러리를 받는다
 .venv/bin/python -m pip install "pyinstaller>=6.10"
-.venv/bin/python packaging/build.py      # packaging/dist/MyFinSight-{VERSION}-macos 가 나온다
+.venv/bin/python packaging/build.py      # packaging/dist/ 아래에 MyFinSight-{VERSION}-macos 가 나온다
 ```
