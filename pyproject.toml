@@ -33,6 +33,7 @@ analysis = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
     "psycopg[binary]>=3.2",
+    "keyring>=24",  # 화면에서 넣은 연결(팀 DB 주소·API 키)을 운영체제 보관함에 둔다 (backend/analysis/secret_store.py). 없어도 서버는 뜬다 — 그때는 환경변수(.env)로만 넣는다
 ]
 
 [tool.setuptools.packages.find]

@@ -13,6 +13,8 @@ export type Route =
   | { page: "comparison"; comparisonId: string }
   | { page: "tutorial"; next?: "reports"; reportId?: string }  // next·reportId: 가이드를 마친 뒤 돌아갈 곳
   | { page: "intro" }  // 처음 온 사람용 스크롤형 소개
+  | { page: "connect"; step?: "llm" }  // 처음 켰을 때의 연결 흐름 (사이드바 없음): 팀 DB → 분석 모델(step=llm). 제안 기능
+  | { page: "settings" }  // 연결 설정 (사이드바 아래 입구). 제안 기능
   | { page: "not-found"; path: string }
 
 export const routePath = (r: Route): string => {
@@ -35,6 +37,8 @@ export const routePath = (r: Route): string => {
     case "comparison": return `#/comparisons/${r.comparisonId}`
     case "tutorial": return r.reportId ? `#/tutorial?report=${r.reportId}` : r.next ? `#/tutorial?next=${r.next}` : "#/tutorial"
     case "intro": return "#/intro"
+    case "connect": return r.step ? `#/connect/${r.step}` : "#/connect"
+    case "settings": return "#/settings"
     case "not-found": return r.path
   }
 }
@@ -67,6 +71,8 @@ export const parseRoute = (hash: string = window.location.hash): Route => {
     return reportId ? { page: "tutorial", reportId } : q.get("next") === "reports" ? { page: "tutorial", next: "reports" } : { page: "tutorial" }
   }
   if (a === "intro") return { page: "intro" }
+  if (a === "connect") return b === "llm" ? { page: "connect", step: "llm" } : { page: "connect" }
+  if (a === "settings") return { page: "settings" }
   return { page: "not-found", path: hash }
 }
 

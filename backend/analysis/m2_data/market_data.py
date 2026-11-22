@@ -154,15 +154,20 @@ class MarketData:
             raise DataMissing(f"{d} 이전에 {benches} 가 모두 거래한 날이 없음", details={"tickers": benches})
         return _d(max(common))
 
-    def data_range(self, markets: Iterable[str] | None = None) -> tuple[dt.date, dt.date]:
-        benches = self.benchmarks(markets)
-        starts = []
-        for b in benches:
+    def data_starts(self, markets: Iterable[str] | None = None) -> dict[str, dt.date]:
+        """시장별 자료 시작일 = 그 시장 비교지수의 첫 가격 날짜 (시장마다 다르다)."""
+        starts = {}
+        for m in markets or self.s.market.markets:
+            b = self.benchmark_of(m)
             r = self.repo.covered_range(b)
             if r is None:
                 raise DataMissing(f"비교지수 가격이 없음: {b}", details={"tickers": [b]})
-            starts.append(r[0])
-        return max(starts), self.ceiling
+            starts[m] = r[0]
+        return starts
+
+    def data_range(self, markets: Iterable[str] | None = None) -> tuple[dt.date, dt.date]:
+        """요청 시장들이 모두 자료를 가진 구간: 가장 늦게 시작한 시장의 시작일부터 기준일까지."""
+        return max(self.data_starts(markets).values()), self.ceiling
 
     # ───────────────────────── 캐시 적재 ─────────────────────────
     def prefetch(self, tickers: Iterable[str], start: dt.date, end: dt.date | None = None) -> None:

@@ -52,6 +52,8 @@ describe("목업 모드 분리", () => {
       "setPaperName",
       // 홈 섹터 성과
       "getSectorTrends",
+      // 연결 설정
+      "getConnections", "saveConnection", "clearConnection",
     ]
     for (const name of PROPOSED_METHODS) {
       expect(typeof m[name], name).toBe("function")

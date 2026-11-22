@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 import type { AnalysisService } from "../api/service"
 import type { Health, ProfileView } from "../api/types"
 import { errorMessage } from "../api/client"
@@ -7,7 +7,8 @@ interface ProfileCtx { profile: ProfileView | null; status: "loading" | "ready" 
 
 export const ServiceContext = createContext<AnalysisService | null>(null)  // 테스트에서 가짜 서비스를 꽂을 때 쓴다
 const ProfileContext = createContext<ProfileCtx | null>(null)
-const HealthContext = createContext<{ health: Health | null; reachable: boolean; error: string | null }>({ health: null, reachable: true, error: null })
+// reload: 서버 상태를 바로 다시 읽는다 (연결 설정에서 연결을 바꾼 직후 — 15초 주기를 기다리지 않고 연습 모드 알림이 바뀌게)
+const HealthContext = createContext<{ health: Health | null; reachable: boolean; error: string | null; reload: () => void }>({ health: null, reachable: true, error: null, reload: () => {} })
 
 export function useService(): AnalysisService {
   const s = useContext(ServiceContext)
@@ -47,6 +48,7 @@ export function Providers({ service, children }: { service: AnalysisService; chi
   const [health, setHealth] = useState<Health | null>(null)
   const [reachable, setReachable] = useState(true)
   const [herr, setHerr] = useState<string | null>(null)
+  const tickRef = useRef<() => void>(() => {})
   useEffect(() => {
     let alive = true
     const tick = async () => {
@@ -57,13 +59,15 @@ export function Providers({ service, children }: { service: AnalysisService; chi
         if (alive) { setReachable(false); setHerr(errorMessage(e)) }
       }
     }
+    tickRef.current = () => { void tick() }
     void tick()
     const t = window.setInterval(tick, 15_000)
     return () => { alive = false; window.clearInterval(t) }
   }, [service])
+  const reloadHealth = useCallback(() => tickRef.current(), [])
 
   const profileCtx = useMemo<ProfileCtx>(() => ({ profile, status, error, reload, set: setProfile }), [profile, status, error, reload])
-  const healthCtx = useMemo(() => ({ health, reachable, error: herr }), [health, reachable, herr])
+  const healthCtx = useMemo(() => ({ health, reachable, error: herr, reload: reloadHealth }), [health, reachable, herr, reloadHealth])
   return (
     <ServiceContext.Provider value={service}>
       <HealthContext.Provider value={healthCtx}>

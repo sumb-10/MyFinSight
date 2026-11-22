@@ -75,6 +75,10 @@ export class HttpService implements AnalysisService {
     }
   }
   getSectorTrends() { return api.get<import("./proposed").ProposedSectorTrends>("/market/sector-trends") }
+  // 연결 설정 (팀 DB 주소 · 분석 모델 키). 저장은 서버가 실제로 접속해 본 뒤에 답한다 (닿지 않는 DB 는 몇 초 걸린다)
+  getConnections() { return api.get<import("./proposed").ProposedConnections>("/connections") }
+  saveConnection(kind: import("./proposed").ProposedConnectionKind, value: string) { return api.put<import("./proposed").ProposedConnectResult>(`/connections/${kind}`, { value }) }
+  clearConnection(kind: import("./proposed").ProposedConnectionKind) { return api.del<import("./proposed").ProposedConnections>(`/connections/${kind}`) }
   recommendStrategy(tendency: import("./types").Tendency, purpose?: string | null) { return api.get<import("./proposed").ProposedStrategyRecommendation>(`/strategy/recommendation?tendency=${encodeURIComponent(tendency)}${purpose ? `&purpose=${encodeURIComponent(purpose)}` : ""}`) }
   startProfileChat() { return api.post<import("./proposed").ProposedProfileChat>("/profile/chat") }
   answerProfileChat(chatId: string, answer: import("./proposed").ProposedChatAnswer) { return api.post<import("./proposed").ProposedProfileChat>(`/profile/chat/${chatId}/answers`, answer) }

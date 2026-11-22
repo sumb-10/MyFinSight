@@ -6,6 +6,7 @@ import type { PaperScenario } from "../scenarios"
 import type { LiveRun } from "../data/runs"
 import type { ProfileChatState } from "../data/profileChat"
 import { SEEN_KEYS } from "../../lib/seen"
+import { MOCK_DB_MASKED, MOCK_KEY_MASKED } from "../data/connections"
 
 import { clearGuideRecord } from "../../features/tutorial/guideRecord"
 
@@ -28,10 +29,14 @@ export interface MockState {
   live: Record<string, LiveRun>                           // 이벤트 시퀀스 실행 (만든 시각부터 저절로 진행)
   profileChats: Record<string, ProfileChatState>          // 대화형 초기 투자조건 (질문별 답, 마지막 다시 묻기 안내)
   interpreting: Record<string, { from?: number; until: number }>  // 새 요청이 '해석 중'으로 보이는 시각 (ms, 실제 서버처럼 번호를 먼저 주고 뒤에서 해석. from 부터 지난 만큼 단계가 나아감)
+  // 연결 설정: 저장된 값의 가린 표시 (null = 연결 전). 실제 값은 두지 않는다. 기본은 둘 다 연결됨 — 다른 목업 화면이 연습 모드로 보이지 않게
+  // fromEnv = 환경변수(.env · Compose)로 들어온 연결인 것처럼 (화면에서 못 바꾼다) · noSave = 운영체제 보관함이 없는 환경인 것처럼 (Docker)
+  // envDown = 환경변수의 DB 주소가 닿지 않는 것처럼 · stubPinned = 환경변수가 연습 모드로 고정한 것처럼 (MYFINSIGHT_LLM=stub)
+  connections: { database: string | null; llm: string | null; fromEnv?: boolean; noSave?: boolean; envDown?: boolean; stubPinned?: boolean }
   seq: number
 }
 
-export const initialState = (): MockState => ({ v: 1, profileVariant: "default", savedVersions: [], reportNames: {}, reportRenamedAt: {}, deletedReports: [], paperNames: {}, paperStatus: {}, createdPapers: [], requests: {}, messages: {}, drafts: {}, runs: {}, live: {}, profileChats: {}, interpreting: {}, seq: 1 })
+export const initialState = (): MockState => ({ v: 1, profileVariant: "default", savedVersions: [], reportNames: {}, reportRenamedAt: {}, deletedReports: [], paperNames: {}, paperStatus: {}, createdPapers: [], requests: {}, messages: {}, drafts: {}, runs: {}, live: {}, profileChats: {}, interpreting: {}, connections: { database: MOCK_DB_MASKED, llm: MOCK_KEY_MASKED }, seq: 1 })
 
 export function loadState(): MockState {
   try {

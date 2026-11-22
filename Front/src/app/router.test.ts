@@ -6,6 +6,7 @@ const ROUTES: Route[] = [
   { page: "clarify", requestId: "req_1" }, { page: "confirm", requestId: "req_1" }, { page: "run", runId: "run_1" },
   { page: "reports" }, { page: "report", reportId: "run_1" }, { page: "paper" }, { page: "paper", paperId: "paper_20261024_abcd" },
   { page: "comparison", comparisonId: "cmp_run_1" },
+  { page: "connect" }, { page: "connect", step: "llm" }, { page: "settings" },
 ]
 
 describe("router", () => {
