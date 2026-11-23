@@ -1,6 +1,7 @@
 # 배포판을 만들고(세 운영체제), 태그를 올렸을 때는 GitHub Release 까지 만든다.
 #
 #   v* 태그를 올리면      → 빌드 + Release (0.x 판과 -beta 같은 꼬리가 붙은 판은 pre-release)
+#                         → 그다음 랜딩 사이트(all4null/myfinsight-landing)를 다시 배포해 새 판의 내려받기 링크를 반영
 #   패키징을 고친 PR      → 빌드만 (만든 파일은 그 실행 기록의 Artifacts 에 14일 남는다)
 #   Actions 탭의 버튼     → 빌드만
 #
@@ -184,3 +185,19 @@ jobs:
             v0.* | *-*) flags="--prerelease"; title="$title (시험판)" ;;
           esac
           gh release create "$TAG" "dist/$TAG"/MyFinSight-* --verify-tag --title "$title" --notes-file "dist/$TAG/RELEASE_NOTES.md" $flags
+
+  landing:
+    name: 4. 랜딩 사이트 다시 배포 (실패해도 Release 에는 영향 없음)
+    needs: publish # Release 가 만들어진 뒤에만
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    permissions: {} # 이 저장소에는 아무 권한도 쓰지 않는다
+    steps:
+      - name: myfinsight-landing 의 "Deploy to Vercel" 실행
+        env:
+          GH_TOKEN: ${{ secrets.LANDING_DEPLOY_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then echo "LANDING_DEPLOY_TOKEN 이 없어 건너뜁니다"; exit 0; fi
+          gh workflow run deploy.yml --repo all4null/myfinsight-landing --ref main
