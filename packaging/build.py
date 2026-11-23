@@ -1,6 +1,6 @@
 """실행 파일을 만든다 (Windows · macOS · Linux 공통). 만든 운영체제용만 나온다 — 맥용은 맥에서 돌려야 한다.
 
-    python packaging/build.py            # 한 파일형 (기본): MyFinSight-<판>-<운영체제>.exe
+    python packaging/build.py            # 한 파일형 (기본): MyFinSight-<판>-<운영체제>.exe  (맥은 MyFinSight-<판>-macos.zip 안에 MyFinSight.command)
     python packaging/build.py --folder   # 폴더형: MyFinSight-<판>-<운영체제>-folder.zip  (켜지는 것이 더 빠르다, 풀어서 폴더째로 둔다)
     python packaging/build.py --all      # 둘 다
     python packaging/build.py --skip-web # 화면을 다시 빌드하지 않는다 (Front/dist 를 그대로 쓴다)
@@ -21,11 +21,13 @@ import json
 import os
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
 import time
 import urllib.request
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +39,7 @@ EXE_NAME = "MyFinSight.exe" if sys.platform == "win32" else "MyFinSight"
 APP_OUT = WORK / "app"  # PyInstaller 가 묶은 것을 내놓는 곳
 APP_DIR = APP_OUT / "MyFinSight"  # 폴더형의 결과 (한 파일형은 APP_OUT / "onefile" / EXE_NAME 하나)
 OS_NAME = {"win32": "windows", "darwin": "macos"}.get(sys.platform, "linux")
+MAC_COMMAND = "MyFinSight.command"  # 맥 한 파일형이 zip 안에서 갖는 이름 (zip_mac_command)
 # 건네는 묶음(source.zip)에는 화면 소스가 없고 빌드해 둔 화면(Front/dist)만 있다 → 거기서는 화면을 다시 빌드하지 않는다
 HAS_WEB_SOURCE = (ROOT / "Front" / "src").is_dir()
 SMOKE_PORT = 8791  # 켜 보기에 쓰는 포트 (쓰고 있는 앱의 8765 와 겹치지 않게)
@@ -231,10 +234,33 @@ def publish(exe: Path, onefile: bool) -> Path:
     out = out_dir()
     out.mkdir(parents=True, exist_ok=True)  # 다른 운영체제용·묶음 파일은 그대로 두고 이번에 만든 것만 갈아 끼운다
     stem = f"MyFinSight-{version()}-{OS_NAME}"
+    if onefile and sys.platform == "darwin":
+        return zip_mac_command(exe, out / f"{stem}.zip")
     if onefile:
         return Path(shutil.copy2(exe, out / f"{stem}{exe.suffix}"))
     kind = "zip" if sys.platform == "win32" else "gztar"  # 맥·리눅스는 실행 권한이 그대로 남는 tar.gz
     return Path(shutil.make_archive(str(out / f"{stem}-folder"), kind, root_dir=APP_OUT, base_dir=APP_DIR.name))
+
+
+def zip_mac_command(exe: Path, target: Path) -> Path:
+    """맥 한 파일형: 실행 파일을 MyFinSight.command 라는 이름으로 zip 에 담는다.
+
+    맨 실행 파일을 그대로 올리면 내려받을 때 실행 권한이 빠져서, Finder 가 「문서를 열도록 설정한 응용프로그램이 없습니다」를
+    띄운다 (v0.1.1, 2026-11-23 실제 맥에서 발견 — 웹 다운로드는 내용만 오고 권한은 오지 않는다). zip 은 권한을 함께 적어 두고
+    맥에서 두 번 눌러 풀면 그대로 살아난다. .command 는 Finder 에서 두 번 누르면 터미널 창이 열려 실행된다 —
+    Windows 판의 검은 창처럼 그 창을 닫으면 꺼진다. 권한은 만드는 곳의 파일 상태에 기대지 않고 여기서 못 박는다."""
+    info = zipfile.ZipInfo(MAC_COMMAND, date_time=time.localtime(exe.stat().st_mtime)[:6])
+    info.external_attr = (stat.S_IFREG | 0o755) << 16  # 위 16비트 = 유닉스 파일 종류·권한 (rwxr-xr-x)
+    info.create_system = 3  # 유닉스에서 만든 항목으로 적어야 풀 때 위의 권한을 읽는다
+    info.compress_type = zipfile.ZIP_DEFLATED
+    target.unlink(missing_ok=True)
+    with zipfile.ZipFile(target, "w") as z, exe.open("rb") as src, z.open(info, "w", force_zip64=True) as dst:
+        shutil.copyfileobj(src, dst, 1024 * 1024)
+    with zipfile.ZipFile(target) as z:  # 다시 열어서 확인: 이름 하나, 실행 권한
+        (item,) = z.infolist()
+        if item.filename != MAC_COMMAND or not (item.external_attr >> 16) & 0o111:
+            raise SystemExit(f"맥용 zip 에 실행 권한이 담기지 않았습니다: {item.filename} {oct(item.external_attr >> 16)}")
+    return target
 
 
 def clean_work(*parts: str) -> None:

@@ -253,6 +253,8 @@ def run_server(home: Path, host: str, port: int, open_browser: bool) -> int:
     # kill · docker stop 이 보내는 종료 신호를 Ctrl+C 처럼 다룬다 (아래 finally 가 돌아 일꾼을 끄고 기록을 지운다).
     # uvicorn 은 스스로 정리한 뒤 받은 신호를 원래 처리기에 다시 넘기는데, 기본 처리기는 그 자리에서 프로세스를 끝내 finally 가 돌지 않는다
     signal.signal(signal.SIGTERM, _stop)
+    if hasattr(signal, "SIGHUP"):  # 맥·리눅스: 터미널 창을 닫으면 오는 신호 (맥의 MyFinSight.command). 기본 처리기는 정리 없이 바로 끝낸다
+        signal.signal(signal.SIGHUP, _stop)
     try:
         # 접속 기록은 남기지 않는다: 화면이 상태를 몇 초마다 물어서 로그가 그 줄로 가득 찬다 (오류는 그대로 남는다)
         uvicorn.run(app, host=host, port=port, log_config=None, access_log=False)
