@@ -11,7 +11,7 @@
 #
 # 만드는 파일 (<버전> = 0.1.1 또는 dev):
 #   MyFinSight-<버전>-windows.exe · -windows-folder.zip       Windows 실행 파일 (한 파일형 · 폴더형)
-#   MyFinSight-<버전>-macos · -macos-folder.tar.gz            macOS 실행 파일 (Apple Silicon)
+#   MyFinSight-<버전>-macos.zip · -macos-folder.tar.gz        macOS 실행 파일 (Apple Silicon, zip 안에 MyFinSight.command)
 #   MyFinSight-<버전>-linux · -linux-folder.tar.gz            Linux 실행 파일 (x86_64)
 #   MyFinSight-<버전>-source.zip                              스크립트 버전(run.bat · run.sh) + Docker Compose 버전
 name: 배포판 빌드 · 릴리스
@@ -74,7 +74,7 @@ jobs:
             title: Windows 실행 파일 만들기 (windows.exe · windows-folder.zip)
           - name: macos
             os: macos-latest # Apple Silicon. 인텔 맥용은 만들지 않는다
-            title: macOS 실행 파일 만들기 (macos · macos-folder.tar.gz)
+            title: macOS 실행 파일 만들기 (macos.zip · macos-folder.tar.gz)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
@@ -102,6 +102,16 @@ jobs:
         run: pip install -e ".[analysis,packaging]"
       - name: 실행 파일 만들기 — 화면 빌드 → 한 파일형 · 폴더형으로 묶기 → 각각 켜 보기
         run: python packaging/build.py --all
+      # 맨 실행 파일로 올렸던 v0.1.1 은 내려받으면 실행 권한이 빠져 맥에서 열리지 않았다 → zip 에 권한째 담는다.
+      # 여기서 Finder 의 압축 풀기와 같은 도구(ditto)로 풀어, 두 번 누를 파일이 실행 권한을 갖고 실제로 켜지는지 본다
+      - name: 맥용 zip 확인 — 맥의 압축 풀기로 풀어 MyFinSight.command 가 실행되는지
+        if: matrix.name == 'macos'
+        run: |
+          zip_file=$(ls packaging/dist/*/MyFinSight-*-macos.zip)
+          ditto -x -k "$zip_file" "$RUNNER_TEMP/unzipped"
+          ls -l "$RUNNER_TEMP/unzipped"
+          test -x "$RUNNER_TEMP/unzipped/MyFinSight.command"
+          "$RUNNER_TEMP/unzipped/MyFinSight.command" --help
       - name: 만든 파일 보관 (이 실행 기록의 Artifacts → dist-${{ matrix.name }})
         uses: actions/upload-artifact@v7
         with:
