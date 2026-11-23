@@ -87,6 +87,8 @@ packaging/dist/v0.1.1/
   MyFinSight-0.1.1-windows-folder.zip     실행 파일 (Windows, 폴더형)
   MyFinSight-0.1.1-linux                  실행 파일 (Linux x86_64, 한 파일형)
   MyFinSight-0.1.1-linux-folder.tar.gz    실행 파일 (Linux x86_64, 폴더형)
+  MyFinSight-0.1.1-macos.zip              실행 파일 (macOS, 한 파일형 — 안에 MyFinSight.command. 맥에서 만들 때만)
+  MyFinSight-0.1.1-macos-folder.tar.gz    실행 파일 (macOS, 폴더형 — 맥에서 만들 때만)
   MyFinSight-0.1.1-source.zip             스크립트 버전 + Docker Compose 버전
   RELEASE_NOTES.md                        이 판의 릴리스 노트 (설명 칸에 붙여 넣을 글 — 파일로 올리지는 않는다)
 ```

@@ -60,14 +60,16 @@ run.bat --no-browser         브라우저를 열지 않기
 - **파이썬을 찾지 못했다고 나온다** — <https://www.python.org/downloads/> 에서 3.11 이상을 설치합니다. Windows 는 설치 화면에서 "Add python.exe to PATH" 를 체크합니다.
 - **8765 포트를 다른 프로그램이 쓰고 있다** — 다음 번호로 자동으로 켜지고 그 주소를 알려 줍니다. `--port` 로 직접 정할 수도 있습니다.
 - **Linux 에서 주소·키를 화면에서 저장할 수 없다고 나온다** — 데스크톱 키링(GNOME Keyring 등)이 없는 환경입니다. 자료 폴더에 `settings.env` 를 만들어 `DATABASE_URL=…`, `OPENAI_API_KEY=…` 두 줄을 적으면 됩니다.
+- **맥에서 「'MyFinSight.command'을(를) 열 수 없음」이 뜬다** — 서명이 없는 프로그램이라 처음 한 번 뜹니다. 그 창을 닫고 시스템 설정 → 개인정보 보호 및 보안 → 아래쪽의 「그래도 열기」를 누른 뒤 다시 두 번 누릅니다.
+- **맥에서 「문서를 열도록 설정한 응용프로그램이 없습니다」가 뜬다** — v0.1.1 의 `-macos` 파일입니다 (내려받으면서 실행 권한이 빠짐). v0.1.2 이후의 `-macos.zip` 을 받거나, 터미널에서 `chmod +x MyFinSight-0.1.1-macos` 를 한 뒤 엽니다.
 - **로그** — 자료 폴더의 `logs/` 에 있습니다.
 
 ## 맥용 실행 파일을 직접 만들기
 
-이 판에는 맥용 실행 파일이 없습니다. 맥에서 이 폴더로 만들 수 있습니다.
+Releases 에 있는 맥용 실행 파일(`-macos.zip`)은 Apple Silicon 용입니다. 인텔 맥이거나 직접 만들고 싶으면 맥에서 이 폴더로 만들 수 있습니다.
 
 ```
 bash run.sh --help                       # 먼저 한 번 켜서 .venv 에 라이브러리를 받는다
 .venv/bin/python -m pip install "pyinstaller>=6.10"
-.venv/bin/python packaging/build.py      # packaging/dist/ 아래에 MyFinSight-{VERSION}-macos 가 나온다
+.venv/bin/python packaging/build.py      # packaging/dist/ 아래에 MyFinSight-{VERSION}-macos.zip 이 나온다
 ```

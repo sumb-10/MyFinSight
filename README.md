@@ -16,7 +16,7 @@
 | --- | --- | --- | --- |
 | Windows | `MyFinSight-<버전>-windows.exe` | 두 번 누르기 | 없음 |
 | Linux (x86_64) | `MyFinSight-<버전>-linux` | `chmod +x` 한 뒤 실행 | 없음 |
-| macOS (Apple Silicon) | `MyFinSight-<버전>-macos` | `chmod +x` 한 뒤 실행 | 없음 |
+| macOS (Apple Silicon) | `MyFinSight-<버전>-macos.zip` | 두 번 눌러 풀고 `MyFinSight.command` 두 번 누르기 | 없음 |
 | 파이썬이 있는 PC | `MyFinSight-<버전>-source.zip` | 압축을 풀고 `run.bat`(Windows) · `bash run.sh`(macOS · Linux) | 파이썬 3.11 이상 |
 | Docker | `MyFinSight-<버전>-source.zip` | 압축을 풀고 `docker compose up -d --build` | Docker |
 
@@ -24,8 +24,8 @@
 - 처음 화면에서 팀 DB 주소와 OpenAI 키를 넣습니다. 넣은 값은 운영체제 보관함에 저장되고 파일로는 남지 않습니다. Docker 는 화면 대신 `.env` 에 적습니다.
 - 리포트와 실행 기록은 프로그램 옆이 아니라 사용자 폴더에 쌓입니다 (Windows `%LOCALAPPDATA%\MyFinSight`). 새 버전으로 바꿔도 남습니다.
 - 이름에 `-folder` 가 붙은 파일은 같은 실행 파일의 폴더형입니다. 압축을 풀어 쓰고 조금 더 빨리 켜집니다.
-- macOS 실행 파일은 v0.1.0 에는 없고 다음 버전부터 올라갑니다. 아직 실제 맥에서 켜 보지 못했습니다.
-- 서명이 없는 프로그램이라 처음 켤 때 경고가 뜹니다. Windows 는 "PC 보호" 창에서 「추가 정보」 → 「실행」을 누릅니다.
+- macOS 는 v0.1.2 부터 zip 으로 받습니다. v0.1.1 의 `-macos` 파일은 내려받으면 실행 권한이 빠져 "문서를 열도록 설정한 응용프로그램이 없습니다"가 뜹니다. 그 파일을 쓰려면 터미널에서 `chmod +x` 를 먼저 합니다.
+- 서명이 없는 프로그램이라 처음 켤 때 경고가 뜹니다. Windows 는 "PC 보호" 창에서 「추가 정보」 → 「실행」을 누릅니다. macOS 는 경고 창을 닫고 시스템 설정 → 개인정보 보호 및 보안 → 「그래도 열기」를 누릅니다.
 
 버전마다 바뀐 점과 주의사항은 Releases 페이지의 설명에, 켜는 법과 문제 해결은 [packaging/source-zip/README.md](packaging/source-zip/README.md)에 있습니다.
 배포판을 만들고 새 버전을 내는 법은 [packaging/README.md](packaging/README.md).
