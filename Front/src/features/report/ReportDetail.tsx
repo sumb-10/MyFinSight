@@ -69,7 +69,7 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
     if (!res.data) return
     for (const k of new Set([reportId, res.data.run_id, (res.data as { report_id?: string }).report_id].filter(Boolean) as string[])) markReportSeen(svc.mode, k)
   }, [svc, reportId, res.data])
-  const [source, setSource] = useState<EvidenceRecord | { id: string } | null>(null)
+  const [source, setSource] = useState<{ item: EvidenceRecord | { id: string }; from?: string } | null>(null)
   const [drawer, setDrawer] = useState<DrawerFilter | null>(null)
   const [panel, setPanel] = useState<"calc" | "exec" | null>(null)
   const [terms, setTerms] = useState(false)
@@ -93,10 +93,10 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
   const evidenceById = useMemo(() => new Map((doc?.evidence ?? []).map((e) => [e.id, e])), [doc])
   const numbers = useMemo(() => (doc ? citationNumbers(doc) : new Map<string, number>()), [doc])
   const numberOf = useCallback((id: string) => String(numbers.get(id) ?? id), [numbers])
-  // 근거 번호([40] 등)를 누르면: 원문 주소가 있는 자료(뉴스·공시)는 원문을 새 탭으로 바로 연다. 주소가 없는 자료(계산·재무 값 등)는 지금처럼 상세 패널
-  const openEvidence = useCallback((id: string) => {
-    const e = evidenceById.get(id)
-    if (e?.url) { window.open(e.url, "_blank", "noopener,noreferrer"); return }
+  // 근거 번호([40] 등)를 누르면 근거 패널을 연다 (2026-11-28: 뉴스·공시도 바로 원문으로 내보내지 않고, 어느 문장의 근거인지와 내용을 먼저 보여 준 뒤 패널의 「원문 열기」로 간다)
+  const openEvidence = useCallback((id: string, from?: string) => { setSource({ item: evidenceById.get(id) ?? { id }, from }) }, [evidenceById])
+  const cite = useMemo(() => ({ onCite: openEvidence, label: numberOf }), [openEvidence, numberOf])
+  const jumped = useRef(false)
   // 왕초보용 화면 ↔ 원래 리포트 (2026-11-28). 처음 화면은 투자조건의 「왕초보용 화면」 설정을 따르고, 오른쪽 위 토글로 오간다 (설정은 바꾸지 않는다).
   // 주소가 섹션·기업·리밸런싱 시점을 가리키면 원래 리포트로 연다. 둘러보기(readOnly)는 원래 리포트만 쓴다
   const profile = useProfileOptional()?.profile ?? null
@@ -104,10 +104,6 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
   const easyOk = useMemo(() => !!doc && !readOnly && canShowEasy(doc), [doc, readOnly])
   const view: ReportViewMode = !easyOk ? "full" : viewChoice ?? (!sec && !company && rb === undefined && isBeginnerView(profile) ? "easy" : "full")
   const switchView = useCallback((v: ReportViewMode) => { setViewChoice(v); if (typeof window !== "undefined") window.scrollTo?.({ top: 0 }) }, [])
-    setSource(e ?? { id })
-  }, [evidenceById])
-  const cite = useMemo(() => ({ onCite: openEvidence, label: numberOf }), [openEvidence, numberOf])
-  const jumped = useRef(false)
 
   // 섹션을 펼치고 그 자리(또는 섹션 안 anchor 요소)로 스크롤. 펼친 다음 렌더에서 내용이 생기므로 조금 기다린다.
   const jump = useCallback((id: string, anchor?: string) => {
@@ -215,10 +211,10 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
                 <div className="flex shrink-0 flex-col gap-3 lg:items-end">
                 {easyOk && <ViewToggle value={view} onChange={switchView} />}
                 <div className={`flex shrink-0 flex-wrap items-center gap-2 ${easyOk ? "" : "lg:pt-6"}`}>
-                </div>
                   <span data-tour="paper-start" title={readOnly ? "둘러보기 중에는 실행되지 않습니다" : doc.tracking.eligible ? undefined : (doc.tracking.reason_ko ?? "이 리포트로는 모의투자를 시작할 수 없습니다")}><Button onClick={() => setStartPaper(true)} disabled={readOnly || !doc.tracking.eligible}><Activity className="size-4" />모의투자 시작</Button></span>
                   <Button variant="secondary" onClick={() => setRevise(true)} disabled={readOnly}><PencilLine className="size-4" />조건 수정 요청</Button>
                   <Menu items={menu} />
+                </div>
                 </div>
               </div>
               {/* 날짜(분석 기준일·백테스트 기간과 날짜 구분 도움말)는 개요 첫 줄에 있다 */}
@@ -226,12 +222,12 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
             </header>
             {view === "full" && <ReportTabs doc={doc} active={active} onJump={jumpGroup} onGlossary={() => setTerms(true)} />}
             {actErr && <Alert title="처리하지 못했습니다" tone="error">{actErr}</Alert>}
-            {view === "easy" && <BeginnerReport doc={doc} canPaper={doc.tracking.eligible} onStartPaper={() => setStartPaper(true)} onFull={() => switchView("full")} />}
-            {view === "full" && <>
             {startPaper && <StartPaperDialog reportId={doc.run_id} close={() => setStartPaper(false)} />}
             {revise && <RevisionPanel reportId={doc.run_id} close={() => setRevise(false)} />}
             {rename && <RenameReportDialog reportId={reportId} close={() => setRename(false)} />}
             {removing && <DeleteReportDialog reportId={reportId} name={row ? reportName(row) : (name?.display_ko ?? h.title_ko)} close={() => setRemoving(false)} onDeleted={() => navigate({ page: "reports" })} />}
+            {view === "easy" && <BeginnerReport doc={doc} canPaper={doc.tracking.eligible} onStartPaper={() => setStartPaper(true)} onFull={() => switchView("full")} />}
+            {view === "full" && <>
             {doc.summary && <div id="sec-summary" className="scroll-mt-16"><Dashboard summary={doc.summary} doc={doc} onJump={jump} paperReason={doc.tracking.eligible ? null : (doc.tracking.reason_ko ?? "이 리포트로는 모의투자를 시작할 수 없습니다")} /></div>}
             {/* 「자세한 분석」: 제목과 아래 분석 카드 전체를 한 카드로 감싼다 (개요 카드와 같은 틀: 옅은 제목 줄 + 본문).
                 제목은 접히지 않고, 안의 분석 카드는 늘 보이며 카드마다 한 번 눌러 펼친다 */}
@@ -248,15 +244,15 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
                     {g && <h3 id={`grp-${g.id}`} className={`${i === 0 ? "" : "pt-2 "}text-sm font-bold tracking-wide text-slate-600`}>{g.heading}</h3>}
                     <SectionShell id={x.id} index={i + 1} title={x.title} open={isOpen(x.id)} onToggle={() => setOpenSecs((o) => ({ ...o, [x.id]: !isOpen(x.id) }))}>{x.body}</SectionShell>
                   </Fragment>
-            </>}
                 )
               })}
               </div>
             </section>
+            </>}
             <footer className="pb-10 text-xs leading-5 text-slate-500">{h.disclaimer_ko}</footer>
         </div>
-        {drawer && <SourceDrawer filter={drawer} close={() => setDrawer(null)} onOpen={(e) => { setDrawer(null); setSource(e) }} />}
-        {source && <SourcePanel item={source} close={() => setSource(null)} />}
+        {drawer && <SourceDrawer filter={drawer} close={() => setDrawer(null)} onOpen={(e) => { setDrawer(null); setSource({ item: e }) }} />}
+        {source && <SourcePanel item={source.item} from={source.from} close={() => setSource(null)} />}
         {panel === "calc" && <CalculationPanel doc={doc} close={() => setPanel(null)} />}
         {panel === "exec" && <ExecutionPanel doc={doc} close={() => setPanel(null)} />}
         {terms && <GlossaryPanel doc={doc} close={() => setTerms(false)} onFull={doc.sections.some((x) => x.id === "references") ? () => { setTerms(false); jump("references") } : undefined} />}
