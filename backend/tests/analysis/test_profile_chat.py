@@ -28,6 +28,7 @@ DEFAULTS_TS = FRONT / "features" / "profile" / "defaults.ts"
 
 # 위험중립형이 나오는 기본 답 (진단 점수 2+2+2=6). 프런트 profileChat.mock.test.tsx 의 PATH 와 같다.
 PATH = {
+    "beginner": {"option_value": "no"},
     "purpose": {"option_value": "wealth_growth"}, "amount": {"option_value": 10_000_000}, "monthly": {"number": 300_000}, "years": {"option_value": 5},
     "age": {"option_value": "40s"}, "experience": {"option_value": "intermediate"}, "knowledge": {"option_value": "intermediate"}, "ratio": {"option_value": 0.5},
     "loss": {"option_value": 2}, "reaction": {"option_value": 2}, "priority": {"option_value": 2},
@@ -68,19 +69,26 @@ def test_start(client):
     assert r.status_code == 200
     v = r.json()
     assert set(v) == {"chat_id", "state", "messages", "question", "progress", "draft", "asked_fields", "derived_fields"}  # 프런트 ProposedProfileChat
-    assert v["state"] == "asking" and v["progress"] == {"done": 0, "total": 15} and v["asked_fields"] == [] and v["derived_fields"] == {}
-    assert v["question"] == {"id": "purpose", "field_label_ko": "투자 목적", "kind": "choice", "input": None, "allow_skip": False,
-                             "options": [{"value": "wealth_growth", "label_ko": "자산 증식"}, {"value": "income", "label_ko": "현금흐름(배당)"},
-                                         {"value": "capital_preservation", "label_ko": "원금 보존"}, {"value": "retirement", "label_ko": "은퇴 대비"}]}  # fmt: skip
-    assert [(m["id"], m["role"]) for m in v["messages"]] == [("hello", "bot"), ("purpose:q", "bot")]
+    assert v["state"] == "asking" and v["progress"] == {"done": 0, "total": 16} and v["asked_fields"] == [] and v["derived_fields"] == {}
+    # 첫 질문은 왕초보용 화면 (2026-11-28), 그다음이 투자 목적
+    assert v["question"] == {"id": "beginner", "field_label_ko": "왕초보용 화면", "kind": "choice", "input": None, "allow_skip": False,
+                             "options": [{"value": "yes", "label_ko": "예", "help_ko": pc.BEGINNER_YES_HELP},
+                                         {"value": "no", "label_ko": "아니요", "help_ko": pc.BEGINNER_NO_HELP}]}  # fmt: skip
+    assert [(m["id"], m["role"]) for m in v["messages"]] == [("hello", "bot"), ("beginner:q", "bot")]
+    assert v["messages"][-1]["text_ko"] == "왕초보용 화면으로 설정할까요?"
+    v2 = _answer(client, v["chat_id"], "beginner", option_value="no")
+    assert v2["question"] == {"id": "purpose", "field_label_ko": "투자 목적", "kind": "choice", "input": None, "allow_skip": False,
+                              "options": [{"value": "wealth_growth", "label_ko": "자산 증식"}, {"value": "income", "label_ko": "현금흐름(배당)"},
+                                          {"value": "capital_preservation", "label_ko": "원금 보존"}, {"value": "retirement", "label_ko": "은퇴 대비"}]}  # fmt: skip
     assert v["draft"] == pc.DEFAULT_FORM and _draft_errors(client.app.state.services, v["draft"]) == []
     assert v["chat_id"] != client.post(f"{P}/profile/chat").json()["chat_id"]
 
 
 def test_full_path_review_and_save(client):
     v, views = _answer_all(client, client.post(f"{P}/profile/chat").json())
-    assert v["state"] == "review" and v["question"] is None and v["progress"] == {"done": 15, "total": 15}  # 진단 결과대로 고르면 「성향 기본값」은 묻지 않는다
+    assert v["state"] == "review" and v["question"] is None and v["progress"] == {"done": 16, "total": 16}  # 진단 결과대로 고르면 「성향 기본값」은 묻지 않는다
     d = v["draft"]
+    assert d["beginner_view"] is False and v["asked_fields"][0] == "beginner_view"
     assert d["capital"] == {**pc.DEFAULT_FORM["capital"], "initial_amount": 10_000_000, "monthly_contribution": 300_000, "currency": "KRW"}
     assert d["horizon"]["purpose"] == "wealth_growth" and d["horizon"]["target_years"] == 5
     assert d["profile"] == {**pc.DEFAULT_FORM["profile"], "age_band": "40s", "investment_experience": "intermediate", "financial_knowledge": "intermediate", "investable_ratio_of_assets": 0.5}
@@ -94,7 +102,7 @@ def test_full_path_review_and_save(client):
     assert v["derived_fields"] == {"risk.target_annual_return": "투자성향 ‘위험중립형’ 기본값", "risk.benchmark": "투자 대상(S&P 500)에 맞춤",
                                    "constraints.max_weight": "종목 5개에 맞춤 · 같은 업종이 많으면 섹터 상한(40%) 때문에 현금이 남을 수 있어요"}  # fmt: skip
     assert v["messages"][-1] == {"id": "done", "role": "bot", "text_ko": pc.DONE_TEXT}
-    assert len(_users(v)) == 15 and all(m["editable"] for m in _users(v))
+    assert len(_users(v)) == 16 and all(m["editable"] for m in _users(v))
     # 말풍선 id 는 응답마다 그대로 (프런트 React key): 앞 응답의 말풍선은 다음 응답의 앞부분과 같다
     for a, b in zip(views, views[1:], strict=False):
         assert b["messages"][: len(a["messages"])] == a["messages"]
@@ -117,12 +125,17 @@ def test_invalid_answers_retry_with_200(client):
         return r["messages"][-1]["text_ko"]
 
     v_done = [0]
+    assert retry_text("beginner", option_value=True) == "아래 보기 중에서 골라 주세요."  # 보기 값은 "yes"·"no" (참·거짓이 아니다)
+    assert retry_text("beginner", skip=True) == "이 질문은 꼭 답해 주셔야 해요. 아래에서 골라 주세요."
+    v = _answer(client, cid, "beginner", option_value="yes")
+    assert v["draft"]["beginner_view"] is True and _users(v)[-1]["text_ko"] == pc.BEGINNER_YES_SAY
+    v_done[0] = 1
     assert retry_text("purpose", option_value="growth") == "아래 보기 중에서 골라 주세요."
     assert retry_text("purpose", skip=True) == "이 질문은 꼭 답해 주셔야 해요. 아래에서 골라 주세요."
     assert retry_text("purpose") == "아래 보기 중에서 골라 주세요."
     v = _answer(client, cid, "purpose", option_value="income")
     assert not any(m["id"].endswith(":retry") for m in v["messages"])  # 맞는 답을 주면 안내가 사라진다
-    v_done[0] = 1
+    v_done[0] = 2
     assert retry_text("amount", number=1_000) == "10만원 이상 100억원 이하로 알려 주세요."
     assert retry_text("amount", number=20_000_000_000) == "10만원 이상 100억원 이하로 알려 주세요."
     assert retry_text("amount", number="5000000") == "10만원 이상 100억원 이하로 알려 주세요."  # 문자열은 숫자가 아니다
@@ -132,12 +145,12 @@ def test_invalid_answers_retry_with_200(client):
     assert _users(v)[-1]["text_ko"] == "250만원"
     v = _answer(client, cid, "monthly", option_value=0)
     assert _users(v)[-1]["text_ko"] == "추가 투자는 없어요"
-    v_done[0] = 3
+    v_done[0] = 4
     assert retry_text("years", number=2.5) == "정수로 알려 주세요."
     assert retry_text("years", number=11) == "1년 이상 10년 이하로 알려 주세요."
     v = _answer(client, cid, "years", number=7.0)
     assert v["draft"]["horizon"]["target_years"] == 7 and _users(v)[-1]["text_ko"] == "7년"  # 「7.0년」이 아니다
-    v_done[0] = 4
+    v_done[0] = 5
     assert retry_text("age", option_value="70s") == "아래 보기 중에서 골라 주세요."
     v = _answer(client, cid, "age", option_value="60s+")
     assert _users(v)[-1]["text_ko"] == "60대 이상"
@@ -145,44 +158,45 @@ def test_invalid_answers_retry_with_200(client):
     assert _users(v)[-1]["text_ko"] == "투자 경험 없음"
     v = _answer(client, cid, "knowledge", option_value="expert")
     assert _users(v)[-1]["text_ko"] == "금융 지식 전문가"
-    v_done[0] = 7
+    v_done[0] = 8
     assert retry_text("ratio", option_value=0.4) == "아래 보기 중에서 골라 주세요."
     v = _answer(client, cid, "ratio", option_value=0.8)
     assert _users(v)[-1]["text_ko"] == "자산의 80% 이상"
     assert v["draft"]["profile"] == {**pc.DEFAULT_FORM["profile"], "age_band": "60s+", "investment_experience": "none", "financial_knowledge": "expert", "investable_ratio_of_assets": 0.8}
-    v_done[0] = 8
+    v_done[0] = 9
     assert retry_text("loss", option_value=True) == "아래 보기 중에서 골라 주세요."  # JS 처럼 true ≠ 1
     assert retry_text("loss", option_value=4) == "아래 보기 중에서 골라 주세요."
     v = _answer(client, cid, "loss", option_value=1.0)
     assert v["draft"]["diagnosis"]["answers"] == {"loss": 1}
     v = _answer(client, cid, "reaction", option_value=0)
     v = _answer(client, cid, "priority", option_value=0)
-    v_done[0] = 11
+    v_done[0] = 12
     assert retry_text("tendency", option_value="중립형") == "아래 보기 중에서 골라 주세요."
     v = _answer(client, cid, "tendency", option_value="안정형")  # 진단 결과(안정형)대로 → 「성향 기본값」은 묻지 않는다
-    v_done[0] = 12
+    v_done[0] = 13
     assert retry_text("universe", option_value=[]) == "하나 이상 골라 주세요."
     assert retry_text("universe", option_value="SP500") == "하나 이상 골라 주세요."
     assert retry_text("universe", option_value=["SP500", "DOW30"]) == "하나 이상 골라 주세요."
     v = _answer(client, cid, "universe", option_value=["KOSPI200", "SP500", "KOSPI200"])
     assert v["draft"]["constraints"]["universe"] == ["KOSPI200", "SP500"]  # 같은 보기는 한 번만 (저장 스키마는 중복을 받지 않는다)
     assert v["draft"]["risk"]["benchmark"] == "SPY"  # 미국·한국이 섞이면 SPY (분석이 KODEX 200 을 보조로 더한다)
-    v_done[0] = 13
+    v_done[0] = 14
     assert retry_text("holdings", number=2) == "3개 이상 30개 이하로 알려 주세요."
     v = _answer(client, cid, "holdings", number=3)
     assert v["draft"]["constraints"]["num_holdings"] == {"target": 3, "min": 2, "max": 4} and v["draft"]["constraints"]["max_weight_per_stock"] == 0.5
-    v_done[0] = 14
+    v_done[0] = 15
     assert retry_text("strategy", option_value="value") == "아래 보기 중에서 골라 주세요."
     v = _answer(client, cid, "strategy", option_value="low_per")
     assert v["state"] == "review" and v["draft"]["strategy_preference"]["template"] == "low_per"
     assert v["asked_fields"][-1] == "strategy.template" and "strategy.weighting" not in v["asked_fields"]
     assert client.put(f"{P}/profile", json=v["draft"]).status_code == 200
+    assert client.get(f"{P}/profile").json()["profile"]["beginner_view"] is True  # 첫 질문의 「예」가 저장된다
 
 
 def test_not_current_question_409_and_missing_chat_404(client):
     v = client.post(f"{P}/profile/chat").json()
     r = client.post(f"{P}/profile/chat/{v['chat_id']}/answers", json={"question_id": "amount", "number": 1_000_000})
-    assert r.status_code == 409 and r.json()["error"]["code"] == "CONFLICT" and r.json()["error"]["details"] == {"current_question_id": "purpose"}
+    assert r.status_code == 409 and r.json()["error"]["code"] == "CONFLICT" and r.json()["error"]["details"] == {"current_question_id": "beginner"}
     done, _ = _answer_all(client, v)
     r = client.post(f"{P}/profile/chat/{v['chat_id']}/answers", json={"question_id": "strategy", "option_value": "recommended"})
     assert r.status_code == 409 and r.json()["error"]["details"] == {"current_question_id": None}  # 요약 단계에는 답할 질문이 없다
@@ -201,7 +215,7 @@ def test_override_tendency_follows_recommendation(client):
     assert [o["value"] for o in opts if o["recommended"]] == ["위험중립형"] and opts[2]["label_ko"] == "위험중립형 (진단 결과)"
     v = _answer(client, v["chat_id"], "tendency", option_value="안정형")
     assert _users(v)[-1]["text_ko"] == "안정형으로 할게요"
-    assert v["question"]["id"] == "tendency_apply" and v["progress"] == {"done": 12, "total": 16}  # 진단과 다르면 한 문항 더
+    assert v["question"]["id"] == "tendency_apply" and v["progress"] == {"done": 13, "total": 17}  # 진단과 다르면 한 문항 더
     assert v["messages"][-1]["text_ko"] == ("‘안정형’으로 바꾸면 아래 조건도 이 성향의 기본값으로 바뀌어요.\n· 손실 감내 수준: 20% → 10%\n"
                                             "· 손실 시 대응: 보유 → 매도\n· 목표 연수익률: 8% → 4%\n괜찮으신가요?")  # fmt: skip
     assert [o["value"] for o in v["question"]["options"]] == ["apply", "keep"]
@@ -226,17 +240,17 @@ def test_rewind_keeps_later_answers(client):
     v, _ = _answer_all(client, client.post(f"{P}/profile/chat").json())
     ids = [m["id"] for m in v["messages"]]
     r = client.post(f"{P}/profile/chat/{v['chat_id']}/rewind", json={"question_id": "amount"}).json()
-    assert r["state"] == "asking" and r["question"]["id"] == "amount" and r["progress"]["done"] == 14
-    assert len(_users(r)) == 1  # 뒤의 말풍선은 지금 질문에 답할 때까지 숨긴다
+    assert r["state"] == "asking" and r["question"]["id"] == "amount" and r["progress"]["done"] == 15
+    assert len(_users(r)) == 2  # 앞의 두 답(왕초보용 화면·투자 목적)만. 뒤의 말풍선은 지금 질문에 답할 때까지 숨긴다
     assert r["messages"][-1] == {"id": "amount:keep", "role": "bot", "question_id": "amount",
                                  "text_ko": "이 질문만 다시 답해 주세요. 뒤에 답한 13개는 그대로 두었다가 답하시면 다시 보여 드릴게요."}  # fmt: skip
     assert r["draft"]["constraints"]["universe"] == ["SP500"]  # 뒤의 답은 초안에 남아 있다
     back = _answer(client, v["chat_id"], "amount", option_value=30_000_000)
     assert back["state"] == "review" and back["draft"]["capital"]["initial_amount"] == 30_000_000 and back["draft"]["capital"]["monthly_contribution"] == 300_000
-    assert len(_users(back)) == 15 and [m["id"] for m in back["messages"]] == ids
+    assert len(_users(back)) == 16 and [m["id"] for m in back["messages"]] == ids
     # 요약 단계에서 고치지 않은 질문을 되감아도 그 질문만 다시 묻는다
     r = client.post(f"{P}/profile/chat/{v['chat_id']}/rewind", json={"question_id": "strategy"}).json()
-    assert r["question"]["id"] == "strategy" and r["progress"]["done"] == 14 and "strategy:keep" not in [m["id"] for m in r["messages"]]
+    assert r["question"]["id"] == "strategy" and r["progress"]["done"] == 15 and "strategy:keep" not in [m["id"] for m in r["messages"]]
     r = client.post(f"{P}/profile/chat/{v['chat_id']}/rewind", json={"question_id": "nope"})
     assert r.status_code == 422 and r.json()["error"]["code"] == "REQUEST_INVALID"
 
@@ -262,7 +276,7 @@ def test_rewind_amount_to_zero_reasks_monthly_none(client):
     assert v["state"] == "review" and v["draft"]["capital"]["monthly_contribution"] == 0
     client.post(f"{P}/profile/chat/{v['chat_id']}/rewind", json={"question_id": "amount"})
     r = _answer(client, v["chat_id"], "amount", option_value=0)
-    assert r["question"]["id"] == "monthly" and r["progress"]["done"] == 14 and "monthly" not in [m["question_id"] for m in _users(r)]
+    assert r["question"]["id"] == "monthly" and r["progress"]["done"] == 15 and "monthly" not in [m["question_id"] for m in _users(r)]
     r = _answer(client, v["chat_id"], "monthly", option_value=500_000)
     assert r["state"] == "review" and r["draft"]["capital"]["monthly_contribution"] == 500_000
     client.post(f"{P}/profile/chat/{v['chat_id']}/rewind", json={"question_id": "amount"})
@@ -273,7 +287,7 @@ def test_rewind_amount_to_zero_reasks_monthly_none(client):
 def test_rewind_diagnosis_reasks_tendency(client):
     v, _ = _answer_all(client, client.post(f"{P}/profile/chat").json())
     r = client.post(f"{P}/profile/chat/{v['chat_id']}/rewind", json={"question_id": "loss"}).json()
-    assert r["question"]["id"] == "loss" and r["progress"]["done"] == 13  # 진단 답과 「성향 확인」 둘 다 지운다
+    assert r["question"]["id"] == "loss" and r["progress"]["done"] == 14  # 진단 답과 「성향 확인」 둘 다 지운다
     r = _answer(client, v["chat_id"], "loss", option_value=3)
     assert r["question"]["id"] == "tendency"
     assert r["draft"]["diagnosis"]["computed_tendency"] == "적극투자형"  # 4+2+2=8
@@ -323,7 +337,7 @@ def test_prune_old_chats_on_start(tmp_path):
     recent = chats.start(now=t0 + dt.timedelta(days=1))
     touched = chats.start(now=t0)
     with chats.locked():
-        chats.save(pc.answer_chat(chats.load(touched["chat_id"]), PATH["purpose"]), now=t0 + dt.timedelta(days=3))  # 답하면 보관 기간이 다시 시작된다
+        chats.save(pc.answer_chat(chats.load(touched["chat_id"]), PATH["beginner"]), now=t0 + dt.timedelta(days=3))  # 답하면 보관 기간이 다시 시작된다
     store.write(f"{chats.DIR}/chat_20260101_000000_000000.json", {"broken": True})  # 읽을 수 없는 파일은 건드리지 않는다
     new = chats.start(now=t0 + dt.timedelta(days=7, seconds=1))
     left = sorted(p.stem for p in store.path(chats.DIR).glob("chat_*.json"))
@@ -337,11 +351,12 @@ def test_prune_old_chats_on_start(tmp_path):
 
 def test_chat_is_stored_as_answers_only(client):
     v = client.post(f"{P}/profile/chat").json()
+    _answer(client, v["chat_id"], "beginner", option_value="yes")
     _answer(client, v["chat_id"], "purpose", option_value="income")
     _answer(client, v["chat_id"], "amount", number=1)  # 다시 묻기 안내도 저장된다 (새로고침해도 같은 말풍선)
     root = Path(client.app.state.services.store.root)
     raw = json.loads((root / "profile_chats" / f"{v['chat_id']}.json").read_text(encoding="utf-8"))
-    assert raw["answers"] == {"purpose": {"v": "income"}} and raw["error"]["question_id"] == "amount"
+    assert raw["answers"] == {"beginner": {"v": "yes"}, "purpose": {"v": "income"}} and raw["error"]["question_id"] == "amount"
     assert pc.chat_view(raw)["messages"][-1]["id"] == "amount:retry"
 
 
@@ -405,7 +420,8 @@ def test_chat_questions_same_as_front_mock():
             values = [o["value"] for o in q.options(pc.DEFAULT_FORM)]
             assert json.dumps(values, ensure_ascii=False).replace('","', '", "') in block, q.id
     for text in (pc.GREETING, pc.DONE_TEXT, "아래 보기 중에서 골라 주세요.", "하나 이상 골라 주세요.", "정수로 알려 주세요.", "이 질문은 꼭 답해 주셔야 해요. 아래에서 골라 주세요.",
-                 pc.ZERO_START_LABEL, pc.ZERO_START_HELP, pc.ZERO_START_SAY, pc.ZERO_MONTHLY_ASK, pc.ZERO_NEEDS_MONTHLY):
+                 pc.ZERO_START_LABEL, pc.ZERO_START_HELP, pc.ZERO_START_SAY, pc.ZERO_MONTHLY_ASK, pc.ZERO_NEEDS_MONTHLY,
+                 pc.BEGINNER_ASK, pc.BEGINNER_YES_HELP, pc.BEGINNER_NO_HELP, pc.BEGINNER_YES_SAY, pc.BEGINNER_NO_SAY):
         assert text in src, text
     assert 'Object.fromEntries([...QUESTIONS.map((q) => [q.id, ["tendency", "tendency_apply"]]), ["tendency", ["tendency_apply"]]])' in src  # 고친 답에 기대는 질문 (DEPENDENTS)
     assert pc.DEPENDENTS == {**{q["id"]: ["tendency", "tendency_apply"] for q in pc.DIAGNOSIS}, "tendency": ["tendency_apply"]}
@@ -442,7 +458,7 @@ def test_tendency_back_to_diagnosis_drops_defaults_answer():
     assert "tendency_apply" not in st["answers"]  # 성향을 고치면 「성향 기본값」도 다시 묻는다
     st = pc.answer_chat(st, {"option_value": "위험중립형"})
     v = pc.chat_view(st)
-    assert v["state"] == "review" and v["progress"] == {"done": 15, "total": 15} and "tendency_apply" not in st["answers"]
+    assert v["state"] == "review" and v["progress"] == {"done": 16, "total": 16} and "tendency_apply" not in st["answers"]
     assert v["draft"]["risk"]["target_annual_return"] == 0.08 and v["draft"]["risk"]["max_drawdown_tolerance"] == 0.2
 
 
@@ -498,3 +514,50 @@ def test_tendency_defaults_and_about_me_texts_same_as_front():
         assert f'{v}: "{h}"' in mock, v
     for v, t in pc.RATIO:
         assert f'{v}: "{t}"' in mock, v
+
+
+# ───────────────────────── 2026-11-28: 왕초보용 화면 (첫 질문, beginner_view) ─────────────────────────
+def test_beginner_view_question_sets_draft_and_can_be_fixed(client):
+    """첫 질문의 답이 초안의 beginner_view 가 되고, 「고치기」로 그 질문만 다시 답할 수 있다 (투자조건 값은 건드리지 않는다)."""
+    v = client.post(f"{P}/profile/chat").json()
+    assert v["draft"]["beginner_view"] is False  # 묻기 전 기본값
+    yes = _answer(client, v["chat_id"], "beginner", option_value="yes")
+    assert yes["draft"]["beginner_view"] is True and yes["asked_fields"] == ["beginner_view"] and yes["progress"] == {"done": 1, "total": 16}
+    assert _users(yes) == [{"id": "beginner:a", "role": "user", "text_ko": "예, 왕초보용 화면으로 볼게요", "question_id": "beginner", "editable": True}]
+    assert {k: x for k, x in yes["draft"].items() if k != "beginner_view"} == {k: x for k, x in pc.DEFAULT_FORM.items() if k != "beginner_view"}
+    done, _ = _answer_all(client, yes)
+    assert done["state"] == "review" and done["draft"]["beginner_view"] is True
+    back = client.post(f"{P}/profile/chat/{v['chat_id']}/rewind", json={"question_id": "beginner"}).json()
+    assert back["question"]["id"] == "beginner" and back["progress"]["done"] == 15 and back["draft"]["beginner_view"] is False
+    no = _answer(client, v["chat_id"], "beginner", option_value="no")
+    assert no["state"] == "review" and no["draft"]["beginner_view"] is False  # 뒤의 답은 그대로 → 바로 요약
+    assert _users(no)[0]["text_ko"] == "아니요, 일반 화면으로 볼게요"
+    assert {k: x for k, x in no["draft"].items() if k != "beginner_view"} == {k: x for k, x in done["draft"].items() if k != "beginner_view"}
+
+
+def test_beginner_view_saved_with_profile_and_kept_when_omitted(client):
+    """저장(PUT /profile)에 beginner_view 가 실리고, 이 값을 보내지 않는 저장은 지금 값을 그대로 둔다. 분석 요청에는 들어가지 않는다."""
+    from backend.analysis.m1_request.assemble import build
+
+    v, _ = _answer_all(client, client.post(f"{P}/profile/chat").json(), path={**PATH, "beginner": {"option_value": "yes"}})
+    assert client.put(f"{P}/profile", json={**v["draft"], "note": "첫 등록"}).json()["profile"]["beginner_view"] is True
+    old = {k: x for k, x in v["draft"].items() if k != "beginner_view"}  # 이 값을 모르는 화면·스크립트의 저장
+    r = client.put(f"{P}/profile", json={**old, "note": "수정"}).json()
+    assert r["current_version"] == 2 and r["profile"]["beginner_view"] is True
+    r = client.put(f"{P}/profile", json={**old, "beginner_view": False, "note": "왕초보용 화면 끔"}).json()
+    assert r["current_version"] == 3 and r["profile"]["beginner_view"] is False
+    assert client.get(f"{P}/profile/versions/1").json()["beginner_view"] is True  # 과거 버전은 그대로
+    assert client.put(f"{P}/profile", json={**old, "beginner_view": "maybe"}).status_code == 422  # 참·거짓만
+    req = build(client.get(f"{P}/profile").json()["profile"], "반도체 대형주에 투자하고 싶어요", request_id="req_x", created_at="2026-11-28T00:00:00+00:00")
+    assert "beginner_view" not in req and "beginner_view" not in req["profile"]
+
+
+def test_profile_saved_before_beginner_view_still_loads(client):
+    """이 값이 생기기 전에 저장한 투자조건(beginner_view 없음)도 그대로 읽히고, 다음 저장에서 꺼짐으로 채워진다."""
+    sv = client.app.state.services
+    fields = {k: x for k, x in pc.DEFAULT_FORM.items() if k != "beginner_view"}
+    sv.profiles.save(fields, note="첫 등록")  # 예전 서버가 저장한 모양
+    got = client.get(f"{P}/profile").json()
+    assert got["current_version"] == 1 and "beginner_view" not in got["profile"]
+    r = client.put(f"{P}/profile", json={**fields, "note": "수정"}).json()
+    assert r["current_version"] == 2 and r["profile"]["beginner_view"] is False

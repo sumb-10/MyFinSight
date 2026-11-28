@@ -1,8 +1,9 @@
 """대화형 초기 투자조건 (POST /profile/chat …, 이슈 #14 묶음 B 의 1번).
 
-프런트 목업 `Front/src/mocks/data/profileChat.ts` 를 그대로 옮긴 고정 문항 대화다 (15문항 + 진단과 다른 성향을 고르면 「성향 기본값」 1문항).
+프런트 목업 `Front/src/mocks/data/profileChat.ts` 를 그대로 옮긴 고정 문항 대화다 (16문항 + 진단과 다른 성향을 고르면 「성향 기본값」 1문항).
 보기·숫자만 받고 자유 문장은 해석하지 않는다 (LLM 없음). 2026-11-11: 나에 대한 참고 정보 4문항, 성향 기본값 확인, 목적에 맞춘 추천,
 투자 대상에 맞춘 비교지수, 요약의 「답에 맞춰 정한 조건」(derived_fields) 을 더했다 (docs/update_hojin_11.11.md).
+2026-11-28: 첫 질문으로 「왕초보용 화면으로 설정할까요?」를 묻는다 (beginner_view — 투자 리포트의 기본 화면을 정하는 값이고 분석 계산에는 쓰이지 않는다).
 상태는 질문별 답만 저장하고, 말풍선·초안(draft)·다음 질문은 매번 답에서 다시 만든다 → 「고치기」는 그 답(과 그 답에 기대는 답)만 지우면 끝.
 응답은 프런트 `ProposedProfileChat` 모양이고, 같은 말풍선은 늘 같은 id 를 가진다 (프런트가 React key 로 쓴다).
 
@@ -47,6 +48,7 @@ DEFAULT_FORM: dict[str, Any] = {
     "diagnosis": {"answers": {}, "computed_tendency": "위험중립형", "final_tendency": "위험중립형", "memo": ""},
     "risk_type_computed": "moderate",
     "risk_type_overridden": False,
+    "beginner_view": False,  # 왕초보용 화면 (투자 리포트의 기본 화면). 요청·분석에는 들어가지 않는다
 }  # fmt: skip
 
 # 성향 진단 3문항 (프런트 features/profile/diagnosis.ts QUESTIONS). loss·reaction 은 손실 감내 수준·손실 시 대응도 함께 정한다.
@@ -336,7 +338,26 @@ def _apply_holdings(d: dict[str, Any], v: Any) -> None:
     d["constraints"].update(holdings_for(v, d["constraints"]))
 
 
+# 왕초보용 화면 (2026-11-28): 「예」면 투자 리포트를 왕초보용 화면으로 먼저 보여 준다. 목업 profileChat.ts 와 같은 문장
+BEGINNER_ASK = "왕초보용 화면으로 설정할까요?"
+BEGINNER_YES_HELP = "투자 리포트를 왕초보용 화면으로 먼저 보여 드려요"
+BEGINNER_NO_HELP = "투자 리포트를 일반 화면으로 보여 드려요"
+BEGINNER_YES_SAY = "예, 왕초보용 화면으로 볼게요"
+BEGINNER_NO_SAY = "아니요, 일반 화면으로 볼게요"
+
+
+def _apply_beginner(d: dict[str, Any], v: Any) -> None:
+    d["beginner_view"] = v == "yes"
+
+
 CHAT_QUESTIONS: list[Question] = [
+    Question(
+        # 첫 질문: 왕초보용 화면 (투자조건이 아니라 화면 설정 — 요약표 행 키 beginner_view)
+        id="beginner", label="왕초보용 화면", kind="choice", fields=_fixed("beginner_view"),
+        ask=lambda _d: BEGINNER_ASK,
+        options=lambda _d: [{"value": "yes", "label_ko": "예", "help_ko": BEGINNER_YES_HELP}, {"value": "no", "label_ko": "아니요", "help_ko": BEGINNER_NO_HELP}],
+        apply=_apply_beginner, say=lambda v, _d: BEGINNER_YES_SAY if v == "yes" else BEGINNER_NO_SAY,
+    ),
     Question(
         id="purpose", label="투자 목적", kind="choice", fields=_fixed("horizon.purpose"),
         ask=lambda _d: "이번 투자의 목적은 무엇인가요?",

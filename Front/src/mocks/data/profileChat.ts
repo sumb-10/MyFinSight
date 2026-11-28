@@ -5,6 +5,7 @@
 // (서버 test_profile_chat 이 질문 순서·이름·고정 보기·입력 범위·정해진 말풍선이 같은지 본다).
 // 2026-11-11: 나에 대한 참고 정보 4문항, 성향 기본값 확인(진단과 다른 성향일 때만), 목적에 맞춘 추천, 투자 대상에 맞춘 비교지수,
 // 요약의 「답에 맞춰 정한 조건」(derived_fields) 을 더했다 (docs/update_hojin_11.11.md).
+// 2026-11-28: 첫 질문으로 「왕초보용 화면으로 설정할까요?」를 묻는다 (beginner_view — 투자 리포트의 기본 화면을 정하는 값).
 import type { ProposedChatAnswer, ProposedChatKind, ProposedChatMessage, ProposedChatQuestion, ProposedProfileChat } from "../../api/proposed"
 import type { ProfileFields, Template, Tendency } from "../../api/types"
 import { DEFAULT_FORM } from "../../features/profile/defaults"
@@ -43,6 +44,12 @@ const ZERO_START_SAY = "0원으로, 매월 적립으로만 시작할게요"
 const ZERO_MONTHLY_ASK = "처음 투자금 없이 시작하니 매월 추가 투자금이 꼭 있어야 해요."
 const ZERO_NEEDS_MONTHLY = "처음 투자금이 0원이라 매월 추가 투자금이 꼭 있어야 해요. 0원보다 큰 금액을 골라 주세요."
 const won = (v: number) => money(v, "KRW")
+/* 왕초보용 화면 (서버 profile_chat.py 와 같은 문장 — 서버 테스트가 확인한다) */
+const BEGINNER_ASK = "왕초보용 화면으로 설정할까요?"
+const BEGINNER_YES_HELP = "투자 리포트를 왕초보용 화면으로 먼저 보여 드려요"
+const BEGINNER_NO_HELP = "투자 리포트를 일반 화면으로 보여 드려요"
+const BEGINNER_YES_SAY = "예, 왕초보용 화면으로 볼게요"
+const BEGINNER_NO_SAY = "아니요, 일반 화면으로 볼게요"
 const pct = (v: number) => `${Math.round(v * 100)}%`
 
 /* 나에 대한 참고 정보의 보기 설명 (서버 EXPERIENCE·KNOWLEDGE·RATIO 와 같다) */
@@ -104,6 +111,14 @@ const diagQ = (i: 0 | 1 | 2): Q => {
 }
 
 export const CHAT_QUESTIONS: Q[] = [
+  {
+    // 첫 질문: 왕초보용 화면 (투자조건이 아니라 화면 설정 — 요약표 행 키 beginner_view)
+    id: "beginner", label: "왕초보용 화면", kind: "choice", fields: ["beginner_view"],
+    ask: () => BEGINNER_ASK,
+    options: () => (["yes", "no"] as const).map((v) => ({ value: v, label_ko: v === "yes" ? "예" : "아니요", help_ko: v === "yes" ? BEGINNER_YES_HELP : BEGINNER_NO_HELP })),
+    apply: (d, v) => { d.beginner_view = v === "yes" },
+    say: (v) => (v === "yes" ? BEGINNER_YES_SAY : BEGINNER_NO_SAY),
+  },
   {
     id: "purpose", label: "투자 목적", kind: "choice", fields: ["horizon.purpose"],
     ask: () => "이번 투자의 목적은 무엇인가요?",

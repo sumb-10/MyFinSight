@@ -34,6 +34,7 @@ class ProfileIn(BaseModel):
     diagnosis: dict[str, Any] | None = None
     risk_type_computed: str = "moderate"
     risk_type_overridden: bool = False
+    beginner_view: bool | None = None  # 왕초보용 화면 (투자 리포트의 기본 화면). 보내지 않으면 지금 값을 그대로 둔다
     note: str | None = None
 
 
@@ -68,6 +69,8 @@ def put_profile(body: ProfileIn, request: Request) -> dict[str, Any]:
     errs = hard_errors(trial)
     if errs:
         raise RequestInvalid("프로필 값에 오류가 있습니다", code="PROFILE_INVALID", details={"fields": {e.field: e.message_ko for e in errs}})
+    if "beginner_view" not in fields:  # 이 값을 모르는 화면·스크립트가 저장해도 왕초보용 화면 설정이 꺼지지 않게
+        fields["beginner_view"] = bool((sv.profiles.current() or {}).get("beginner_view", False))
     try:
         sv.profiles.save(fields, note=note)
     except jsonschema.ValidationError as e:
@@ -77,7 +80,7 @@ def put_profile(body: ProfileIn, request: Request) -> dict[str, Any]:
 
 
 # ───────────────────────── 대화형 초기 투자조건 (POST /profile/chat …) ─────────────────────────
-# 규칙은 m1_request/profile_chat.py (프런트 목업 대화를 그대로 옮긴 고정 11문항, LLM 없음). 대화는 초안만 만들고 저장은 위의 PUT /profile.
+# 규칙은 m1_request/profile_chat.py (프런트 목업 대화를 그대로 옮긴 고정 문항, LLM 없음). 대화는 초안만 만들고 저장은 위의 PUT /profile.
 
 
 class ChatAnswerIn(BaseModel):

@@ -7,6 +7,7 @@ import { ko } from "../../lib/format"
 import { tendencyLabel } from "../../lib/tendency"
 import { reactionText } from "./diagnosis"
 import { MockTag } from "../report/proposedView"
+import { BEGINNER_TITLE, beginnerText } from "./BeginnerView"
 import { ASSET_KO, benchName, listText, money, monthlyText, pctText, rebalanceText, usdFloor, yearsText } from "./format"
 import { whenText } from "./history"
 import { useStockNames } from "./stocks"
@@ -22,6 +23,7 @@ export function profileRows(p: ProfileFields, name: (t: string) => string = (t) 
   const c = p.constraints, sp = p.strategy_preference
   const r = (group: string, key: string, label: string, value: string): ProfileRow => ({ group, key, label, value })
   return [
+    r("화면", "beginner_view", BEGINNER_TITLE, beginnerText(p.beginner_view)),
     r("기본 조건", "capital.initial_amount", "처음 투자할 금액", money(p.capital.initial_amount, p.capital.currency)),
     r("기본 조건", "capital.monthly", "매월 추가 투자금", monthlyText(p.capital)),
     r("기본 조건", "horizon.target_years", "앞으로 투자할 기간", yearsText(p.horizon.target_years)),
