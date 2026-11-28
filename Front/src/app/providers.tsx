@@ -20,6 +20,8 @@ export function useProfile(): ProfileCtx {
   if (!p) throw new Error("ProfileProvider missing")
   return p
 }
+/** 프로필 문맥이 없을 수도 있는 곳(리포트 화면을 서비스만 꽂아 띄우는 테스트 등)에서 쓴다. 없으면 null. */
+export const useProfileOptional = () => useContext(ProfileContext)
 export const useHealth = () => useContext(HealthContext)
 
 export function Providers({ service, children }: { service: AnalysisService; children: React.ReactNode }) {

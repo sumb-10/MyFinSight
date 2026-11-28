@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Activity, ArrowLeft, BookOpenText, GitCompareArrows, ListChecks, Pencil, PencilLine, RefreshCw, Sigma, Trash2 } from "lucide-react"
-import { useService } from "../../app/providers"
+import { useProfileOptional, useService } from "../../app/providers"
 import { navigate as routerNavigate } from "../../app/router"
 import { errorMessage } from "../../api/client"
 import type { EvidenceRecord, ReportDoc } from "../../api/types"
@@ -28,6 +28,8 @@ import { DeleteReportDialog, RenameReportDialog, useRenameTick } from "./ReportN
 import { findReportRow, reportName } from "../../lib/reportName"
 import { groupOf, groupsFor, SECTION_SEQUENCE } from "./navGroups"
 import { plainSummary } from "./summaryText"
+import { BeginnerReport, canShowEasy, type ReportViewMode, ViewToggle } from "./beginner/BeginnerReport"
+import { isBeginnerView } from "../profile/BeginnerView"
 
 // 읽는 순서는 상단 탭 묶음(navGroups) 순서: 종목 선정(판단 → 포트폴리오 → 종목 근거) → 과거 성과 → 시장·뉴스 → 요청·주의사항·자료.
 // 서버가 주는 내용은 그대로이고 순서만 바꾼다 (모르는 섹션은 뒤로).
@@ -95,6 +97,13 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
   const openEvidence = useCallback((id: string) => {
     const e = evidenceById.get(id)
     if (e?.url) { window.open(e.url, "_blank", "noopener,noreferrer"); return }
+  // 왕초보용 화면 ↔ 원래 리포트 (2026-11-28). 처음 화면은 투자조건의 「왕초보용 화면」 설정을 따르고, 오른쪽 위 토글로 오간다 (설정은 바꾸지 않는다).
+  // 주소가 섹션·기업·리밸런싱 시점을 가리키면 원래 리포트로 연다. 둘러보기(readOnly)는 원래 리포트만 쓴다
+  const profile = useProfileOptional()?.profile ?? null
+  const [viewChoice, setViewChoice] = useState<ReportViewMode | null>(null)
+  const easyOk = useMemo(() => !!doc && !readOnly && canShowEasy(doc), [doc, readOnly])
+  const view: ReportViewMode = !easyOk ? "full" : viewChoice ?? (!sec && !company && rb === undefined && isBeginnerView(profile) ? "easy" : "full")
+  const switchView = useCallback((v: ReportViewMode) => { setViewChoice(v); if (typeof window !== "undefined") window.scrollTo?.({ top: 0 }) }, [])
     setSource(e ?? { id })
   }, [evidenceById])
   const cite = useMemo(() => ({ onCite: openEvidence, label: numberOf }), [openEvidence, numberOf])
@@ -203,7 +212,10 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
                   </div>
                   {(h.summary_ko || h.subtitle_ko) && <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{h.summary_ko || h.subtitle_ko}</p>}
                 </div>
-                <div className="flex shrink-0 flex-wrap items-center gap-2 lg:pt-6">
+                <div className="flex shrink-0 flex-col gap-3 lg:items-end">
+                {easyOk && <ViewToggle value={view} onChange={switchView} />}
+                <div className={`flex shrink-0 flex-wrap items-center gap-2 ${easyOk ? "" : "lg:pt-6"}`}>
+                </div>
                   <span data-tour="paper-start" title={readOnly ? "둘러보기 중에는 실행되지 않습니다" : doc.tracking.eligible ? undefined : (doc.tracking.reason_ko ?? "이 리포트로는 모의투자를 시작할 수 없습니다")}><Button onClick={() => setStartPaper(true)} disabled={readOnly || !doc.tracking.eligible}><Activity className="size-4" />모의투자 시작</Button></span>
                   <Button variant="secondary" onClick={() => setRevise(true)} disabled={readOnly}><PencilLine className="size-4" />조건 수정 요청</Button>
                   <Menu items={menu} />
@@ -212,8 +224,10 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
               {/* 날짜(분석 기준일·백테스트 기간과 날짜 구분 도움말)는 개요 첫 줄에 있다 */}
               {doc.presented_from_version === 1 && <div><Badge tone="slate">예전 형식 리포트 (자동 변환)</Badge></div>}
             </header>
-            <ReportTabs doc={doc} active={active} onJump={jumpGroup} onGlossary={() => setTerms(true)} />
+            {view === "full" && <ReportTabs doc={doc} active={active} onJump={jumpGroup} onGlossary={() => setTerms(true)} />}
             {actErr && <Alert title="처리하지 못했습니다" tone="error">{actErr}</Alert>}
+            {view === "easy" && <BeginnerReport doc={doc} canPaper={doc.tracking.eligible} onStartPaper={() => setStartPaper(true)} onFull={() => switchView("full")} />}
+            {view === "full" && <>
             {startPaper && <StartPaperDialog reportId={doc.run_id} close={() => setStartPaper(false)} />}
             {revise && <RevisionPanel reportId={doc.run_id} close={() => setRevise(false)} />}
             {rename && <RenameReportDialog reportId={reportId} close={() => setRename(false)} />}
@@ -234,6 +248,7 @@ function ReportView({ reportId, sec, company, rb, readOnly = false, extraMenu = 
                     {g && <h3 id={`grp-${g.id}`} className={`${i === 0 ? "" : "pt-2 "}text-sm font-bold tracking-wide text-slate-600`}>{g.heading}</h3>}
                     <SectionShell id={x.id} index={i + 1} title={x.title} open={isOpen(x.id)} onToggle={() => setOpenSecs((o) => ({ ...o, [x.id]: !isOpen(x.id) }))}>{x.body}</SectionShell>
                   </Fragment>
+            </>}
                 )
               })}
               </div>

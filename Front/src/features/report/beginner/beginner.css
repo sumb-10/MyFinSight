@@ -1,0 +1,52 @@
+/* 왕초보용 리포트 화면 (2026-11-28). 카드·테두리 없이 큰 글자와 여백으로 구획을 나눈다.
+   색: 먹색 글자 · 파랑(내 전략·강조 구절) · 주황(비교 대상). 글꼴은 앱과 같은 Noto Sans KR 을 가장 굵게, 자간을 좁혀 쓴다. */
+.easy {
+  --easy-ink: #191c20;
+  --easy-blue: #3d7bf3;
+}
+
+/* 구획 제목: 두 줄, 강조 구절만 파랑 */
+.easy-display {
+  font-size: clamp(34px, 3.5vw, 50px);
+  line-height: 1.24;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  color: var(--easy-ink);
+  word-break: keep-all;
+}
+.easy-display em {
+  font-style: normal;
+  color: var(--easy-blue);
+}
+
+/* 큰 숫자 */
+.easy-num {
+  font-size: clamp(42px, 4.6vw, 66px);
+  line-height: 1.08;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 첫 그래프만: 선이 왼쪽에서 오른쪽으로 한 번 그려지고, 끝 값이 뒤따라 나타난다.
+   움직임 줄이기 설정이면 index.css 의 prefers-reduced-motion 규칙이 바로 끝 상태로 보낸다. */
+.easy-draw .easy-line {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: easy-draw 1.5s cubic-bezier(0.3, 0.1, 0.2, 1) 0.15s forwards;
+}
+.easy-draw .easy-ends {
+  opacity: 0;
+  animation: easy-fade 0.4s ease-out 1.45s forwards;
+}
+@keyframes easy-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes easy-fade {
+  to {
+    opacity: 1;
+  }
+}
