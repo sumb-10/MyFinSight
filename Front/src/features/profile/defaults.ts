@@ -1,7 +1,8 @@
 import type { ProfileFields } from "../../api/types"
 
 /** 처음 설정할 때 채워 두는 기본 투자조건. 4단계 폼과 대화형 설정이 같은 값에서 시작한다.
- *  실제 서버의 대화형 설정(backend/analysis/m1_request/profile_chat.py DEFAULT_FORM)도 같은 값 — 바꾸면 함께 바꾼다 (서버 test_profile_chat 이 확인). */
+ *  실제 서버의 대화형 설정(backend/analysis/m1_request/profile_chat.py DEFAULT_FORM)도 같은 값 — 바꾸면 함께 바꾼다 (서버 test_profile_chat 이 확인).
+ *  beginner_view = 왕초보용 화면 (투자 리포트의 기본 화면, features/profile/BeginnerView.tsx). */
 export const DEFAULT_FORM: ProfileFields = {
   profile: { user_id: "default", age_band: "30s", investment_experience: "beginner", financial_knowledge: "basic", investable_ratio_of_assets: 0.3 },
   capital: { initial_amount: 10_000_000, currency: "KRW", trading_currency: "USD", monthly_contribution: 0, contribution_day: 25 },
@@ -12,4 +13,5 @@ export const DEFAULT_FORM: ProfileFields = {
   diagnosis: { answers: {}, computed_tendency: "위험중립형", final_tendency: "위험중립형", memo: "" },
   risk_type_computed: "moderate",
   risk_type_overridden: false,
+  beginner_view: false,
 }

@@ -401,6 +401,11 @@
           "type": "boolean",
           "description": "risk.risk_tolerance가 진단 결과와 다른지"
         },
+        "beginner_view": {
+          "type": "boolean",
+          "default": false,
+          "description": "왕초보용 화면: true 면 투자 리포트를 왕초보용 화면으로 먼저 보여 준다. 화면 설정이라 요청·분석에는 들어가지 않는다. 없으면 false"
+        },
         "diagnosis_answers": {
           "type": "object",
           "description": "간이 진단 문항 답변(자유 형식)"

@@ -6,6 +6,7 @@ import { metricName, metricValue } from "./metrics"
 import { CitedText } from "./blocks/blocks"
 import { useReport } from "./context"
 import { MockTag, proposed } from "./proposedView"
+import { companyNames, evidenceTitle, kindPlain } from "./evidenceText"
 
 /** 종목 카드의 비중이 어느 날짜 기준인지. 서버는 분석 기준일 구성을 만들 수 있으면 그 비중을, 못 만들면 백테스트 시작일 목표 비중을 넣는다
  *  (2026-10-30 리포트처럼 예전 리포트는 항상 백테스트 시작일 포트폴리오 비중). 요약 배분(분석 기준일 구성)과 모든 종목 값이 같으면 분석 기준일 포트폴리오 비중이다.
@@ -122,8 +123,14 @@ function CompanyBody({ it, b, basis }: { it: CompanyItem; b: CompaniesBlock; bas
     [`${b.metric_ko} (${b.as_of_bt})`, it.metric_bt !== null ? `${metricValue(b.metric, it.metric_bt)} · 순위 ${it.rank_bt ?? "–"}` : "–"],
     ["투자 테마와의 관련성", `${it.theme_reason_ko || "–"}${it.theme_confidence ? ` (확신 정도 ${Math.round(it.theme_confidence * 100)}%)` : ""}`],
     ...(view ? [["뉴스 투자 의견", <><MockTag />{" "}{view.reason_ko}{view.view_summaries_ko.length > 0 && <span className="mt-0.5 block text-slate-600">{view.view_summaries_ko.join(" / ")}</span>}</>] as [string, React.ReactNode]] : []),
-    ["근거 자료", <>{it.n_news}건 뉴스 · {it.n_disclosures}건 공시{rep && (it.n_news + it.n_disclosures > 0) && <button type="button" onClick={() => rep.openDrawer({ ticker: it.ticker, title: `${it.ticker} 관련 근거` })} className="ml-2 text-xs font-semibold text-blue-700 hover:underline">출처 보기</button>}</>],
   ]
+  // 근거 묶음 (2026-11-28): 이 회사에 대해 본문이 쓴 근거를 카드 안에서 바로 보여 준다 (지표 숫자 · 뉴스 · 공시). 읽기만 한 뉴스·공시는 「모두 보기」로
+  const nameOf = companyNames(rep?.doc)
+  const used = (rep?.doc.evidence ?? []).filter((e) => e.tickers.includes(it.ticker) || e.id === it.fact_id)
+  const order = ["financial", "disclosure", "news", "calc"]
+  const when = (e: (typeof used)[number]) => String((e.kind === "disclosure" ? e.available_on : e.published_at ?? e.data_as_of) ?? "")
+  used.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || when(b).localeCompare(when(a)))  // 숫자 → 공시 → 뉴스, 같은 종류는 최근 것부터
+  const SHOWN = 5
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_260px]">
       <div className="min-w-0 space-y-3 break-words text-[15px] leading-7 text-slate-700">
@@ -146,6 +153,28 @@ function CompanyBody({ it, b, basis }: { it: CompanyItem; b: CompaniesBlock; bas
         <h4 className="text-sm font-bold text-slate-900">{reasons?.length ? "선정 근거 원문" : "선정 근거"}</h4>
         {it.summary && <p className="text-sm text-slate-500"><span className="font-semibold">회사 소개 </span>{it.summary}</p>}
         {it.rationale_ko.length ? it.rationale_ko.map((t, i) => <p key={i} className="whitespace-pre-line"><CitedText text={t} /></p>) : <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{it.in_selection_now ? "선정 이유 설명이 없습니다." : "분석한 날의 선정 종목이 아니어서 선정 이유 설명이 없습니다."}</p>}
+        {rep && (used.length > 0 || it.n_news + it.n_disclosures > 0) && (
+          <div className="pt-2">
+            <h4 className="text-sm font-bold text-slate-900">근거 자료{used.length > 0 && <span className="ml-1.5 font-normal text-slate-500">본문에 쓰인 {used.length}건</span>}</h4>
+            {used.length > 0 && (
+              <ul aria-label={`${it.ticker} 근거 자료`} className="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-200">
+                {used.slice(0, SHOWN).map((e) => (
+                  <li key={e.id}>
+                    <button type="button" onClick={() => rep.openEvidence(e.id)} className="flex w-full items-baseline gap-3 px-3 py-2.5 text-left text-sm hover:bg-slate-50">
+                      <span className="w-8 shrink-0 text-right text-xs font-bold tabular-nums text-blue-700">{rep.numberOf(e.id) !== e.id ? `[${rep.numberOf(e.id)}]` : ""}</span>{/* 본문 문장에 번호로 붙지 않은 자료는 번호 없이 (내부 ID 를 보이지 않는다) */}
+                      <span className="min-w-0 flex-1 truncate font-semibold text-slate-900">{evidenceTitle(e, nameOf)}</span>
+                      <span className="shrink-0 text-xs text-slate-500">{kindPlain(e.kind)} · {String((e.kind === "disclosure" ? e.available_on : e.published_at ?? e.data_as_of) ?? "").slice(0, 10)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+              {used.length > SHOWN && <button type="button" onClick={() => rep.openDrawer({ ticker: it.ticker, title: `${it.name || it.ticker} 관련 자료`, scope: "cited" })} className="text-xs font-semibold text-blue-700 hover:underline">본문에 쓰인 {used.length}건 모두 보기</button>}
+              {it.n_news + it.n_disclosures > 0 && <button type="button" onClick={() => rep.openDrawer({ ticker: it.ticker, title: `${it.name || it.ticker} 관련 자료`, scope: "all" })} className="text-xs font-semibold text-blue-700 hover:underline">읽은 뉴스 {it.n_news}건 · 공시 {it.n_disclosures}건 모두 보기</button>}
+            </div>
+          </div>
+        )}
       </div>
       <dl className="h-fit space-y-2 rounded-lg bg-slate-50 p-3 text-xs">{facts.map(([k, v]) => <div key={k}><dt className="font-semibold text-slate-500">{k}</dt><dd className="mt-0.5 text-slate-800">{v}</dd></div>)}</dl>
     </div>

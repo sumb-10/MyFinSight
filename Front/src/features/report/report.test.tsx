@@ -21,9 +21,9 @@ describe("SourceDrawer", () => {
   it("서버 색인이 없으면(404) 문서 안의 근거로 대신하고 종류·종목으로 걸러진다", async () => {
     wrap(<SourceDrawer filter={{ ids: null }} close={() => {}} onOpen={() => {}} />, { getReportEvidence: vi.fn(async () => null) })
     await waitFor(() => expect(screen.getByText(/서버 색인을 쓸 수 없어/)).toBeInTheDocument())
-    expect(screen.getByText(/NVDA 뉴스/)).toBeInTheDocument(); expect(screen.getByText(/실적 발표 · 8-K/)).toBeInTheDocument()
+    expect(screen.getByText(/NVDA 뉴스/)).toBeInTheDocument(); expect(screen.getByText(/실적 발표 \(AMD\)/)).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText("종류"), { target: { value: "disclosure" } })
-    expect(screen.queryByText(/NVDA 뉴스/)).toBeNull(); expect(screen.getByText(/실적 발표 · 8-K/)).toBeInTheDocument()
+    expect(screen.queryByText(/NVDA 뉴스/)).toBeNull(); expect(screen.getByText(/실적 발표 \(AMD\)/)).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText("종류"), { target: { value: "" } })
     fireEvent.change(screen.getByLabelText("종목"), { target: { value: "NVDA" } })
     expect(screen.getAllByRole("listitem")).toHaveLength(2)

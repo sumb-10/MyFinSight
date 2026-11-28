@@ -23,12 +23,13 @@ import { StrategyRecommendation, asPref, useRecommendation } from "./StrategyRec
 import { DEFAULT_FORM } from "./defaults"
 import { HOLDINGS, LABEL, PCT, THEME_FIELD, TICKER_PLACEHOLDER } from "./fields"
 import { validateProfile } from "./validate"
+import { BEGINNER_TITLE, BeginnerViewCard, BeginnerViewQuick, beginnerText } from "./BeginnerView"
 
 type Form = ProfileFields
 
 function fromView(v: ProfileView): Form {
   const p = v.profile
-  return { profile: p.profile, capital: p.capital, horizon: p.horizon, risk: p.risk, constraints: p.constraints, strategy_preference: p.strategy_preference, diagnosis: p.diagnosis ?? DEFAULT_FORM.diagnosis, risk_type_computed: p.risk_type_computed, risk_type_overridden: p.risk_type_overridden }
+  return { profile: p.profile, capital: p.capital, horizon: p.horizon, risk: p.risk, constraints: p.constraints, strategy_preference: p.strategy_preference, diagnosis: p.diagnosis ?? DEFAULT_FORM.diagnosis, risk_type_computed: p.risk_type_computed, risk_type_overridden: p.risk_type_overridden, beginner_view: p.beginner_view ?? false }
 }
 
 /** 예전 fixture 앱 프로필(원화 금액·개월·5단계 성향·%)을 새 폼으로 */
@@ -94,6 +95,7 @@ function ProfileSummary({ view }: { view: ProfileView }) {
         </div>
         <div className="flex shrink-0 gap-2"><Button variant="secondary" onClick={() => navigate({ page: "home" })}>새 분석 시작</Button><Button onClick={() => navigate({ page: "profile", mode: "edit" })}>수정</Button></div>
       </header>
+      <BeginnerViewQuick view={view} />
       {parts.map((part) => (
         <Part key={part.title} title={part.title}>
           <dl className="grid grid-cols-1 gap-x-8 gap-y-4 text-sm sm:grid-cols-2">
@@ -212,6 +214,8 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
       </header>
       {legacy && setup && <div className="mt-6"><Alert title="이전 브라우저 저장 조건을 불러왔습니다" tone="info">예전 앱에 저장돼 있던 투자조건으로 미리 채웠습니다. 확인 후 저장하면 서버에 기록됩니다.</Alert></div>}
       {chatDraft && setup && <div className="mt-6"><Alert title="대화에서 답한 내용으로 채웠습니다" tone="info">나머지 항목을 확인하고 마지막 단계에서 저장하세요.</Alert></div>}
+      {/* 왕초보용 화면: 어느 단계에서나 보이게 단계 줄 위에 둔다. 다른 값과 함께 마지막 단계의 「저장」에서 저장된다 */}
+      <div className="mt-6"><BeginnerViewCard value={!!form.beginner_view} onChange={(v) => upd((f) => { f.beginner_view = v })} /></div>
       <nav aria-label="설정 단계" className="my-8">
         <ol className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {STEPS.map((label, i) => {
@@ -400,7 +404,7 @@ function ProfileWizard({ initial, setup, onSaved }: { initial: Form | null; setu
             <StrategyFields value={form.strategy_preference} templates={opt?.templates} weightings={opt?.weightings} recommended={rec ? asPref(rec.recommended) : null} onChange={(p) => upd((f) => { Object.assign(f.strategy_preference, p) })} />
             <Part title="메모" tag="선택"><textarea aria-label="메모" className={`${inputClass} min-h-20`} value={form.diagnosis?.memo ?? ""} onChange={(e) => upd((f) => { if (f.diagnosis) f.diagnosis.memo = e.target.value })} placeholder="선호나 참고 사항. 검증되는 수치 제약으로는 쓰이지 않습니다." /></Part>
             <Part title="저장 요약">
-              <p className="text-sm text-slate-700">{money(form.capital.initial_amount, cur)} · {yearsText(form.horizon.target_years)} · {form.diagnosis?.final_tendency} · 손실 감내 {pctText(form.risk.max_drawdown_tolerance)} · {c.universe.map(ko).join("/")}</p>
+              <p className="text-sm text-slate-700">{money(form.capital.initial_amount, cur)} · {yearsText(form.horizon.target_years)} · {form.diagnosis?.final_tendency} · 손실 감내 {pctText(form.risk.max_drawdown_tolerance)} · {c.universe.map(ko).join("/")} · {BEGINNER_TITLE} {beginnerText(form.beginner_view)}</p>
               <p className="text-sm font-semibold text-slate-900">{sp}</p>
             </Part>
             {saveError && <Alert title="저장 실패" tone="error">{saveError}</Alert>}

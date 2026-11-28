@@ -279,17 +279,21 @@ describe("선택 근거 자세히 보기의 용어", () => {
 })
 
 describe("근거 번호 누르기", () => {
-  it("원문 주소가 있는 근거는 원문을 새 탭으로 바로 열고, 주소가 없으면 지금처럼 상세 패널을 연다", async () => {
+  it("근거 번호를 누르면 바로 밖으로 나가지 않고 근거 패널을 먼저 연다: 어느 문장의 근거인지 → 내용 → 원문 열기 (2026-11-28)", async () => {
     const open = vi.spyOn(window, "open").mockImplementation(() => null)
     const reason = "후보 4개 중 1위. · 기사 [ev1] · 계산 [ev2]"
     show(doc({ evidence: [{ id: "ev1", kind: "news", title: "기사 제목", source: "benzinga", url: "https://example.com/a", tickers: [] }, { id: "ev2", kind: "news", title: "주소 없는 자료", source: "x", url: null, tickers: [] }] as unknown as ReportDoc["evidence"], summary: summary({ verdict: { ...summary().verdict, reason_ko: reason } }) }), { sec: "verdict" })
     const why = await screen.findByRole("list", { name: "이 전략을 고른 이유" })
     fireEvent.click(within(why).getByRole("button", { name: "근거 ev1 보기" }))
-    expect(open).toHaveBeenCalledWith("https://example.com/a", "_blank", "noopener,noreferrer")
-    expect(screen.queryByText("참고자료 상세")).toBeNull()
+    const panel = await screen.findByRole("dialog", { name: "근거 자세히" })
+    expect(open).not.toHaveBeenCalled()
+    expect(within(panel).getByText("기사 제목")).toBeInTheDocument()
+    expect(within(panel).getByRole("link", { name: /원문 열기/ })).toHaveAttribute("href", "https://example.com/a")
+    fireEvent.click(within(panel).getByRole("button", { name: "닫기" }))
     fireEvent.click(within(why).getByRole("button", { name: "근거 ev2 보기" }))
-    expect(await screen.findByText("참고자료 상세")).toBeInTheDocument()
-    expect(open).toHaveBeenCalledTimes(1)
+    const second = await screen.findByRole("dialog", { name: "근거 자세히" })
+    expect(within(second).getByText("주소 없는 자료")).toBeInTheDocument()
+    expect(within(second).queryByRole("link", { name: /원문 열기/ })).toBeNull()
     open.mockRestore()
   })
 })

@@ -69,12 +69,12 @@ export function CitedText({ text: raw, tight }: { text: string; tight?: boolean 
     parts.push(
       tight ? (
         ctx ? (
-          <button key={`${id}-${start}`} type="button" onClick={() => ctx.onCite(id)} aria-label={`근거 ${id} 보기`} className="relative -top-[0.45em] ml-0.5 leading-none text-blue-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><span className="text-[11px] font-bold leading-none">[{ctx.label(id)}]</span></button>
+          <button key={`${id}-${start}`} type="button" onClick={() => ctx.onCite(id, raw)} aria-label={`근거 ${id} 보기`} className="relative -top-[0.45em] ml-0.5 leading-none text-blue-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><span className="text-[11px] font-bold leading-none">[{ctx.label(id)}]</span></button>
         ) : (
           <span key={`${id}-${start}`} className="relative -top-[0.45em] ml-0.5 text-[11px] font-bold leading-none text-slate-500">[{id}]</span>
         )
       ) : ctx ? (
-        <button key={`${id}-${start}`} type="button" onClick={() => ctx.onCite(id)} aria-label={`근거 ${id} 보기`} className="mx-0.5 align-super text-[11px] font-bold text-blue-700 hover:underline">[{ctx.label(id)}]</button>
+        <button key={`${id}-${start}`} type="button" onClick={() => ctx.onCite(id, raw)} aria-label={`근거 ${id} 보기`} className="mx-0.5 align-super text-[11px] font-bold text-blue-700 hover:underline">[{ctx.label(id)}]</button>
       ) : (
         <span key={`${id}-${start}`} className="mx-0.5 align-super text-[11px] font-bold text-slate-500">[{id}]</span>
       ),

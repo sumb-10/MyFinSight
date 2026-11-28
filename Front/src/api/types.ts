@@ -37,7 +37,7 @@ export interface Derived {
 // ───────────────────────── 프로필 (api/routers/profile.py) ─────────────────────────
 export type Tendency = "안정형" | "안정추구형" | "위험중립형" | "적극투자형" | "공격투자형"
 export interface Diagnosis { answers: Record<string, number>; computed_tendency: Tendency; final_tendency: Tendency; memo?: string }
-export interface ProfileFields { profile: RequestProfile; capital: Capital; horizon: Omit<Horizon, "start_date">; risk: Risk; constraints: Constraints; strategy_preference: StrategyPreference; diagnosis?: Diagnosis; risk_type_computed: RiskTolerance; risk_type_overridden: boolean; note?: string }
+export interface ProfileFields { profile: RequestProfile; capital: Capital; horizon: Omit<Horizon, "start_date">; risk: Risk; constraints: Constraints; strategy_preference: StrategyPreference; diagnosis?: Diagnosis; risk_type_computed: RiskTolerance; risk_type_overridden: boolean; beginner_view?: boolean /* 왕초보용 화면: true 면 투자 리포트를 왕초보용 화면으로 먼저 보여 준다 (없으면 false) */; note?: string }
 export interface ProfileVersion extends ProfileFields { version: number; created_at: string }
 export interface ProfileView { profile_id: string; current_version: number; profile: ProfileVersion; versions: { version: number; created_at: string; note?: string | null }[] }
 
